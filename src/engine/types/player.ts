@@ -36,8 +36,12 @@ export interface FactionInfo {
   readonly startingTechIds: string[];
   readonly traitDescription: string;
   readonly tradeRatio: number; // e.g. 2 means 2:1 trade for money
+  readonly exploreActivations?: number; // Base explore activations per Explore action disc (standard 1)
+  readonly researchActivations?: number; // Base research activations per Research action disc (standard 1)
+  readonly upgradeActivations?: number; // Base upgrade activations per Upgrade action disc (Humans 2, Mechanema 3)
   readonly buildActivations?: number; // Base build activations per Build action disc (standard 2)
   readonly moveActivations?: number; // Base move activations per Move action disc (Humans 3, Aliens 2)
+  readonly influenceActivations?: number; // Base influence activations per Influence action disc (standard 2)
 }
 
 export interface PlayerResources {

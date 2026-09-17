@@ -26,6 +26,8 @@ interface SectorInspectorProps {
   players: PlayerState[];
   activePlayer: PlayerState;
   onColonizePlanet?: (sectorId: string, planetIndex: number) => void;
+  onClaimInfluence?: (sectorId: string) => void;
+  onAbandonInfluence?: (sectorId: string) => void;
   onClose: () => void;
 }
 
@@ -34,6 +36,8 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   players,
   activePlayer,
   onColonizePlanet,
+  onClaimInfluence,
+  onAbandonInfluence,
   onClose,
 }) => {
   const discOwner = players.find((p) => p.id === sector.discOwner);
@@ -51,6 +55,17 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
     shipsByOwner.size > 1 ||
     sector.ancientsCount > 0 ||
     sector.ships.some((s) => s.ownerId === 'ancient' || s.ownerId === 'gcds');
+
+  const hasFriendlyShips = sector.ships.some((s) => s.ownerId === activePlayer.id);
+  const canClaimControl =
+    !discOwner &&
+    hasFriendlyShips &&
+    !hasHostiles &&
+    activePlayer.influenceTrack.discsOnTrack > 0 &&
+    Boolean(onClaimInfluence);
+  const canAbandonControl =
+    sector.discOwner === activePlayer.id &&
+    Boolean(onAbandonInfluence);
 
   return (
     <div className="bg-slate-950/95 border border-slate-700/80 rounded-2xl w-84 sm:w-96 shadow-2xl backdrop-blur-md overflow-hidden text-slate-100 flex flex-col max-h-[82vh] font-sans">
@@ -86,18 +101,40 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
 
       <div className="p-4 space-y-4 overflow-y-auto text-xs">
         {/* Sector Control Status */}
-        <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900/70 border border-slate-800">
-          <span className="text-slate-400 font-semibold">Sector Control:</span>
-          {discOwner ? (
-            <div className="flex items-center gap-1.5 font-bold">
-              <span
-                className="w-3 h-3 rounded-full ring-2 ring-white/30"
-                style={{ backgroundColor: discOwner.color }}
-              />
-              <span className="text-slate-100">{discOwner.name}</span>
-            </div>
-          ) : (
-            <span className="text-slate-400 font-medium italic">Unclaimed / Neutral</span>
+        <div className="p-2.5 rounded-xl bg-slate-900/70 border border-slate-800 space-y-2">
+          <div className="flex items-center justify-between">
+            <span className="text-slate-400 font-semibold">Sector Control:</span>
+            {discOwner ? (
+              <div className="flex items-center gap-1.5 font-bold">
+                <span
+                  className="w-3 h-3 rounded-full ring-2 ring-white/30"
+                  style={{ backgroundColor: discOwner.color }}
+                />
+                <span className="text-slate-100">{discOwner.name}</span>
+              </div>
+            ) : (
+              <span className="text-slate-400 font-medium italic">Unclaimed / Neutral</span>
+            )}
+          </div>
+
+          {canClaimControl && onClaimInfluence && (
+            <button
+              type="button"
+              onClick={() => onClaimInfluence(sector.id)}
+              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs tracking-wider uppercase transition shadow shadow-cyan-950 cursor-pointer"
+            >
+              <CircleDot className="w-3.5 h-3.5" /> Claim Sector Control (Place Influence Disc)
+            </button>
+          )}
+
+          {canAbandonControl && onAbandonInfluence && (
+            <button
+              type="button"
+              onClick={() => onAbandonInfluence(sector.id)}
+              className="w-full flex items-center justify-center gap-1.5 py-1 px-3 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700 text-[10px] font-semibold transition cursor-pointer"
+            >
+              Abandon Sector (Retrieve Influence Disc)
+            </button>
           )}
         </div>
 
@@ -391,10 +428,11 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
 
             {sector.hasArtifact && (
               <div className="p-2 rounded-lg bg-sky-950/30 border border-sky-800/50 flex items-center justify-between">
-                <span className="text-sky-300 font-bold flex items-center gap-1">
-                  ★ Planetary Artifact
+                <span className="text-sky-300 font-bold flex items-center gap-1.5">
+                  <span className="font-mono text-xs text-sky-400 font-black">[A]</span>
+                  Planetary Artifact
                 </span>
-                <span className="text-[10px] text-sky-400 font-mono">+1 VP / Key bonus</span>
+                <span className="text-[10px] text-sky-400 font-mono">Artifact Key Target (0 VP)</span>
               </div>
             )}
 

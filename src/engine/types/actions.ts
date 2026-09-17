@@ -16,7 +16,8 @@ export type ActionType =
   | 'PASS'
   | 'RESOLVE_COMBAT_STEP'
   | 'END_ROUND'
-  | 'DISCOVERY_CHOICE';
+  | 'DISCOVERY_CHOICE'
+  | 'COMBAT_CONQUEST';
 
 export interface BaseAction {
   playerId: string;
@@ -54,13 +55,16 @@ export interface BuildAction extends BaseAction {
   }[];
 }
 
+export interface MoveStep {
+  shipId: string;
+  fromSectorId: string;
+  toSectorId: string;
+  activationIndex?: number;
+}
+
 export interface MoveAction extends BaseAction {
   type: 'MOVE';
-  moves: {
-    shipId: string;
-    fromSectorId: string;
-    toSectorId: string;
-  }[];
+  moves: MoveStep[];
 }
 
 export interface InfluenceAction extends BaseAction {
@@ -90,6 +94,8 @@ export interface DiscoveryChoiceAction extends BaseAction {
   type: 'DISCOVERY_CHOICE';
   sectorId: string;
   keepForVictoryPoints: boolean; // Keep for 2 VP or take immediate reward/ship part
+  equipShipType?: ShipType;
+  equipSlotIndex?: number;
 }
 
 export interface ResolveCombatStepAction extends BaseAction {
@@ -97,6 +103,13 @@ export interface ResolveCombatStepAction extends BaseAction {
   sectorId: string;
   retreatShipIds?: string[];
   retreatDestinationSectorId?: string;
+}
+
+export interface CombatConquestAction extends BaseAction {
+  type: 'COMBAT_CONQUEST';
+  sectorId: string;
+  claimInfluence: boolean;
+  colonizePlanetIndices?: number[];
 }
 
 export type GameAction =
@@ -110,4 +123,5 @@ export type GameAction =
   | TradeAction
   | PassAction
   | DiscoveryChoiceAction
-  | ResolveCombatStepAction;
+  | ResolveCombatStepAction
+  | CombatConquestAction;

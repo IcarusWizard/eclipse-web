@@ -1,6 +1,9 @@
 import React from 'react';
 import { PlayerState } from '../../engine/types/player';
-import { calculatePlayerRoundSummary } from '../../engine/rules/economyEngine';
+import { calculatePlayerRoundSummary, calculateActionCostForecast } from '../../engine/rules/economyEngine';
+import { SHIP_PARTS } from '../../engine/rules/partData';
+import { SectorTile } from '../../engine/types/galaxy';
+import { countPlayerShips, SHIP_LIMITS } from '../../engine/rules/shipValidation';
 import {
   Coins,
   FlaskConical,
@@ -12,24 +15,32 @@ import {
   Shield,
   ArrowRightLeft,
   Settings,
+  LayoutDashboard,
+  Zap,
 } from 'lucide-react';
 
 interface PlayerBoardProps {
   player: PlayerState;
   isActive: boolean;
+  sectors?: SectorTile[];
   onOpenBlueprints: () => void;
   onOpenTechMarket: () => void;
   onOpenTrade: () => void;
+  onOpenPhysicalBoard?: () => void;
 }
 
 export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   player,
   isActive,
+  sectors = [],
   onOpenBlueprints,
   onOpenTechMarket,
   onOpenTrade,
+  onOpenPhysicalBoard,
 }) => {
   const summary = calculatePlayerRoundSummary(player);
+  const forecast = calculateActionCostForecast(player);
+  const deployed = countPlayerShips(sectors, player.id);
 
   return (
     <div
@@ -61,6 +72,15 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
 
         {/* Quick action buttons */}
         <div className="flex items-center gap-1.5">
+          {onOpenPhysicalBoard && (
+            <button
+              onClick={onOpenPhysicalBoard}
+              className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-400 transition-colors"
+              title="Full Physical Player Board (Key: P)"
+            >
+              <LayoutDashboard className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={onOpenTrade}
             className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-400 transition-colors"
@@ -183,6 +203,86 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         </div>
       </div>
 
+      {/* Action Upkeep Cost Forecaster Strip (Next 1 & 2 Actions) */}
+      <div
+        onClick={onOpenPhysicalBoard}
+        className="mt-2 bg-slate-950/70 hover:bg-slate-950 border border-slate-800 hover:border-cyan-500/50 rounded p-2 transition-all cursor-pointer group"
+        title="Click to view full Physical Player Board & Upkeep Forecaster (P)"
+      >
+        <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1">
+          <span className="flex items-center gap-1 text-amber-400 group-hover:text-amber-300">
+            <Zap className="w-3 h-3 text-amber-400" /> Action Upkeep Forecast
+          </span>
+          <span className="text-[9px] text-cyan-400 font-mono flex items-center gap-0.5 group-hover:underline">
+            View Board <LayoutDashboard className="w-2.5 h-2.5" />
+          </span>
+        </div>
+        <div className="grid grid-cols-2 gap-1.5 text-[11px] font-mono">
+          <div className="bg-slate-900/90 rounded px-2 py-1 border border-slate-800 flex items-center justify-between">
+            <span className="text-slate-400 text-[9.5px]">Next 1 Act:</span>
+            <span className="font-bold text-amber-300">
+              -{forecast.after1Action.upkeep}{' '}
+              <span className="text-[9px] text-rose-400 font-semibold">(+{forecast.after1Action.costIncrease})</span>
+            </span>
+          </div>
+          <div className="bg-slate-900/90 rounded px-2 py-1 border border-slate-800 flex items-center justify-between">
+            <span className="text-slate-400 text-[9.5px]">Next 2 Act:</span>
+            <span className="font-bold text-rose-300">
+              -{forecast.after2Actions.upkeep}{' '}
+              <span className="text-[9px] text-rose-400 font-extrabold">(+{forecast.after2Actions.costIncrease})</span>
+            </span>
+          </div>
+        </div>
+      </div>
+
+      {/* Fleet Supply / Ships in Service Strip */}
+      <div className="mt-2 bg-slate-950/60 rounded border border-slate-800/80 p-2">
+        <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider">
+          <span className="flex items-center gap-1 text-cyan-400">
+            <Ship className="w-3 h-3 text-cyan-400" /> Fleet Supply
+          </span>
+          <span className="text-[9px] text-slate-500 font-mono">In Service / Limit</span>
+        </div>
+        <div className="grid grid-cols-4 gap-1.5 text-center font-mono">
+          <div className="bg-slate-900/80 rounded py-1 px-1 border border-slate-800">
+            <div className="text-[8.5px] text-slate-400 uppercase font-sans">Int</div>
+            <div className="text-[11px] font-bold text-slate-200">
+              <span className={deployed.interceptor >= SHIP_LIMITS.interceptor ? 'text-amber-400' : 'text-cyan-300'}>
+                {deployed.interceptor}
+              </span>
+              <span className="text-slate-500 text-[10px]">/{SHIP_LIMITS.interceptor}</span>
+            </div>
+          </div>
+          <div className="bg-slate-900/80 rounded py-1 px-1 border border-slate-800">
+            <div className="text-[8.5px] text-slate-400 uppercase font-sans">Cru</div>
+            <div className="text-[11px] font-bold text-slate-200">
+              <span className={deployed.cruiser >= SHIP_LIMITS.cruiser ? 'text-amber-400' : 'text-cyan-300'}>
+                {deployed.cruiser}
+              </span>
+              <span className="text-slate-500 text-[10px]">/{SHIP_LIMITS.cruiser}</span>
+            </div>
+          </div>
+          <div className="bg-slate-900/80 rounded py-1 px-1 border border-slate-800">
+            <div className="text-[8.5px] text-slate-400 uppercase font-sans">Dre</div>
+            <div className="text-[11px] font-bold text-slate-200">
+              <span className={deployed.dreadnought >= SHIP_LIMITS.dreadnought ? 'text-amber-400' : 'text-cyan-300'}>
+                {deployed.dreadnought}
+              </span>
+              <span className="text-slate-500 text-[10px]">/{SHIP_LIMITS.dreadnought}</span>
+            </div>
+          </div>
+          <div className="bg-slate-900/80 rounded py-1 px-1 border border-slate-800">
+            <div className="text-[8.5px] text-slate-400 uppercase font-sans">Sta</div>
+            <div className="text-[11px] font-bold text-slate-200">
+              <span className={deployed.starbase >= SHIP_LIMITS.starbase ? 'text-amber-400' : 'text-cyan-300'}>
+                {deployed.starbase}
+              </span>
+              <span className="text-slate-500 text-[10px]">/{SHIP_LIMITS.starbase}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
       {/* Researched Technologies Strip */}
       {player.techTrack.researched.length > 0 && (
         <div className="mt-3 pt-2.5 border-t border-slate-800/80">
@@ -232,15 +332,18 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 ★ {disc.name}
               </span>
             ))}
-            {player.unlockedAncientParts?.map((partId) => (
-              <span
-                key={`unlocked_part_${partId}`}
-                className="text-[10px] font-semibold px-2 py-0.5 rounded border bg-cyan-950/50 border-cyan-600/60 text-cyan-300 flex items-center gap-1"
-                title="Ancient module unlocked for blueprints"
-              >
-                ⚡ {partId.replace('_', ' ').toUpperCase()}
-              </span>
-            ))}
+            {player.unlockedAncientParts?.map((partId) => {
+              const part = SHIP_PARTS[partId];
+              return (
+                <span
+                  key={`unlocked_part_${partId}`}
+                  className="text-[10px] font-semibold px-2 py-0.5 rounded border bg-amber-950/40 border-amber-600/60 text-amber-300 flex items-center gap-1"
+                  title="Ancient module unlocked in supply tray"
+                >
+                  ⚡ {part ? part.name : partId.replace('_', ' ').toUpperCase()}
+                </span>
+              );
+            })}
           </div>
         </div>
       )}

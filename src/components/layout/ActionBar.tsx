@@ -10,7 +10,13 @@ import {
   CircleDot,
 } from 'lucide-react';
 
-import { getMaxBuildActivations, getMaxMoveActivations } from '../../engine/rules/gameReducer';
+import {
+  getMaxExploreActivations,
+  getMaxResearchActivations,
+  getMaxUpgradeActivations,
+  getMaxBuildActivations,
+  getMaxMoveActivations,
+} from '../../engine/rules/gameReducer';
 
 interface ActionBarProps {
   activePlayer: PlayerState;
@@ -35,6 +41,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 }) => {
   const hasDiscs = activePlayer.influenceTrack.discsOnTrack > 0;
   const hasPassed = activePlayer.hasPassed;
+  const maxExplore = getMaxExploreActivations(activePlayer);
+  const maxResearch = getMaxResearchActivations(activePlayer);
+  const maxUpgrade = getMaxUpgradeActivations(activePlayer);
   const maxBuild = getMaxBuildActivations(activePlayer);
   const maxMoves = getMaxMoveActivations(activePlayer);
 
@@ -71,7 +80,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         }`}
       >
         <Compass className="w-4 h-4" />
-        <span>{isExploreMode ? 'Select Target...' : 'Explore'}</span>
+        <span>{isExploreMode ? 'Select Target...' : `Explore (${maxExplore})`}</span>
       </button>
 
       {/* Research */}
@@ -85,7 +94,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         }`}
       >
         <Cpu className="w-4 h-4" />
-        <span>Research</span>
+        <span>Research ({maxResearch})</span>
       </button>
 
       {/* Upgrade */}
@@ -99,7 +108,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         }`}
       >
         <Wrench className="w-4 h-4" />
-        <span>Upgrade</span>
+        <span>Upgrade ({maxUpgrade})</span>
       </button>
 
       {/* Build */}

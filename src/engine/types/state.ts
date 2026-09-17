@@ -60,6 +60,12 @@ export interface PendingDiscovery {
   playerId: string;
 }
 
+export interface PendingCombatConquest {
+  sectorId: string;
+  winnerPlayerId: string;
+  discoveryToClaim?: DiscoveryTile;
+}
+
 export interface GameState {
   id: string;
   round: number;
@@ -83,6 +89,7 @@ export interface GameState {
   activeCombat: CombatState | null;
   pendingExplore: PendingExplore | null;
   pendingDiscovery: PendingDiscovery | null;
+  pendingCombatConquest: PendingCombatConquest | null;
   log: GameLogEntry[];
   winnerId?: string;
   finalScores?: Record<string, {

@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { GameState } from './engine/types/state';
-import { SectorTile, HexCoord, ShipType } from './engine/types/galaxy';
+import { SectorTile, HexCoord, ShipType, SectorShip } from './engine/types/galaxy';
 import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
-import { executeAction } from './engine/rules/gameReducer';
-import { getRingFromCoord } from './engine/rules/hexMath';
+import { executeAction, getMaxMoveActivations } from './engine/rules/gameReducer';
+import { calculateBlueprintStats } from './engine/rules/shipValidation';
+import { getRingFromCoord, areSectorsConnected } from './engine/rules/hexMath';
 
 // UI Components
 import { Header } from './components/layout/Header';
@@ -15,14 +16,16 @@ import { GameLogDrawer } from './components/layout/GameLogDrawer';
 import { ShipBlueprintEditor } from './components/blueprints/ShipBlueprintEditor';
 import { TechMarketModal } from './components/tech/TechMarketModal';
 import { ExploreModal } from './components/actions/ExploreModal';
-import { BuildModal } from './components/actions/BuildModal';
-import { MoveModal } from './components/actions/MoveModal';
+import { BuildModal, BuildItemPayload } from './components/actions/BuildModal';
+import { MoveModal, MoveStepPayload, PlannedMove } from './components/actions/MoveModal';
 import { TradeModal } from './components/actions/TradeModal';
 import { CombatModal } from './components/combat/CombatModal';
+import { CombatConquestModal } from './components/combat/CombatConquestModal';
 import { GameOverModal } from './components/gameover/GameOverModal';
 import { NewGameModal } from './components/setup/NewGameModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { SectorInspector } from './components/map/SectorInspector';
+import { PhysicalPlayerBoardModal } from './components/dashboard/PhysicalPlayerBoardModal';
 
 export const App: React.FC = () => {
   const [state, setState] = useState<GameState>(() => createInitialGame(2));
@@ -35,8 +38,10 @@ export const App: React.FC = () => {
     from: HexCoord;
     target: HexCoord;
   } | null>(null);
+  const [exploreRotation, setExploreRotation] = useState<number>(0);
   const [isBlueprintOpen, setIsBlueprintOpen] = useState<boolean>(false);
   const [isTechMarketOpen, setIsTechMarketOpen] = useState<boolean>(false);
+  const [isPhysicalBoardOpen, setIsPhysicalBoardOpen] = useState<boolean>(false);
   const [isBuildOpen, setIsBuildOpen] = useState<boolean>(false);
   const [isMoveOpen, setIsMoveOpen] = useState<boolean>(false);
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
@@ -46,10 +51,37 @@ export const App: React.FC = () => {
   const activePlayer = state.players[state.activePlayerIndex]!;
   const viewedPlayer = state.players[selectedViewIndex] || activePlayer;
 
+  // Global hotkey to toggle Physical Player Board (P)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes((e.target as HTMLElement)?.tagName)) {
+        return;
+      }
+      if (e.key === 'p' || e.key === 'P') {
+        setIsPhysicalBoardOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const showToast = (msg: string) => {
     setErrorMessage(msg);
     setTimeout(() => setErrorMessage(null), 4000);
   };
+
+  // Deep-linking / URL query params for direct mode testing
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const action = params.get('action');
+    if (action === 'build') {
+      setIsBuildOpen(true);
+    } else if (action === 'move') {
+      setIsMoveOpen(true);
+    } else if (action === 'explore') {
+      setIsExploreMode(true);
+    }
+  }, []);
 
   const handleStartNewGame = (playerCount: number) => {
     const newGame = createInitialGame(playerCount);
@@ -62,6 +94,7 @@ export const App: React.FC = () => {
   // Explore flow: User clicks an explorable hex on map
   const handleExploreTarget = (fromCoord: HexCoord, targetCoord: HexCoord) => {
     setPendingExploreCoords({ from: fromCoord, target: targetCoord });
+    setExploreRotation(0);
     setIsExploreMode(false);
   };
 
@@ -121,13 +154,9 @@ export const App: React.FC = () => {
   };
 
   // Blueprint save flow
-  const handleSaveBlueprint = (shipType: ShipType, newSlots: (ShipPart | null)[]) => {
-    const upgrades = newSlots.map((part, slotIndex) => ({
-      shipType,
-      slotIndex,
-      partId: part?.id || null,
-    }));
-
+  const handleSaveBlueprint = (
+    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[]
+  ) => {
     const res = executeAction(state, {
       type: 'UPGRADE',
       playerId: activePlayer.id,
@@ -140,6 +169,263 @@ export const App: React.FC = () => {
       setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Failed to save blueprint.');
+    }
+  };
+
+  // --- BUILD FLOW STATE & HANDLERS ---
+  const eligibleBuildSectors = useMemo(() => {
+    return state.sectors.filter((s) => {
+      if (s.discOwner !== activePlayer.id) return false;
+      const hasEnemies = s.ships.some((ship) => ship.ownerId !== activePlayer.id);
+      return !hasEnemies;
+    });
+  }, [state.sectors, activePlayer.id]);
+
+  const [buildSlots, setBuildSlots] = useState<BuildItemPayload[]>([
+    { sectorId: '', itemType: 'interceptor' },
+  ]);
+  const [activeBuildSlotIndex, setActiveBuildSlotIndex] = useState<number>(0);
+
+  // Initialize build slots when build opens
+  useEffect(() => {
+    if (isBuildOpen) {
+      setBuildSlots([
+        { sectorId: eligibleBuildSectors[0]?.id || '', itemType: 'interceptor' },
+      ]);
+      setActiveBuildSlotIndex(0);
+    }
+  }, [isBuildOpen, eligibleBuildSectors]);
+
+  const handleSelectBuildSector = (sectorId: string) => {
+    setBuildSlots((prev) => {
+      const copy = [...prev];
+      const targetIdx = activeBuildSlotIndex < copy.length ? activeBuildSlotIndex : 0;
+      copy[targetIdx] = { ...copy[targetIdx], sectorId };
+      return copy;
+    });
+  };
+
+  // --- MOVE FLOW STATE & HANDLERS ---
+  const playerShips = useMemo(() => {
+    const list: { ship: SectorShip; initialSector: SectorTile }[] = [];
+    for (const s of state.sectors) {
+      for (const sh of s.ships) {
+        if (sh.ownerId === activePlayer.id) {
+          list.push({ ship: sh, initialSector: s });
+        }
+      }
+    }
+    return list;
+  }, [state.sectors, activePlayer.id]);
+
+  const movableShips = useMemo(() => {
+    return playerShips.filter((p) => {
+      const bp = activePlayer.blueprints[p.ship.type];
+      const stats = bp ? calculateBlueprintStats(bp) : null;
+      return stats ? stats.totalDriveSpeed > 0 : p.ship.type !== 'starbase';
+    });
+  }, [playerShips, activePlayer.blueprints]);
+
+  const [plannedMoves, setPlannedMoves] = useState<PlannedMove[]>([]);
+  const [selectedMoveShipId, setSelectedMoveShipId] = useState<string>('');
+  const [activeActivationIndex, setActiveActivationIndex] = useState<number>(0);
+
+  useEffect(() => {
+    if (isMoveOpen) {
+      setPlannedMoves([]);
+      setActiveActivationIndex(0);
+      setSelectedMoveShipId(movableShips[0]?.ship.id || playerShips[0]?.ship.id || '');
+    }
+  }, [isMoveOpen, movableShips, playerShips]);
+
+  // Compute simulated sector for each ship based on plannedMoves
+  const simulatedShipSector = useMemo(() => {
+    const map = new Map<string, SectorTile>();
+    for (const ps of playerShips) {
+      map.set(ps.ship.id, ps.initialSector);
+    }
+    for (const m of plannedMoves) {
+      const destSec = state.sectors.find((s) => s.id === m.toSectorId);
+      if (destSec) {
+        map.set(m.shipId, destSec);
+      }
+    }
+    return map;
+  }, [playerShips, plannedMoves, state.sectors]);
+
+  // Check if a ship was pinned by hostile forces in an earlier move step
+  const isShipPinned = (shipId: string): boolean => {
+    for (const m of plannedMoves) {
+      if (m.shipId === shipId) {
+        const destSec = state.sectors.find((s) => s.id === m.toSectorId);
+        if (
+          destSec &&
+          (destSec.ancientsCount > 0 ||
+            destSec.hasGCDS ||
+            destSec.ships.some((sh) => sh.ownerId !== activePlayer.id))
+        ) {
+          return true;
+        }
+      }
+    }
+    return false;
+  };
+
+  const maxMoves = getMaxMoveActivations(activePlayer);
+  const hasWormholeGen = activePlayer.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+
+  const currentMoveShip = playerShips.find((p) => p.ship.id === selectedMoveShipId)?.ship;
+  const currentSimSector = simulatedShipSector.get(selectedMoveShipId);
+  const currentShipBlueprint = currentMoveShip ? activePlayer.blueprints[currentMoveShip.type] : null;
+  const currentShipStats = currentShipBlueprint ? calculateBlueprintStats(currentShipBlueprint) : null;
+  const currentShipDriveSpeed = currentShipStats ? currentShipStats.totalDriveSpeed : 0;
+
+  const currentActivationMoves = useMemo(
+    () => plannedMoves.filter((m) => m.activationIndex === activeActivationIndex),
+    [plannedMoves, activeActivationIndex]
+  );
+  const movePointsUsedInCurrentActivation = currentActivationMoves.length;
+
+  // Destinations connected to the ship's current simulated sector via wormholes
+  const connectedDestinations = useMemo(() => {
+    if (!currentMoveShip || !currentSimSector) return [];
+    if (activeActivationIndex >= maxMoves) return [];
+    if (currentShipDriveSpeed <= 0) return [];
+    if (isShipPinned(currentMoveShip.id)) return [];
+
+    // If this activation already started with another ship:
+    if (currentActivationMoves.length > 0 && currentActivationMoves[0].shipId !== currentMoveShip.id) {
+      return [];
+    }
+
+    // If current activation has already used all drive speed steps:
+    if (currentActivationMoves.length >= currentShipDriveSpeed) {
+      return [];
+    }
+
+    // Hostile presence pins the ship immediately
+    const hasEnemies =
+      currentSimSector.ancientsCount > 0 ||
+      currentSimSector.hasGCDS ||
+      currentSimSector.ships.some((sh) => sh.ownerId !== activePlayer.id);
+    const hasMovedHere = plannedMoves.some(
+      (m) => m.shipId === selectedMoveShipId && m.toSectorId === currentSimSector.id
+    );
+    if (hasMovedHere && hasEnemies) {
+      return [];
+    }
+
+    return state.sectors.filter(
+      (s) => s.id !== currentSimSector.id && areSectorsConnected(currentSimSector, s, hasWormholeGen)
+    );
+  }, [
+    currentMoveShip,
+    currentSimSector,
+    activeActivationIndex,
+    maxMoves,
+    currentShipDriveSpeed,
+    currentActivationMoves,
+    plannedMoves,
+    selectedMoveShipId,
+    activePlayer.id,
+    state.sectors,
+    hasWormholeGen,
+  ]);
+
+  const handleAddMoveDestination = (destSectorId: string) => {
+    if (!currentMoveShip || !currentSimSector) return;
+    if (activeActivationIndex >= maxMoves) return;
+    if (currentShipDriveSpeed <= 0) return;
+    if (isShipPinned(currentMoveShip.id)) return;
+    if (currentActivationMoves.length > 0 && currentActivationMoves[0].shipId !== currentMoveShip.id) return;
+    if (currentActivationMoves.length >= currentShipDriveSpeed) return;
+
+    const destSec = state.sectors.find((s) => s.id === destSectorId);
+    if (!destSec) return;
+
+    const stepNumber = currentActivationMoves.length + 1;
+    const newMove: PlannedMove = {
+      id: `move_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      shipId: currentMoveShip.id,
+      shipType: currentMoveShip.type,
+      fromSectorId: currentSimSector.id,
+      fromSectorNumber: currentSimSector.sectorNumber,
+      toSectorId: destSec.id,
+      toSectorNumber: destSec.sectorNumber,
+      activationIndex: activeActivationIndex,
+      stepInActivation: stepNumber,
+      driveSpeed: currentShipDriveSpeed,
+    };
+
+    setPlannedMoves((prev) => [...prev, newMove]);
+
+    // Pinning or speed limit check
+    const isHostile =
+      destSec.ancientsCount > 0 ||
+      destSec.hasGCDS ||
+      destSec.ships.some((sh) => sh.ownerId !== activePlayer.id);
+
+    if (isHostile || stepNumber >= currentShipDriveSpeed) {
+      setActiveActivationIndex((prev) => prev + 1);
+    }
+  };
+
+  const handleFinishCurrentActivation = () => {
+    if (currentActivationMoves.length > 0) {
+      setActiveActivationIndex((prev) => prev + 1);
+    }
+  };
+
+  const handleSelectMoveShipId = (shipId: string) => {
+    if (shipId === selectedMoveShipId) return;
+    if (currentActivationMoves.length > 0) {
+      // Switching ships completes the in-progress activation early
+      setActiveActivationIndex((prev) => prev + 1);
+    }
+    setSelectedMoveShipId(shipId);
+  };
+
+  const handleSelectMoveShipSector = (sectorId: string) => {
+    const shipsInSector = playerShips.filter((p) => {
+      const sim = simulatedShipSector.get(p.ship.id);
+      return sim?.id === sectorId;
+    });
+    if (shipsInSector.length > 0) {
+      const currentIdx = shipsInSector.findIndex((p) => p.ship.id === selectedMoveShipId);
+      const nextShip = shipsInSector[(currentIdx + 1) % shipsInSector.length];
+      handleSelectMoveShipId(nextShip.ship.id);
+    }
+  };
+
+  const handleClearPlannedMoves = () => {
+    setPlannedMoves([]);
+    setActiveActivationIndex(0);
+  };
+
+  const handleRemovePlannedMove = (index: number) => {
+    const nextPlanned = plannedMoves.slice(0, index);
+    setPlannedMoves(nextPlanned);
+    if (nextPlanned.length === 0) {
+      setActiveActivationIndex(0);
+      return;
+    }
+    const lastMove = nextPlanned[nextPlanned.length - 1];
+    const actMoves = nextPlanned.filter((m) => m.activationIndex === lastMove.activationIndex);
+    const ship = playerShips.find((p) => p.ship.id === lastMove.shipId)?.ship;
+    const bp = ship ? activePlayer.blueprints[ship.type] : null;
+    const spd = bp ? calculateBlueprintStats(bp).totalDriveSpeed : 1;
+    const lastDestSec = state.sectors.find((s) => s.id === lastMove.toSectorId);
+    const isHostile =
+      lastDestSec &&
+      (lastDestSec.ancientsCount > 0 ||
+        lastDestSec.hasGCDS ||
+        lastDestSec.ships.some((sh) => sh.ownerId !== activePlayer.id));
+
+    if (isHostile || actMoves.length >= spd) {
+      setActiveActivationIndex(lastMove.activationIndex + 1);
+    } else {
+      setActiveActivationIndex(lastMove.activationIndex);
+      setSelectedMoveShipId(lastMove.shipId);
     }
   };
 
@@ -160,7 +446,7 @@ export const App: React.FC = () => {
   };
 
   // Move flow
-  const handleMove = (moves: { shipId: string; fromSectorId: string; toSectorId: string }[]) => {
+  const handleMove = (moves: MoveStepPayload[]) => {
     const res = executeAction(state, {
       type: 'MOVE',
       playerId: activePlayer.id,
@@ -221,18 +507,56 @@ export const App: React.FC = () => {
   };
 
   // Discovery choice flow
-  const handleDiscoveryChoice = (keepForVictoryPoints: boolean) => {
+  const handleDiscoveryChoice = (
+    keepForVictoryPoints: boolean,
+    equipShipType?: ShipType,
+    equipSlotIndex?: number
+  ) => {
     if (!state.pendingDiscovery) return;
     const res = executeAction(state, {
       type: 'DISCOVERY_CHOICE',
       playerId: state.pendingDiscovery.playerId,
       sectorId: state.pendingDiscovery.sectorId,
       keepForVictoryPoints,
+      equipShipType,
+      equipSlotIndex,
     });
     if (res.success) {
       setState(res.newState);
+      if (equipShipType && equipSlotIndex !== undefined) {
+        showToast(`Ancient tech installed on ${equipShipType.toUpperCase()}!`);
+      }
     } else {
       showToast(res.error || 'Failed to claim discovery.');
+    }
+  };
+
+  // Influence flow (Claim / Abandon sector control)
+  const handleClaimInfluence = (sectorId: string) => {
+    const res = executeAction(state, {
+      type: 'INFLUENCE',
+      playerId: activePlayer.id,
+      claimSectors: [sectorId],
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast('Influence Disc placed! Sector is now under your control.');
+    } else {
+      showToast(res.error || 'Failed to place influence disc.');
+    }
+  };
+
+  const handleAbandonInfluence = (sectorId: string) => {
+    const res = executeAction(state, {
+      type: 'INFLUENCE',
+      playerId: activePlayer.id,
+      abandonSectors: [sectorId],
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast('Influence Disc retrieved.');
+    } else {
+      showToast(res.error || 'Failed to abandon sector.');
     }
   };
 
@@ -271,6 +595,33 @@ export const App: React.FC = () => {
     showToast('Combat engagement auto-resolved.');
   };
 
+  // Combat Conquest Flow (Sector Control & Colonization)
+  const handleCombatConquest = (claimInfluence: boolean, colonizePlanetIndices: number[]) => {
+    if (!state.pendingCombatConquest) return;
+    const res = executeAction(state, {
+      type: 'COMBAT_CONQUEST',
+      playerId: state.pendingCombatConquest.winnerPlayerId,
+      sectorId: state.pendingCombatConquest.sectorId,
+      claimInfluence,
+      colonizePlanetIndices,
+    });
+    if (res.success) {
+      setState(res.newState);
+      if (claimInfluence) {
+        showToast('Sector control secured!');
+      }
+      if (colonizePlanetIndices.length > 0) {
+        showToast(
+          `Colonized ${colonizePlanetIndices.length} habitat${
+            colonizePlanetIndices.length > 1 ? 's' : ''
+          }!`
+        );
+      }
+    } else {
+      showToast(res.error || 'Failed to resolve combat conquest.');
+    }
+  };
+
   // Find candidate tile for exploration preview if pending
   const candidateTile = React.useMemo(() => {
     if (!pendingExploreCoords) return null;
@@ -302,6 +653,7 @@ export const App: React.FC = () => {
         onSelectActiveViewPlayer={(idx) => setSelectedViewIndex(idx)}
         onNewGame={() => setIsNewGameOpen(true)}
         onOpenTechTray={() => setIsTechMarketOpen(true)}
+        onOpenPlayerBoard={() => setIsPhysicalBoardOpen(true)}
       />
 
       {/* Main Playing Area */}
@@ -314,6 +666,55 @@ export const App: React.FC = () => {
           isExploreMode={isExploreMode}
           onExploreTarget={handleExploreTarget}
           onColonizePlanet={handleColonizePlanet}
+          pendingExplore={
+            pendingExploreCoords && candidateTile
+              ? {
+                  from: pendingExploreCoords.from,
+                  target: pendingExploreCoords.target,
+                  candidateTile,
+                  rotation: exploreRotation,
+                }
+              : null
+          }
+          onRotateExplore={(delta) =>
+            setExploreRotation((r) => ((r + delta) % 6 + 6) % 6)
+          }
+          buildMode={
+            isBuildOpen
+              ? {
+                  eligibleSectorIds: eligibleBuildSectors.map((s) => s.id),
+                  selectedSectorId: buildSlots[activeBuildSlotIndex]?.sectorId || null,
+                  queuedSectors: eligibleBuildSectors.map((s) => {
+                    const count = buildSlots.filter((slot) => slot.sectorId === s.id).length;
+                    const items = buildSlots
+                      .filter((slot) => slot.sectorId === s.id)
+                      .map((slot) => slot.itemType.slice(0, 3).toUpperCase())
+                      .join('+');
+                    return {
+                      sectorId: s.id,
+                      summary: count > 0 ? items : '',
+                    };
+                  }),
+                  onSelectSector: handleSelectBuildSector,
+                }
+              : null
+          }
+          moveMode={
+            isMoveOpen
+              ? {
+                  playerShipSectorIds: Array.from(
+                    new Set(Array.from(simulatedShipSector.values()).map((s) => s.id))
+                  ),
+                  selectedShipId: selectedMoveShipId,
+                  currentSimSectorId: currentSimSector?.id || null,
+                  connectedDestinationSectorIds: connectedDestinations.map((s) => s.id),
+                  plannedMoves,
+                  onSelectShipSector: handleSelectMoveShipSector,
+                  onSelectDestinationSector: handleAddMoveDestination,
+                  onRemovePlannedMove: handleRemovePlannedMove,
+                }
+              : null
+          }
         />
 
         {/* Floating Player Dashboard (Bottom-Left) */}
@@ -321,9 +722,11 @@ export const App: React.FC = () => {
           <PlayerBoard
             player={viewedPlayer}
             isActive={viewedPlayer.id === activePlayer.id}
+            sectors={state.sectors}
             onOpenBlueprints={() => setIsBlueprintOpen(true)}
             onOpenTechMarket={() => setIsTechMarketOpen(true)}
             onOpenTrade={() => setIsTradeOpen(true)}
+            onOpenPhysicalBoard={() => setIsPhysicalBoardOpen(true)}
           />
         </div>
 
@@ -335,13 +738,15 @@ export const App: React.FC = () => {
               players={state.players}
               activePlayer={activePlayer}
               onColonizePlanet={handleColonizePlanet}
+              onClaimInfluence={handleClaimInfluence}
+              onAbandonInfluence={handleAbandonInfluence}
               onClose={() => setSelectedSector(null)}
             />
           </div>
         )}
 
-        {/* Action Bar (Bottom-Center) */}
-        {state.phase === 'ACTION_PHASE' && (
+        {/* Action Bar (Bottom-Center) - Hidden during exploration, building, and moving so command dock takes focus */}
+        {state.phase === 'ACTION_PHASE' && !pendingExploreCoords && !isBuildOpen && !isMoveOpen && (
           <ActionBar
             activePlayer={activePlayer}
             isExploreMode={isExploreMode}
@@ -365,7 +770,7 @@ export const App: React.FC = () => {
         )}
       </div>
 
-      {/* Modals */}
+      {/* Modals & Overlays */}
       {pendingExploreCoords && candidateTile && sourceSector && (
         <ExploreModal
           player={activePlayer}
@@ -373,6 +778,8 @@ export const App: React.FC = () => {
           targetCoord={pendingExploreCoords.target}
           candidateTile={candidateTile}
           sourceSector={sourceSector}
+          rotation={exploreRotation}
+          onRotate={setExploreRotation}
           onConfirmPlacement={handleConfirmExplorePlacement}
           onDiscard={handleDiscardExploreTile}
           onClose={() => setPendingExploreCoords(null)}
@@ -402,6 +809,11 @@ export const App: React.FC = () => {
         <BuildModal
           player={activePlayer}
           sectors={state.sectors}
+          eligibleSectors={eligibleBuildSectors}
+          slots={buildSlots}
+          onChangeSlots={setBuildSlots}
+          activeSlotIndex={activeBuildSlotIndex}
+          onSelectSlotIndex={setActiveBuildSlotIndex}
           onBuild={handleBuild}
           onClose={() => setIsBuildOpen(false)}
         />
@@ -411,6 +823,20 @@ export const App: React.FC = () => {
         <MoveModal
           player={activePlayer}
           sectors={state.sectors}
+          playerShips={playerShips}
+          simulatedShipSector={simulatedShipSector}
+          connectedDestinations={connectedDestinations}
+          plannedMoves={plannedMoves}
+          activeActivationIndex={activeActivationIndex}
+          currentShipDriveSpeed={currentShipDriveSpeed}
+          movePointsUsedInCurrentActivation={movePointsUsedInCurrentActivation}
+          isShipPinned={isShipPinned}
+          onAddMove={handleAddMoveDestination}
+          onRemoveMove={handleRemovePlannedMove}
+          onClearMoves={handleClearPlannedMoves}
+          selectedShipId={selectedMoveShipId}
+          onSelectShipId={handleSelectMoveShipId}
+          onFinishActivation={handleFinishCurrentActivation}
           onMove={handleMove}
           onClose={() => setIsMoveOpen(false)}
         />
@@ -433,6 +859,14 @@ export const App: React.FC = () => {
         />
       )}
 
+      {state.pendingCombatConquest && (
+        <CombatConquestModal
+          state={state}
+          conquest={state.pendingCombatConquest}
+          onConfirm={handleCombatConquest}
+        />
+      )}
+
       {state.pendingDiscovery && (
         <DiscoveryChoiceModal
           discovery={state.pendingDiscovery.discovery}
@@ -448,6 +882,28 @@ export const App: React.FC = () => {
         <GameOverModal
           state={state}
           onNewGame={() => setIsNewGameOpen(true)}
+        />
+      )}
+
+      {isPhysicalBoardOpen && (
+        <PhysicalPlayerBoardModal
+          player={viewedPlayer}
+          players={state.players}
+          activePlayerId={activePlayer.id}
+          sectors={state.sectors}
+          onClose={() => setIsPhysicalBoardOpen(false)}
+          onSelectPlayer={(pId) => {
+            const idx = state.players.findIndex((p) => p.id === pId);
+            if (idx >= 0) setSelectedViewIndex(idx);
+          }}
+          onOpenBlueprintEditor={(shipType) => {
+            setIsPhysicalBoardOpen(false);
+            setIsBlueprintOpen(true);
+          }}
+          onOpenTechMarket={() => {
+            setIsPhysicalBoardOpen(false);
+            setIsTechMarketOpen(true);
+          }}
         />
       )}
 

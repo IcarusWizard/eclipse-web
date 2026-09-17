@@ -6,16 +6,39 @@ import { GameState, GamePhase, GameLogEntry, CombatState } from '../types/state'
 import { GameAction } from '../types/actions';
 import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge } from './hexMath';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
-import { calculateBlueprintStats } from './shipValidation';
+import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS } from './partData';
 import { applyUpkeepPhase } from './economyEngine';
 import { buildCombatUnitsForSector, executeCombatStep } from './combatEngine';
-import { SectorTile, ShipType } from '../types/galaxy';
+import { SectorTile, ShipType, PlanetSlot, SectorShip } from '../types/galaxy';
+import { PlayerState } from '../types/player';
 
 export interface ActionResult {
   success: boolean;
   newState: GameState;
   error?: string;
+}
+
+export function canColonizePlanetSlot(
+  player: PlayerState,
+  planet: PlanetSlot
+): { canColonize: boolean; reason?: string } {
+  if (planet.colonizedBy) {
+    return { canColonize: false, reason: 'Planet is already colonized.' };
+  }
+  if (planet.isAdvanced) {
+    const hasMeta = player.techTrack.researched.some((t) => t.id === 'metasynthesis');
+    if (planet.resource === 'money' && !hasMeta && !player.techTrack.researched.some((t) => t.id === 'advanced_economy')) {
+      return { canColonize: false, reason: 'Requires Advanced Economy or Metasynthesis' };
+    }
+    if (planet.resource === 'material' && !hasMeta && !player.techTrack.researched.some((t) => t.id === 'advanced_mining')) {
+      return { canColonize: false, reason: 'Requires Advanced Mining or Metasynthesis' };
+    }
+    if (planet.resource === 'science' && !hasMeta && !player.techTrack.researched.some((t) => t.id === 'advanced_labs')) {
+      return { canColonize: false, reason: 'Requires Advanced Labs or Metasynthesis' };
+    }
+  }
+  return { canColonize: true };
 }
 
 export function validateAction(state: GameState, action: GameAction): { valid: boolean; error?: string } {
@@ -28,10 +51,16 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return { valid: false, error: 'Player not found.' };
   }
 
-  // Active player check (except combat, colonization, trade, or discovery choices)
+  // Active player check (except combat, colonization, trade, conquest, or discovery choices)
   if (state.phase === 'ACTION_PHASE') {
     const activePlayer = state.players[state.activePlayerIndex];
-    if (activePlayer?.id !== action.playerId && action.type !== 'COLONIZE' && action.type !== 'TRADE' && action.type !== 'DISCOVERY_CHOICE') {
+    if (
+      activePlayer?.id !== action.playerId &&
+      action.type !== 'COLONIZE' &&
+      action.type !== 'TRADE' &&
+      action.type !== 'DISCOVERY_CHOICE' &&
+      action.type !== 'COMBAT_CONQUEST'
+    ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
   }
@@ -111,12 +140,37 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (player.influenceTrack.discsOnTrack <= 0) {
         return { valid: false, error: 'No influence discs remaining on track to activate Upgrade.' };
       }
+      if (!action.upgrades || action.upgrades.length === 0) {
+        return { valid: false, error: 'Must specify at least one blueprint component upgrade.' };
+      }
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType];
         if (!bp) return { valid: false, error: `Unknown ship type ${up.shipType}.` };
         if (up.slotIndex < 0 || up.slotIndex >= bp.maxSlots) {
           return { valid: false, error: `Invalid slot index ${up.slotIndex} for ${up.shipType}.` };
         }
+      }
+
+      // Count actual modified slots compared to current blueprint state
+      let modifiedCount = 0;
+      for (const up of action.upgrades) {
+        const bp = player.blueprints[up.shipType]!;
+        const currentPartId = bp.slots[up.slotIndex]?.id || null;
+        if (currentPartId !== up.partId) {
+          modifiedCount += 1;
+        }
+      }
+
+      if (modifiedCount === 0) {
+        return { valid: false, error: 'No component modifications were made to blueprints.' };
+      }
+
+      const maxUpgrade = getMaxUpgradeActivations(player);
+      if (modifiedCount > maxUpgrade) {
+        return {
+          valid: false,
+          error: `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action. (Attempted ${modifiedCount})`,
+        };
       }
       return { valid: true };
     }
@@ -137,6 +191,21 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         };
       }
 
+      // Track deployed ships and staged ships in this action
+      const currentShips = countPlayerShips(state.sectors, action.playerId);
+      const queuedShips: Record<ShipType, number> = {
+        interceptor: 0,
+        cruiser: 0,
+        dreadnought: 0,
+        starbase: 0,
+      };
+      const sectorsWithStarbase = new Set<string>();
+      for (const s of state.sectors) {
+        if (s.ships.some((ship) => ship.ownerId === action.playerId && ship.type === 'starbase')) {
+          sectorsWithStarbase.add(s.id);
+        }
+      }
+
       let totalMaterialsCost = 0;
       for (const item of action.items) {
         const sector = state.sectors.find((s) => s.id === item.sectorId);
@@ -150,6 +219,29 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         const hasEnemies = sector.ships.some((s) => s.ownerId !== action.playerId);
         if (hasEnemies) {
           return { valid: false, error: `Cannot build in sector ${item.sectorId} while enemy ships are present.` };
+        }
+
+        // Validate Ship Supply Limits (8 Interceptors, 4 Cruisers, 2 Dreadnoughts, 4 Starbases)
+        if (item.itemType in queuedShips) {
+          const st = item.itemType as ShipType;
+          queuedShips[st]++;
+          if (currentShips[st] + queuedShips[st] > SHIP_LIMITS[st]) {
+            return {
+              valid: false,
+              error: `Cannot build ${st}: reached maximum limit of ${SHIP_LIMITS[st]} (${currentShips[st]} currently in service).`,
+            };
+          }
+        }
+
+        // Validate Starbase Limit: At most 1 Starbase per controlled sector
+        if (item.itemType === 'starbase') {
+          if (sectorsWithStarbase.has(item.sectorId)) {
+            return {
+              valid: false,
+              error: `Sector ${sector.sectorNumber} already contains a Starbase. You may only have one Starbase per sector.`,
+            };
+          }
+          sectorsWithStarbase.add(item.sectorId);
         }
 
         let cost = 3;
@@ -179,45 +271,163 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Must specify at least one ship movement.' };
       }
 
-      const maxMoves = getMaxMoveActivations(player);
-      if (action.moves.length > maxMoves) {
-        return {
-          valid: false,
-          error: `Cannot make more than ${maxMoves} ship movements in a single Move action.`,
-        };
-      }
+      const maxMoveActivations = getMaxMoveActivations(player);
+      const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
 
-      // Simulate ship locations across sequential moves so a ship can move multiple steps
-      const simShipLocation = new Map<string, string>(); // shipId -> sectorId
+      // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed
+      const shipMap = new Map<
+        string,
+        { ship: SectorShip; currentSectorId: string; driveSpeed: number }
+      >();
       for (const s of state.sectors) {
         for (const ship of s.ships) {
           if (ship.ownerId === action.playerId) {
-            simShipLocation.set(ship.id, s.id);
+            const bp = player.blueprints[ship.type];
+            const stats = bp ? calculateBlueprintStats(bp) : null;
+            const driveSpeed = stats ? stats.totalDriveSpeed : 1;
+            shipMap.set(ship.id, { ship, currentSectorId: s.id, driveSpeed });
           }
         }
       }
 
-      const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+      // 2. Group steps into activations
+      interface MoveActivationGroup {
+        activationIndex: number;
+        shipId: string;
+        steps: typeof action.moves;
+      }
+      const activations: MoveActivationGroup[] = [];
 
-      for (const m of action.moves) {
-        const currentLoc = simShipLocation.get(m.shipId);
-        if (!currentLoc) {
-          return { valid: false, error: `Ship ${m.shipId} not found or not owned by player.` };
+      const hasExplicitIndices = action.moves.every((m) => m.activationIndex !== undefined);
+      if (hasExplicitIndices) {
+        const grouped = new Map<number, typeof action.moves>();
+        for (const m of action.moves) {
+          const list = grouped.get(m.activationIndex!) || [];
+          list.push(m);
+          grouped.set(m.activationIndex!, list);
         }
-        if (currentLoc !== m.fromSectorId) {
-          return { valid: false, error: `Ship is currently in Sector ${currentLoc}, cannot move from ${m.fromSectorId}.` };
+        for (const [idx, steps] of grouped) {
+          const firstShip = steps[0]!.shipId;
+          if (steps.some((s) => s.shipId !== firstShip)) {
+            return { valid: false, error: 'A single move activation can only move one ship.' };
+          }
+          activations.push({ activationIndex: idx, shipId: firstShip, steps });
+        }
+      } else {
+        // Automatic grouping for consecutive steps of the same ship up to driveSpeed
+        let currentAct: MoveActivationGroup | null = null;
+        for (const m of action.moves) {
+          const shipInfo = shipMap.get(m.shipId);
+          const maxSpeed = shipInfo ? shipInfo.driveSpeed : 1;
+          if (currentAct && currentAct.shipId === m.shipId && currentAct.steps.length < maxSpeed) {
+            currentAct.steps.push(m);
+          } else {
+            currentAct = {
+              activationIndex: activations.length,
+              shipId: m.shipId,
+              steps: [m],
+            };
+            activations.push(currentAct);
+          }
+        }
+      }
+
+      if (activations.length > maxMoveActivations) {
+        return {
+          valid: false,
+          error: `Cannot make more than ${maxMoveActivations} ship movements (move activations) in a single Move action (attempted ${activations.length}).`,
+        };
+      }
+
+      // 3. Validate paths, drive speed limits, and pinning
+      const pinnedShips = new Set<string>();
+
+      for (const act of activations) {
+        const shipInfo = shipMap.get(act.shipId);
+        if (!shipInfo) {
+          return { valid: false, error: `Ship ${act.shipId} not found or not owned by player.` };
+        }
+        if (shipInfo.driveSpeed <= 0) {
+          return { valid: false, error: `${shipInfo.ship.type} has Drive Speed 0 and cannot move.` };
+        }
+        if (act.steps.length > shipInfo.driveSpeed) {
+          return {
+            valid: false,
+            error: `Ship ${shipInfo.ship.type} attempted to move ${act.steps.length} hexes in one activation, but its engine only has Drive Speed ${shipInfo.driveSpeed}.`,
+          };
+        }
+        if (pinnedShips.has(act.shipId)) {
+          return { valid: false, error: `Ship ${shipInfo.ship.type} is pinned by hostile forces and cannot move further.` };
         }
 
-        const fromSec = state.sectors.find((s) => s.id === m.fromSectorId);
-        const toSec = state.sectors.find((s) => s.id === m.toSectorId);
-        if (!fromSec || !toSec) return { valid: false, error: 'Sector not found for movement.' };
+        for (const step of act.steps) {
+          if (pinnedShips.has(act.shipId)) {
+            return { valid: false, error: `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering and cannot take further movement steps.` };
+          }
+          if (shipInfo.currentSectorId !== step.fromSectorId) {
+            return {
+              valid: false,
+              error: `Ship is currently in Sector ${shipInfo.currentSectorId}, cannot move from ${step.fromSectorId}.`,
+            };
+          }
 
-        if (!areSectorsConnected(fromSec, toSec, hasWormholeGen)) {
-          return { valid: false, error: `Wormhole does not connect Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber}.` };
+          const fromSec = state.sectors.find((s) => s.id === step.fromSectorId);
+          const toSec = state.sectors.find((s) => s.id === step.toSectorId);
+          if (!fromSec || !toSec) {
+            return { valid: false, error: 'Sector not found for movement.' };
+          }
+          if (!areSectorsConnected(fromSec, toSec, hasWormholeGen)) {
+            return {
+              valid: false,
+              error: `Wormhole does not connect Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber}.`,
+            };
+          }
+
+          // Advance ship's simulated location
+          shipInfo.currentSectorId = step.toSectorId;
+
+          // Check if destination has hostiles -> pinned!
+          const hasHostiles =
+            toSec.ancientsCount > 0 ||
+            toSec.hasGCDS ||
+            toSec.ships.some((s) => s.ownerId !== action.playerId);
+          if (hasHostiles) {
+            pinnedShips.add(act.shipId);
+          }
         }
+      }
 
-        // Update simulated location for next move in this batch
-        simShipLocation.set(m.shipId, m.toSectorId);
+      return { valid: true };
+    }
+
+    case 'INFLUENCE': {
+      if (player.influenceTrack.discsOnTrack <= 0 && (!action.abandonSectors || action.abandonSectors.length === 0)) {
+        return { valid: false, error: 'No influence discs remaining on track.' };
+      }
+      if (action.claimSectors) {
+        for (const secId of action.claimSectors) {
+          const sec = state.sectors.find((s) => s.id === secId);
+          if (!sec) return { valid: false, error: `Sector ${secId} not found.` };
+          if (sec.discOwner && sec.discOwner !== player.id) {
+            return { valid: false, error: `Sector ${sec.sectorNumber} is already controlled by another player.` };
+          }
+          if (sec.ancientsCount > 0 || sec.hasGCDS || sec.ships.some((s) => s.ownerId !== player.id)) {
+            return { valid: false, error: `Cannot claim Sector ${sec.sectorNumber} while hostile forces are present.` };
+          }
+          const hasShips = sec.ships.some((s) => s.ownerId === player.id);
+          if (!hasShips) {
+            return { valid: false, error: `Must have a stationed ship in Sector ${sec.sectorNumber} to claim influence.` };
+          }
+        }
+      }
+      if (action.abandonSectors) {
+        for (const secId of action.abandonSectors) {
+          const sec = state.sectors.find((s) => s.id === secId);
+          if (!sec) return { valid: false, error: `Sector ${secId} not found.` };
+          if (sec.discOwner !== player.id) {
+            return { valid: false, error: `You do not control Sector ${sec.sectorNumber}.` };
+          }
+        }
       }
       return { valid: true };
     }
@@ -271,6 +481,52 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
       if (state.pendingDiscovery.playerId !== action.playerId) {
         return { valid: false, error: 'Only the discovering player can make this choice.' };
+      }
+      if (action.equipShipType) {
+        const bp = player.blueprints[action.equipShipType];
+        if (!bp) return { valid: false, error: `Invalid ship type ${action.equipShipType}.` };
+        if (action.equipSlotIndex === undefined || action.equipSlotIndex < 0 || action.equipSlotIndex >= bp.maxSlots) {
+          return { valid: false, error: `Invalid slot index for ${action.equipShipType}.` };
+        }
+      }
+      return { valid: true };
+    }
+
+    case 'COMBAT_CONQUEST': {
+      if (!state.pendingCombatConquest) {
+        return { valid: false, error: 'No combat conquest decision pending.' };
+      }
+      if (state.pendingCombatConquest.winnerPlayerId !== action.playerId) {
+        return { valid: false, error: 'Only the battle victor can make this conquest decision.' };
+      }
+      const sector = state.sectors.find((s) => s.id === action.sectorId);
+      if (!sector) return { valid: false, error: 'Sector not found.' };
+
+      if (action.claimInfluence && sector.discOwner !== action.playerId) {
+        if (player.influenceTrack.discsOnTrack <= 0) {
+          return { valid: false, error: 'No influence discs available on track to control this sector.' };
+        }
+      }
+
+      if (action.colonizePlanetIndices && action.colonizePlanetIndices.length > 0) {
+        const willControl = action.claimInfluence || sector.discOwner === action.playerId;
+        if (!willControl) {
+          return { valid: false, error: 'Must control sector with an Influence Disc to colonize planets.' };
+        }
+        if (action.colonizePlanetIndices.length > player.colonyShips.ready) {
+          return {
+            valid: false,
+            error: `Cannot colonize ${action.colonizePlanetIndices.length} planets: only ${player.colonyShips.ready} colony ships ready.`,
+          };
+        }
+        for (const pIdx of action.colonizePlanetIndices) {
+          const planet = sector.planets[pIdx];
+          if (!planet) return { valid: false, error: `Invalid planet index ${pIdx}.` };
+          const check = canColonizePlanetSlot(player, planet);
+          if (!check.canColonize) {
+            return { valid: false, error: check.reason || 'Cannot colonize planet slot.' };
+          }
+        }
       }
       return { valid: true };
     }
@@ -399,7 +655,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
       const cost = calculateTechCost(tech, count);
       player.resources.science -= cost;
-      player.techTrack.researched.push(tech);
+      player.techTrack.researched.push({ ...tech, placedTrack: targetTrack });
 
       if (targetTrack === 'military') player.techTrack.militaryCount += 1;
       else if (targetTrack === 'grid') player.techTrack.gridCount += 1;
@@ -416,6 +672,15 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           player.keptDiscoveryTiles.push(disc);
           addLog(`${player.name} claimed Discovery Tile (${disc.name}) from Ancient Labs.`);
         }
+      } else if (tech.id === 'artifact_key') {
+        const controlledArtifacts = newState.sectors.filter(
+          (s) => s.discOwner === player.id && s.hasArtifact
+        ).length;
+        const reward = controlledArtifacts * 5;
+        player.resources.materials += reward;
+        addLog(
+          `${player.name} activated Artifact Key across ${controlledArtifacts} controlled Artifact(s) and received ${reward} Materials!`
+        );
       }
 
       newState.techSupply.splice(techIndex, 1);
@@ -495,6 +760,44 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       break;
     }
 
+    case 'INFLUENCE': {
+      if (newState.phase === 'ACTION_PHASE') {
+        player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+        player.actionsTakenThisRound += 1;
+      }
+
+      if (action.refreshColonyShips) {
+        player.colonyShips.ready = Math.min(player.colonyShips.total, player.colonyShips.ready + 2);
+        addLog(`${player.name} refreshed 2 Colony Ships via Influence.`);
+      }
+
+      if (action.claimSectors) {
+        for (const secId of action.claimSectors) {
+          const sec = newState.sectors.find((s) => s.id === secId);
+          if (sec && !sec.discOwner && player.influenceTrack.discsOnTrack > 0) {
+            player.influenceTrack.discsOnTrack -= 1;
+            sec.discOwner = player.id;
+            addLog(`${player.name} claimed control of Sector ${sec.sectorNumber} with an Influence Disc!`);
+          }
+        }
+      }
+
+      if (action.abandonSectors) {
+        for (const secId of action.abandonSectors) {
+          const sec = newState.sectors.find((s) => s.id === secId);
+          if (sec && sec.discOwner === player.id) {
+            sec.discOwner = undefined;
+            player.influenceTrack.discsOnTrack = Math.min(
+              player.influenceTrack.totalDiscs,
+              player.influenceTrack.discsOnTrack + 1
+            );
+            addLog(`${player.name} removed their Influence Disc from Sector ${sec.sectorNumber}.`);
+          }
+        }
+      }
+      break;
+    }
+
     case 'COLONIZE': {
       player.colonyShips.ready -= 1;
       const sector = newState.sectors.find((s) => s.id === action.sectorId)!;
@@ -562,23 +865,103 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         if (disc.immediateReward?.materials) player.resources.materials += disc.immediateReward.materials;
         const grantShip = disc.immediateReward?.grantShipType || (disc.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
         if (grantShip && sector) {
-          sector.ships.push({
-            id: `ship_${player.id}_discovery_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-            ownerId: player.id,
-            type: grantShip,
-            damage: 0,
-          });
-          addLog(`${player.name} deployed a free ${grantShip.toUpperCase()} to Sector ${sector.sectorNumber}!`);
+          const currentShips = countPlayerShips(newState.sectors, player.id);
+          if (currentShips[grantShip] < SHIP_LIMITS[grantShip]) {
+            sector.ships.push({
+              id: `ship_${player.id}_discovery_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+              ownerId: player.id,
+              type: grantShip,
+              damage: 0,
+            });
+            addLog(`${player.name} deployed a free ${grantShip.toUpperCase()} to Sector ${sector.sectorNumber}!`);
+          } else {
+            addLog(`${player.name} could not deploy free ${grantShip.toUpperCase()}: maximum limit of ${SHIP_LIMITS[grantShip]} already deployed.`);
+          }
         }
         if (disc.shipPartId) {
           player.unlockedAncientParts = player.unlockedAncientParts || [];
           if (!player.unlockedAncientParts.includes(disc.shipPartId)) {
             player.unlockedAncientParts.push(disc.shipPartId);
           }
+
+          if (action.equipShipType && action.equipSlotIndex !== undefined) {
+            const bp = player.blueprints[action.equipShipType];
+            const part = SHIP_PARTS[disc.shipPartId];
+            if (bp && part && action.equipSlotIndex >= 0 && action.equipSlotIndex < bp.maxSlots) {
+              bp.slots[action.equipSlotIndex] = part;
+              addLog(`${player.name} equipped Ancient Tech "${part.name}" directly to their ${action.equipShipType.toUpperCase()} blueprint (Slot ${action.equipSlotIndex + 1})!`);
+            }
+          } else {
+            addLog(`${player.name} claimed Ancient Tech module "${disc.name}" for future ship upgrades!`);
+          }
         }
         addLog(`${player.name} claimed Discovery Reward: ${disc.name} (${disc.description})!`);
       }
       newState.pendingDiscovery = null;
+      if (newState.phase === 'COMBAT_PHASE' && !newState.pendingCombatConquest && !newState.activeCombat) {
+        checkAndTriggerCombat(newState);
+      }
+      return { success: true, newState };
+    }
+
+    case 'COMBAT_CONQUEST': {
+      if (!newState.pendingCombatConquest || newState.pendingCombatConquest.winnerPlayerId !== player.id) {
+        return { success: false, newState: state, error: 'No combat conquest decision pending for this player.' };
+      }
+      const sector = newState.sectors.find((s) => s.id === action.sectorId);
+      if (!sector) {
+        return { success: false, newState: state, error: 'Sector not found.' };
+      }
+
+      const conquestInfo = newState.pendingCombatConquest;
+
+      // 1. Influence Disc placement decision
+      if (action.claimInfluence) {
+        if (sector.discOwner !== player.id && player.influenceTrack.discsOnTrack > 0) {
+          player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+          sector.discOwner = player.id;
+          addLog(`${player.name} placed an Influence Disc to take control of Sector ${sector.sectorNumber}!`, 'combat');
+        }
+      } else {
+        if (sector.discOwner !== player.id) {
+          addLog(`${player.name} chose not to place an Influence Disc in Sector ${sector.sectorNumber}.`, 'combat');
+        }
+      }
+
+      // 2. Colonization decision (only if player controls the sector)
+      if (action.colonizePlanetIndices && action.colonizePlanetIndices.length > 0 && sector.discOwner === player.id) {
+        for (const pIdx of action.colonizePlanetIndices) {
+          const planet = sector.planets[pIdx];
+          if (planet && !planet.colonizedBy && player.colonyShips.ready > 0) {
+            planet.colonizedBy = player.id;
+            player.colonyShips.ready = Math.max(0, player.colonyShips.ready - 1);
+            if (planet.resource === 'money') {
+              player.population.money.cubesOnBoard = Math.max(0, player.population.money.cubesOnBoard - 1);
+            } else if (planet.resource === 'science') {
+              player.population.science.cubesOnBoard = Math.max(0, player.population.science.cubesOnBoard - 1);
+            } else if (planet.resource === 'material') {
+              player.population.material.cubesOnBoard = Math.max(0, player.population.material.cubesOnBoard - 1);
+            }
+            addLog(`${player.name} colonized a ${planet.resource.toUpperCase()} planet in Sector ${sector.sectorNumber} using a Colony Ship!`, 'action');
+          }
+        }
+      }
+
+      // 3. Clear pending conquest
+      newState.pendingCombatConquest = null;
+
+      // 4. Reveal guarded discovery tile if present
+      if (conquestInfo.discoveryToClaim) {
+        newState.pendingDiscovery = {
+          sectorId: sector.id,
+          discovery: conquestInfo.discoveryToClaim,
+          playerId: player.id,
+        };
+        addLog(`${player.name} secured Sector ${sector.sectorNumber} and uncovered an Ancient Discovery Cache!`, 'system');
+      } else if (newState.phase === 'COMBAT_PHASE' && !newState.activeCombat) {
+        checkAndTriggerCombat(newState);
+      }
+
       return { success: true, newState };
     }
 
@@ -630,21 +1013,17 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             addLog(`Combat in Sector ${sector.sectorNumber} has concluded! Winner: ${combatRes.winnerOwnerId || 'None'}.`, 'combat');
             newState.activeCombat = null;
 
-            // If player won and there is an unclaimed discovery tile in this sector:
+            // If player won the battle with surviving ships, initiate conquest decision
             if (combatRes.winnerOwnerId && combatRes.winnerOwnerId.startsWith('player_')) {
-              if (sector.discoveryTile && !sector.discoveryClaimed) {
-                newState.pendingDiscovery = {
-                  sectorId: sector.id,
-                  discovery: sector.discoveryTile,
-                  playerId: combatRes.winnerOwnerId,
-                };
-                const winnerPlayer = newState.players.find((p) => p.id === combatRes.winnerOwnerId);
-                addLog(`${winnerPlayer?.name || combatRes.winnerOwnerId} secured Sector ${sector.sectorNumber} and discovered the guarded Ancient cache!`);
-              }
+              newState.pendingCombatConquest = {
+                sectorId: sector.id,
+                winnerPlayerId: combatRes.winnerOwnerId,
+                discoveryToClaim: (sector.discoveryTile && !sector.discoveryClaimed) ? sector.discoveryTile : undefined,
+              };
+            } else {
+              // Non-player victory or mutual destruction: check for more combat sectors
+              checkAndTriggerCombat(newState);
             }
-
-            // Check for more combat sectors
-            checkAndTriggerCombat(newState);
           }
         }
       }
@@ -673,6 +1052,11 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 }
 
 function checkAndTriggerCombat(state: GameState): void {
+  // If a player still has a pending conquest or discovery decision, wait for resolution
+  if (state.pendingCombatConquest || state.pendingDiscovery) {
+    return;
+  }
+
   // Find any sector with hostile forces (more than one faction present)
   for (const sector of state.sectors) {
     const owners = Array.from(new Set(sector.ships.map((s) => s.ownerId)));
@@ -821,6 +1205,18 @@ export function calculateFinalScores(state: GameState): void {
   state.winnerId = winningId;
 }
 
+export function getMaxExploreActivations(player: PlayerState): number {
+  return player.faction.exploreActivations ?? 1;
+}
+
+export function getMaxResearchActivations(player: PlayerState): number {
+  return player.faction.researchActivations ?? 1;
+}
+
+export function getMaxUpgradeActivations(player: PlayerState): number {
+  return player.faction.upgradeActivations ?? 2;
+}
+
 export function getMaxBuildActivations(player: PlayerState): number {
   const base = player.faction.buildActivations ?? 2;
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
@@ -831,4 +1227,8 @@ export function getMaxMoveActivations(player: PlayerState): number {
   const base = player.faction.moveActivations ?? (player.faction.isHuman ? 3 : 2);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
   return base + (hasImprovedLogistics ? 1 : 0);
+}
+
+export function getMaxInfluenceActivations(player: PlayerState): number {
+  return player.faction.influenceActivations ?? 2;
 }

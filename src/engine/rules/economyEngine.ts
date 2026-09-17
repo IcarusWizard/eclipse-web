@@ -25,19 +25,19 @@ export const UPKEEP_TABLE: Record<number, number> = {
   15: 0,
   14: 0,
   13: 0,
-  12: 1,
-  11: 2,
-  10: 3,
-  9: 5,
-  8: 7,
-  7: 9,
-  6: 12,
-  5: 15,
-  4: 18,
-  3: 21,
-  2: 25,
-  1: 30,
-  0: 35,
+  12: 0, // 1 disc used (home sector) -> 0 upkeep
+  11: 0, // 2 discs used -> 0 upkeep
+  10: 1, // 3 discs used -> 1 upkeep
+  9: 2,  // 4 discs used -> 2 upkeep
+  8: 3,  // 5 discs used -> 3 upkeep
+  7: 5,  // 6 discs used -> 5 upkeep
+  6: 7,  // 7 discs used -> 7 upkeep
+  5: 9,  // 8 discs used -> 9 upkeep
+  4: 12, // 9 discs used -> 12 upkeep
+  3: 15, // 10 discs used -> 15 upkeep
+  2: 18, // 11 discs used -> 18 upkeep
+  1: 21, // 12 discs used -> 21 upkeep
+  0: 25, // 13 discs used -> 25 upkeep
 };
 
 export function getIncomeForTrack(cubesOnBoard: number): number {
@@ -129,4 +129,128 @@ export function applyUpkeepPhase(player: PlayerState): {
   };
 
   return { updatedPlayer, bankrupt };
+}
+
+export interface ActionCostForecast {
+  currentDiscs: number;
+  currentUpkeep: number;
+  after1Action: {
+    discsRemaining: number;
+    upkeep: number;
+    costIncrease: number; // additional credits owed in upkeep
+    projectedNetMoneyDelta: number;
+    canAfford: boolean;
+  };
+  after2Actions: {
+    discsRemaining: number;
+    upkeep: number;
+    costIncrease: number;
+    projectedNetMoneyDelta: number;
+    canAfford: boolean;
+  };
+  after3Actions: {
+    discsRemaining: number;
+    upkeep: number;
+    costIncrease: number;
+    projectedNetMoneyDelta: number;
+    canAfford: boolean;
+  };
+}
+
+export function calculateActionCostForecast(player: PlayerState): ActionCostForecast {
+  const currentDiscs = player.influenceTrack.discsOnTrack;
+  const currentUpkeep = getUpkeepForDiscs(currentDiscs);
+  const moneyIncome = getIncomeForTrack(player.population.money.cubesOnBoard);
+
+  const getStep = (stepCount: number) => {
+    const discsRemaining = Math.max(0, currentDiscs - stepCount);
+    const upkeep = getUpkeepForDiscs(discsRemaining);
+    const costIncrease = Math.max(0, upkeep - currentUpkeep);
+    const projectedNetMoneyDelta = moneyIncome - upkeep;
+    const projectedTotalMoney = player.resources.money + projectedNetMoneyDelta;
+    return {
+      discsRemaining,
+      upkeep,
+      costIncrease,
+      projectedNetMoneyDelta,
+      canAfford: projectedTotalMoney >= 0,
+    };
+  };
+
+  return {
+    currentDiscs,
+    currentUpkeep,
+    after1Action: getStep(1),
+    after2Actions: getStep(2),
+    after3Actions: getStep(3),
+  };
+}
+
+export const TECH_ROW_VP_TABLE: Record<number, number> = {
+  0: 0,
+  1: 0,
+  2: 0,
+  3: 0,
+  4: 1,
+  5: 2,
+  6: 3,
+  7: 5,
+};
+
+export const TECH_ROW_SLOT_COUNT = 7;
+
+export interface PlayerTechRows {
+  military: {
+    techs: import('../types/tech').Technology[];
+    count: number;
+    nextDiscount: number;
+    victoryPoints: number;
+  };
+  grid: {
+    techs: import('../types/tech').Technology[];
+    count: number;
+    nextDiscount: number;
+    victoryPoints: number;
+  };
+  nano: {
+    techs: import('../types/tech').Technology[];
+    count: number;
+    nextDiscount: number;
+    victoryPoints: number;
+  };
+  rare: import('../types/tech').Technology[];
+}
+
+export function getPlayerTechRows(player: PlayerState): PlayerTechRows {
+  const militaryTechs: import('../types/tech').Technology[] = [];
+  const gridTechs: import('../types/tech').Technology[] = [];
+  const nanoTechs: import('../types/tech').Technology[] = [];
+  const rareTechs: import('../types/tech').Technology[] = [];
+
+  for (const tech of player.techTrack.researched) {
+    const track = tech.placedTrack || (tech.category !== 'rare' ? tech.category : null);
+    if (track === 'military') {
+      militaryTechs.push(tech);
+    } else if (track === 'grid') {
+      gridTechs.push(tech);
+    } else if (track === 'nano') {
+      nanoTechs.push(tech);
+    } else {
+      rareTechs.push(tech);
+    }
+  }
+
+  const getRowStats = (techs: import('../types/tech').Technology[]) => {
+    const count = techs.length;
+    const nextDiscount = Math.min(6, count);
+    const victoryPoints = TECH_ROW_VP_TABLE[Math.min(7, count)] || (count >= 7 ? 5 : 0);
+    return { techs, count, nextDiscount, victoryPoints };
+  };
+
+  return {
+    military: getRowStats(militaryTechs),
+    grid: getRowStats(gridTechs),
+    nano: getRowStats(nanoTechs),
+    rare: rareTechs,
+  };
 }

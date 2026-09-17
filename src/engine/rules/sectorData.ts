@@ -99,6 +99,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     name: 'Sol (Federation)',
     ring: 2,
     victoryPoints: 3,
+    hasArtifact: true,
     wormholes: [true, true, true, false, true, true],
     planets: [
       { id: 'tf_p1', resource: 'money', isAdvanced: false },
@@ -113,6 +114,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     name: 'Sol (Directorate)',
     ring: 2,
     victoryPoints: 3,
+    hasArtifact: true,
     wormholes: [true, false, true, true, true, true],
     planets: [
       { id: 'td_p1', resource: 'money', isAdvanced: false },
@@ -127,6 +129,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     name: 'Sol (Republic)',
     ring: 2,
     victoryPoints: 3,
+    hasArtifact: true,
     wormholes: [true, true, true, true, true, false],
     planets: [
       { id: 'tr_p1', resource: 'money', isAdvanced: false },
@@ -141,6 +144,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     name: 'Sol (Conglomerate)',
     ring: 2,
     victoryPoints: 3,
+    hasArtifact: true,
     wormholes: [true, true, false, true, true, true],
     planets: [
       { id: 'tc_p1', resource: 'money', isAdvanced: false },
@@ -155,6 +159,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     name: 'Sol (Alliance)',
     ring: 2,
     victoryPoints: 3,
+    hasArtifact: true,
     wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'ta_p1', resource: 'money', isAdvanced: false },
@@ -169,6 +174,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     name: 'Sol (Union)',
     ring: 2,
     victoryPoints: 3,
+    hasArtifact: true,
     wormholes: [false, true, true, false, true, true],
     planets: [
       { id: 'tu_p1', resource: 'money', isAdvanced: false },

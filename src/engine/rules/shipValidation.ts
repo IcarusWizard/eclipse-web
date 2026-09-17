@@ -4,6 +4,41 @@
 
 import { ShipBlueprint, BlueprintValidationResult } from '../types/blueprints';
 import { SHIP_PARTS } from './partData';
+import { SectorTile, ShipType } from '../types/galaxy';
+
+export const SHIP_LIMITS: Record<ShipType, number> = {
+  interceptor: 8,
+  cruiser: 4,
+  dreadnought: 2,
+  starbase: 4,
+};
+
+export function countPlayerShips(sectors: SectorTile[], playerId: string): Record<ShipType, number> {
+  const counts: Record<ShipType, number> = {
+    interceptor: 0,
+    cruiser: 0,
+    dreadnought: 0,
+    starbase: 0,
+  };
+  for (const s of sectors) {
+    for (const ship of s.ships) {
+      if (ship.ownerId === playerId && ship.type in counts) {
+        counts[ship.type as ShipType]++;
+      }
+    }
+  }
+  return counts;
+}
+
+export function getRemainingShipSupply(sectors: SectorTile[], playerId: string): Record<ShipType, number> {
+  const built = countPlayerShips(sectors, playerId);
+  return {
+    interceptor: Math.max(0, SHIP_LIMITS.interceptor - built.interceptor),
+    cruiser: Math.max(0, SHIP_LIMITS.cruiser - built.cruiser),
+    dreadnought: Math.max(0, SHIP_LIMITS.dreadnought - built.dreadnought),
+    starbase: Math.max(0, SHIP_LIMITS.starbase - built.starbase),
+  };
+}
 
 export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintValidationResult {
   let totalPowerProduced = 0;
@@ -28,13 +63,9 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
     shieldBonus += part.shieldBonus;
   }
 
-  // Base hull based on ship class:
-  // Interceptor: 1, Cruiser: 2, Dreadnought: 3, Starbase: 2
-  let baseHull = 1;
-  if (blueprint.type === 'cruiser') baseHull = 2;
-  else if (blueprint.type === 'dreadnought') baseHull = 3;
-  else if (blueprint.type === 'starbase') baseHull = 2;
-
+  // Base hull: in Eclipse, all ships have a base damage capacity of 1 (destroyed with 1 hit if no hull).
+  // Each Hull component adds +1 damage capacity (e.g. Interceptor 1 HP, Cruiser 2 HP, Dreadnought 3 HP).
+  const baseHull = 1;
   const totalHull = baseHull + bonusHull;
   const totalInitiative = blueprint.baseInitiative + bonusInitiative;
 
@@ -102,7 +133,7 @@ export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
         SHIP_PARTS.ion_cannon,
         SHIP_PARTS.electron_computer,
         SHIP_PARTS.hull,
-        SHIP_PARTS.nuclear_source,
+        SHIP_PARTS.hull,
         SHIP_PARTS.nuclear_source,
         SHIP_PARTS.nuclear_drive,
         null,

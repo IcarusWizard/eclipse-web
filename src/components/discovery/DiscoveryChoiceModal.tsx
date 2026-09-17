@@ -1,13 +1,13 @@
 import React from 'react';
-import { Rocket } from 'lucide-react';
-import { DiscoveryTile } from '../../engine/types/galaxy';
+import { Rocket, Wrench, Archive, Trophy, Zap, Cpu } from 'lucide-react';
+import { DiscoveryTile, ShipType } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
 import { SHIP_PARTS } from '../../engine/rules/partData';
 
 interface DiscoveryChoiceModalProps {
   discovery: DiscoveryTile;
   player: PlayerState;
-  onChoice: (keepForVictoryPoints: boolean) => void;
+  onChoice: (keepForVictoryPoints: boolean, equipShipType?: ShipType, equipSlotIndex?: number) => void;
 }
 
 export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
@@ -17,17 +17,30 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 }) => {
   const part = discovery.shipPartId ? SHIP_PARTS[discovery.shipPartId] : null;
 
+  const [selectedShipType, setSelectedShipType] = React.useState<ShipType>('cruiser');
+  const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number>(0);
+
+  const currentBlueprint = player.blueprints[selectedShipType];
+
+  // Auto-select first empty slot when ship type changes
+  React.useEffect(() => {
+    if (currentBlueprint) {
+      const emptyIdx = currentBlueprint.slots.findIndex((s) => s === null);
+      setSelectedSlotIndex(emptyIdx !== -1 ? emptyIdx : 0);
+    }
+  }, [selectedShipType, currentBlueprint]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-lg bg-slate-900 border-2 border-amber-500/50 rounded-2xl shadow-2xl shadow-amber-500/20 p-6 flex flex-col items-center text-center overflow-hidden">
+      <div className="relative w-full max-w-xl bg-slate-900 border-2 border-amber-500/50 rounded-2xl shadow-2xl shadow-amber-500/20 p-6 flex flex-col items-center text-center overflow-hidden">
         {/* Glow ambient decoration */}
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
 
         {/* Discovery Icon Header */}
-        <div className="w-16 h-16 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30 mb-4 border border-amber-300/40">
+        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30 mb-3 border border-amber-300/40">
           <svg
-            className="w-9 h-9 text-slate-950"
+            className="w-8 h-8 text-slate-950"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -42,7 +55,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
         <div className="text-xs uppercase tracking-widest text-amber-400 font-black mb-1">
           Ancient Discovery Uncovered
         </div>
-        <h2 className="text-2xl font-black text-white tracking-wide mb-2">
+        <h2 className="text-2xl font-black text-white tracking-wide mb-1">
           {discovery.name}
         </h2>
         <div className="text-xs text-slate-400 mb-4 font-medium">
@@ -50,24 +63,25 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
         </div>
 
         {/* Tile Details Card */}
-        <div className="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-4 mb-6 text-left">
-          <p className="text-sm text-slate-300 leading-relaxed mb-3">
+        <div className="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 mb-4 text-left">
+          <p className="text-xs text-slate-300 leading-relaxed mb-2.5">
             {discovery.description}
           </p>
 
           {part && (
-            <div className="bg-slate-900/90 border border-cyan-500/30 rounded-lg p-3 flex items-center justify-between">
+            <div className="bg-slate-900/90 border border-cyan-500/30 rounded-lg p-2.5 flex items-center justify-between">
               <div>
-                <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider">
+                <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
                   Ancient Tech Module: {part.name}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
-                  Power: {part.powerRequired} | Hull: +{part.hullPoints} | Shield: -{part.shieldBonus} | Computer: +{part.computerBonus}
+                  Power Consumed: {part.powerConsumed} | Power Produced: {part.powerProduced} | Hull: +{part.hullBonus} | Shield: -{part.shieldBonus} | Computer: +{part.computerBonus}
                   {part.dice && part.dice.length > 0 && ` | ${part.dice[0].count}x ${part.dice[0].color} dice`}
                 </div>
               </div>
-              <span className="px-2 py-1 bg-cyan-500/20 text-cyan-300 rounded text-xs font-mono font-bold">
-                PART
+              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[10px] font-mono font-bold">
+                ANCIENT
               </span>
             </div>
           )}
@@ -102,38 +116,138 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           )}
         </div>
 
-        {/* Action Buttons: 2 VP vs Immediate Reward */}
-        <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
-          <button
-            type="button"
-            onClick={() => onChoice(true)}
-            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
-          >
-            <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
-              <span className="text-base">🏆</span> Keep for Victory Points
+        {/* If Ancient Tech Module: Immediate Blueprint Installation Interface */}
+        {part && currentBlueprint && (
+          <div className="w-full bg-slate-950/60 border border-cyan-900/50 rounded-xl p-3 mb-4 text-left">
+            <div className="flex items-center justify-between mb-2">
+              <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
+                <Wrench className="w-3.5 h-3.5" /> Equip Immediately to Ship (Free)
+              </span>
+              <span className="text-[10px] text-slate-400 font-medium">
+                Select ship class and slot to equip
+              </span>
             </div>
-            <span className="text-xs text-slate-400">
-              Score <strong className="text-amber-300">+2 VP</strong> at game end
-            </span>
-          </button>
 
-          <button
-            type="button"
-            onClick={() => onChoice(false)}
-            className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25 transition group cursor-pointer"
-          >
-            <div className="flex items-center gap-1.5 text-cyan-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
-              <span className="text-base">⚡</span> Take Immediate Reward
+            {/* Ship Class Tabs */}
+            <div className="grid grid-cols-4 gap-1.5 mb-2.5">
+              {(['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).map((st) => (
+                <button
+                  key={st}
+                  type="button"
+                  onClick={() => setSelectedShipType(st)}
+                  className={`py-1 px-2 rounded-lg text-xs font-bold uppercase transition cursor-pointer ${
+                    selectedShipType === st
+                      ? 'bg-cyan-600 text-white shadow'
+                      : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
+                  }`}
+                >
+                  {st}
+                </button>
+              ))}
             </div>
-            <span className="text-xs text-slate-400">
-              {part
-                ? 'Unlock module for ship blueprints'
-                : discovery.immediateReward?.grantShipType
+
+            {/* Slot Grid for Chosen Blueprint */}
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-1">
+              {currentBlueprint.slots.map((sl, sIdx) => {
+                const isSelected = selectedSlotIndex === sIdx;
+                return (
+                  <button
+                    key={sIdx}
+                    type="button"
+                    onClick={() => setSelectedSlotIndex(sIdx)}
+                    className={`p-1.5 rounded-lg border text-left transition cursor-pointer text-[11px] ${
+                      isSelected
+                        ? 'border-cyan-400 bg-cyan-950/70 ring-1 ring-cyan-400 shadow'
+                        : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
+                    }`}
+                  >
+                    <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
+                      <span>Slot {sIdx + 1}</span>
+                      {isSelected && <span className="text-cyan-300 font-bold">TARGET</span>}
+                    </div>
+                    <div className="font-bold truncate text-slate-200">
+                      {sl ? sl.name : <span className="text-slate-500 italic">Empty Slot</span>}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Action Buttons */}
+        {part ? (
+          <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2">
+            <button
+              type="button"
+              onClick={() => onChoice(false, selectedShipType, selectedSlotIndex)}
+              className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 transition group cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
+                <Wrench className="w-3.5 h-3.5" /> Equip Immediately
+              </div>
+              <span className="text-[10px] text-slate-300">
+                To <strong>{selectedShipType.toUpperCase()}</strong> (Slot {selectedSlotIndex + 1})
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onChoice(false)}
+              className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-800 transition group cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 text-slate-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
+                <Archive className="w-3.5 h-3.5 text-slate-400" /> Store in Reserve
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Save for later Upgrade action
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onChoice(true)}
+              className="flex flex-col items-center justify-center p-3 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
+                <Trophy className="w-3.5 h-3.5 text-amber-400" /> Keep for 2 VP
+              </div>
+              <span className="text-[10px] text-slate-400">
+                Score <strong className="text-amber-300">+2 VP</strong> at game end
+              </span>
+            </button>
+          </div>
+        ) : (
+          <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <button
+              type="button"
+              onClick={() => onChoice(true)}
+              className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
+                <Trophy className="w-4 h-4 text-amber-400" /> Keep for Victory Points
+              </div>
+              <span className="text-xs text-slate-400">
+                Score <strong className="text-amber-300">+2 VP</strong> at game end
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => onChoice(false)}
+              className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25 transition group cursor-pointer"
+            >
+              <div className="flex items-center gap-1.5 text-cyan-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
+                <Zap className="w-4 h-4 text-cyan-400" /> Take Immediate Reward
+              </div>
+              <span className="text-xs text-slate-400">
+                {discovery.immediateReward?.grantShipType
                   ? `Deploy free ${discovery.immediateReward.grantShipType} to sector`
                   : 'Collect resources immediately'}
-            </span>
-          </button>
-        </div>
+              </span>
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

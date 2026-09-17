@@ -16,6 +16,7 @@ export interface Technology {
   readonly unlocksStructure?: 'orbital' | 'monolith' | 'starbase';
   readonly unlocksAbility?: string; // e.g. 'advanced_economy', 'advanced_mining', 'advanced_labs', 'wormhole_generator', 'neutron_bombs', 'artifact_key'
   readonly victoryPoints?: number;
+  readonly placedTrack?: 'military' | 'grid' | 'nano';
   readonly description: string;
 }
 

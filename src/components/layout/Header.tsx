@@ -1,6 +1,6 @@
 import React from 'react';
 import { GameState } from '../../engine/types/state';
-import { Shield, Users, RefreshCw, Trophy, Radio, Cpu } from 'lucide-react';
+import { Shield, Users, RefreshCw, Trophy, Radio, Cpu, LayoutDashboard } from 'lucide-react';
 
 interface HeaderProps {
   state: GameState;
@@ -8,6 +8,7 @@ interface HeaderProps {
   selectedViewIndex: number;
   onNewGame: () => void;
   onOpenTechTray?: () => void;
+  onOpenPlayerBoard?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -16,6 +17,7 @@ export const Header: React.FC<HeaderProps> = ({
   selectedViewIndex,
   onNewGame,
   onOpenTechTray,
+  onOpenPlayerBoard,
 }) => {
   const activePlayer = state.players[state.activePlayerIndex];
   const viewedPlayer = state.players[selectedViewIndex];
@@ -82,6 +84,17 @@ export const Header: React.FC<HeaderProps> = ({
             );
           })}
         </div>
+
+        {onOpenPlayerBoard && (
+          <button
+            onClick={onOpenPlayerBoard}
+            className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 text-xs font-bold transition-all shadow"
+            title="Inspect Physical Player Board (Key: P)"
+          >
+            <LayoutDashboard className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Player Board</span>
+          </button>
+        )}
 
         {onOpenTechTray && (
           <button
