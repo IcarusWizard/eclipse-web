@@ -164,16 +164,48 @@
     - Species Traits (+1 VP per controlled sector for Planta, +1 VP per Ancient ship on board for Draco)
   - Created `LiveScoreboardModal.tsx` showing the complete itemized table, player rankings, crown badges, and scoring rules.
   - Added a `🏆 Standings` button and individual live `★ X VP` score indicators on every commander button in `Header.tsx`.
-- [ ] bankcrupt is not done yet, if one player cannot pay for the maintainance cost, it should first go to tactical bankcrupt to remove influence from the map, if that still doesn't work, the player is remove from the game immidiately.
-- [ ] monolince should worth 3 points each not 2.
-- [ ] artifact key is wrong, when buy for each artifact you have, you can get 5 resouce of your choice, currently I think it is set as material by default.
-- [ ] I believe the home system is still wrong. If I am not mistaken, all the home system has an X shape wormhole layout, which allows two entry to ring 3, 1 to ring 2, and 1 to ring 1.
-- [ ] The number on the sector is also not clear, please make it better.
-- [ ] I think it is the time to implement a local hot seat, each player can join a table with a link of the table plus their player token. Make sure each player can only act on their own turn, and can not see the reputation tiles the other player have. 
-- [ ] Speaking of reputation tiles, different faction have different numbers of slots for them, please check if you implement it correctly.
-- [ ] I would like some options to trigger a dashline layout for the map, so the player can easily see how many tiles it is between one and the other when they are not explored yet.
-- [ ] You should implement the gaduriance in a game where we don't have full 6 players (their position should be replaced by the gadience)
-- [ ] In think the GCDS is wrongly implemented with the weapons, it should be 4 yellow dices.
-- [ ] When draco choose from the two explore system, the preview on the map doesn't change together when I switch the system, the second system only shows up when I select to place the second system.
-- [ ] There is a maxima number of ring 3 tiles available given different numbers of players. When all the tiles possible to be explore are gone, the player should be prevent to do more explore actions. There should also be a place to hind the player how much ring 3 tiles are left.
-- [ ] There should be a starting page when I open the website other than jump into the game directly. Each table should have their own sub link with different player with a sub link under the table link.
+- [x] **Tactical Bankruptcy & Deficit Sector Abandonment**:
+  - Implemented step-by-step disc-by-disc sector abandonment when an empire cannot meet upkeep after emergency trade at 2:1 ratio.
+  - In `economyEngine.ts` and `gameReducer.ts`, created `abandonSectorForUpkeep` and `ABANDON_SECTOR_BANKRUPTCY` action returning influence discs to track and returning population cubes from the abandoned sector.
+  - Built `BankruptcyModal.tsx` showing active deficit, sector list, and immediate upkeep savings.
+  - If a player exhausts all controlled sectors and a deficit remains, civilization collapse eliminates the player immediately and clears their assets.
+- [x] **Monolith Victory Points (Strictly 3 VP)**:
+  - Corrected all Monolith victory points across rules, engine, and UI to 3 VP (was previously 2 VP in some discovery configs).
+  - Updated `sectorData.ts`, `docs/rules/01_setup_and_components.md`, `docs/rules/03_technology_catalog.md`, `computeCurrentScores`, `LiveScoreboardModal.tsx`, and `BuildModal.tsx`.
+- [x] **Artifact Key Multi-Resource Bounty**:
+  - For each controlled Artifact, commander chooses 5 resources in any custom allocation of Money, Science, and Materials (5 per Artifact).
+  - Created `ALLOCATE_ARTIFACT_REWARD` engine action, state tracking `pendingArtifactReward`, and `ArtifactKeyModal.tsx` with increment/decrement steppers and quick "All" shortcuts.
+- [x] **Home System Wormhole Orientation (Authentic X-Shape Layout)**:
+  - Updated all 6 Terran and 6 Alien home sectors to the official X-shape 4-wormhole pattern `[true, false, true, true, false, true]`.
+  - Edge 0 connects to Ring 1 (Galactic Center), Edge 5 connects to Ring 2, and Edges 2 and 3 connect to Ring 3 (Outer Ring).
+- [x] **High-Contrast Sector Number Map Badges**:
+  - Upgraded sector number typography on `HexGalaxyMap.tsx` from low-contrast plain text to dark, high-contrast badges (`fill="rgba(2, 6, 23, 0.92)"`, `stroke="#38bdf8"`, `font-size: 11`, `font-weight: 900`).
+  - GCDS center sector is badged with glowing magenta border (`stroke="#ec4899"`, `text="#f472b6"`).
+- [x] **Local Hotseat & Shareable Seat URLs**:
+  - Implemented multi-seat routing via URL parameters: `?table=XXX&seat=0` (or `seat=1`, `seat=all`, `seat=spectator`).
+  - Active Turn Gating: When in single-seat mode, commander action buttons are locked during opponents' turns, displaying an `⏳ Opponent's Turn` status badge.
+  - Reputation Secrecy: Opponent reputation tiles are rendered as facedown bronze shields with `? VP` on both `PlayerBoard.tsx` and `PhysicalPlayerBoardModal.tsx` until game over.
+  - Integrated quick "Copy Seat Link" button in Header and Lobby to share direct player tokens with other players.
+- [x] **Faction-Specific Reputation Track Capacities**:
+  - Verified and enforced exact slot counts per faction: Eridani (4), Planta (4), Mechanema (4), Terran Federation (5), Hydran Progress (5), Descendants of Draco (5), Orion Hegemony (5).
+  - Configured in `setup.ts`, `player.ts`, `gameReducer.ts`, and dynamically rendered in `PlayerBoard.tsx`, `PhysicalPlayerBoardModal.tsx`, and `ReputationTileModal.tsx`.
+- [x] **Map Dashed Hexagonal Grid Toggle**:
+  - Added a `[ ⬡ Grid ]` toolbar button on `HexGalaxyMap.tsx`.
+  - When enabled, renders dashed hex outlines across all empty/unexplored coordinates in Rings 1, 2, and 3, complete with faint ring identifiers (`R1`, `R2`, `R3`) to make path distances immediately clear.
+- [x] **Guardian Sectors in Games with Fewer Than 6 Players**:
+  - In `setup.ts`, unoccupied Ring 2 starting coordinates in games with < 6 players are populated with Sector 212 Guardian sectors.
+  - Each Guardian sector features 1 Guardian ship, 2 VP, and 1 discovery tile.
+- [x] **GCDS Weaponry (4 Yellow Ion Cannon Dice)**:
+  - Updated GCDS combat unit profile in `combatEngine.ts` to 4 yellow Ion Cannon dice (`{ color: 'yellow', damage: 1, count: 4 }`), Computer +2, Shield 0, Hull 7, Initiative 0.
+  - Added Guardian combat profile (Hull 3, Shield 1, Computer +2, 3 yellow dice, Initiative 3).
+- [x] **Draco Explore Map Preview Dynamic Synchronization**:
+  - Synchronized `ExploreModal.tsx` tile toggling with `dracoSelectedTileIndex` state in `App.tsx`.
+  - Map candidate preview dynamically re-renders and highlights the currently selected Draco candidate tile on the hex map.
+- [x] **Sector Deck Limits & Remaining Stack Counters**:
+  - Sized Ring 3 sector stacks by player count: 2p: 5, 3p: 8, 4p: 14, 5p: 16, 6p: 18.
+  - Added empty-deck exhaust validation in `validateAction` and `executeAction` preventing exploration when a stack is depleted.
+  - Added live HUD deck counters (`R1: X | R2: Y | R3: Z`) directly in the map toolbar and explore checks.
+- [x] **Lobby & Galactic Starting Page**:
+  - Created `LobbyView.tsx` as the landing page when opening the site without active table parameters.
+  - Features New Table creation (player count 2–6, faction roster picker, table code), Join by Code & Seat, and Local Archive of saved games with one-click Hotseat and Seat links.
+  - Added a "🏠 Lobby" return button to `Header.tsx` to switch between games and lobby anytime.

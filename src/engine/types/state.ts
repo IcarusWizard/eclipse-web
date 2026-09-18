@@ -77,6 +77,17 @@ export interface PendingCombatConquest {
   discoveryToClaim?: DiscoveryTile;
 }
 
+export interface PendingArtifactReward {
+  playerId: string;
+  totalResources: number;
+  artifactsCount: number;
+}
+
+export interface PendingBankruptcy {
+  playerId: string;
+  deficit: number;
+}
+
 export interface GameState {
   id: string;
   round: number;
@@ -102,6 +113,8 @@ export interface GameState {
   pendingExploreActivations?: number; // for multi-activation explore (e.g. Planta)
   pendingDiscovery: PendingDiscovery | null;
   pendingCombatConquest: PendingCombatConquest | null;
+  pendingArtifactReward?: PendingArtifactReward | null;
+  pendingBankruptcy?: PendingBankruptcy | null;
   pendingReputationDraw?: PendingReputationDraw | null;
   pendingReputationDrawQueue?: PendingReputationDraw[];
   resolvedCombatSectorIds?: string[];

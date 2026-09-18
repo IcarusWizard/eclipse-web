@@ -47,6 +47,7 @@ interface PhysicalPlayerBoardModalProps {
   onSelectPlayer: (playerId: string) => void;
   onOpenBlueprintEditor: (shipType?: ShipType) => void;
   onOpenTechMarket: () => void;
+  hideOpponentReputation?: boolean;
 }
 
 export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> = ({
@@ -58,6 +59,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   onSelectPlayer,
   onOpenBlueprintEditor,
   onOpenTechMarket,
+  hideOpponentReputation = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'tracks' | 'tech' | 'blueprints'>('all');
   const [selectedTech, setSelectedTech] = useState<Technology | null>(null);
@@ -491,13 +493,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <Trophy className="w-5 h-5 text-amber-400" />
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
-                      REPUTATION TRACK (5 SLOTS)
+                      REPUTATION TRACK ({player.faction.reputationSlots ?? 5} SLOTS)
                       <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-950/60 border border-amber-600/60 text-amber-300">
-                        Total: {player.reputationTiles.reduce((a, b) => a + b, 0)} VP
+                        Total: {hideOpponentReputation ? '? VP' : `${player.reputationTiles.reduce((a, b) => a + b, 0)} VP`}
                       </span>
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Combat rewards and battle participation tiles placed facedown. Maximum 5 slots on species board.
+                      Combat rewards and battle participation tiles placed facedown. Maximum {player.faction.reputationSlots ?? 5} slots on species board.
                     </p>
                   </div>
                 </div>
@@ -505,14 +507,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
                   <span>Slots Filled:</span>
                   <span className="font-bold text-slate-200">
-                    {player.reputationTiles.length} / 5
+                    {player.reputationTiles.length} / {player.faction.reputationSlots ?? 5}
                   </span>
                 </div>
               </div>
 
-              {/* 5 Physical Cardboard Slots */}
-              <div className="grid grid-cols-5 gap-3">
-                {Array.from({ length: 5 }).map((_, slotIdx) => {
+              {/* Physical Cardboard Slots */}
+              <div className={`grid ${(player.faction.reputationSlots ?? 5) === 4 ? 'grid-cols-4' : 'grid-cols-5'} gap-3`}>
+                {Array.from({ length: player.faction.reputationSlots ?? 5 }).map((_, slotIdx) => {
                   const tile = player.reputationTiles[slotIdx];
                   const hasTile = tile !== undefined;
 
@@ -536,7 +538,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             <Trophy className="w-5 h-5 text-amber-400" />
                           </div>
                           <span className="text-base font-extrabold font-display text-amber-300 mt-1">
-                            +{tile} VP
+                            {hideOpponentReputation ? '? VP' : `+${tile} VP`}
                           </span>
                         </div>
                       ) : (
@@ -551,7 +553,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       )}
 
                       <div className="text-[9px] font-semibold text-slate-400">
-                        {hasTile ? 'Reputation Tile' : 'Available Slot'}
+                        {hasTile ? (hideOpponentReputation ? 'Secret Tile' : 'Reputation Tile') : 'Available Slot'}
                       </div>
                     </div>
                   );

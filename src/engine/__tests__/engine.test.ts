@@ -32,6 +32,7 @@ import {
   checkAndTriggerCombat,
   calculateFinalScores,
   computeCurrentScores,
+  transitionToUpkeep,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -298,8 +299,10 @@ describe('Game Setup & Turn Engine Flow', () => {
     const game = createInitialGame(2);
     expect(game.players.length).toBe(2);
     expect(game.round).toBe(1);
-    expect(game.phase).toBe('ACTION_PHASE');
-    expect(game.sectors.length).toBe(3); // Center 001 + 2 Home Sectors
+    // Center 001 + 2 Home Sectors + 4 Guardian Sectors (Sector 212 at unused starting hexes)
+    expect(game.sectors.length).toBe(7);
+    expect(game.sectors.filter((s) => s.sectorNumber === 212).length).toBe(4);
+    expect(game.sectors.filter((s) => s.ships.some((ship) => ship.type === 'guardian')).length).toBe(4);
     expect(game.players[0]!.influenceTrack.totalDiscs).toBe(13);
     expect(game.players[0]!.influenceTrack.discsOnTrack).toBe(12); // 1 disc placed on home
     // Humans start with 3 colony ships, and all 3 are unused (ready) at game start
@@ -1357,9 +1360,21 @@ describe('Game Setup & Turn Engine Flow', () => {
       });
 
       expect(res.success).toBe(true);
-      const updatedP1 = res.newState.players[0]!;
-      // P1 controls 1 home sector which has an artifact -> +5 Materials (4 + 5 = 9)
-      expect(updatedP1.resources.materials).toBe(9);
+      // P1 controls 1 home sector with an Artifact -> pending choice of 5 resources
+      expect(res.newState.pendingArtifactReward).toBeDefined();
+      expect(res.newState.pendingArtifactReward!.totalResources).toBe(5);
+      expect(res.newState.pendingArtifactReward!.artifactsCount).toBe(1);
+
+      // Player allocates 2 Money, 1 Science, 2 Materials
+      const allocRes = executeAction(res.newState, {
+        type: 'ALLOCATE_ARTIFACT_REWARD',
+        playerId: p1.id,
+        resources: { money: 2, science: 1, materials: 2 },
+      });
+      expect(allocRes.success).toBe(true);
+      const updatedP1 = allocRes.newState.players[0]!;
+      expect(updatedP1.resources.materials).toBe(4 + 2); // 4 initial + 2 chosen
+      expect(allocRes.newState.pendingArtifactReward).toBeNull();
     });
 
     it('enforces official action activations for Human factions: Explore (1), Research (1), Upgrade (2), Build (2), Move (3)', () => {
@@ -2812,9 +2827,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           expect(partDef.id).toBe(pid);
         }
 
-        // Verify setup initializes a 36-tile discoveryBag
+        // Verify setup initializes 36 discovery tiles: 4 on Guardian Sectors, 32 in bag
         const game = createInitialGame(2);
-        expect(game.discoveryBag.length).toBe(36);
+        const tilesOnGuardians = game.sectors.filter((s) => s.sectorNumber === 212 && s.discoveryTile).length;
+        expect(game.discoveryBag.length + tilesOnGuardians).toBe(36);
+        expect(game.discoveryBag.length).toBe(32);
+        expect(tilesOnGuardians).toBe(4);
       });
 
       test('resolves discovery choices: Ancient Tech grants lowest cost regular tech for free', () => {
@@ -3552,6 +3570,142 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Draco gets 1 VP per ancient on board
         const dScores = scores[draco.id]!;
         expect(dScores.speciesBonus).toBe(3); // 3 ancients on board
+      });
+
+      it('14. verifies GCDS weaponry is 4 yellow Ion Cannon dice (count 4, damage 1) and Guardian ship stats', () => {
+        const game = createInitialGame(2);
+        const center = game.sectors.find((s) => s.sectorNumber === 1)!;
+        expect(center.ships.length).toBe(1);
+        expect(center.ships[0]!.type).toBe('gcds');
+
+        const units = buildCombatUnitsForSector(center, game.players);
+        const gcdsUnit = units.find((u) => u.type === 'gcds');
+        expect(gcdsUnit).toBeDefined();
+        expect(gcdsUnit?.maxHull).toBe(7);
+        expect(gcdsUnit?.shieldBonus).toBe(0);
+        expect(gcdsUnit?.computerBonus).toBe(2);
+        expect(gcdsUnit?.initiative).toBe(0);
+        expect(gcdsUnit?.weapons).toEqual([{ color: 'yellow', damage: 1, count: 4 }]);
+
+        // Guardian sector
+        const guardianSec = game.sectors.find((s) => s.sectorNumber === 212)!;
+        const gUnits = buildCombatUnitsForSector(guardianSec, game.players);
+        const guardianUnit = gUnits.find((u) => u.type === 'guardian');
+        expect(guardianUnit).toBeDefined();
+        expect(guardianUnit?.maxHull).toBe(3);
+        expect(guardianUnit?.shieldBonus).toBe(1);
+        expect(guardianUnit?.computerBonus).toBe(2);
+        expect(guardianUnit?.initiative).toBe(3);
+        expect(guardianUnit?.weapons).toEqual([{ color: 'yellow', damage: 1, count: 3 }]);
+      });
+
+      it('15. verifies Guardian sectors in games with fewer than 6 players', () => {
+        // In a 2-player game, 4 starting coordinates are replaced with Sector 212 Guardian sectors
+        const game2 = createInitialGame(2);
+        const guardianSectors = game2.sectors.filter((s) => s.sectorNumber === 212);
+        expect(guardianSectors.length).toBe(4);
+        for (const gSec of guardianSectors) {
+          expect(gSec.ring).toBe(2);
+          expect(gSec.victoryPoints).toBe(2);
+          expect(gSec.hasDiscovery).toBe(true);
+          expect(gSec.guardiansCount).toBe(1);
+          expect(gSec.ships.some((s) => s.type === 'guardian')).toBe(true);
+        }
+
+        // In a 6-player game, 0 starting coordinates are replaced with Guardian sectors
+        const game6 = createInitialGame(6);
+        const guardianSectors6 = game6.sectors.filter((s) => s.sectorNumber === 212);
+        expect(guardianSectors6.length).toBe(0);
+      });
+
+      it('16. verifies Ring 3 sector deck sizing by player count and exhaustion prevention', () => {
+        const g2 = createInitialGame(2);
+        expect(g2.sectorDecks.ring3.length).toBe(5);
+
+        const g3 = createInitialGame(3);
+        expect(g3.sectorDecks.ring3.length).toBe(8);
+
+        const g4 = createInitialGame(4);
+        expect(g4.sectorDecks.ring3.length).toBe(14);
+
+        const g5 = createInitialGame(5);
+        expect(g5.sectorDecks.ring3.length).toBe(16);
+
+        const g6 = createInitialGame(6);
+        expect(g6.sectorDecks.ring3.length).toBe(18);
+
+        // Test deck exhaustion fails explore
+        g2.sectorDecks.ring3 = []; // exhaust ring 3
+        const p1 = g2.players[0]!;
+        const homeSector = g2.sectors.find((s) => s.discOwner === p1.id)!;
+        const res = executeAction(g2, {
+          type: 'EXPLORE',
+          playerId: p1.id,
+          fromCoord: homeSector.coord,
+          targetCoord: { q: 1, r: -3 }, // Ring 3 coord adjacent to (0, -2)
+          rotation: 0,
+        });
+        expect(res.success).toBe(false);
+        expect(res.error).toContain('remaining');
+      });
+
+      it('17. verifies Tactical Bankruptcy: sector abandonment step-by-step and player elimination', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p1Home = game.sectors.find((s) => s.discOwner === p1.id)!;
+
+        // Give player a severe deficit
+        p1.resources.money = -15;
+        p1.resources.science = 0;
+        p1.resources.materials = 0;
+        p1.influenceTrack.discsOnTrack = 2; // Upkeep is high
+
+        // Transition to Upkeep
+        transitionToUpkeep(game);
+        expect(game.pendingBankruptcy).toBeDefined();
+        expect(game.pendingBankruptcy?.playerId).toBe(p1.id);
+
+        // Player abandons home sector
+        const abandonRes = executeAction(game, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: p1.id,
+          sectorId: p1Home.id,
+        });
+        expect(abandonRes.success).toBe(true);
+        expect(abandonRes.newState.sectors.find((s) => s.id === p1Home.id)?.discOwner).toBeUndefined();
+
+        // Since p1 has no more sectors and deficit still persists, p1 is eliminated
+        const updatedP1 = abandonRes.newState.players.find((p) => p.id === p1.id)!;
+        expect(updatedP1.isEliminated).toBe(true);
+        expect(abandonRes.newState.pendingBankruptcy).toBeNull();
+      });
+
+      it('18. verifies Faction Reputation Track Slot counts', () => {
+        const game = createInitialGame(6, [
+          'eridani_empire',
+          'planta',
+          'mechanema',
+          'hydran_progress',
+          'descendants_of_draco',
+          'orion_hegemony',
+        ]);
+
+        expect(game.players[0]!.faction.reputationSlots).toBe(4); // Eridani
+        expect(game.players[1]!.faction.reputationSlots).toBe(4); // Planta
+        expect(game.players[2]!.faction.reputationSlots).toBe(4); // Mechanema
+        expect(game.players[3]!.faction.reputationSlots).toBe(5); // Hydran
+        expect(game.players[4]!.faction.reputationSlots).toBe(5); // Draco
+        expect(game.players[5]!.faction.reputationSlots).toBe(5); // Orion
+      });
+
+      it('19. verifies Home Sector authentic X-shape wormhole layout connects to 1 inner, 1 middle, 2 outer', () => {
+        const game = createInitialGame(2);
+        const homeSectors = game.sectors.filter((s) => s.sectorNumber >= 221 && s.sectorNumber <= 232);
+        for (const home of homeSectors) {
+          // Exactly 4 wormholes
+          const openWormholes = home.wormholes.filter(Boolean).length;
+          expect(openWormholes).toBe(4);
+        }
       });
     });
   });

@@ -33,6 +33,8 @@ interface ExploreModalProps {
   onConfirmPlacement: (rotation: number, claimInfluence: boolean, chosenTileIndex?: number) => void;
   onDiscard: (chosenTileIndex?: number) => void;
   onClose: () => void;
+  selectedDracoIndex?: number;
+  onSelectDracoIndex?: (index: number) => void;
 }
 
 export const ExploreModal: React.FC<ExploreModalProps> = ({
@@ -46,10 +48,17 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   onConfirmPlacement,
   onDiscard,
   onClose,
+  selectedDracoIndex: externalDracoIndex,
+  onSelectDracoIndex,
 }) => {
   const isDraco = player.faction.id === 'descendants_of_draco';
   const hasDracoChoice = isDraco && candidateTiles && candidateTiles.length >= 2;
-  const [selectedDracoIndex, setSelectedDracoIndex] = useState<number>(0);
+  const [internalDracoIndex, setInternalDracoIndex] = useState<number>(0);
+  const selectedDracoIndex = externalDracoIndex !== undefined ? externalDracoIndex : internalDracoIndex;
+  const setSelectedDracoIndex = (idx: number) => {
+    setInternalDracoIndex(idx);
+    onSelectDracoIndex?.(idx);
+  };
 
   const activeTile = hasDracoChoice ? candidateTiles![selectedDracoIndex]! : candidateTile;
 

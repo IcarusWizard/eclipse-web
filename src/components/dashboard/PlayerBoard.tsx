@@ -30,6 +30,7 @@ interface PlayerBoardProps {
   onOpenTechMarket: () => void;
   onOpenTrade: () => void;
   onOpenPhysicalBoard?: () => void;
+  hideOpponentReputation?: boolean;
 }
 
 export const PlayerBoard: React.FC<PlayerBoardProps> = ({
@@ -40,6 +41,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   onOpenTechMarket,
   onOpenTrade,
   onOpenPhysicalBoard,
+  hideOpponentReputation = false,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [showFleet, setShowFleet] = useState<boolean>(false);
@@ -177,10 +179,14 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {/* Reputation */}
           <div
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-600/50 text-amber-300 ml-auto"
-            title={`Reputation: ${reputationVP} VP (${player.reputationTiles.length}/5 tiles)`}
+            title={
+              hideOpponentReputation
+                ? `Reputation: ? VP (${player.reputationTiles.length}/${player.faction.reputationSlots ?? 5} tiles, secret)`
+                : `Reputation: ${reputationVP} VP (${player.reputationTiles.length}/${player.faction.reputationSlots ?? 5} tiles)`
+            }
           >
             <Trophy className="w-3 h-3 text-amber-400" />
-            <span className="font-bold">{reputationVP} VP</span>
+            <span className="font-bold">{hideOpponentReputation ? '? VP' : `${reputationVP} VP`}</span>
           </div>
         </div>
       </div>
@@ -339,16 +345,18 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           </span>
         </div>
 
-        {/* Reputation Tiles (Item 4) */}
+        {/* Reputation Tiles */}
         <div className="bg-slate-950/70 rounded-lg border border-amber-800/40 p-1.5 flex flex-col justify-between">
           <div className="flex items-center justify-between text-[10px] text-amber-400">
             <span className="flex items-center gap-1">
               <Trophy className="w-3 h-3 text-amber-400" /> Rep
             </span>
-            <span className="font-bold font-mono text-amber-300">{reputationVP} VP</span>
+            <span className="font-bold font-mono text-amber-300">
+              {hideOpponentReputation ? '? VP' : `${reputationVP} VP`}
+            </span>
           </div>
           <div className="flex items-center gap-1 mt-0.5 overflow-x-auto">
-            {Array.from({ length: 5 }).map((_, rIdx) => {
+            {Array.from({ length: player.faction.reputationSlots ?? 5 }).map((_, rIdx) => {
               const val = player.reputationTiles[rIdx];
               return (
                 <span
@@ -358,9 +366,15 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                       ? 'bg-amber-500/20 border-amber-400 text-amber-300'
                       : 'border-dashed border-slate-800 text-slate-700'
                   }`}
-                  title={val !== undefined ? `Reputation Tile: +${val} VP` : `Empty Reputation Slot ${rIdx + 1}`}
+                  title={
+                    val !== undefined
+                      ? hideOpponentReputation
+                        ? 'Facedown Reputation Tile (Secret)'
+                        : `Reputation Tile: +${val} VP`
+                      : `Empty Reputation Slot ${rIdx + 1}`
+                  }
                 >
-                  {val !== undefined ? val : ''}
+                  {val !== undefined ? (hideOpponentReputation ? '?' : val) : ''}
                 </span>
               );
             })}

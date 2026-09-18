@@ -2,7 +2,7 @@ import React from 'react';
 import { GameState } from '../../engine/types/state';
 import { computeCurrentScores } from '../../engine/rules/gameReducer';
 import { getTableNumber } from '../../engine/rules/persistence';
-import { Shield, Users, RefreshCw, Trophy, Radio, Cpu, LayoutDashboard } from 'lucide-react';
+import { Shield, Users, RefreshCw, Trophy, Radio, Cpu, LayoutDashboard, Home, Share2, Check, User } from 'lucide-react';
 
 interface HeaderProps {
   state: GameState;
@@ -13,6 +13,9 @@ interface HeaderProps {
   onOpenPlayerBoard?: () => void;
   onOpenScoreboard?: () => void;
   onOpenTableSession?: () => void;
+  onReturnToLobby?: () => void;
+  currentSeat?: number | 'all' | 'spectator';
+  onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -24,7 +27,11 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPlayerBoard,
   onOpenScoreboard,
   onOpenTableSession,
+  onReturnToLobby,
+  currentSeat = 'all',
+  onChangeSeat,
 }) => {
+  const [copiedSeat, setCopiedSeat] = React.useState(false);
   const activePlayer = state.players[state.activePlayerIndex];
   const viewedPlayer = state.players[selectedViewIndex];
   const { scores } = computeCurrentScores(state);
@@ -70,10 +77,79 @@ export const Header: React.FC<HeaderProps> = ({
             <span>Table #{tableNum}</span>
           </button>
         )}
+
+        {/* Return to Lobby Button */}
+        {onReturnToLobby && (
+          <button
+            onClick={onReturnToLobby}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 hover:text-cyan-300 font-mono text-xs font-bold transition-all shadow"
+            title="Return to Main Galaxy Lobby"
+          >
+            <Home className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Lobby</span>
+          </button>
+        )}
       </div>
 
       {/* Hotseat Table Commanders */}
       <div className="flex items-center gap-3">
+        {/* Seat / Hotseat Status & Direct Link */}
+        <div className="flex items-center gap-1.5 bg-slate-900/90 px-2.5 py-1 rounded-lg border border-slate-700/80 text-xs shadow">
+          <User className="w-3.5 h-3.5 text-cyan-400" />
+          <span className="text-slate-400 font-semibold text-[11px]">Seat:</span>
+          {onChangeSeat ? (
+            <select
+              value={currentSeat !== undefined ? currentSeat.toString() : 'all'}
+              onChange={(e) => {
+                const val = e.target.value;
+                if (val === 'all' || val === 'spectator') onChangeSeat(val);
+                else onChangeSeat(parseInt(val, 10));
+              }}
+              className="bg-slate-950 border border-slate-700 text-xs rounded px-1.5 py-0.5 text-cyan-300 font-bold focus:outline-none"
+            >
+              <option value="all">Hotseat (All)</option>
+              {state.players.map((p, idx) => (
+                <option key={p.id} value={idx.toString()}>
+                  Seat {idx + 1} ({p.faction.name})
+                </option>
+              ))}
+              <option value="spectator">Spectator</option>
+            </select>
+          ) : (
+            <span className="font-bold text-cyan-300">
+              {currentSeat === 'all' || currentSeat === undefined
+                ? 'Hotseat'
+                : currentSeat === 'spectator'
+                ? 'Spectator'
+                : `Seat ${Number(currentSeat) + 1}`}
+            </span>
+          )}
+
+          <button
+            type="button"
+            onClick={() => {
+              if (typeof window === 'undefined') return;
+              const origin = window.location.origin;
+              const pathname = window.location.pathname;
+              const tableParam = `table=${tableNum}`;
+              const seatParam =
+                currentSeat === 'all'
+                  ? ''
+                  : currentSeat === 'spectator'
+                  ? '&seat=spectator'
+                  : `&seat=${currentSeat}`;
+              const url = `${origin}${pathname}?${tableParam}${seatParam}`;
+              navigator.clipboard.writeText(url);
+              setCopiedSeat(true);
+              setTimeout(() => setCopiedSeat(false), 2000);
+            }}
+            className="p-1 hover:bg-slate-800 text-slate-400 hover:text-cyan-300 rounded transition"
+            title="Copy Direct Seat URL Link"
+          >
+            {copiedSeat ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Share2 className="w-3.5 h-3.5" />}
+          </button>
+        </div>
+
         {onOpenScoreboard && (
           <button
             onClick={onOpenScoreboard}

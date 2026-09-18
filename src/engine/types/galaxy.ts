@@ -54,6 +54,7 @@ export interface SectorTile {
   discoveryReward?: string;
   discoveryTile?: DiscoveryTile;
   ancientsCount: number;
+  guardiansCount?: number;
   hasGCDS?: boolean;
   hasWarpPortal?: boolean; // Warp portal structure placed in this sector
   discOwner?: string; // Player ID holding influence on this sector

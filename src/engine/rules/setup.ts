@@ -30,6 +30,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 3,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
   {
     id: 'terran_directorate',
@@ -49,6 +50,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 3,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
   {
     id: 'terran_republic',
@@ -68,6 +70,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 3,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
   {
     id: 'terran_conglomerate',
@@ -87,6 +90,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 3,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
   {
     id: 'terran_union',
@@ -106,6 +110,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 3,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
   {
     id: 'terran_alliance',
@@ -125,6 +130,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 3,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
 ];
 
@@ -182,6 +188,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 2,
     influenceActivations: 2,
+    reputationSlots: 4,
   },
   {
     id: 'hydran_progress',
@@ -201,6 +208,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 2,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
   {
     id: 'planta',
@@ -220,6 +228,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 2,
     influenceActivations: 2,
+    reputationSlots: 4,
   },
   {
     id: 'descendants_of_draco',
@@ -239,6 +248,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 2,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
   {
     id: 'mechanema',
@@ -258,6 +268,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 3,
     moveActivations: 2,
     influenceActivations: 2,
+    reputationSlots: 4,
   },
   {
     id: 'orion_hegemony',
@@ -277,6 +288,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 2,
     influenceActivations: 2,
+    reputationSlots: 5,
   },
 ];
 
@@ -466,7 +478,58 @@ export function createInitialGame(
     });
   }
 
-  const decks = generateSectorDecks();
+  const decks = generateSectorDecks(players.length);
+
+  // Discovery bag setup
+  const discoveryBag = (() => {
+    const bag = [...DISCOVERY_TILES];
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j]!, bag[i]!];
+    }
+    return bag;
+  })();
+
+  // Fill unused starting positions in Ring 2 with Guardian Sectors (Sector 212)
+  const canonicalStartingCoords = STARTING_COORDS_BY_COUNT[6]!;
+  const usedCoords = startingCoords.slice(0, players.length);
+  const unusedStartingCoords = canonicalStartingCoords.filter(
+    (c) => !usedCoords.some((u) => u.q === c.q && u.r === c.r)
+  );
+
+  unusedStartingCoords.forEach((coord, gIdx) => {
+    const centerEdge = getEdgeTowardCenter(coord);
+    const discTile = discoveryBag.length > 0 ? discoveryBag.pop() : undefined;
+    const guardianSector: SectorTile = {
+      id: `guardian_sector_${gIdx + 1}`,
+      sectorNumber: 212,
+      name: 'Guardian System',
+      ring: 2,
+      coord,
+      rotation: centerEdge,
+      wormholes: [true, false, true, true, false, true],
+      planets: [
+        { id: `g212_${gIdx}_p1`, resource: 'science', isAdvanced: true },
+        { id: `g212_${gIdx}_p2`, resource: 'material', isAdvanced: true },
+      ],
+      victoryPoints: 2,
+      hasArtifact: false,
+      hasDiscovery: true,
+      discoveryTile: discTile,
+      discoveryClaimed: false,
+      ancientsCount: 0,
+      guardiansCount: 1,
+      ships: [
+        {
+          id: `guardian_ship_${gIdx + 1}`,
+          ownerId: 'guardian',
+          type: 'guardian',
+          damage: 0,
+        },
+      ],
+    };
+    sectors.push(guardianSector);
+  });
 
   // Official Eclipse: Second Dawn Tech Bag & Tray Setup
   // 114 tiles: 99 regular (33 military, 33 grid, 33 nano) + 15 authentic rare techs
@@ -491,14 +554,7 @@ export function createInitialGame(
     techSupply,
     techBag,
     reputationBag,
-    discoveryBag: (() => {
-      const bag = [...DISCOVERY_TILES];
-      for (let i = bag.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [bag[i], bag[j]] = [bag[j]!, bag[i]!];
-      }
-      return bag;
-    })(),
+    discoveryBag,
     activeCombat: null,
     pendingExplore: null,
     pendingDiscovery: null,

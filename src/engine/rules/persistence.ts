@@ -108,11 +108,8 @@ export function loadActiveGameState(): GameState | null {
       const params = new URLSearchParams(window.location.search);
       const tableParam = params.get('table');
       if (tableParam) {
-        const tableNum = parseInt(tableParam, 10);
-        if (!isNaN(tableNum)) {
-          const fromTable = loadTableByNumber(tableNum);
-          if (fromTable) return fromTable;
-        }
+        const fromTable = loadTable(tableParam);
+        if (fromTable) return fromTable;
       }
     }
 
@@ -136,15 +133,20 @@ export function loadActiveGameState(): GameState | null {
 }
 
 /**
- * Retrieves a saved table by its 3-digit table number.
+ * Retrieves a saved table by its ID or 3-digit table number.
  */
-export function loadTableByNumber(tableNumber: number): GameState | null {
+export function loadTable(tableIdentifier: string | number): GameState | null {
   try {
     const storage = getStorage();
     const raw = storage.getItem(SAVED_TABLES_KEY);
     if (!raw) return null;
     const tables: Record<string, SavedTableSummary> = JSON.parse(raw);
-    const entry = Object.values(tables).find((t) => t.tableNumber === tableNumber);
+    const idStr = String(tableIdentifier);
+    const num = parseInt(idStr, 10);
+
+    const entry = Object.values(tables).find(
+      (t) => t.id === idStr || (!isNaN(num) && t.tableNumber === num)
+    );
     if (entry && entry.stateJson) {
       const parsed: GameState = JSON.parse(entry.stateJson);
       (parsed as any).tableNumber = entry.tableNumber;
@@ -152,9 +154,16 @@ export function loadTableByNumber(tableNumber: number): GameState | null {
     }
     return null;
   } catch (err) {
-    console.error(`Failed to load table #${tableNumber}:`, err);
+    console.error(`Failed to load table ${tableIdentifier}:`, err);
     return null;
   }
+}
+
+/**
+ * Retrieves a saved table by its 3-digit table number.
+ */
+export function loadTableByNumber(tableNumber: number): GameState | null {
+  return loadTable(tableNumber);
 }
 
 /**

@@ -29,6 +29,7 @@ interface ActionBarProps {
   onOpenMove: () => void;
   onOpenInfluence: () => void;
   onPass: () => void;
+  isTurnGated?: boolean;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -41,9 +42,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenMove,
   onOpenInfluence,
   onPass,
+  isTurnGated = false,
 }) => {
   const hasDiscs = activePlayer.influenceTrack.discsOnTrack > 0;
   const hasPassed = activePlayer.hasPassed;
+  const canAct = !isTurnGated && hasDiscs && !hasPassed;
   const maxExplore = getMaxExploreActivations(activePlayer);
   const maxResearch = getMaxResearchActivations(activePlayer);
   const maxUpgrade = getMaxUpgradeActivations(activePlayer);
@@ -71,14 +74,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <span>{activePlayer.influenceTrack.discsOnTrack} Discs</span>
       </div>
 
+      {isTurnGated && (
+        <div className="px-3 py-1 flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs font-bold">
+          <span>⏳ Opponent's Turn</span>
+        </div>
+      )}
+
       {/* Explore */}
       <button
-        disabled={!hasDiscs || hasPassed}
+        disabled={!canAct}
         onClick={onToggleExplore}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
           isExploreMode
             ? 'bg-cyan-500 text-slate-950 ring-2 ring-cyan-300'
-            : hasDiscs && !hasPassed
+            : canAct
             ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -89,10 +98,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {/* Research */}
       <button
-        disabled={!hasDiscs || hasPassed}
+        disabled={!canAct}
         onClick={onOpenResearch}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          hasDiscs && !hasPassed
+          canAct
             ? 'bg-slate-900 hover:bg-slate-800 text-pink-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -103,10 +112,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {/* Upgrade */}
       <button
-        disabled={!hasDiscs || hasPassed}
+        disabled={!canAct}
         onClick={onOpenUpgrade}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          hasDiscs && !hasPassed
+          canAct
             ? 'bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -117,10 +126,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {/* Build */}
       <button
-        disabled={!hasDiscs || hasPassed}
+        disabled={!canAct}
         onClick={onOpenBuild}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          hasDiscs && !hasPassed
+          canAct
             ? 'bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -131,10 +140,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {/* Move */}
       <button
-        disabled={!hasDiscs || hasPassed}
+        disabled={!canAct}
         onClick={onOpenMove}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          hasDiscs && !hasPassed
+          canAct
             ? 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -145,10 +154,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {/* Influence */}
       <button
-        disabled={!hasDiscs || hasPassed}
+        disabled={!canAct}
         onClick={onOpenInfluence}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          hasDiscs && !hasPassed
+          canAct
             ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -161,10 +170,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {/* Pass */}
       <button
-        disabled={hasPassed}
+        disabled={isTurnGated || hasPassed}
         onClick={onPass}
         className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          !hasPassed
+          !isTurnGated && !hasPassed
             ? 'bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-300 border border-slate-700'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}

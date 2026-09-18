@@ -43,6 +43,18 @@ export function buildCombatUnitsForSector(
         shieldBonus: 0,
         weapons: [{ color: 'yellow', damage: 1, count: 2 }],
       });
+    } else if (ship.type === 'guardian') {
+      units.push({
+        id: ship.id,
+        ownerId: 'guardian',
+        type: 'guardian',
+        initiative: 3,
+        maxHull: 3,
+        currentDamage: ship.damage,
+        computerBonus: 2,
+        shieldBonus: 1,
+        weapons: [{ color: 'yellow', damage: 1, count: 3 }],
+      });
     } else if (ship.type === 'gcds') {
       units.push({
         id: ship.id,
@@ -53,7 +65,7 @@ export function buildCombatUnitsForSector(
         currentDamage: ship.damage,
         computerBonus: 2,
         shieldBonus: 0,
-        weapons: [{ color: 'orange', damage: 2, count: 4 }],
+        weapons: [{ color: 'yellow', damage: 1, count: 4 }],
       });
     } else {
       const player = players.find((p) => p.id === ship.ownerId);
@@ -96,6 +108,9 @@ export function buildCombatUnitsForSector(
 export function getSectorDefenderOwnerId(sector: SectorTile): string | undefined {
   if (sector.ancientsCount > 0 || sector.ships.some((s) => s.ownerId === 'ancient' || s.type === 'ancient')) {
     return 'ancient';
+  }
+  if (sector.ships.some((s) => s.ownerId === 'guardian' || s.type === 'guardian')) {
+    return 'guardian';
   }
   if (sector.hasGCDS || sector.ships.some((s) => s.ownerId === 'gcds' || s.type === 'gcds')) {
     return 'gcds';

@@ -73,7 +73,7 @@
 
 ### Structures
 - **Orbitals**: Cost 4 Materials, require `orbital` tech. Max 1 per sector. Adds 1 population habitat (Money or Science).
-- **Monoliths**: Cost 10 Materials, require `monolith` tech. Max 1 per sector. Awards **+2 VP** to the player controlling the sector at end of game.
+- **Monoliths**: Cost 10 Materials, require `monolith` tech. Max 1 per sector. Awards **+3 VP** to the player controlling the sector at end of game.
 - Structures cannot be destroyed or removed from a sector.
 
 ---

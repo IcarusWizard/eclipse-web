@@ -18,7 +18,9 @@ export type ActionType =
   | 'RESOLVE_COMBAT_STEP'
   | 'END_ROUND'
   | 'DISCOVERY_CHOICE'
-  | 'COMBAT_CONQUEST';
+  | 'COMBAT_CONQUEST'
+  | 'ALLOCATE_ARTIFACT_REWARD'
+  | 'ABANDON_SECTOR_BANKRUPTCY';
 
 export interface BaseAction {
   playerId: string;
@@ -47,6 +49,11 @@ export interface ResearchAction extends BaseAction {
     techId: string;
     targetTrack?: 'military' | 'grid' | 'nano';
   }[];
+  artifactRewardResources?: {
+    money?: number;
+    science?: number;
+    materials?: number;
+  };
 }
 
 export interface UpgradeAction extends BaseAction {
@@ -130,6 +137,20 @@ export interface ClaimReputationTileAction extends BaseAction {
   replaceTrackIndex?: number; // index on player.reputationTiles to replace if full
 }
 
+export interface AllocateArtifactRewardAction extends BaseAction {
+  type: 'ALLOCATE_ARTIFACT_REWARD';
+  resources: {
+    money: number;
+    science: number;
+    materials: number;
+  };
+}
+
+export interface AbandonSectorBankruptcyAction extends BaseAction {
+  type: 'ABANDON_SECTOR_BANKRUPTCY';
+  sectorId: string;
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -144,4 +165,6 @@ export type GameAction =
   | DiscoveryChoiceAction
   | ResolveCombatStepAction
   | CombatConquestAction
-  | ClaimReputationTileAction;
+  | ClaimReputationTileAction
+  | AllocateArtifactRewardAction
+  | AbandonSectorBankruptcyAction;

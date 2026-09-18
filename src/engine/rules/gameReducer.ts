@@ -8,7 +8,7 @@ import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, 
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS } from './partData';
-import { applyUpkeepPhase } from './economyEngine';
+import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs } from './economyEngine';
 import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6 } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip } from '../types/galaxy';
 import { PlayerState } from '../types/player';
@@ -103,7 +103,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'DISCOVERY_CHOICE' &&
       action.type !== 'COMBAT_CONQUEST' &&
       action.type !== 'RESOLVE_COMBAT_STEP' &&
-      action.type !== 'CLAIM_REPUTATION_TILE'
+      action.type !== 'CLAIM_REPUTATION_TILE' &&
+      action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
+      action.type !== 'ABANDON_SECTOR_BANKRUPTCY'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -134,6 +136,19 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!isSecondActivation && player.influenceTrack.discsOnTrack <= 0) {
         return { valid: false, error: 'No influence discs remaining on track to activate Explore.' };
       }
+
+      // 4. Sector deck must not be exhausted for target ring
+      const ring = getRingFromCoord(action.targetCoord);
+      const deck =
+        ring === 1
+          ? state.sectorDecks?.ring1
+          : ring === 2
+          ? state.sectorDecks?.ring2
+          : state.sectorDecks?.ring3;
+      if (!deck || deck.length === 0) {
+        return { valid: false, error: `No Ring ${ring} sector tiles remaining in the stack.` };
+      }
+
       return { valid: true };
     }
 
@@ -726,6 +741,34 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'ALLOCATE_ARTIFACT_REWARD': {
+      if (!state.pendingArtifactReward || state.pendingArtifactReward.playerId !== action.playerId) {
+        return { valid: false, error: 'No pending Artifact Key reward for this player.' };
+      }
+      const totalReward = state.pendingArtifactReward.totalResources;
+      const m = Math.max(0, action.resources?.money || 0);
+      const sc = Math.max(0, action.resources?.science || 0);
+      const mat = Math.max(0, action.resources?.materials || 0);
+      if (m + sc + mat !== totalReward) {
+        return {
+          valid: false,
+          error: `Total allocated resources (${m + sc + mat}) must equal exactly ${totalReward}.`,
+        };
+      }
+      return { valid: true };
+    }
+
+    case 'ABANDON_SECTOR_BANKRUPTCY': {
+      if (!state.pendingBankruptcy || state.pendingBankruptcy.playerId !== action.playerId) {
+        return { valid: false, error: 'No pending bankruptcy for this player.' };
+      }
+      const sector = state.sectors.find((s) => s.id === action.sectorId);
+      if (!sector || sector.discOwner !== action.playerId) {
+        return { valid: false, error: 'Cannot abandon a sector not controlled by this player.' };
+      }
+      return { valid: true };
+    }
+
     default:
       return { valid: true };
   }
@@ -917,11 +960,34 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           const controlledArtifacts = newState.sectors.filter(
             (s) => s.discOwner === player.id && s.hasArtifact
           ).length;
-          const reward = controlledArtifacts * 5;
-          player.resources.materials += reward;
-          addLog(
-            `${player.name} activated Artifact Key across ${controlledArtifacts} controlled Artifact(s) and received ${reward} Materials!`
-          );
+          const totalReward = controlledArtifacts * 5;
+          if (totalReward > 0) {
+            if (action.artifactRewardResources) {
+              const m = Math.max(0, action.artifactRewardResources.money || 0);
+              const sc = Math.max(0, action.artifactRewardResources.science || 0);
+              const mat = Math.max(0, action.artifactRewardResources.materials || 0);
+              if (m + sc + mat === totalReward) {
+                player.resources.money += m;
+                player.resources.science += sc;
+                player.resources.materials += mat;
+                addLog(
+                  `${player.name} activated Artifact Key across ${controlledArtifacts} controlled Artifact(s) and received ${m} Money, ${sc} Science, ${mat} Materials!`
+                );
+              } else {
+                newState.pendingArtifactReward = {
+                  playerId: player.id,
+                  totalResources: totalReward,
+                  artifactsCount: controlledArtifacts,
+                };
+              }
+            } else {
+              newState.pendingArtifactReward = {
+                playerId: player.id,
+                totalResources: totalReward,
+                artifactsCount: controlledArtifacts,
+              };
+            }
+          }
         }
 
         addLog(`${player.name} researched ${tech.name} for ${cost} Science (${targetTrack.toUpperCase()} track).`);
@@ -1447,7 +1513,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         action.selectedTileIndex < drawnTiles.length
       ) {
         const keptTile = drawnTiles.splice(action.selectedTileIndex, 1)[0]!;
-        const maxRepTiles = 5;
+        const maxRepTiles = player.faction.reputationSlots ?? 5;
 
         if (
           player.reputationTiles.length >= maxRepTiles &&
@@ -1499,12 +1565,91 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
       return { success: true, newState };
     }
+
+    case 'ALLOCATE_ARTIFACT_REWARD': {
+      if (!newState.pendingArtifactReward || newState.pendingArtifactReward.playerId !== action.playerId) {
+        return { newState: state, error: 'No pending Artifact Key reward for this player.' };
+      }
+      const totalReward = newState.pendingArtifactReward.totalResources;
+      const m = Math.max(0, action.resources.money || 0);
+      const sc = Math.max(0, action.resources.science || 0);
+      const mat = Math.max(0, action.resources.materials || 0);
+      if (m + sc + mat !== totalReward) {
+        return {
+          newState: state,
+          error: `Total allocated resources (${m + sc + mat}) must equal exactly ${totalReward}.`,
+        };
+      }
+
+      player.resources.money += m;
+      player.resources.science += sc;
+      player.resources.materials += mat;
+      addLog(
+        `${player.name} allocated Artifact Key rewards: ${m} Money, ${sc} Science, ${mat} Materials!`,
+        'action'
+      );
+      newState.pendingArtifactReward = null;
+      break;
+    }
+
+    case 'ABANDON_SECTOR_BANKRUPTCY': {
+      if (!newState.pendingBankruptcy || newState.pendingBankruptcy.playerId !== action.playerId) {
+        return { newState: state, error: 'No pending bankruptcy for this player.' };
+      }
+
+      const sector = newState.sectors.find((s) => s.id === action.sectorId);
+      if (!sector || sector.discOwner !== player.id) {
+        return { newState: state, error: 'Cannot abandon a sector not controlled by this player.' };
+      }
+
+      const { updatedPlayer, savedUpkeep } = abandonSectorForUpkeep(player, sector);
+      const pIdx = newState.players.findIndex((p) => p.id === player.id);
+      newState.players[pIdx] = updatedPlayer;
+
+      addLog(
+        `${player.name} abandoned Sector ${sector.sectorNumber}, returning an Influence Disc and population cubes (saved ${savedUpkeep} upkeep)!`,
+        'economy'
+      );
+
+      if (updatedPlayer.resources.money >= 0) {
+        addLog(`${player.name} restored budget solvency! Deficit cleared.`, 'economy');
+        newState.pendingBankruptcy = null;
+        checkNextBankruptcyOrCleanup(newState);
+      } else {
+        const remainingControlled = newState.sectors.filter((s) => s.discOwner === updatedPlayer.id);
+        if (remainingControlled.length > 0) {
+          newState.pendingBankruptcy = {
+            playerId: updatedPlayer.id,
+            deficit: Math.abs(updatedPlayer.resources.money),
+          };
+        } else {
+          updatedPlayer.isEliminated = true;
+          updatedPlayer.resources.money = 0;
+          for (const sec of newState.sectors) {
+            sec.ships = sec.ships.filter((s) => s.ownerId !== updatedPlayer.id);
+            if (sec.discOwner === updatedPlayer.id) sec.discOwner = undefined;
+          }
+          addLog(
+            `🚨 CIVILIZATION COLLAPSE: ${updatedPlayer.name} has no sectors remaining to abandon and is ELIMINATED!`,
+            'economy'
+          );
+          newState.pendingBankruptcy = null;
+          checkNextBankruptcyOrCleanup(newState);
+        }
+      }
+
+      return { success: true, newState };
+    }
   }
 
   // Turn management during ACTION_PHASE
   if (newState.phase === 'ACTION_PHASE') {
     if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
       // Multiple explore activations (e.g. Planta): do not advance turn yet!
+      return { success: true, newState };
+    }
+    if (newState.pendingArtifactReward) {
+      // Multiple resources choice pending for Artifact Key: do not advance turn yet!
       return { success: true, newState };
     }
     const activePlayers = newState.players.filter((p) => !p.isEliminated);
@@ -1816,33 +1961,123 @@ export function transitionToUpkeep(state: GameState): void {
     const p = state.players[i]!;
     if (p.isEliminated) continue;
 
-    const upkeepRes = applyUpkeepPhase(p, state.sectors);
-    state.players[i] = upkeepRes.updatedPlayer;
+    // 1. Add round production
+    const moneyIncome = getIncomeForTrack(p.population.money.cubesOnBoard);
+    const scienceIncome = getIncomeForTrack(p.population.science.cubesOnBoard);
+    const materialsIncome = getIncomeForTrack(p.population.material.cubesOnBoard);
 
-    for (const msg of upkeepRes.bankruptcyLog) {
-      state.log.unshift({
-        id: `log_${Date.now()}_bankrupt_${Math.random().toString(36).substr(2, 4)}`,
-        timestamp: Date.now(),
-        round: state.round,
-        phase: 'UPKEEP_PHASE',
-        playerId: p.id,
-        message: msg,
-        type: 'economy',
-      });
-    }
+    p.resources.money += moneyIncome;
+    p.resources.science += scienceIncome;
+    p.resources.materials += materialsIncome;
 
-    if (upkeepRes.eliminated) {
-      // Remove all ships of eliminated player from all sectors
-      for (const sec of state.sectors) {
-        sec.ships = sec.ships.filter((s) => s.ownerId !== p.id);
-        if (sec.discOwner === p.id) {
-          sec.discOwner = undefined;
+    // 2. Deduct upkeep
+    const upkeep = getUpkeepForDiscs(p.influenceTrack.discsOnTrack);
+    p.resources.money -= upkeep;
+
+    // 3. Ready colony ships
+    p.colonyShips = {
+      total: p.colonyShips.total,
+      ready: p.colonyShips.total,
+    };
+
+    // 4. Emergency auto-trade if budget is negative
+    if (p.resources.money < 0) {
+      const tradeRatio = p.faction.tradeRatio || 2;
+      if (p.resources.money < 0 && p.resources.materials > 0) {
+        const neededMoney = Math.abs(p.resources.money);
+        const matsToTrade = Math.min(p.resources.materials, neededMoney * tradeRatio);
+        const unitsTraded = Math.floor(matsToTrade / tradeRatio) * tradeRatio;
+        if (unitsTraded > 0) {
+          const gained = unitsTraded / tradeRatio;
+          p.resources.materials -= unitsTraded;
+          p.resources.money += gained;
+          state.log.unshift({
+            id: `log_${Date.now()}_trade_mats_${p.id}`,
+            timestamp: Date.now(),
+            round: state.round,
+            phase: 'UPKEEP_PHASE',
+            playerId: p.id,
+            message: `${p.name} made an emergency trade of ${unitsTraded} Materials for ${gained} Credits.`,
+            type: 'economy',
+          });
+        }
+      }
+
+      if (p.resources.money < 0 && p.resources.science > 0) {
+        const neededMoney = Math.abs(p.resources.money);
+        const sciToTrade = Math.min(p.resources.science, neededMoney * tradeRatio);
+        const unitsTraded = Math.floor(sciToTrade / tradeRatio) * tradeRatio;
+        if (unitsTraded > 0) {
+          const gained = unitsTraded / tradeRatio;
+          p.resources.science -= unitsTraded;
+          p.resources.money += gained;
+          state.log.unshift({
+            id: `log_${Date.now()}_trade_sci_${p.id}`,
+            timestamp: Date.now(),
+            round: state.round,
+            phase: 'UPKEEP_PHASE',
+            playerId: p.id,
+            message: `${p.name} made an emergency trade of ${unitsTraded} Science for ${gained} Credits.`,
+            type: 'economy',
+          });
         }
       }
     }
   }
 
-  // Advance to CLEANUP_PHASE
+  // Check if any player entered tactical bankruptcy
+  checkNextBankruptcyOrCleanup(state);
+}
+
+export function checkNextBankruptcyOrCleanup(state: GameState): void {
+  const bankruptPlayer = state.players.find(
+    (p) => !p.isEliminated && p.resources.money < 0
+  );
+
+  if (bankruptPlayer) {
+    const controlledSectors = state.sectors.filter(
+      (s) => s.discOwner === bankruptPlayer.id
+    );
+
+    if (controlledSectors.length > 0) {
+      state.pendingBankruptcy = {
+        playerId: bankruptPlayer.id,
+        deficit: Math.abs(bankruptPlayer.resources.money),
+      };
+      state.log.unshift({
+        id: `log_${Date.now()}_bankrupt_${bankruptPlayer.id}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: 'UPKEEP_PHASE',
+        playerId: bankruptPlayer.id,
+        message: `⚠️ TACTICAL BANKRUPTCY: ${bankruptPlayer.name} has a budget deficit of ${Math.abs(bankruptPlayer.resources.money)} Credits! Must abandon controlled sectors to balance the budget.`,
+        type: 'economy',
+      });
+      return;
+    } else {
+      // Deficit persists after abandoning all sectors -> eliminate player immediately!
+      bankruptPlayer.isEliminated = true;
+      bankruptPlayer.resources.money = 0;
+      for (const sec of state.sectors) {
+        sec.ships = sec.ships.filter((s) => s.ownerId !== bankruptPlayer.id);
+        if (sec.discOwner === bankruptPlayer.id) sec.discOwner = undefined;
+      }
+      state.log.unshift({
+        id: `log_${Date.now()}_eliminated_${bankruptPlayer.id}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: 'UPKEEP_PHASE',
+        playerId: bankruptPlayer.id,
+        message: `🚨 CIVILIZATION COLLAPSE: ${bankruptPlayer.name} has no sectors remaining to abandon and is ELIMINATED from the galaxy!`,
+        type: 'economy',
+      });
+
+      checkNextBankruptcyOrCleanup(state);
+      return;
+    }
+  }
+
+  state.pendingBankruptcy = null;
   transitionToCleanup(state);
 }
 

@@ -23,6 +23,7 @@ import {
   Shield,
   Zap,
   Hammer,
+  Hexagon,
 } from 'lucide-react';
 
 export interface HexMapBuildMode {
@@ -146,6 +147,23 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   const [pan, setPan] = useState({ x: 450, y: 350 });
   const [isDragging, setIsDragging] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
+  const [showGrid, setShowGrid] = useState(false);
+
+  const unoccupiedCoords = useMemo(() => {
+    const list: HexCoord[] = [];
+    for (let q = -3; q <= 3; q++) {
+      for (let r = -3; r <= 3; r++) {
+        if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) <= 3) {
+          const coord = { q, r };
+          const exists = state.sectors.some((s) => areCoordsEqual(s.coord, coord));
+          if (!exists) {
+            list.push(coord);
+          }
+        }
+      }
+    }
+    return list;
+  }, [state.sectors]);
 
   const activePlayer = state.players[state.activePlayerIndex];
 
@@ -287,8 +305,33 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
         />
       </div>
 
-      {/* Map Controls */}
-      <div className="absolute top-4 right-4 z-20 flex gap-2">
+      {/* Map Controls & Status HUD */}
+      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+        {/* Sector Deck Counter Badge */}
+        <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-lg text-xs font-mono shadow-md">
+          <span className="text-slate-400 font-bold text-[11px]">DECKS:</span>
+          <span className="text-amber-400 font-bold" title="Ring 1 Sector Stack">R1: {state.sectorDecks?.ring1?.length ?? 0}</span>
+          <span className="text-slate-600">|</span>
+          <span className="text-cyan-400 font-bold" title="Ring 2 Sector Stack">R2: {state.sectorDecks?.ring2?.length ?? 0}</span>
+          <span className="text-slate-600">|</span>
+          <span className="text-indigo-400 font-bold" title="Ring 3 Sector Stack">R3: {state.sectorDecks?.ring3?.length ?? 0}</span>
+        </div>
+
+        {/* Grid Outline Toggle */}
+        <button
+          type="button"
+          onClick={() => setShowGrid((g) => !g)}
+          className={`px-3 py-1.5 rounded-lg border text-xs font-semibold shadow transition-all flex items-center gap-1.5 ${
+            showGrid
+              ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-cyan-500/20'
+              : 'bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-300'
+          }`}
+          title="Toggle Dashed Hexagonal Grid Outlines for Unexplored Sectors"
+        >
+          <Hexagon className="w-3.5 h-3.5" />
+          <span>Grid</span>
+        </button>
+
         <button
           onClick={() => setZoom((z) => Math.min(2.5, z * 1.2))}
           className="p-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-200 rounded text-sm font-bold shadow"
@@ -535,6 +578,49 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             </text>
           </g>
 
+          {/* Dashed Hexagonal Outlines for Unexplored Sectors (when showGrid is enabled) */}
+          {showGrid &&
+            unoccupiedCoords.map((coord) => {
+              const { x, y } = hexToPixel(coord, HEX_RADIUS);
+              const ring = getRingFromCoord(coord);
+              const hexPoints = getHexCornerPoints(x, y, HEX_RADIUS - 2);
+              return (
+                <g key={`dash_grid_${coord.q}_${coord.r}`} className="pointer-events-none">
+                  <polygon
+                    points={hexPoints}
+                    fill="rgba(15, 23, 42, 0.22)"
+                    stroke={
+                      ring === 1
+                        ? 'rgba(251, 191, 36, 0.35)'
+                        : ring === 2
+                        ? 'rgba(56, 189, 248, 0.35)'
+                        : 'rgba(129, 140, 248, 0.35)'
+                    }
+                    strokeWidth="1.5"
+                    strokeDasharray="6 4"
+                  />
+                  <text
+                    x={x}
+                    y={y + 4}
+                    textAnchor="middle"
+                    fill={
+                      ring === 1
+                        ? 'rgba(251, 191, 36, 0.45)'
+                        : ring === 2
+                        ? 'rgba(56, 189, 248, 0.45)'
+                        : 'rgba(129, 140, 248, 0.45)'
+                    }
+                    fontSize="11"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                    letterSpacing="0.5"
+                  >
+                    R{ring}
+                  </text>
+                </g>
+              );
+            })}
+
           {/* Explorable Target Hexes in Explore Mode */}
           {explorableHexes.map((target, idx) => {
             if (pendingExplore && areCoordsEqual(target.target, pendingExplore.target)) {
@@ -751,21 +837,34 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   );
                 })}
 
-                {/* Sector Number & Prominent VP Header */}
-                <text
-                  x={x}
-                  y={y - HEX_RADIUS + 16}
-                  textAnchor="middle"
-                  fill="#94a3b8"
-                  fontSize="10"
-                  fontWeight="bold"
-                  letterSpacing="0.8"
-                >
-                  {isCenter ? 'GCDS 001' : `SEC ${sector.sectorNumber}`}
-                </text>
+                {/* Sector Number High-Contrast Badge */}
+                <g transform={`translate(${x}, ${y - HEX_RADIUS + 15})`} className="pointer-events-none">
+                  <rect
+                    x={isCenter ? -28 : -24}
+                    y="-9"
+                    width={isCenter ? 56 : 48}
+                    height="18"
+                    rx="4"
+                    fill="rgba(2, 6, 23, 0.92)"
+                    stroke={isCenter ? '#ec4899' : '#38bdf8'}
+                    strokeWidth="1.3"
+                  />
+                  <text
+                    x="0"
+                    y="3.5"
+                    textAnchor="middle"
+                    fill={isCenter ? '#f472b6' : '#f0f9ff'}
+                    fontSize="11"
+                    fontFamily="monospace"
+                    fontWeight="900"
+                    letterSpacing="0.5"
+                  >
+                    {isCenter ? 'GCDS 1' : `SEC ${sector.sectorNumber}`}
+                  </text>
+                </g>
 
                 {sector.victoryPoints > 0 && (
-                  <g transform={`translate(${x}, ${y - HEX_RADIUS + 29})`} className="pointer-events-none">
+                  <g transform={`translate(${x}, ${y - HEX_RADIUS + 32})`} className="pointer-events-none">
                     <rect
                       x="-18"
                       y="-7"

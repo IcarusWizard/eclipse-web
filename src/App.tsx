@@ -30,7 +30,10 @@ import { SectorInspector } from './components/map/SectorInspector';
 import { PhysicalPlayerBoardModal } from './components/dashboard/PhysicalPlayerBoardModal';
 import { LiveScoreboardModal } from './components/dashboard/LiveScoreboardModal';
 import { TableSessionModal } from './components/layout/TableSessionModal';
-import { loadActiveGameState, saveGameState } from './engine/rules/persistence';
+import { ArtifactKeyModal } from './components/actions/ArtifactKeyModal';
+import { BankruptcyModal } from './components/actions/BankruptcyModal';
+import { LobbyView } from './components/lobby/LobbyView';
+import { loadActiveGameState, saveGameState, loadTable } from './engine/rules/persistence';
 
 export const App: React.FC = () => {
   const [state, setState] = useState<GameState>(() => {
@@ -52,6 +55,7 @@ export const App: React.FC = () => {
     target: HexCoord;
   } | null>(null);
   const [exploreRotation, setExploreRotation] = useState<number>(0);
+  const [dracoSelectedTileIndex, setDracoSelectedTileIndex] = useState<number>(0);
   const [isBlueprintOpen, setIsBlueprintOpen] = useState<boolean>(false);
   const [isTechMarketOpen, setIsTechMarketOpen] = useState<boolean>(false);
   const [isPhysicalBoardOpen, setIsPhysicalBoardOpen] = useState<boolean>(false);
@@ -99,6 +103,137 @@ export const App: React.FC = () => {
     }
   }, []);
 
+  // Table & Seat routing
+  const [inGame, setInGame] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return true;
+    const params = new URLSearchParams(window.location.search);
+    return params.has('table');
+  });
+
+  const [currentSeat, setCurrentSeat] = useState<number | 'all' | 'spectator'>(() => {
+    if (typeof window === 'undefined') return 'all';
+    const params = new URLSearchParams(window.location.search);
+    const seatParam = params.get('seat');
+    if (!seatParam || seatParam === 'all') return 'all';
+    if (seatParam === 'spectator') return 'spectator';
+    const num = parseInt(seatParam, 10);
+    return isNaN(num) ? 'all' : num;
+  });
+
+  const isTurnGated =
+    currentSeat !== 'all' &&
+    currentSeat !== 'spectator' &&
+    typeof currentSeat === 'number' &&
+    state.activePlayerIndex !== currentSeat;
+
+  const hideOpponentReputation =
+    currentSeat !== 'all' &&
+    currentSeat !== 'spectator' &&
+    typeof currentSeat === 'number' &&
+    viewedPlayer.id !== state.players[currentSeat]?.id &&
+    state.phase !== 'GAME_OVER';
+
+  const handleStartNewGameFromLobby = (
+    playerCount: number,
+    factionIds: string[],
+    tableId: string,
+    seat: number | 'all'
+  ) => {
+    const newGame = createInitialGame(playerCount, factionIds);
+    const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
+    (newGame as any).tableNumber = num;
+    newGame.id = tableId;
+    saveGameState(newGame);
+    setState(newGame);
+    setCurrentSeat(seat);
+    if (typeof seat === 'number') {
+      setSelectedViewIndex(seat);
+    }
+    setInGame(true);
+
+    if (typeof window !== 'undefined') {
+      const seatParam = seat === 'all' ? '' : `&seat=${seat}`;
+      window.history.pushState({}, '', `?table=${tableId}${seatParam}`);
+    }
+  };
+
+  const handleJoinTableFromLobby = (
+    tableId: string,
+    seat: number | 'all' | 'spectator'
+  ) => {
+    let loaded = loadTable(tableId);
+    if (!loaded) {
+      loaded = createInitialGame(2);
+      const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
+      (loaded as any).tableNumber = num;
+      loaded.id = tableId;
+      saveGameState(loaded);
+    }
+    setState(loaded);
+    setCurrentSeat(seat);
+    if (typeof seat === 'number' && loaded.players[seat]) {
+      setSelectedViewIndex(seat);
+    }
+    setInGame(true);
+
+    if (typeof window !== 'undefined') {
+      const seatParam =
+        seat === 'all' ? '' : seat === 'spectator' ? '&seat=spectator' : `&seat=${seat}`;
+      window.history.pushState({}, '', `?table=${tableId}${seatParam}`);
+    }
+  };
+
+  const handleReturnToLobby = () => {
+    setInGame(false);
+    if (typeof window !== 'undefined') {
+      window.history.pushState({}, '', window.location.pathname);
+    }
+  };
+
+  const handleChangeSeat = (seat: number | 'all' | 'spectator') => {
+    setCurrentSeat(seat);
+    if (typeof seat === 'number' && state.players[seat]) {
+      setSelectedViewIndex(seat);
+    }
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const tableParam = params.get('table') || state.id;
+      const seatParam =
+        seat === 'all' ? '' : seat === 'spectator' ? '&seat=spectator' : `&seat=${seat}`;
+      window.history.replaceState({}, '', `?table=${tableParam}${seatParam}`);
+    }
+  };
+
+  const handleAllocateArtifactReward = (resources: { money: number; science: number; materials: number }) => {
+    if (!state.pendingArtifactReward) return;
+    const result = executeAction(state, {
+      type: 'ALLOCATE_ARTIFACT_REWARD',
+      playerId: state.pendingArtifactReward.playerId,
+      resources,
+    });
+    if (result.success) {
+      setState(result.newState);
+      setErrorMessage(null);
+    } else {
+      setErrorMessage(result.error || 'Failed to allocate artifact reward');
+    }
+  };
+
+  const handleAbandonSectorBankruptcy = (sectorId: string) => {
+    if (!state.pendingBankruptcy) return;
+    const result = executeAction(state, {
+      type: 'ABANDON_SECTOR_BANKRUPTCY',
+      playerId: state.pendingBankruptcy.playerId,
+      sectorId,
+    });
+    if (result.success) {
+      setState(result.newState);
+      setErrorMessage(null);
+    } else {
+      setErrorMessage(result.error || 'Failed to abandon sector');
+    }
+  };
+
   const handleStartNewGame = (playerCount: number, selectedFactionIds?: string[]) => {
     const newGame = createInitialGame(playerCount, selectedFactionIds);
     setState(newGame);
@@ -109,7 +244,6 @@ export const App: React.FC = () => {
 
   // Explore flow: User clicks an explorable hex on map
   const handleExploreTarget = (fromCoord: HexCoord, targetCoord: HexCoord) => {
-    setPendingExploreCoords({ from: fromCoord, target: targetCoord });
     const ring = getRingFromCoord(targetCoord);
     const deck =
       ring === 1
@@ -117,6 +251,12 @@ export const App: React.FC = () => {
         : ring === 2
         ? state.sectorDecks.ring2
         : state.sectorDecks.ring3;
+    if (!deck || deck.length === 0) {
+      showToast(`No Ring ${ring} sectors remaining in the stack!`);
+      return;
+    }
+
+    setPendingExploreCoords({ from: fromCoord, target: targetCoord });
     const candidate = deck[deck.length - 1];
     const source = state.sectors.find((s) => areCoordsEqual(s.coord, fromCoord));
     const hasWormholeGen = activePlayer.techTrack.researched.some(
@@ -769,6 +909,13 @@ export const App: React.FC = () => {
     return undefined;
   }, [pendingExploreCoords, state.sectorDecks, activePlayer.faction.id]);
 
+  const activeCandidateTile = React.useMemo(() => {
+    if (candidateTiles && candidateTiles[dracoSelectedTileIndex]) {
+      return candidateTiles[dracoSelectedTileIndex]!;
+    }
+    return candidateTile;
+  }, [candidateTiles, dracoSelectedTileIndex, candidateTile]);
+
   const sourceSector = React.useMemo(() => {
     if (!pendingExploreCoords) return null;
     return state.sectors.find(
@@ -777,6 +924,15 @@ export const App: React.FC = () => {
         s.coord.r === pendingExploreCoords.from.r
     ) || null;
   }, [pendingExploreCoords, state.sectors]);
+
+  if (!inGame) {
+    return (
+      <LobbyView
+        onStartNewGame={handleStartNewGameFromLobby}
+        onJoinTable={handleJoinTableFromLobby}
+      />
+    );
+  }
 
   return (
     <div className="w-screen h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
@@ -790,6 +946,9 @@ export const App: React.FC = () => {
         onOpenPlayerBoard={() => setIsPhysicalBoardOpen(true)}
         onOpenScoreboard={() => setIsScoreboardOpen(true)}
         onOpenTableSession={() => setIsTableSessionOpen(true)}
+        onReturnToLobby={handleReturnToLobby}
+        currentSeat={currentSeat}
+        onChangeSeat={handleChangeSeat}
       />
 
       {/* Planta 2nd Activation Banner */}
@@ -820,11 +979,11 @@ export const App: React.FC = () => {
           onExploreTarget={handleExploreTarget}
           onColonizePlanet={handleColonizePlanet}
           pendingExplore={
-            pendingExploreCoords && candidateTile
+            pendingExploreCoords && activeCandidateTile
               ? {
                   from: pendingExploreCoords.from,
                   target: pendingExploreCoords.target,
-                  candidateTile,
+                  candidateTile: activeCandidateTile,
                   rotation: exploreRotation,
                 }
               : null
@@ -880,6 +1039,7 @@ export const App: React.FC = () => {
             onOpenTechMarket={() => setIsTechMarketOpen(true)}
             onOpenTrade={() => setIsTradeOpen(true)}
             onOpenPhysicalBoard={() => setIsPhysicalBoardOpen(true)}
+            hideOpponentReputation={hideOpponentReputation}
           />
         </div>
 
@@ -910,6 +1070,7 @@ export const App: React.FC = () => {
             onOpenMove={() => setIsMoveOpen(true)}
             onOpenInfluence={() => setIsInfluenceOpen(true)}
             onPass={handlePass}
+            isTurnGated={isTurnGated}
           />
         )}
 
@@ -932,12 +1093,17 @@ export const App: React.FC = () => {
           targetCoord={pendingExploreCoords.target}
           candidateTile={candidateTile}
           candidateTiles={candidateTiles}
+          selectedDracoIndex={dracoSelectedTileIndex}
+          onSelectDracoIndex={setDracoSelectedTileIndex}
           sourceSector={sourceSector}
           rotation={exploreRotation}
           onRotate={setExploreRotation}
           onConfirmPlacement={handleConfirmExplorePlacement}
           onDiscard={handleDiscardExploreTile}
-          onClose={() => setPendingExploreCoords(null)}
+          onClose={() => {
+            setPendingExploreCoords(null);
+            setDracoSelectedTileIndex(0);
+          }}
         />
       )}
 
@@ -1050,6 +1216,30 @@ export const App: React.FC = () => {
         />
       )}
 
+      {state.pendingArtifactReward && (
+        <ArtifactKeyModal
+          player={
+            state.players.find((p) => p.id === state.pendingArtifactReward!.playerId) ||
+            activePlayer
+          }
+          totalResources={state.pendingArtifactReward.totalResources}
+          artifactsCount={state.pendingArtifactReward.artifactsCount}
+          onAllocate={handleAllocateArtifactReward}
+        />
+      )}
+
+      {state.pendingBankruptcy && (
+        <BankruptcyModal
+          player={
+            state.players.find((p) => p.id === state.pendingBankruptcy!.playerId) ||
+            activePlayer
+          }
+          deficit={state.pendingBankruptcy.deficit}
+          sectors={state.sectors}
+          onAbandonSector={handleAbandonSectorBankruptcy}
+        />
+      )}
+
       {state.phase === 'GAME_OVER' && (
         <GameOverModal
           state={state}
@@ -1076,6 +1266,7 @@ export const App: React.FC = () => {
             setIsPhysicalBoardOpen(false);
             setIsTechMarketOpen(true);
           }}
+          hideOpponentReputation={hideOpponentReputation}
         />
       )}
 

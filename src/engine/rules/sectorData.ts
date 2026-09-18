@@ -100,7 +100,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, true, true, false, true, true],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'tf_p1', resource: 'money', isAdvanced: false },
       { id: 'tf_p2', resource: 'science', isAdvanced: false },
@@ -115,7 +115,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, false, true, true, true, true],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'td_p1', resource: 'money', isAdvanced: false },
       { id: 'td_p2', resource: 'science', isAdvanced: false },
@@ -130,7 +130,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, true, true, true, true, false],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'tr_p1', resource: 'money', isAdvanced: false },
       { id: 'tr_p2', resource: 'science', isAdvanced: false },
@@ -145,7 +145,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, true, false, true, true, true],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'tc_p1', resource: 'money', isAdvanced: false },
       { id: 'tc_p2', resource: 'science', isAdvanced: false },
@@ -175,7 +175,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, true, false, true, true, false],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'tu_p1', resource: 'money', isAdvanced: false },
       { id: 'tu_p2', resource: 'science', isAdvanced: false },
@@ -193,7 +193,7 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, false, true, true, true, true],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'ee_p1', resource: 'science', isAdvanced: false },
       { id: 'ee_p2', resource: 'science', isAdvanced: true },
@@ -207,7 +207,7 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, true, false, true, true, true],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'hp_p1', resource: 'material', isAdvanced: false },
       { id: 'hp_p2', resource: 'science', isAdvanced: true }, // Hydran starts with cube here
@@ -232,7 +232,7 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, true, true, false, true, true],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'dd_p1', resource: 'material', isAdvanced: false },
       { id: 'dd_p2', resource: 'science', isAdvanced: false },
@@ -245,7 +245,7 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, true, true, true, true, false],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'me_p1', resource: 'material', isAdvanced: false },
       { id: 'me_p2', resource: 'science', isAdvanced: false },
@@ -259,7 +259,7 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [true, true, false, true, true, true],
+    wormholes: [true, false, true, true, false, true],
     planets: [
       { id: 'oh_p1', resource: 'material', isAdvanced: false },
       { id: 'oh_p2', resource: 'material', isAdvanced: true },
@@ -395,8 +395,8 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
   {
     id: 'disc_ancient_monolith_1',
     name: 'Ancient Monolith',
-    description: 'Place a Monolith in this sector immediately or keep for 2 VP.',
-    immediateReward: { grantStructure: 'monolith', victoryPoints: 2 },
+    description: 'Place a Monolith in this sector immediately (worth 3 VP at game end) or keep tile for 2 VP.',
+    immediateReward: { grantStructure: 'monolith', victoryPoints: 3 },
   },
   {
     id: 'disc_ancient_warp_portal_1',
@@ -499,7 +499,7 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
 ];
 
 
-export function generateSectorDecks(): {
+export function generateSectorDecks(playerCount?: number): {
   ring1: SectorTile[];
   ring2: SectorTile[];
   ring3: SectorTile[];
@@ -1137,10 +1137,22 @@ export function generateSectorDecks(): {
     })),
   }));
 
+  // Official Ring 3 deck limits by player count (2p: 5, 3p: 8, 4p: 14, 5p: 16, 6p: 18)
+  const ring3Limits: Record<number, number> = {
+    1: 5,
+    2: 5,
+    3: 8,
+    4: 14,
+    5: 16,
+    6: 18,
+  };
+  const maxRing3 = playerCount !== undefined ? (ring3Limits[playerCount] ?? 18) : 20;
+  const shuffledRing3 = ring3.sort(() => Math.random() - 0.5).slice(0, maxRing3);
+
   // Shuffle decks for play
   return {
     ring1: ring1.sort(() => Math.random() - 0.5),
     ring2: ring2.sort(() => Math.random() - 0.5),
-    ring3: ring3.sort(() => Math.random() - 0.5),
+    ring3: shuffledRing3,
   };
 }

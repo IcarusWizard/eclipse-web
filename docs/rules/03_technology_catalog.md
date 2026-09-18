@@ -60,7 +60,7 @@ $$\text{Actual Science Paid} = \max\bigl(\text{Tech.minCost},\; \text{Tech.baseC
 | `advanced_robotics` | **Advanced Robotics** | 3 | 6 | 4 | Immediately grants **+1 bonus Influence Disc** to the player's Influence Track. |
 | `orbital` | **Orbital** | 4 | 8 | 5 | Allows constructing Orbitals in controlled sectors (4 Materials, max 1 per sector). |
 | `advanced_labs` | **Advanced Labs** | 5 | 10 | 6 | Allows colonizing Advanced Science habitats with Colony Ships. |
-| `monolith` | **Monolith** | 6 | 12 | 6 | Allows constructing Monoliths in controlled sectors (10 Materials, max 1 per sector, +2 VP). |
+| `monolith` | **Monolith** | 6 | 12 | 6 | Allows constructing Monoliths in controlled sectors (10 Materials, max 1 per sector, +3 VP). |
 | `wormhole_generator`| **Wormhole Generator**| 7 | 14 | 7 | Allows your ships to traverse through unconnected open half-wormholes. |
 | `artifact_key` | **Artifact Key** | 8 | 16 | 8 | Collects resources or grants VP for controlled Artifacts. |
 

@@ -22,7 +22,7 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
   );
   const [replaceIndex, setReplaceIndex] = useState<number | null>(0);
 
-  const maxTrackCapacity = 5;
+  const maxTrackCapacity = player.faction.reputationSlots ?? 5;
   const isTrackFull = player.reputationTiles.length >= maxTrackCapacity;
 
   const handleConfirm = () => {

@@ -115,6 +115,45 @@ export interface UpkeepPhaseResult {
   bankruptcyLog: string[];
 }
 
+export function abandonSectorForUpkeep(
+  player: PlayerState,
+  sector: SectorTile
+): {
+  updatedPlayer: PlayerState;
+  savedUpkeep: number;
+} {
+  const updatedPlayer: PlayerState = JSON.parse(JSON.stringify(player));
+  const oldUpkeep = getUpkeepForDiscs(updatedPlayer.influenceTrack.discsOnTrack);
+
+  // Abandon this sector
+  sector.discOwner = undefined;
+  updatedPlayer.influenceTrack.discsOnTrack = Math.min(
+    updatedPlayer.influenceTrack.totalDiscs,
+    updatedPlayer.influenceTrack.discsOnTrack + 1
+  );
+
+  // Return population cubes from sector back to player board
+  for (const p of sector.planets) {
+    if (p.colonizedBy === updatedPlayer.id) {
+      const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+      if (res === 'money' || res === 'science' || res === 'material') {
+        updatedPlayer.population[res].cubesOnBoard = Math.min(
+          11,
+          updatedPlayer.population[res].cubesOnBoard + 1
+        );
+      }
+      p.colonizedBy = undefined;
+      p.colonizedResource = undefined;
+    }
+  }
+
+  const newUpkeep = getUpkeepForDiscs(updatedPlayer.influenceTrack.discsOnTrack);
+  const savedUpkeep = oldUpkeep - newUpkeep;
+  updatedPlayer.resources.money += savedUpkeep;
+
+  return { updatedPlayer, savedUpkeep };
+}
+
 export function applyUpkeepPhase(
   player: PlayerState,
   sectors: SectorTile[] = []
@@ -201,37 +240,13 @@ export function applyUpkeepPhase(
       for (const sec of sectorsToConsider) {
         if (updatedPlayer.resources.money >= 0) break;
 
-        // Abandon this sector
-        sec.discOwner = undefined;
+        const { updatedPlayer: afterAbandon, savedUpkeep } = abandonSectorForUpkeep(updatedPlayer, sec);
+        Object.assign(updatedPlayer, afterAbandon);
         abandonedSectorIds.push(sec.id);
-        updatedPlayer.influenceTrack.discsOnTrack = Math.min(
-          updatedPlayer.influenceTrack.totalDiscs,
-          updatedPlayer.influenceTrack.discsOnTrack + 1
-        );
-
-        // Return population cubes from sector back to player board
-        for (const p of sec.planets) {
-          if (p.colonizedBy === updatedPlayer.id) {
-            const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
-            if (res === 'money' || res === 'science' || res === 'material') {
-              updatedPlayer.population[res].cubesOnBoard = Math.min(
-                11,
-                updatedPlayer.population[res].cubesOnBoard + 1
-              );
-            }
-            p.colonizedBy = undefined;
-            p.colonizedResource = undefined;
-          }
-        }
-
-        // Recalculate Upkeep with new discsOnTrack
-        const oldUpkeep = upkeep;
         upkeep = getUpkeepForDiscs(updatedPlayer.influenceTrack.discsOnTrack);
-        const upkeepSaved = oldUpkeep - upkeep;
-        updatedPlayer.resources.money += upkeepSaved;
 
         log.push(
-          `${updatedPlayer.name} abandoned Sector ${sec.sectorNumber}, returning an Influence Disc and population cubes (saved ${upkeepSaved} upkeep).`
+          `${updatedPlayer.name} abandoned Sector ${sec.sectorNumber}, returning an Influence Disc and population cubes (saved ${savedUpkeep} upkeep).`
         );
       }
     }
