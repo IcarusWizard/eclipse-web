@@ -209,3 +209,6 @@
   - Created `LobbyView.tsx` as the landing page when opening the site without active table parameters.
   - Features New Table creation (player count 2–6, faction roster picker, table code), Join by Code & Seat, and Local Archive of saved games with one-click Hotseat and Seat links.
   - Added a "🏠 Lobby" return button to `Header.tsx` to switch between games and lobby anytime.
+- [ ] I also want a gallry option in lobby so that I can see all the tiles, techs, so that I can check if your data are all correct.
+- [ ] Currently, in the multiplayer mode, the status is not sync to another player, the other play have to refresh the see the changes, please change it.
+- [ ] when upgrade the ship, can you make it only sees what is available for the player not all the parts?
