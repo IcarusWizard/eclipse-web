@@ -284,8 +284,10 @@ export const MILITARY_TECHS: Technology[] = [
   },
 ];
 
-// ============================================================================
-// 4. RARE TECHNOLOGIES (16 Unique Techs, one copy of each in the game)
+/// ============================================================================
+// 4. RARE TECHNOLOGIES (15 Unique Techs, one copy of each in the official game)
+// Verified against Eclipse: Second Dawn for the Galaxy rulebook page 11 and page 31.
+// Note: Rift Cannon was an Eclipse 1st edition expansion tech and is not in Second Dawn.
 // ============================================================================
 export const RARE_TECHS: Technology[] = [
   {
@@ -295,7 +297,7 @@ export const RARE_TECHS: Technology[] = [
     baseCost: 5,
     minCost: 5,
     costByDiscount: [5, 5, 5, 5],
-    description: 'Allows damage from Antimatter Cannons to be split freely among multiple targets.',
+    description: 'Allows you to split damage from Antimatter Cannons freely over targets.',
   },
   {
     id: 'neutron_absorber',
@@ -304,7 +306,7 @@ export const RARE_TECHS: Technology[] = [
     baseCost: 5,
     minCost: 5,
     costByDiscount: [5, 5, 5, 5],
-    description: 'Your population is immune to enemy Neutron Bombs.',
+    description: 'Enemy NEUTRON BOMBS have no effect on you.',
   },
   {
     id: 'conifold_field',
@@ -314,7 +316,7 @@ export const RARE_TECHS: Technology[] = [
     minCost: 5,
     costByDiscount: [5, 5, 5, 5],
     unlocksPartId: 'conifold_field',
-    description: 'Unlocks Conifold Field ship component (-2 to opponent hit rolls, 0 energy consumed).',
+    description: 'You may Upgrade your Ship Blueprints with CONIFOLD FIELD Ship Parts (+3 Hull, 2 Energy consumed).',
   },
   {
     id: 'absorption_shield',
@@ -324,7 +326,7 @@ export const RARE_TECHS: Technology[] = [
     minCost: 6,
     costByDiscount: [7, 6, 6, 6],
     unlocksPartId: 'absorption_shield',
-    description: 'Unlocks Absorption Shield (+1 shield, absorbs energy from enemy fire).',
+    description: 'You may Upgrade your Ship Blueprints with ABSORPTION SHIELD Ship Parts (-1 Shield, +4 Energy).',
   },
   {
     id: 'cloaking_device',
@@ -333,7 +335,7 @@ export const RARE_TECHS: Technology[] = [
     baseCost: 7,
     minCost: 6,
     costByDiscount: [7, 6, 6, 6],
-    description: 'Two enemy ships are required to pin each of your ships.',
+    description: 'Two Ships are required to Pin each of your Ships.',
   },
   {
     id: 'improved_logistics',
@@ -342,7 +344,7 @@ export const RARE_TECHS: Technology[] = [
     baseCost: 7,
     minCost: 6,
     costByDiscount: [7, 6, 6, 6],
-    description: 'Gain one additional Move activation during each Move Action.',
+    description: 'Gain 1 additional Move Activation during each Move Action you take.',
   },
   {
     id: 'sentient_hull',
@@ -352,17 +354,7 @@ export const RARE_TECHS: Technology[] = [
     minCost: 6,
     costByDiscount: [7, 6, 6, 6],
     unlocksPartId: 'sentient_hull',
-    description: 'Unlocks Sentient Hull ship component (+1 Hull HP, +1 computer hit bonus).',
-  },
-  {
-    id: 'rift_cannon',
-    name: 'Rift Cannon',
-    category: 'rare',
-    baseCost: 9,
-    minCost: 7,
-    costByDiscount: [9, 8, 7, 7],
-    unlocksPartId: 'rift_cannon',
-    description: 'Unlocks Rift Cannon (2 red dice dealing 2 damage each, 2 energy consumed).',
+    description: 'You may Upgrade your Ship Blueprints with SENTIENT HULL Ship Parts (+1 Computer, +1 Hull).',
   },
   {
     id: 'soliton_cannon',
@@ -372,7 +364,7 @@ export const RARE_TECHS: Technology[] = [
     minCost: 7,
     costByDiscount: [9, 8, 7, 7],
     unlocksPartId: 'soliton_cannon',
-    description: 'Unlocks Soliton Cannon (1 orange die dealing 3 damage, 1 energy consumed).',
+    description: 'You may Upgrade your Ship Blueprints with SOLITON CANNON Ship Parts (1 blue die dealing 3 damage, 3 Energy consumed).',
   },
   {
     id: 'transition_drive',
@@ -382,7 +374,7 @@ export const RARE_TECHS: Technology[] = [
     minCost: 7,
     costByDiscount: [9, 8, 7, 7],
     unlocksPartId: 'transition_drive',
-    description: 'Unlocks Transition Drive ship component (Speed +3, Initiative +2, 2 energy consumed).',
+    description: 'You may Upgrade your Ship Blueprints with TRANSITION DRIVE Ship Parts (Speed 3, 0 Energy consumed).',
   },
   {
     id: 'warp_portal',
@@ -392,7 +384,7 @@ export const RARE_TECHS: Technology[] = [
     minCost: 7,
     costByDiscount: [9, 8, 7, 7],
     victoryPoints: 1,
-    description: 'Place Warp Portal on any controlled sector (worth 1 VP).',
+    description: 'Immediately place the Warp Portal Tile on any Sector you Control. Connects this Sector to all other Warp Portal Sectors and is worth 1 VP if Controlled at game end.',
   },
   {
     id: 'flux_missile',
@@ -402,7 +394,7 @@ export const RARE_TECHS: Technology[] = [
     minCost: 8,
     costByDiscount: [11, 9, 8, 8],
     unlocksPartId: 'flux_missile',
-    description: 'Unlocks Flux Missile (2 yellow dice pre-combat salvo, 0 energy consumed).',
+    description: 'You may Upgrade your Ship Blueprints with FLUX MISSILE Ship Parts (2 yellow dice pre-combat salvo, +1 Initiative).',
   },
   {
     id: 'pico_modulator',
@@ -411,7 +403,7 @@ export const RARE_TECHS: Technology[] = [
     baseCost: 11,
     minCost: 8,
     costByDiscount: [11, 9, 8, 8],
-    description: 'Gain two additional Upgrade activations during each Upgrade Action.',
+    description: 'Gain 2 additional Upgrade Activations during each Upgrade Action you take.',
   },
   {
     id: 'ancient_labs',
@@ -420,7 +412,7 @@ export const RARE_TECHS: Technology[] = [
     baseCost: 13,
     minCost: 9,
     costByDiscount: [13, 11, 9, 9],
-    description: 'Immediately draw and resolve one Discovery Tile upon researching.',
+    description: 'Immediately draw and resolve one Discovery Tile.',
   },
   {
     id: 'zero_point_source',
@@ -430,7 +422,7 @@ export const RARE_TECHS: Technology[] = [
     minCost: 10,
     costByDiscount: [15, 13, 11, 10],
     unlocksPartId: 'zero_point_source',
-    description: 'Unlocks Zero-Point Source ship component (+12 energy generated, +2 initiative).',
+    description: 'You may Upgrade your Ship Blueprints with ZERO-POINT SOURCE Ship Parts (+12 Energy generated).',
   },
   {
     id: 'metasynthesis',
@@ -439,7 +431,7 @@ export const RARE_TECHS: Technology[] = [
     baseCost: 17,
     minCost: 11,
     costByDiscount: [17, 15, 13, 11],
-    description: 'Place population cubes in ANY Advanced Population Squares (Money, Science, Material).',
+    description: 'You may place Population Cubes in any Advanced Population Squares with your Colony Ships.',
   },
 ];
 
@@ -451,53 +443,104 @@ export const TECH_CATALOG: Technology[] = [
 ];
 
 /**
+ * Official discount progression printed on the Species Board Tech Tracks for Eclipse: Second Dawn:
+ * 0 techs on track -> discount 0
+ * 1 tech on track  -> discount 1
+ * 2 techs on track -> discount 2
+ * 3 techs on track -> discount 3
+ * 4 techs on track -> discount 4
+ * 5 techs on track -> discount 6
+ * 6+ techs on track -> discount 8
+ */
+export const OFFICIAL_TECH_DISCOUNTS = [0, 1, 2, 3, 4, 6, 8];
+
+export const TECH_TRACK_DISCOUNT_TABLE: Record<number, number> = {
+  0: 0,
+  1: 1,
+  2: 2,
+  3: 3,
+  4: 4,
+  5: 6,
+  6: 8,
+  7: 8,
+};
+
+export function getTechDiscountForTrack(techsResearchedInTrack: number): number {
+  if (techsResearchedInTrack >= OFFICIAL_TECH_DISCOUNTS.length) {
+    return OFFICIAL_TECH_DISCOUNTS[OFFICIAL_TECH_DISCOUNTS.length - 1]!;
+  }
+  return OFFICIAL_TECH_DISCOUNTS[Math.max(0, techsResearchedInTrack)]!;
+}
+
+/**
  * Calculates the exact discounted cost for researching a technology.
+ * In Eclipse: Second Dawn, the discount is strictly dictated by the leftmost visible discount
+ * printed on the Species Board for that category (0, 1, 2, 3, 4, 6, 8), subject to the tech's minCost.
  * @param tech The target technology
  * @param techsResearchedInTrack Count of technologies currently researched in this track
  */
 export function calculateTechCost(tech: Technology, techsResearchedInTrack: number): number {
-  if (tech.costByDiscount && tech.costByDiscount.length > 0) {
-    const discountIndex = Math.min(Math.max(0, techsResearchedInTrack), tech.costByDiscount.length - 1);
-    return tech.costByDiscount[discountIndex]!;
-  }
-  return Math.max(tech.minCost, tech.baseCost - Math.max(0, techsResearchedInTrack) * 2);
+  const discount = getTechDiscountForTrack(techsResearchedInTrack);
+  return Math.max(tech.minCost, tech.baseCost - discount);
 }
 
 /**
+ * Official Eclipse: Second Dawn regular tech distribution (33 tiles per category, 99 total):
+ * Tier 1 (Cost 2): 5 copies
+ * Tier 2 (Cost 4): 5 copies
+ * Tier 3 (Cost 6): 5 copies
+ * Tier 4 (Cost 8): 5 copies
+ * Tier 5 (Cost 10): 4 copies
+ * Tier 6 (Cost 12): 3 copies
+ * Tier 7 (Cost 14): 3 copies
+ * Tier 8 (Cost 16): 3 copies
+ * Total regular tiles = 33 * 3 = 99 tiles.
+ * Plus 15 Rare Tech tiles (1 of each) = 114 Tech Tiles (39 different), matching rulebook page 3.
+ */
+const REGULAR_TECH_COPIES: Record<number, number> = {
+  1: 5,
+  2: 5,
+  3: 5,
+  4: 5,
+  5: 4,
+  6: 3,
+  7: 3,
+  8: 3,
+};
+
+/**
  * Creates the complete official Tech Tile Bag for Eclipse: Second Dawn.
- * 4 copies of each of the 24 regular technologies (96) + 1 copy of each of the 16 Rare technologies (16) = 112 tiles.
+ * 99 regular technologies + 15 Rare technologies = 114 tiles (39 unique).
  */
 export function createInitialTechBag(): Technology[] {
   const bag: Technology[] = [];
 
-  // 4 copies of each regular technology
   const regularTechs = [...NANO_TECHS, ...GRID_TECHS, ...MILITARY_TECHS];
   for (const tech of regularTechs) {
-    for (let copy = 0; copy < 4; copy++) {
+    const copies = REGULAR_TECH_COPIES[tech.tier] ?? 4;
+    for (let copy = 0; copy < copies; copy++) {
       bag.push({ ...tech });
     }
   }
 
-  // 1 copy of each Rare technology
+  // 1 copy of each of the 15 authentic Rare technologies
   for (const tech of RARE_TECHS) {
     bag.push({ ...tech });
   }
 
-  // Shuffle bag
-  return bag.sort(() => Math.random() - 0.5);
+  // Shuffle bag with Fisher-Yates
+  for (let i = bag.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [bag[i], bag[j]] = [bag[j]!, bag[i]!];
+  }
+
+  return bag;
 }
 
-/**
- * Draws technology tiles from the bag to populate or replenish the Tech Tray.
- * Official Eclipse rule:
- * Draw tiles from the bag until (playerCount + 3) regular tiles are drawn!
- * Rare tiles drawn along the way are placed in the tray and do NOT count towards the regular tile limit.
- */
-export function drawTechTilesForRound(
+function drawTechTilesUntilLimit(
   techBag: Technology[],
-  playerCount: number
+  regularLimit: number
 ): { drawn: Technology[]; remainingBag: Technology[]; regularDrawn: number; rareDrawn: number } {
-  const regularLimit = Math.max(1, playerCount) + 3;
   const drawn: Technology[] = [];
   const remainingBag = [...techBag];
   let regularDrawn = 0;
@@ -514,4 +557,38 @@ export function drawTechTilesForRound(
   }
 
   return { drawn, remainingBag, regularDrawn, rareDrawn };
+}
+
+/**
+ * Draws technology tiles from the bag during Game Setup (Rulebook page 5).
+ * 2 players: 12 regular tiles
+ * 3 players: 14 regular tiles
+ * 4 players: 16 regular tiles
+ * 5 players: 18 regular tiles
+ * 6 players: 20 regular tiles
+ * Rare tiles drawn along the way are placed in the bottom row of the Tech Tray and do NOT count towards the limit.
+ */
+export function drawTechTilesForSetup(
+  techBag: Technology[],
+  playerCount: number
+): { drawn: Technology[]; remainingBag: Technology[]; regularDrawn: number; rareDrawn: number } {
+  const regularLimit = Math.max(12, Math.min(20, 2 * Math.max(2, playerCount) + 8));
+  return drawTechTilesUntilLimit(techBag, regularLimit);
+}
+
+/**
+ * Draws technology tiles from the bag during the Cleanup Phase between rounds (Rulebook page 25).
+ * 2 players: 5 regular tiles
+ * 3 players: 6 regular tiles
+ * 4 players: 7 regular tiles
+ * 5 players: 8 regular tiles
+ * 6 players: 9 regular tiles
+ * Rare tiles drawn along the way are placed in the bottom row of the Tech Tray and do NOT count towards the limit.
+ */
+export function drawTechTilesForRound(
+  techBag: Technology[],
+  playerCount: number
+): { drawn: Technology[]; remainingBag: Technology[]; regularDrawn: number; rareDrawn: number } {
+  const regularLimit = Math.max(5, Math.min(9, Math.max(2, playerCount) + 3));
+  return drawTechTilesUntilLimit(techBag, regularLimit);
 }

@@ -73,6 +73,11 @@ export function areSectorsConnected(
   tileB: SectorTile,
   hasWormholeGenerator: boolean = false
 ): boolean {
+  // Warp Portal connects to all other Warp Portal sectors
+  if (tileA.hasWarpPortal && tileB.hasWarpPortal) {
+    return true;
+  }
+
   const edgeAtoB = getEdgeBetween(tileA.coord, tileB.coord);
   if (edgeAtoB === null) return false;
 

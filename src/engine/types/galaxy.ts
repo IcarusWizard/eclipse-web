@@ -55,6 +55,7 @@ export interface SectorTile {
   discoveryTile?: DiscoveryTile;
   ancientsCount: number;
   hasGCDS?: boolean;
+  hasWarpPortal?: boolean; // Warp portal structure placed in this sector
   discOwner?: string; // Player ID holding influence on this sector
   ships: SectorShip[];
   structures?: {
@@ -74,6 +75,10 @@ export interface DiscoveryTile {
     victoryPoints?: number;
     shipPart?: string;
     grantShipType?: ShipType;
+    grantStructure?: 'orbital' | 'monolith';
+    ancientTech?: boolean;
+    warpPortal?: boolean;
   };
   readonly shipPartId?: string; // Ancient part like Ion Turret, Flux Shield, etc.
 }
+

@@ -812,10 +812,14 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       else if (targetTrack === 'nano') player.techTrack.nanoCount += 1;
 
       // Special instantaneous tech abilities
-      if (tech.id === 'quantum_grid' || tech.id === 'advanced_robotics') {
+      if (tech.id === 'quantum_grid') {
         player.influenceTrack.totalDiscs += 2;
         player.influenceTrack.discsOnTrack += 2;
-        addLog(`${player.name} gained 2 bonus Influence Discs from ${tech.name}.`);
+        addLog(`${player.name} gained 2 bonus Influence Discs from Quantum Grid.`);
+      } else if (tech.id === 'advanced_robotics') {
+        player.influenceTrack.totalDiscs += 1;
+        player.influenceTrack.discsOnTrack += 1;
+        addLog(`${player.name} gained 1 bonus Influence Disc from Advanced Robotics.`);
       } else if (tech.id === 'ancient_labs') {
         if (newState.discoveryBag && newState.discoveryBag.length > 0) {
           const disc = newState.discoveryBag.shift()!;
@@ -955,7 +959,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
                 if (res === 'money' || res === 'science' || res === 'material') {
                   player.population[res].cubesOnBoard = Math.min(
-                    12,
+                    11,
                     player.population[res].cubesOnBoard + 1
                   );
                 }
@@ -1050,6 +1054,59 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         if (disc.immediateReward?.money) player.resources.money += disc.immediateReward.money;
         if (disc.immediateReward?.science) player.resources.science += disc.immediateReward.science;
         if (disc.immediateReward?.materials) player.resources.materials += disc.immediateReward.materials;
+        if (disc.immediateReward?.grantStructure === 'orbital' && sector) {
+          sector.structures = sector.structures || {};
+          sector.structures.orbital = true;
+          sector.planets.push({
+            id: `orbital_${sector.id}_${Date.now()}`,
+            resource: 'science',
+            isAdvanced: false,
+            isOrbital: true,
+          });
+          addLog(`${player.name} placed an Ancient Orbital in Sector ${sector.sectorNumber}!`);
+        }
+        if (disc.immediateReward?.grantStructure === 'monolith' && sector) {
+          sector.structures = sector.structures || {};
+          sector.structures.monolith = true;
+          addLog(`${player.name} placed an Ancient Monolith in Sector ${sector.sectorNumber}!`);
+        }
+        if (disc.immediateReward?.warpPortal && sector) {
+          sector.hasWarpPortal = true;
+          addLog(`${player.name} discovered and placed an Ancient Warp Portal in Sector ${sector.sectorNumber}!`);
+        }
+        if (disc.immediateReward?.ancientTech) {
+          const eligibleTechs = newState.techSupply
+            .filter(
+              (t) =>
+                t.category !== 'rare' &&
+                !player.techTrack.researched.some((r) => r.id === t.id)
+            )
+            .sort((a, b) => a.baseCost - b.baseCost);
+
+          if (eligibleTechs.length > 0) {
+            const chosenTech = eligibleTechs[0]!;
+            const techIdx = newState.techSupply.findIndex((t) => t.id === chosenTech.id);
+            if (techIdx >= 0) {
+              newState.techSupply.splice(techIdx, 1);
+            }
+            const targetTrack = chosenTech.category as 'military' | 'grid' | 'nano';
+            player.techTrack.researched.push({ ...chosenTech, placedTrack: targetTrack });
+            if (targetTrack === 'military') player.techTrack.militaryCount += 1;
+            else if (targetTrack === 'grid') player.techTrack.gridCount += 1;
+            else if (targetTrack === 'nano') player.techTrack.nanoCount += 1;
+
+            if (chosenTech.id === 'quantum_grid') {
+              player.influenceTrack.totalDiscs += 2;
+              player.influenceTrack.discsOnTrack += 2;
+            } else if (chosenTech.id === 'advanced_robotics') {
+              player.influenceTrack.totalDiscs += 1;
+              player.influenceTrack.discsOnTrack += 1;
+            }
+            addLog(`${player.name} acquired free Ancient Tech: ${chosenTech.name}!`);
+          } else {
+            addLog(`${player.name} explored Ancient Tech but no eligible regular tech remained in the supply.`);
+          }
+        }
         const grantShip = disc.immediateReward?.grantShipType || (disc.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
         if (grantShip && sector) {
           const currentShips = countPlayerShips(newState.sectors, player.id);
@@ -1224,145 +1281,13 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
             const winnerId = combatRes.winnerOwnerId;
 
-            // --- ATTACKING POPULATION (Rulebook Page 21 & 24) ---
-            if (winnerId && winnerId.startsWith('player_')) {
-              const opponentCubes = sector.planets.filter(
-                (p) => p.colonizedBy && p.colonizedBy !== winnerId
-              );
-
-              if (opponentCubes.length > 0) {
-                const attackerPlayer = newState.players.find((p) => p.id === winnerId);
-                const hasNeutronBombs = attackerPlayer?.techTrack.researched.some(
-                  (t) => t.id === 'neutron_bombs'
-                );
-
-                if (hasNeutronBombs) {
-                  // Neutron Bombs automatically annihilate all population cubes in the sector
-                  let destroyedCount = 0;
-                  for (const p of sector.planets) {
-                    if (p.colonizedBy && p.colonizedBy !== winnerId) {
-                      const defPlayer = newState.players.find((pl) => pl.id === p.colonizedBy);
-                      const hasAbsorber = defPlayer?.techTrack.researched.some((t) => t.id === 'neutron_absorber');
-                      if (hasAbsorber) {
-                        // Absorber shields against neutron bombs
-                        continue;
-                      }
-                      if (defPlayer) {
-                        const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
-                        if (res === 'money' || res === 'science' || res === 'material') {
-                          defPlayer.population[res].cubesOnBoard = Math.min(
-                            12,
-                            defPlayer.population[res].cubesOnBoard + 1
-                          );
-                        }
-                      }
-                      p.colonizedBy = undefined;
-                      p.colonizedResource = undefined;
-                      destroyedCount++;
-                    }
-                  }
-                  if (destroyedCount > 0) {
-                    addLog(
-                      `${attackerPlayer?.name || 'Attacker'}'s Neutron Bombs annihilated ${destroyedCount} opponent population cube(s) in Sector ${sector.sectorNumber}!`,
-                      'combat'
-                    );
-                  }
-                } else {
-                  // Each surviving attacker ship attacks once with non-missile weapons vs 0 shield
-                  let totalDamage = 0;
-                  const survivingAttackerShips = sector.ships.filter((s) => s.ownerId === winnerId);
-
-                  for (const s of survivingAttackerShips) {
-                    if (!attackerPlayer) break;
-                    const bp = attackerPlayer.blueprints[s.type];
-                    if (!bp) continue;
-                    const stats = calculateBlueprintStats(bp);
-                    const compBonus = stats.computerBonus;
-
-                    for (const slot of bp.slots) {
-                      if (slot?.dice) {
-                        for (const d of slot.dice) {
-                          if (d.isMissile) continue; // Missiles cannot bombard population
-                          for (let r = 0; r < d.count; r++) {
-                            const roll = rollD6();
-                            const modified = roll + compBonus;
-                            const isHit = roll === 6 || (roll > 1 && modified >= 6);
-                            if (isHit) {
-                              totalDamage += d.damagePerHit;
-                            }
-                          }
-                        }
-                      }
-                    }
-                  }
-
-                  // Destroy population cubes up to totalDamage points
-                  let destroyedCount = 0;
-                  for (const p of sector.planets) {
-                    if (destroyedCount >= totalDamage) break;
-                    if (p.colonizedBy && p.colonizedBy !== winnerId) {
-                      const defPlayer = newState.players.find((pl) => pl.id === p.colonizedBy);
-                      if (defPlayer) {
-                        const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
-                        if (res === 'money' || res === 'science' || res === 'material') {
-                          defPlayer.population[res].cubesOnBoard = Math.min(
-                            12,
-                            defPlayer.population[res].cubesOnBoard + 1
-                          );
-                        }
-                      }
-                      p.colonizedBy = undefined;
-                      p.colonizedResource = undefined;
-                      destroyedCount++;
-                    }
-                  }
-
-                  const remainingOppCubes = sector.planets.filter(
-                    (p) => p.colonizedBy && p.colonizedBy !== winnerId
-                  ).length;
-
-                  addLog(
-                    `${attackerPlayer?.name || 'Attacker'} bombarded Sector ${sector.sectorNumber} population: scored ${totalDamage} damage, destroying ${destroyedCount} cube(s) (${remainingOppCubes} remaining).`,
-                    'combat'
-                  );
-                }
-              }
+            if (!newState.resolvedCombatSectorIds) {
+              newState.resolvedCombatSectorIds = [];
             }
+            newState.resolvedCombatSectorIds.push(sector.id);
 
-            // --- INFLUENCE SECTOR OVERTHROW / CONQUEST ---
-            // Rule: Only remove defender influence disc if sector has NO population cubes remaining!
-            const remainingOpponentCubes = winnerId
-              ? sector.planets.filter((p) => p.colonizedBy && p.colonizedBy !== winnerId)
-              : [];
-
-            if (remainingOpponentCubes.length === 0) {
-              // If defender lost all population & ships, remove overthrown influence disc
-              if (winnerId && sector.discOwner && sector.discOwner !== winnerId) {
-                const loserPlayer = newState.players.find((p) => p.id === sector.discOwner);
-                if (loserPlayer) {
-                  loserPlayer.influenceTrack.discsOnTrack = Math.min(
-                    loserPlayer.influenceTrack.totalDiscs,
-                    loserPlayer.influenceTrack.discsOnTrack + 1
-                  );
-                  addLog(`${loserPlayer.name}'s Influence Disc in Sector ${sector.sectorNumber} was overthrown!`, 'combat');
-                }
-                sector.discOwner = undefined;
-              }
-
-              // If player won the battle with surviving ships and sector has no opponent population, prompt conquest
-              if (winnerId && winnerId.startsWith('player_')) {
-                newState.pendingCombatConquest = {
-                  sectorId: sector.id,
-                  winnerPlayerId: winnerId,
-                  discoveryToClaim: (sector.discoveryTile && !sector.discoveryClaimed) ? sector.discoveryTile : undefined,
-                };
-              }
-            } else {
-              addLog(
-                `Defender retains control of Sector ${sector.sectorNumber} because ${remainingOpponentCubes.length} population cube(s) survived bombardment.`,
-                'combat'
-              );
-            }
+            // --- ATTACKING POPULATION & INFLUENCE CONQUEST ---
+            resolveAttackingPopulationAndConquest(newState, sector, winnerId);
 
             // Compute reputation tiles for participating players
             const participants = Array.from(
@@ -1495,6 +1420,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     if (allPassed) {
       addLog(`All commanders have passed! Proceeding to Combat Phase.`, 'system');
       newState.phase = 'COMBAT_PHASE';
+      newState.resolvedCombatSectorIds = [];
       checkAndTriggerCombat(newState);
     } else {
       let nextIdx = (newState.activePlayerIndex + 1) % newState.players.length;
@@ -1514,38 +1440,270 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
   return { success: true, newState };
 }
 
-function checkAndTriggerCombat(state: GameState): void {
-  // If a player still has a pending conquest, discovery, or reputation tile decision, wait for resolution
-  if (state.pendingCombatConquest || state.pendingDiscovery || state.pendingReputationDraw) {
+export function resolveAttackingPopulationAndConquest(
+  state: GameState,
+  sector: SectorTile,
+  winnerId?: string
+): void {
+  if (!winnerId || !winnerId.startsWith('player_')) {
     return;
   }
 
-  // Find all sectors with hostile forces, resolved in descending Sector Number order (Rulebook page 20)
-  const combatSectors = state.sectors
+  const attackerPlayer = state.players.find((p) => p.id === winnerId);
+  if (!attackerPlayer) return;
+
+  const opponentCubes = sector.planets.filter(
+    (p) => p.colonizedBy && p.colonizedBy !== winnerId
+  );
+
+  if (opponentCubes.length > 0) {
+    const hasNeutronBombs = attackerPlayer.techTrack.researched.some(
+      (t) => t.id === 'neutron_bombs'
+    );
+
+    if (hasNeutronBombs) {
+      // Neutron Bombs automatically annihilate all population cubes in the sector
+      let destroyedCount = 0;
+      for (const p of sector.planets) {
+        if (p.colonizedBy && p.colonizedBy !== winnerId) {
+          const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
+          const hasAbsorber = defPlayer?.techTrack.researched.some((t) => t.id === 'neutron_absorber');
+          if (hasAbsorber) {
+            // Absorber shields against neutron bombs
+            continue;
+          }
+          if (defPlayer) {
+            const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+            if (res === 'money' || res === 'science' || res === 'material') {
+              defPlayer.population[res].cubesOnBoard = Math.min(
+                11,
+                defPlayer.population[res].cubesOnBoard + 1
+              );
+            }
+          }
+          p.colonizedBy = undefined;
+          p.colonizedResource = undefined;
+          destroyedCount++;
+        }
+      }
+      if (destroyedCount > 0) {
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          message: `${attackerPlayer.name}'s Neutron Bombs annihilated ${destroyedCount} opponent population cube(s) in Sector ${sector.sectorNumber}!`,
+          type: 'combat',
+        });
+      }
+    } else {
+      // Each surviving attacker ship attacks once with non-missile weapons vs 0 shield
+      let totalDamage = 0;
+      const survivingAttackerShips = sector.ships.filter((s) => s.ownerId === winnerId);
+
+      for (const s of survivingAttackerShips) {
+        const bp = attackerPlayer.blueprints[s.type];
+        if (!bp) continue;
+        const stats = calculateBlueprintStats(bp);
+        const compBonus = stats.computerBonus;
+
+        for (const slot of bp.slots) {
+          if (slot?.dice) {
+            for (const d of slot.dice) {
+              if (d.isMissile) continue; // Missiles cannot bombard population
+              for (let r = 0; r < d.count; r++) {
+                const roll = rollD6();
+                const modified = roll + compBonus;
+                const isHit = roll === 6 || (roll > 1 && modified >= 6);
+                if (isHit) {
+                  totalDamage += d.damagePerHit;
+                }
+              }
+            }
+          }
+        }
+      }
+
+      // Destroy population cubes up to totalDamage points
+      let destroyedCount = 0;
+      for (const p of sector.planets) {
+        if (destroyedCount >= totalDamage) break;
+        if (p.colonizedBy && p.colonizedBy !== winnerId) {
+          const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
+          if (defPlayer) {
+            const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+            if (res === 'money' || res === 'science' || res === 'material') {
+              defPlayer.population[res].cubesOnBoard = Math.min(
+                11,
+                defPlayer.population[res].cubesOnBoard + 1
+              );
+            }
+          }
+          p.colonizedBy = undefined;
+          p.colonizedResource = undefined;
+          destroyedCount++;
+        }
+      }
+
+      const remainingOppCubes = sector.planets.filter(
+        (p) => p.colonizedBy && p.colonizedBy !== winnerId
+      ).length;
+
+      state.log.unshift({
+        id: `log_${Date.now()}_${Math.random()}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: state.phase,
+        message: `${attackerPlayer.name} bombarded Sector ${sector.sectorNumber} population: scored ${totalDamage} damage, destroying ${destroyedCount} cube(s) (${remainingOppCubes} remaining).`,
+        type: 'combat',
+      });
+    }
+  }
+
+  // --- INFLUENCE SECTOR OVERTHROW / CONQUEST ---
+  // Rule: Only remove defender influence disc if sector has NO population cubes remaining!
+  const remainingOpponentCubes = sector.planets.filter(
+    (p) => p.colonizedBy && p.colonizedBy !== winnerId
+  );
+
+  if (remainingOpponentCubes.length === 0) {
+    // If defender lost all population & ships, remove overthrown influence disc
+    if (sector.discOwner && sector.discOwner !== winnerId) {
+      const loserPlayer = state.players.find((p) => p.id === sector.discOwner);
+      if (loserPlayer) {
+        loserPlayer.influenceTrack.discsOnTrack = Math.min(
+          loserPlayer.influenceTrack.totalDiscs,
+          loserPlayer.influenceTrack.discsOnTrack + 1
+        );
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          message: `${loserPlayer.name}'s Influence Disc in Sector ${sector.sectorNumber} was overthrown!`,
+          type: 'combat',
+        });
+      }
+      sector.discOwner = undefined;
+    }
+
+    // If attacker has surviving ships and sector is uncontrolled by them, prompt conquest
+    const hasAttackerShips = sector.ships.some((s) => s.ownerId === winnerId);
+    if (hasAttackerShips && sector.discOwner !== winnerId) {
+      state.pendingCombatConquest = {
+        sectorId: sector.id,
+        winnerPlayerId: winnerId,
+        discoveryToClaim: sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined,
+      };
+    }
+  } else {
+    state.log.unshift({
+      id: `log_${Date.now()}_${Math.random()}`,
+      timestamp: Date.now(),
+      round: state.round,
+      phase: state.phase,
+      message: `Defender retains control of Sector ${sector.sectorNumber} because ${remainingOpponentCubes.length} population cube(s) survived bombardment.`,
+      type: 'combat',
+    });
+  }
+}
+
+export function checkAndTriggerCombat(state: GameState): void {
+  // If a player still has a pending conquest, discovery, or reputation tile decision, wait for resolution
+  if (state.pendingCombatConquest || state.pendingDiscovery || state.pendingReputationDraw || state.activeCombat) {
+    return;
+  }
+
+  if (!state.resolvedCombatSectorIds) {
+    state.resolvedCombatSectorIds = [];
+  }
+
+  // 1. Find all sectors with hostile fleet battles (2+ distinct ship owners), resolved in descending Sector Number order (Rulebook page 20)
+  const shipCombatSectors = state.sectors
     .filter((sec) => {
+      if (state.resolvedCombatSectorIds!.includes(sec.id)) return false;
       const owners = Array.from(new Set(sec.ships.map((s) => s.ownerId)));
       return owners.length > 1;
     })
     .sort((a, b) => b.sectorNumber - a.sectorNumber);
 
-  if (combatSectors.length > 0) {
-    const sector = combatSectors[0];
+  if (shipCombatSectors.length > 0) {
+    const sector = shipCombatSectors[0]!;
     const defenderOwnerId = getSectorDefenderOwnerId(sector);
+    const combatUnits = buildCombatUnitsForSector(sector, state.players);
+    const hasMissiles = combatUnits.some((u) => u.weapons.some((w) => w.isMissile));
+
     state.activeCombat = {
       sectorId: sector.id,
       defenderOwnerId,
       roundNumber: 1,
-      stage: 'regular',
+      stage: hasMissiles ? 'missile' : 'regular',
       initiativeOrder: [],
       currentTurnIndex: 0,
       lastRolls: [],
       retreatDeclared: {},
+      missileFiredShipIds: [],
     };
     state.phase = 'COMBAT_PHASE';
     return;
   }
 
-  // If no combat, advance to UPKEEP_PHASE
+  // 2. Sectors where a player has ships in an opponent controlled/populated sector without a fleet battle (Rulebook page 21)
+  const hostileControlledSectors = state.sectors
+    .filter((sec) => {
+      if (state.resolvedCombatSectorIds!.includes(sec.id)) return false;
+      const shipOwners = Array.from(new Set(sec.ships.map((s) => s.ownerId))).filter(
+        (id) => id.startsWith('player_')
+      );
+      if (shipOwners.length === 0) return false;
+      const hasHostileDisc = !!sec.discOwner && !shipOwners.includes(sec.discOwner);
+      const hasHostileCubes = sec.planets.some(
+        (p) => p.colonizedBy && !shipOwners.includes(p.colonizedBy)
+      );
+      return hasHostileDisc || hasHostileCubes;
+    })
+    .sort((a, b) => b.sectorNumber - a.sectorNumber);
+
+  if (hostileControlledSectors.length > 0) {
+    const sector = hostileControlledSectors[0];
+    state.resolvedCombatSectorIds!.push(sector.id);
+    const attackerId = sector.ships.find((s) => s.ownerId.startsWith('player_'))?.ownerId;
+    state.phase = 'COMBAT_PHASE';
+    resolveAttackingPopulationAndConquest(state, sector, attackerId);
+    if (state.pendingCombatConquest) {
+      return;
+    }
+    // If no conquest was pending (e.g. cubes survived), continue processing remaining sectors
+    checkAndTriggerCombat(state);
+    return;
+  }
+
+  // 3. Uncontested Discovery Tiles (Rulebook page 21)
+  for (const sec of state.sectors) {
+    if (sec.discoveryTile && !sec.discoveryClaimed) {
+      const shipOwners = Array.from(new Set(sec.ships.map((s) => s.ownerId))).filter(
+        (id) => id.startsWith('player_')
+      );
+      const hasHostiles = sec.ships.some((s) => !s.ownerId.startsWith('player_'));
+      if (shipOwners.length === 1 && !hasHostiles) {
+        state.pendingDiscovery = {
+          sectorId: sec.id,
+          discovery: sec.discoveryTile,
+          playerId: shipOwners[0]!,
+        };
+        return;
+      }
+    }
+  }
+
+  // 4. Repair damage on all ships across the galaxy (Rulebook page 21)
+  for (const sec of state.sectors) {
+    for (const ship of sec.ships) {
+      ship.damage = 0;
+    }
+  }
+
+  // If no combat or hostile sector remaining, advance to UPKEEP_PHASE
   transitionToUpkeep(state);
 }
 
@@ -1599,6 +1757,7 @@ export function transitionToCleanup(state: GameState): void {
   state.round += 1;
   state.phase = 'ACTION_PHASE';
   state.passedPlayerIds = [];
+  state.resolvedCombatSectorIds = [];
 
   // Reset players action discs and passing status
   for (const player of state.players) {
@@ -1648,9 +1807,9 @@ export function calculateFinalScores(state: GameState): void {
     const controlledSectors = state.sectors.filter((s) => s.discOwner === p.id);
     const sectorVP = controlledSectors.reduce((sum, s) => sum + s.victoryPoints, 0);
 
-    // 2. Monoliths VP (2 per monolith in controlled sectors)
+    // 2. Monoliths VP (3 per monolith in controlled sectors per official Second Dawn rules)
     const monolithCount = controlledSectors.filter((s) => s.structures?.monolith).length;
-    const monolithVP = monolithCount * 2;
+    const monolithVP = monolithCount * 3;
 
     // 3. Reputation tiles (sum of tiles)
     const repVP = p.reputationTiles.reduce((sum, val) => sum + val, 0);
@@ -1664,7 +1823,10 @@ export function calculateFinalScores(state: GameState): void {
     // 6. Kept Discovery Tiles (2 VP each)
     const discoveryVP = (p.keptDiscoveryTiles?.length || 0) * 2;
 
-    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP;
+    // 7. Warp Portal VP (2 VP if controlled at end of game)
+    const warpPortalVP = controlledSectors.filter((s) => s.hasWarpPortal).length * 2;
+
+    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP;
 
     scores[p.id] = {
       sectors: sectorVP,
@@ -1672,7 +1834,7 @@ export function calculateFinalScores(state: GameState): void {
       reputation: repVP,
       techs: techVP,
       ambassadors: ambassadorVP,
-      discoveries: discoveryVP,
+      discoveries: discoveryVP + warpPortalVP,
       speciesBonus: 0,
       total,
     };

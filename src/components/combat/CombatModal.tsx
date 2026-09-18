@@ -26,8 +26,17 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     units.filter((u) => u.currentDamage < u.maxHull),
     defenderOwnerId
   );
-  const activeAttackerIndex = aliveUnits.length > 0 ? combat.currentTurnIndex % aliveUnits.length : -1;
-  const activeAttacker = activeAttackerIndex >= 0 ? aliveUnits[activeAttackerIndex] : null;
+
+  const isMissileStage = combat.stage === 'missile';
+  const pendingMissileUnits = isMissileStage
+    ? aliveUnits.filter(
+        (u) => u.weapons.some((w) => w.isMissile) && !combat.missileFiredShipIds?.includes(u.id)
+      )
+    : [];
+
+  const activeAttacker = isMissileStage
+    ? (pendingMissileUnits[0] || null)
+    : (aliveUnits.length > 0 ? aliveUnits[combat.currentTurnIndex % aliveUnits.length] : null);
   const activeAttackerId = activeAttacker?.id || null;
 
   const attackerOwner = activeAttacker ? state.players.find((p) => p.id === activeAttacker.ownerId) : null;
@@ -36,7 +45,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
   // Determine eligible retreat destination sectors:
   // Must be adjacent, connected by wormhole (or wormhole generator), controlled by this player, with no enemy ships
-  const eligibleRetreatDestinations = isPlayerShip && activeAttacker.type !== 'starbase'
+  const eligibleRetreatDestinations = !isMissileStage && isPlayerShip && activeAttacker.type !== 'starbase'
     ? state.sectors.filter((s) => {
         if (s.id === sector.id) return false;
         if (s.discOwner !== attackerOwner.id) return false;
@@ -79,12 +88,20 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 FLEET ENGAGEMENT: SECTOR {sector.sectorNumber}
               </h2>
               <p className="text-xs text-slate-400">
-                Hostile forces have clashed in Ring {sector.ring}. Tactical combat resolution in progress.
+                {isMissileStage
+                  ? 'Missile Stage: Ships armed with missiles launch one salvo in initiative order before regular combat.'
+                  : `Hostile forces have clashed in Ring ${sector.ring}. Tactical cannon engagement in progress.`}
               </p>
             </div>
           </div>
-          <span className="text-xs font-bold px-2.5 py-1 rounded bg-rose-950 border border-rose-800 text-rose-300 uppercase">
-            Round {combat.roundNumber}
+          <span
+            className={`text-xs font-bold px-2.5 py-1 rounded border uppercase ${
+              isMissileStage
+                ? 'bg-amber-950 border-amber-500 text-amber-300'
+                : 'bg-rose-950 border-rose-800 text-rose-300'
+            }`}
+          >
+            {isMissileStage ? '🚀 MISSILE STAGE' : `Round ${combat.roundNumber}`}
           </span>
         </div>
 
@@ -119,8 +136,12 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     }`}
                   >
                     {isAttacking && (
-                      <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider rounded bg-rose-600 text-white shadow">
-                        Attacking
+                      <span
+                        className={`absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider rounded text-white shadow ${
+                          isMissileStage ? 'bg-amber-500 text-slate-950 ring-1 ring-amber-300 animate-pulse' : 'bg-rose-600'
+                        }`}
+                      >
+                        {isMissileStage ? 'Firing Missiles' : 'Attacking'}
                       </span>
                     )}
                     {isRetreating && !isAttacking && (
@@ -182,15 +203,28 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                       {unit.weapons.map((w, idx) => (
                         <span
                           key={idx}
-                          className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase ${
-                            w.color === 'yellow'
+                          className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 ${
+                            w.isMissile
+                              ? isMissileStage && isAttacking
+                                ? 'bg-amber-400 text-slate-950 font-black shadow ring-1 ring-amber-300'
+                                : 'bg-purple-950 text-purple-300 border border-purple-800/80'
+                              : !isMissileStage && isAttacking
+                              ? 'ring-1 ring-rose-500 font-black ' +
+                                (w.color === 'yellow'
+                                  ? 'bg-amber-950 text-amber-300'
+                                  : w.color === 'orange'
+                                  ? 'bg-orange-950 text-orange-300'
+                                  : 'bg-rose-950 text-rose-300')
+                              : w.color === 'yellow'
                               ? 'bg-amber-950 text-amber-300'
                               : w.color === 'orange'
                               ? 'bg-orange-950 text-orange-300'
                               : 'bg-rose-950 text-rose-300'
                           }`}
                         >
+                          {w.isMissile ? '🚀 ' : ''}
                           {w.count}x {w.damage} Dmg {w.color}
+                          {w.isMissile ? ' (Missile)' : ''}
                         </span>
                       ))}
                     </div>
@@ -230,10 +264,14 @@ export const CombatModal: React.FC<CombatModalProps> = ({
         {/* Action Controls */}
         <div className="p-4 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-xs text-slate-400 text-center sm:text-left">
-            {aliveUnits.length > 0 && activeAttackerIndex >= 0 && (
+            {activeAttacker && (
               <span>
-                Salvo <strong className="text-slate-200">#{combat.currentTurnIndex + 1}</strong> • Active Initiative:{' '}
-                <strong className="text-rose-400">{activeAttacker?.type.toUpperCase()}</strong> (+{activeAttacker?.initiative})
+                {isMissileStage ? 'Missile Salvo' : 'Salvo'}{' '}
+                <strong className="text-slate-200">#{combat.currentTurnIndex + 1}</strong> • Active Initiative:{' '}
+                <strong className={isMissileStage ? 'text-amber-400' : 'text-rose-400'}>
+                  {activeAttacker.type.toUpperCase()}
+                </strong>{' '}
+                (+{activeAttacker.initiative})
                 {isAlreadyRetreating && (
                   <span className="text-amber-400 ml-1">
                     (Retreating to Sec {retreatDestination?.sectorNumber || '?'})
@@ -293,9 +331,13 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               <button
                 type="button"
                 onClick={() => onStepCombat()}
-                className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs tracking-wider uppercase shadow-lg shadow-rose-950 transition cursor-pointer"
+                className={`flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-bold text-xs tracking-wider uppercase shadow-lg transition cursor-pointer ${
+                  isMissileStage
+                    ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-950'
+                    : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950'
+                }`}
               >
-                <Dices className="w-4 h-4" /> Fire Salvo
+                <Dices className="w-4 h-4" /> {isMissileStage ? 'Launch Missiles' : 'Fire Salvo'}
               </button>
             )}
           </div>

@@ -158,9 +158,10 @@ export function executeCombatStep(
   defenderOwnerId?: string
 ): CombatStepResult {
   const rolls: CombatRoll[] = [];
+  const effectiveDefenderId = defenderOwnerId || activeCombat.defenderOwnerId;
   const aliveUnits = sortUnitsByInitiative(
     units.filter((u) => u.currentDamage < u.maxHull),
-    defenderOwnerId || activeCombat.defenderOwnerId
+    effectiveDefenderId
   );
 
   // Group alive units by owner
@@ -174,7 +175,157 @@ export function executeCombatStep(
     };
   }
 
-  // Pick the current attacking unit based on initiative order
+  activeCombat.destroyedShips = activeCombat.destroyedShips || [];
+
+  // =========================================================================
+  // STAGE 1: MISSILE COMBAT STAGE (Fired once in initiative order, Rulebook p. 20)
+  // =========================================================================
+  if (activeCombat.stage === 'missile') {
+    activeCombat.missileFiredShipIds = activeCombat.missileFiredShipIds || [];
+
+    const pendingMissileUnits = aliveUnits.filter(
+      (u) => u.weapons.some((w) => w.isMissile) && !activeCombat.missileFiredShipIds!.includes(u.id)
+    );
+
+    // If no missile-equipped units remain to fire, transition immediately to regular engagement rounds
+    if (pendingMissileUnits.length === 0) {
+      activeCombat.stage = 'regular';
+      activeCombat.roundNumber = 1;
+      activeCombat.currentTurnIndex = 0;
+    } else {
+      const attacker = pendingMissileUnits[0]!;
+      activeCombat.missileFiredShipIds.push(attacker.id);
+
+      const enemyTargets = aliveUnits.filter(
+        (u) => u.ownerId !== attacker.ownerId && u.currentDamage < u.maxHull
+      );
+
+      if (enemyTargets.length === 0) {
+        return {
+          updatedUnits: units,
+          rolls: [],
+          isCombatOver: true,
+          winnerOwnerId: attacker.ownerId,
+        };
+      }
+
+      // Target selection: lowest remaining hull first
+      enemyTargets.sort(
+        (a, b) => a.maxHull - a.currentDamage - (b.maxHull - b.currentDamage)
+      );
+      let target = enemyTargets[0]!;
+
+      // Fire ONLY missile weapons
+      const missileWeapons = attacker.weapons.filter((w) => w.isMissile);
+      for (const weapon of missileWeapons) {
+        for (let i = 0; i < weapon.count; i++) {
+          if (target.currentDamage >= target.maxHull) {
+            const nextTarget = enemyTargets.find((u) => u.currentDamage < u.maxHull);
+            if (!nextTarget) break;
+            target = nextTarget;
+          }
+
+          const rawRoll = rollD6();
+          const modified = rawRoll + attacker.computerBonus - target.shieldBonus;
+
+          // Natural 6 always hits, Natural 1 always misses
+          let isHit = false;
+          if (rawRoll === 6) {
+            isHit = true;
+          } else if (rawRoll === 1) {
+            isHit = false;
+          } else {
+            isHit = modified >= 6;
+          }
+
+          const damageDealt = isHit ? weapon.damage : 0;
+          target.currentDamage += damageDealt;
+
+          if (target.currentDamage >= target.maxHull) {
+            activeCombat.destroyedShips.push({
+              shipId: target.id,
+              type: target.type,
+              ownerId: target.ownerId,
+              killerId: attacker.ownerId,
+            });
+          }
+
+          rolls.push({
+            shipId: attacker.id,
+            shipOwner: attacker.ownerId,
+            dieColor: weapon.color,
+            roll: rawRoll,
+            modifiedRoll: modified,
+            isHit,
+            damage: damageDealt,
+          });
+        }
+      }
+
+      const remainingAlive = aliveUnits.filter((u) => u.currentDamage < u.maxHull);
+      const remainingOwners = Array.from(new Set(remainingAlive.map((u) => u.ownerId)));
+
+      if (remainingOwners.length <= 1) {
+        return {
+          updatedUnits: units,
+          rolls,
+          isCombatOver: true,
+          winnerOwnerId: remainingOwners[0],
+        };
+      }
+
+      // Check if all missile units have now fired
+      const nextPendingMissileUnits = remainingAlive.filter(
+        (u) => u.weapons.some((w) => w.isMissile) && !activeCombat.missileFiredShipIds!.includes(u.id)
+      );
+
+      if (nextPendingMissileUnits.length === 0) {
+        // Missile stage completed: advance to regular Engagement Rounds
+        activeCombat.stage = 'regular';
+        activeCombat.roundNumber = 1;
+        activeCombat.currentTurnIndex = -1; // Will become 0 after gameReducer increments
+      }
+
+      return {
+        updatedUnits: units,
+        rolls,
+        isCombatOver: false,
+      };
+    }
+  }
+
+  // =========================================================================
+  // STAGE 2: REGULAR ENGAGEMENT ROUNDS (Cannons Only, Rulebook p. 20)
+  // =========================================================================
+
+  // Check Stalemate: If no alive unit on ANY side has non-missile cannons,
+  // neither player can damage the other. Attacker must retreat or be destroyed (Rulebook p. 20).
+  const hasAnyCannons = aliveUnits.some((u) =>
+    u.weapons.some((w) => !w.isMissile && w.count > 0 && w.damage > 0)
+  );
+
+  if (!hasAnyCannons) {
+    const defenderId = effectiveDefenderId || aliveUnits[0]?.ownerId;
+    const attackerUnits = aliveUnits.filter((u) => u.ownerId !== defenderId);
+    for (const att of attackerUnits) {
+      att.currentDamage = att.maxHull;
+      activeCombat.destroyedShips.push({
+        shipId: att.id,
+        type: att.type,
+        ownerId: att.ownerId,
+        killerId: defenderId,
+      });
+    }
+
+    return {
+      updatedUnits: units,
+      rolls: [],
+      isCombatOver: true,
+      winnerOwnerId: defenderId,
+    };
+  }
+
+  // Pick current attacking unit based on initiative order
   const unitIndex = activeCombat.currentTurnIndex % aliveUnits.length;
   const attacker = aliveUnits[unitIndex];
 
@@ -187,7 +338,7 @@ export function executeCombatStep(
     };
   }
 
-  // Check 1: Did the user declare retreat this step for this ship / type?
+  // Check 1: Did the user declare retreat this step?
   if (
     retreatOptions?.retreatShipIds &&
     retreatOptions.retreatShipIds.length > 0 &&
@@ -198,7 +349,6 @@ export function executeCombatStep(
       activeCombat.retreatDeclared[sid] = retreatOptions.retreatDestinationSectorId;
     }
 
-    // Check if ALL remaining ships of this player attempted retreat (retreat penalty applies)
     const playerUnits = aliveUnits.filter((u) => u.ownerId === attacker.ownerId);
     const allRetreating = playerUnits.every((u) => !!activeCombat.retreatDeclared[u.id]);
     if (allRetreating) {
@@ -221,10 +371,8 @@ export function executeCombatStep(
   }
 
   // Check 2: Was retreat already declared for this ship in a previous activation?
-  // If so, on this activation, the ship completes its retreat into the destination sector!
   if (activeCombat.retreatDeclared && activeCombat.retreatDeclared[attacker.id]) {
     const destSecId = activeCombat.retreatDeclared[attacker.id]!;
-    // Remove this unit from alive units in this battle
     const remainingUnits = units.filter((u) => u.id !== attacker.id);
     const remainingAlive = remainingUnits.filter((u) => u.currentDamage < u.maxHull);
     const remainingOwners = Array.from(new Set(remainingAlive.map((u) => u.ownerId)));
@@ -253,19 +401,18 @@ export function executeCombatStep(
     };
   }
 
-  // Target selection: pick lowest remaining health first to score kills
+  // Target selection: lowest remaining health first
   enemyTargets.sort(
     (a, b) => a.maxHull - a.currentDamage - (b.maxHull - b.currentDamage)
   );
   let target = enemyTargets[0]!;
 
-  activeCombat.destroyedShips = activeCombat.destroyedShips || [];
+  // Fire ONLY non-missile cannons in engagement rounds (missiles were spent in missile stage)
+  const cannonWeapons = attacker.weapons.filter((w) => !w.isMissile);
 
-  // Fire weapons
-  for (const weapon of attacker.weapons) {
+  for (const weapon of cannonWeapons) {
     for (let i = 0; i < weapon.count; i++) {
       if (target.currentDamage >= target.maxHull) {
-        // Find next target if current is destroyed
         const nextTarget = enemyTargets.find((u) => u.currentDamage < u.maxHull);
         if (!nextTarget) break;
         target = nextTarget;
@@ -274,7 +421,6 @@ export function executeCombatStep(
       const rawRoll = rollD6();
       const modified = rawRoll + attacker.computerBonus - target.shieldBonus;
 
-      // Natural 6 always hits, Natural 1 always misses
       let isHit = false;
       if (rawRoll === 6) {
         isHit = true;
@@ -288,7 +434,6 @@ export function executeCombatStep(
       target.currentDamage += damageDealt;
 
       if (target.currentDamage >= target.maxHull) {
-        // Record destroyed ship casualty with killer info
         activeCombat.destroyedShips.push({
           shipId: target.id,
           type: target.type,
@@ -309,6 +454,11 @@ export function executeCombatStep(
     }
   }
 
+  // Check if engagement round completes a full cycle of alive units
+  if (unitIndex + 1 >= aliveUnits.length) {
+    activeCombat.roundNumber += 1;
+  }
+
   const remainingOwners = Array.from(
     new Set(aliveUnits.filter((u) => u.currentDamage < u.maxHull).map((u) => u.ownerId))
   );
@@ -320,3 +470,4 @@ export function executeCombatStep(
     winnerOwnerId: remainingOwners.length === 1 ? remainingOwners[0] : undefined,
   };
 }
+

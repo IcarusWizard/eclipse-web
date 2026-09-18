@@ -3,51 +3,50 @@
  */
 
 import { PlayerState } from '../types/player';
+import { TECH_TRACK_DISCOUNT_TABLE } from './techData';
 
 export const INCOME_TABLE = [
-  32, // 0 cubes on board (12 colonized)
-  28, // 1
-  24, // 2
-  21, // 3
-  18, // 4
-  15, // 5
-  12, // 6
-  10, // 7
-  8,  // 8
-  6,  // 9
-  4,  // 10
-  3,  // 11
-  2,  // 12 cubes on board (0 colonized)
+  28, // 0 cubes on board (11 colonized)
+  24, // 1
+  21, // 2
+  18, // 3
+  15, // 4
+  12, // 5
+  10, // 6
+  8,  // 7
+  6,  // 8
+  4,  // 9
+  3,  // 10
+  2,  // 11 cubes on board (0 colonized)
 ];
 
 /**
  * Official track spaces from left to right as printed on the physical Control Board.
- * Index 0 is the base space (2) uncovered when 12 cubes remain on board.
- * Indices 1 to 12 correspond to spaces 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28, 32.
- * Cubes are placed from space 3 to 28 during setup.
+ * Index 0 is the base space (2) uncovered when 11 cubes remain on board.
+ * Indices 1 to 11 correspond to spaces 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28.
+ * Cubes are placed from space 3 to 28 during setup (11 cubes per track).
  * As population cubes are placed onto planets, spaces are uncovered from left to right.
  * The highest uncovered space value determines the income produced during Upkeep.
  */
 export interface PopulationTrackSpace {
-  slotIndex: number; // 0 to 12
-  value: number; // 2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28, 32
+  slotIndex: number; // 0 to 11
+  value: number; // 2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28
   cubesOnBoardThreshold: number; // When cubesOnBoard == threshold, this space is the active uncovered income
 }
 
 export const POPULATION_TRACK_SPACES: PopulationTrackSpace[] = [
-  { slotIndex: 0, value: 2, cubesOnBoardThreshold: 12 },
-  { slotIndex: 1, value: 3, cubesOnBoardThreshold: 11 },
-  { slotIndex: 2, value: 4, cubesOnBoardThreshold: 10 },
-  { slotIndex: 3, value: 6, cubesOnBoardThreshold: 9 },
-  { slotIndex: 4, value: 8, cubesOnBoardThreshold: 8 },
-  { slotIndex: 5, value: 10, cubesOnBoardThreshold: 7 },
-  { slotIndex: 6, value: 12, cubesOnBoardThreshold: 6 },
-  { slotIndex: 7, value: 15, cubesOnBoardThreshold: 5 },
-  { slotIndex: 8, value: 18, cubesOnBoardThreshold: 4 },
-  { slotIndex: 9, value: 21, cubesOnBoardThreshold: 3 },
-  { slotIndex: 10, value: 24, cubesOnBoardThreshold: 2 },
-  { slotIndex: 11, value: 28, cubesOnBoardThreshold: 1 },
-  { slotIndex: 12, value: 32, cubesOnBoardThreshold: 0 },
+  { slotIndex: 0, value: 2, cubesOnBoardThreshold: 11 },
+  { slotIndex: 1, value: 3, cubesOnBoardThreshold: 10 },
+  { slotIndex: 2, value: 4, cubesOnBoardThreshold: 9 },
+  { slotIndex: 3, value: 6, cubesOnBoardThreshold: 8 },
+  { slotIndex: 4, value: 8, cubesOnBoardThreshold: 7 },
+  { slotIndex: 5, value: 10, cubesOnBoardThreshold: 6 },
+  { slotIndex: 6, value: 12, cubesOnBoardThreshold: 5 },
+  { slotIndex: 7, value: 15, cubesOnBoardThreshold: 4 },
+  { slotIndex: 8, value: 18, cubesOnBoardThreshold: 3 },
+  { slotIndex: 9, value: 21, cubesOnBoardThreshold: 2 },
+  { slotIndex: 10, value: 24, cubesOnBoardThreshold: 1 },
+  { slotIndex: 11, value: 28, cubesOnBoardThreshold: 0 },
 ];
 
 export const UPKEEP_TABLE: Record<number, number> = {
@@ -71,7 +70,7 @@ export const UPKEEP_TABLE: Record<number, number> = {
 };
 
 export function getIncomeForTrack(cubesOnBoard: number): number {
-  const index = Math.max(0, Math.min(12, cubesOnBoard));
+  const index = Math.max(0, Math.min(11, cubesOnBoard));
   return INCOME_TABLE[index] ?? 2;
 }
 
@@ -216,7 +215,7 @@ export function applyUpkeepPhase(
             const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
             if (res === 'money' || res === 'science' || res === 'material') {
               updatedPlayer.population[res].cubesOnBoard = Math.min(
-                12,
+                11,
                 updatedPlayer.population[res].cubesOnBoard + 1
               );
             }
@@ -376,7 +375,7 @@ export function getPlayerTechRows(player: PlayerState): PlayerTechRows {
 
   const getRowStats = (techs: import('../types/tech').Technology[]) => {
     const count = techs.length;
-    const nextDiscount = Math.min(6, count);
+    const nextDiscount = TECH_TRACK_DISCOUNT_TABLE[Math.min(7, count)] ?? 0;
     const victoryPoints = TECH_ROW_VP_TABLE[Math.min(7, count)] || (count >= 7 ? 5 : 0);
     return { techs, count, nextDiscount, victoryPoints };
   };

@@ -52,3 +52,45 @@
   - Rewards highest priority to full two-way wormhole connections (+100) and bonus score (+10) for additional open wormhole connections to other existing adjacent sectors.
   - Enables immediate placement confirmation and displays green "Wormholes Connected" status without requiring manual rotation steps.
   - Made the connection status badge in `ExploreModal` clickable to immediately snap back to the next legal rotation if manually rotated.
+- [x] **Advanced Robotics Bonus Influence Disc Count**:
+  - Fixed an issue where researching Advanced Robotics incorrectly granted 2 bonus Influence Discs because it was grouped with Quantum Grid.
+  - Advanced Robotics now strictly awards **1 bonus Influence Disc** (+1 `totalDiscs` and +1 `discsOnTrack`) per the official rulebook, while Quantum Grid continues to award 2.
+- [x] **Second Dawn Technology Discounts Track**:
+  - Replaced the 1st edition tier-based discount arrays with the official Eclipse: Second Dawn Research Track discount progression printed on the physical player board: `[0, 1, 2, 3, 4, 6, 8]`.
+  - The science cost to research a technology is computed as `max(minCost, baseCost - trackDiscount)` based on the number of previously researched technologies in that category track.
+- [x] **Population Track Maximum Income (+28) and 11 Cubes**:
+  - Corrected the population tracks from 12 cubes down to the official 11 cubes per resource track (values: 2 base, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28). Removed the nonexistent +32 income space.
+  - Setup initializes with 10 cubes on the player board per track (1 cube deployed to the home system, uncovering the 3 income space).
+  - Updated player board modal UI and income forecast calculations accordingly.
+- [x] **Combat Phase Population Bombardment in Undefended Controlled Sectors**:
+  - Combat Phase now systematically evaluates all sectors where a player has ships in an opponent-controlled or populated sector, even when the defender has zero defending ships (meaning no fleet battle was triggered).
+  - Ships bombard opponent population cubes once with non-missile weapons (or wipe them with Neutron Bombs).
+  - If all population cubes are destroyed, the defender's influence disc is overthrown, and the attacker is prompted with `COMBAT_CONQUEST` to take control and colonize open habitats.
+- [x] **Official 15 Rare Technologies & 114 Tech Tiles Bag**:
+  - Verified every single technology against official rulebook page 31 (Tech Sheet / Player Aid), page 11 (Tech Descriptions), page 10 (Research Rules), and page 3 (Components):
+    - Removed `rift_cannon`, which was from Eclipse 1st edition (*Rise of the Ancients*) and does not exist in *Eclipse: Second Dawn for the Galaxy*.
+    - Verified the exact canonical list of **15 Rare Technologies** (1 copy each):
+      1. `Antimatter Splitter` (Cost 5, Min 5): Splits damage from Antimatter Cannons freely over targets.
+      2. `Neutron Absorber` (Cost 5, Min 5): Immune to enemy Neutron Bombs.
+      3. `Conifold Field` (Cost 5, Min 5): Unlocks Conifold Field ship part (+3 Hull, 2 Energy consumed).
+      4. `Absorption Shield` (Cost 7, Min 6): Unlocks Absorption Shield ship part (-1 Shield, +4 Energy).
+      5. `Cloaking Device` (Cost 7, Min 6): 2 enemy ships required to pin each of your ships.
+      6. `Improved Logistics` (Cost 7, Min 6): +1 Move Activation per Move Action.
+      7. `Sentient Hull` (Cost 7, Min 6): Unlocks Sentient Hull ship part (+1 Computer, +1 Hull).
+      8. `Soliton Cannon` (Cost 9, Min 7): Unlocks Soliton Cannon ship part (1 blue die, 3 damage, 3 Energy consumed).
+      9. `Transition Drive` (Cost 9, Min 7): Unlocks Transition Drive ship part (Speed 3, 0 Energy consumed).
+      10. `Warp Portal` (Cost 9, Min 7): Immediately place Warp Portal tile on any controlled sector (1 VP at game end).
+      11. `Flux Missile` (Cost 11, Min 8): Unlocks Flux Missile ship part (2 yellow dice salvo, +1 Initiative).
+      12. `Pico Modulator` (Cost 11, Min 8): +2 Upgrade Activations per Upgrade Action.
+      13. `Ancient Labs` (Cost 13, Min 9): Immediately draw and resolve one Discovery Tile.
+      14. `Zero-Point Source` (Cost 15, Min 10): Unlocks Zero-Point Source ship part (+12 Energy generated).
+      15. `Metasynthesis` (Cost 17, Min 11): Place population cubes on any advanced squares.
+  - Implemented the authentic **114 Tech Tiles Bag** (39 unique techs) per rulebook page 3:
+    - 33 Military Techs (5, 5, 5, 5, 4, 3, 3, 3)
+    - 33 Grid Techs (5, 5, 5, 5, 4, 3, 3, 3)
+    - 33 Nano Techs (5, 5, 5, 5, 4, 3, 3, 3)
+    - 15 Rare Techs (1 copy each)
+    - 99 regular + 15 rare = 114 tiles total.
+  - Added official setup drawing (`drawTechTilesForSetup` per rulebook page 5: 12 regular tiles for 2p, 14 for 3p, 16 for 4p, etc., rare tiles placed on tray bottom row without counting against limit) vs round cleanup drawing (`drawTechTilesForRound` per rulebook page 25: 5 regular tiles for 2p, 7 for 4p, etc.).
+  - Corrected ship part attributes for `conifold_field` (3 Hull, 2 power consumed), `soliton_cannon` (blue die dealing 3 damage, 3 power consumed), and `transition_drive` (speed 3, 0 power consumed).
+

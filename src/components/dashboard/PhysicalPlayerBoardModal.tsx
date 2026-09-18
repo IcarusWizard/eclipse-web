@@ -1031,7 +1031,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     POPULATION & RESOURCE PRODUCTION TRACKS
                   </h2>
                   <span className="text-[11px] text-cyan-400 font-mono bg-cyan-950/40 border border-cyan-800/50 px-2 py-0.5 rounded">
-                    Official Board Rule: Left to right (2 → 32)
+                    Official Board Rule: Left to right (2 → 28)
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
@@ -1070,7 +1070,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
                     {POPULATION_TRACK_SPACES.map((space) => {
                       const hasCube = player.population.money.cubesOnBoard > space.cubesOnBoardThreshold;
                       const isActive = player.population.money.cubesOnBoard === space.cubesOnBoardThreshold;
@@ -1190,7 +1190,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
                     {POPULATION_TRACK_SPACES.map((space) => {
                       const hasCube = player.population.science.cubesOnBoard > space.cubesOnBoardThreshold;
                       const isActive = player.population.science.cubesOnBoard === space.cubesOnBoardThreshold;
@@ -1310,7 +1310,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </div>
                   </div>
 
-                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                  <div className="grid grid-cols-4 sm:grid-cols-6 gap-1.5">
                     {POPULATION_TRACK_SPACES.map((space) => {
                       const hasCube = player.population.material.cubesOnBoard > space.cubesOnBoardThreshold;
                       const isActive = player.population.material.cubesOnBoard === space.cubesOnBoardThreshold;

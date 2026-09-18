@@ -7,7 +7,7 @@ import { GameState } from '../types/state';
 import { FactionInfo, PlayerState } from '../types/player';
 import { SectorTile, HexCoord } from '../types/galaxy';
 import { CENTER_SECTOR, HUMAN_HOME_SECTORS, DISCOVERY_TILES, generateSectorDecks } from './sectorData';
-import { TECH_CATALOG, createInitialTechBag, drawTechTilesForRound } from './techData';
+import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
 import { createDefaultHumanBlueprints } from './shipValidation';
 
 export const HUMAN_FACTIONS: FactionInfo[] = [
@@ -246,9 +246,9 @@ export function createInitialGame(playerCount: number = 2): GameState {
         ready: faction.startingColonyShips, // 3 colony ships, all unused/ready at game start (home planets population is free)
       },
       population: {
-        money: { cubesOnBoard: 11 }, // 1 colonized
-        science: { cubesOnBoard: 11 }, // 1 colonized
-        material: { cubesOnBoard: 11 }, // 1 colonized
+        money: { cubesOnBoard: 10 }, // 1 colonized on home sector (out of 11 total cubes), 10 remain on board -> starting income = 3
+        science: { cubesOnBoard: 10 }, // 1 colonized on home sector (out of 11 total cubes), 10 remain on board -> starting income = 3
+        material: { cubesOnBoard: 10 }, // 1 colonized on home sector (out of 11 total cubes), 10 remain on board -> starting income = 3
       },
       reputationTiles: [],
       ambassadorTiles: [],
@@ -264,10 +264,10 @@ export function createInitialGame(playerCount: number = 2): GameState {
   const decks = generateSectorDecks();
 
   // Official Eclipse: Second Dawn Tech Bag & Tray Setup
-  // 112 tiles: 4 copies of each 24 regular + 1 copy of each 16 rare
+  // 114 tiles: 99 regular (33 military, 33 grid, 33 nano) + 15 authentic rare techs
   const fullBag = createInitialTechBag();
   const { drawn: techSupply, remainingBag: techBag, regularDrawn, rareDrawn } =
-    drawTechTilesForRound(fullBag, players.length);
+    drawTechTilesForSetup(fullBag, players.length);
 
   // Official Eclipse: Second Dawn Reputation Bag: 33 tiles (16x 1 VP, 9x 2 VP, 5x 3 VP, 3x 4 VP)
   const reputationBag: number[] = [
@@ -294,11 +294,19 @@ export function createInitialGame(playerCount: number = 2): GameState {
     techSupply,
     techBag,
     reputationBag,
-    discoveryBag: [...DISCOVERY_TILES],
+    discoveryBag: (() => {
+      const bag = [...DISCOVERY_TILES];
+      for (let i = bag.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [bag[i], bag[j]] = [bag[j]!, bag[i]!];
+      }
+      return bag;
+    })(),
     activeCombat: null,
     pendingExplore: null,
     pendingDiscovery: null,
     pendingCombatConquest: null,
+    resolvedCombatSectorIds: [],
     log: [
       {
         id: `log_${Date.now()}_1`,

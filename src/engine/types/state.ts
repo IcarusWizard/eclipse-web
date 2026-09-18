@@ -39,6 +39,7 @@ export interface CombatState {
   retreatAttemptedPlayerIds?: string[];
   destroyedShips?: { shipId: string; type: string; ownerId: string; killerId?: string }[];
   participatingPlayerIds?: string[];
+  missileFiredShipIds?: string[];
 }
 
 export interface PendingReputationDraw {
@@ -102,6 +103,7 @@ export interface GameState {
   pendingCombatConquest: PendingCombatConquest | null;
   pendingReputationDraw?: PendingReputationDraw | null;
   pendingReputationDrawQueue?: PendingReputationDraw[];
+  resolvedCombatSectorIds?: string[];
   log: GameLogEntry[];
   winnerId?: string;
   finalScores?: Record<string, {

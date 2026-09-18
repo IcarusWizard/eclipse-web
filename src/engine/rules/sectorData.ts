@@ -187,11 +187,202 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
 };
 
 export const DISCOVERY_TILES: DiscoveryTile[] = [
+  // 11 Resource Tiles
+  {
+    id: 'disc_materials_6_1',
+    name: '+6 Materials',
+    description: 'Gain 6 Materials immediately or keep for 2 VP.',
+    immediateReward: { materials: 6, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_materials_6_2',
+    name: '+6 Materials',
+    description: 'Gain 6 Materials immediately or keep for 2 VP.',
+    immediateReward: { materials: 6, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_materials_6_3',
+    name: '+6 Materials',
+    description: 'Gain 6 Materials immediately or keep for 2 VP.',
+    immediateReward: { materials: 6, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_science_5_1',
+    name: '+5 Science',
+    description: 'Gain 5 Science immediately or keep for 2 VP.',
+    immediateReward: { science: 5, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_science_5_2',
+    name: '+5 Science',
+    description: 'Gain 5 Science immediately or keep for 2 VP.',
+    immediateReward: { science: 5, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_science_5_3',
+    name: '+5 Science',
+    description: 'Gain 5 Science immediately or keep for 2 VP.',
+    immediateReward: { science: 5, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_money_8_1',
+    name: '+8 Money',
+    description: 'Gain 8 Money immediately or keep for 2 VP.',
+    immediateReward: { money: 8, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_money_8_2',
+    name: '+8 Money',
+    description: 'Gain 8 Money immediately or keep for 2 VP.',
+    immediateReward: { money: 8, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_money_8_3',
+    name: '+8 Money',
+    description: 'Gain 8 Money immediately or keep for 2 VP.',
+    immediateReward: { money: 8, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_multi_resource_1',
+    name: '+2 Materials, +2 Science, +3 Money',
+    description: 'Gain 2 Materials, 2 Science, and 3 Money immediately or keep for 2 VP.',
+    immediateReward: { materials: 2, science: 2, money: 3, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_multi_resource_2',
+    name: '+2 Materials, +2 Science, +3 Money',
+    description: 'Gain 2 Materials, 2 Science, and 3 Money immediately or keep for 2 VP.',
+    immediateReward: { materials: 2, science: 2, money: 3, victoryPoints: 2 },
+  },
+
+  // 10 Special / Structure Tiles
+  {
+    id: 'disc_ancient_tech_1',
+    name: 'Ancient Tech',
+    description: 'Take the regular Tech Tile with the lowest printed cost for free, or keep for 2 VP.',
+    immediateReward: { ancientTech: true, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_tech_2',
+    name: 'Ancient Tech',
+    description: 'Take the regular Tech Tile with the lowest printed cost for free, or keep for 2 VP.',
+    immediateReward: { ancientTech: true, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_tech_3',
+    name: 'Ancient Tech',
+    description: 'Take the regular Tech Tile with the lowest printed cost for free, or keep for 2 VP.',
+    immediateReward: { ancientTech: true, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_cruiser_1',
+    name: 'Ancient Cruiser',
+    description: 'Place 1 unbuilt Cruiser in this sector immediately or keep for 2 VP.',
+    immediateReward: { grantShipType: 'cruiser', victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_cruiser_2',
+    name: 'Ancient Cruiser',
+    description: 'Place 1 unbuilt Cruiser in this sector immediately or keep for 2 VP.',
+    immediateReward: { grantShipType: 'cruiser', victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_cruiser_3',
+    name: 'Ancient Cruiser',
+    description: 'Place 1 unbuilt Cruiser in this sector immediately or keep for 2 VP.',
+    immediateReward: { grantShipType: 'cruiser', victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_orbital_1',
+    name: 'Ancient Orbital',
+    description: 'Place an Orbital in this sector and gain 2 Materials immediately, or keep for 2 VP.',
+    immediateReward: { grantStructure: 'orbital', materials: 2, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_orbital_2',
+    name: 'Ancient Orbital',
+    description: 'Place an Orbital in this sector and gain 2 Materials immediately, or keep for 2 VP.',
+    immediateReward: { grantStructure: 'orbital', materials: 2, victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_monolith_1',
+    name: 'Ancient Monolith',
+    description: 'Place a Monolith in this sector immediately or keep for 2 VP.',
+    immediateReward: { grantStructure: 'monolith', victoryPoints: 2 },
+  },
+  {
+    id: 'disc_ancient_warp_portal_1',
+    name: 'Ancient Warp Portal',
+    description: 'Place a Warp Portal in this sector (connects to all Warp Portals, 2 VP if controlled at end of game), or keep for 2 VP.',
+    immediateReward: { warpPortal: true, victoryPoints: 2 },
+  },
+
+  // 15 Ancient Ship Part Tiles
+  {
+    id: 'disc_ion_disruptor',
+    name: 'Ion Disruptor',
+    description: 'Ancient weapon module: 1 yellow die (1 dmg), +3 Initiative, 0 energy.',
+    shipPartId: 'ion_disruptor',
+  },
   {
     id: 'disc_ion_turret',
     name: 'Ion Turret',
     description: 'Ancient weapon module: 2 yellow dice with 1 power consumption.',
     shipPartId: 'ion_turret',
+  },
+  {
+    id: 'disc_plasma_turret',
+    name: 'Plasma Turret',
+    description: 'Ancient weapon module: 2 orange dice (2 dmg each) with 3 power consumption.',
+    shipPartId: 'plasma_turret',
+  },
+  {
+    id: 'disc_soliton_charger',
+    name: 'Soliton Charger',
+    description: 'Ancient heavy weapon: 1 blue die (3 dmg) with 0 energy consumed and 0 initiative.',
+    shipPartId: 'soliton_charger',
+  },
+  {
+    id: 'disc_ion_missile',
+    name: 'Ion Missile',
+    description: 'Ancient missile weapon: 2 yellow missiles (1 dmg each), +1 Initiative, 0 energy.',
+    shipPartId: 'ion_missile',
+  },
+  {
+    id: 'disc_axion_computer',
+    name: 'Axion Computer',
+    description: 'Ancient targeting computer: +2 Computer, +1 Initiative, 0 energy.',
+    shipPartId: 'axion_computer',
+  },
+  {
+    id: 'disc_antimatter_missile',
+    name: 'Antimatter Missile',
+    description: 'Ancient missile weapon: 2 red missiles (4 dmg each) with 1 power consumption.',
+    shipPartId: 'antimatter_missile',
+  },
+  {
+    id: 'disc_muon_source',
+    name: 'Muon Source',
+    description: 'Ancient power source: +2 Energy produced, +1 Initiative (placed outside blueprint grid).',
+    shipPartId: 'muon_source',
+  },
+  {
+    id: 'disc_flux_shield',
+    name: 'Flux Shield',
+    description: 'Ancient alien shield: -3 Shield, +1 Initiative, 2 power consumed.',
+    shipPartId: 'flux_shield',
+  },
+  {
+    id: 'disc_conformal_drive',
+    name: 'Conformal Drive',
+    description: 'Ancient propulsion drive: Drive Speed 4, +2 Initiative, 2 power consumed.',
+    shipPartId: 'conformal_drive',
+  },
+  {
+    id: 'disc_nonlinear_drive',
+    name: 'Nonlinear Drive',
+    description: 'Ancient propulsion drive: Drive Speed 2, +2 Energy produced.',
+    shipPartId: 'nonlinear_drive',
   },
   {
     id: 'disc_shard_hull',
@@ -200,36 +391,25 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
     shipPartId: 'shard_hull',
   },
   {
-    id: 'disc_money_cache',
-    name: 'Money Cache',
-    description: 'Gain 8 Credits immediately or keep for 2 VP.',
-    immediateReward: { money: 8, victoryPoints: 2 },
+    id: 'disc_hypergrid_source',
+    name: 'Hypergrid Source',
+    description: 'Ancient power source: +11 Energy produced, 0 energy consumed.',
+    shipPartId: 'hypergrid_source',
   },
   {
-    id: 'disc_science_vault',
-    name: 'Science Vault',
-    description: 'Gain 6 Science immediately or keep for 2 VP.',
-    immediateReward: { science: 6, victoryPoints: 2 },
+    id: 'disc_inversion_shield',
+    name: 'Inversion Shield',
+    description: 'Ancient shield: -2 Shield, +2 Energy produced.',
+    shipPartId: 'inversion_shield',
   },
   {
-    id: 'disc_material_deposit',
-    name: 'Material Deposit',
-    description: 'Gain 5 Materials immediately or keep for 2 VP.',
-    immediateReward: { materials: 5, victoryPoints: 2 },
-  },
-  {
-    id: 'disc_ancient_cruiser',
-    name: 'Ancient Cruiser',
-    description: 'Deploy 1 free Cruiser to this sector immediately or keep for 2 VP.',
-    immediateReward: { grantShipType: 'cruiser', victoryPoints: 2 },
-  },
-  {
-    id: 'disc_flux_shield',
-    name: 'Flux Shield',
-    description: 'Ancient alien shield: -2 to opponent hit rolls with 0 energy consumed.',
-    shipPartId: 'flux_shield',
+    id: 'disc_soliton_missile',
+    name: 'Soliton Missile',
+    description: 'Ancient missile weapon: 2 blue missiles (3 dmg each), +2 Initiative, 1 power consumed.',
+    shipPartId: 'soliton_missile',
   },
 ];
+
 
 export function generateSectorDecks(): {
   ring1: SectorTile[];

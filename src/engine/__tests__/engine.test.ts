@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'bun:test';
+import { describe, expect, it, test } from 'bun:test';
 import {
   areCoordsEqual,
   areSectorsConnected,
@@ -17,10 +17,16 @@ import {
   getRemainingShipSupply,
 } from '../rules/shipValidation';
 import { SHIP_PARTS } from '../rules/partData';
-import { sortUnitsByInitiative, getSectorDefenderOwnerId } from '../rules/combatEngine';
+import {
+  sortUnitsByInitiative,
+  getSectorDefenderOwnerId,
+  buildCombatUnitsForSector,
+  executeCombatStep,
+} from '../rules/combatEngine';
 import { createInitialGame } from '../rules/setup';
-import { executeAction, validateAction } from '../rules/gameReducer';
+import { executeAction, validateAction, checkAndTriggerCombat } from '../rules/gameReducer';
 import type { SectorTile } from '../types/sector';
+import type { CombatState } from '../types/state';
 import {
   getIncomeForTrack,
   getUpkeepForDiscs,
@@ -31,9 +37,10 @@ import {
   applyUpkeepPhase,
   POPULATION_TRACK_SPACES,
 } from '../rules/economyEngine';
-import { CENTER_SECTOR, generateSectorDecks } from '../rules/sectorData';
+import { CENTER_SECTOR, generateSectorDecks, DISCOVERY_TILES } from '../rules/sectorData';
 import {
   createInitialTechBag,
+  drawTechTilesForSetup,
   drawTechTilesForRound,
   calculateTechCost,
   MILITARY_TECHS,
@@ -251,12 +258,14 @@ describe('Ship Blueprint Validation', () => {
 
 describe('Economy & Upkeep', () => {
   it('computes correct income as cubes are removed from player board', () => {
-    // 12 cubes on board = 2 income
-    expect(getIncomeForTrack(12)).toBe(2);
-    // 11 cubes on board = 3 income
-    expect(getIncomeForTrack(11)).toBe(3);
-    // 6 cubes on board = 12 income
-    expect(getIncomeForTrack(6)).toBe(12);
+    // 11 cubes on board = 2 income
+    expect(getIncomeForTrack(11)).toBe(2);
+    // 10 cubes on board = 3 income
+    expect(getIncomeForTrack(10)).toBe(3);
+    // 5 cubes on board = 12 income
+    expect(getIncomeForTrack(5)).toBe(12);
+    // 0 cubes on board = 28 income
+    expect(getIncomeForTrack(0)).toBe(28);
   });
 
   it('computes progressive upkeep cost from discs remaining', () => {
@@ -1091,12 +1100,12 @@ describe('Game Setup & Turn Engine Flow', () => {
   });
 
   describe('Official Eclipse: Second Dawn Technology Rules & Tech Tray', () => {
-    it('contains all 40 authentic technologies with exact official base costs and slot tiers', () => {
+    it('contains all 39 authentic technologies with exact official base costs and slot tiers (Rulebook p. 3 & p. 31)', () => {
       expect(MILITARY_TECHS.length).toBe(8);
       expect(GRID_TECHS.length).toBe(8);
       expect(NANO_TECHS.length).toBe(8);
-      expect(RARE_TECHS.length).toBe(16);
-      expect(TECH_CATALOG.length).toBe(40);
+      expect(RARE_TECHS.length).toBe(15);
+      expect(TECH_CATALOG.length).toBe(39);
 
       // Verify slot base costs [2, 4, 6, 8, 10, 12, 14, 16]
       const expectedSlotCosts = [2, 4, 6, 8, 10, 12, 14, 16];
@@ -1110,38 +1119,78 @@ describe('Game Setup & Turn Engine Flow', () => {
       }
     });
 
-    it('creates an official 112-tile tech bag (96 regular tiles + 16 rare tiles)', () => {
+    it('creates an official 114-tile tech bag (99 regular tiles + 15 rare tiles)', () => {
       const bag = createInitialTechBag();
-      expect(bag.length).toBe(112);
+      expect(bag.length).toBe(114);
 
       const militaryTiles = bag.filter((t) => t.category === 'military');
       const gridTiles = bag.filter((t) => t.category === 'grid');
       const nanoTiles = bag.filter((t) => t.category === 'nano');
       const rareTiles = bag.filter((t) => t.category === 'rare');
 
-      expect(militaryTiles.length).toBe(32); // 8 techs * 4 copies
-      expect(gridTiles.length).toBe(32); // 8 techs * 4 copies
-      expect(nanoTiles.length).toBe(32); // 8 techs * 4 copies
-      expect(rareTiles.length).toBe(16); // 16 unique rare techs * 1 copy
+      expect(militaryTiles.length).toBe(33); // 5+5+5+5+4+3+3+3
+      expect(gridTiles.length).toBe(33); // 5+5+5+5+4+3+3+3
+      expect(nanoTiles.length).toBe(33); // 5+5+5+5+4+3+3+3
+      expect(rareTiles.length).toBe(15); // 15 unique rare techs * 1 copy
+
+      // Verify Rift Cannon is NOT present in Second Dawn
+      expect(RARE_TECHS.some((t) => t.id === 'rift_cannon')).toBe(false);
+      expect(bag.some((t) => t.id === 'rift_cannon')).toBe(false);
+
+      // Verify canonical 15 rare techs are present
+      const expectedRareIds = [
+        'antimatter_splitter',
+        'neutron_absorber',
+        'conifold_field',
+        'absorption_shield',
+        'cloaking_device',
+        'improved_logistics',
+        'sentient_hull',
+        'soliton_cannon',
+        'transition_drive',
+        'warp_portal',
+        'flux_missile',
+        'pico_modulator',
+        'ancient_labs',
+        'zero_point_source',
+        'metasynthesis',
+      ];
+      expect(RARE_TECHS.length).toBe(15);
+      expect(RARE_TECHS.map((t) => t.id).sort()).toEqual(expectedRareIds.sort());
     });
 
-    it('draws tiles until (playerCount + 3) regular tiles are drawn, rare tiles do not count toward limit', () => {
+    it('draws tiles for setup: 2p draws 12 regular, 4p draws 16 regular, rare tiles do not count toward limit', () => {
       const bag = createInitialTechBag();
-      // For 2 players: limit is 2 + 3 = 5 regular tiles
+      // For 2 players setup (rulebook p. 5): 12 regular tiles
+      const result2p = drawTechTilesForSetup(bag, 2);
+      expect(result2p.regularDrawn).toBe(12);
+      expect(result2p.drawn.filter((t) => t.category !== 'rare').length).toBe(12);
+      expect(result2p.drawn.length).toBe(12 + result2p.rareDrawn);
+      expect(result2p.remainingBag.length).toBe(114 - result2p.drawn.length);
+
+      // For 4 players setup: 16 regular tiles
+      const result4p = drawTechTilesForSetup(bag, 4);
+      expect(result4p.regularDrawn).toBe(16);
+      expect(result4p.drawn.filter((t) => t.category !== 'rare').length).toBe(16);
+    });
+
+    it('draws tiles for cleanup round: 2p draws 5 regular, 4p draws 7 regular, rare tiles do not count toward limit', () => {
+      const bag = createInitialTechBag();
+      // For 2 players cleanup (rulebook p. 25): 2 + 3 = 5 regular tiles
       const result2p = drawTechTilesForRound(bag, 2);
       expect(result2p.regularDrawn).toBe(5);
       expect(result2p.drawn.filter((t) => t.category !== 'rare').length).toBe(5);
       expect(result2p.drawn.length).toBe(5 + result2p.rareDrawn);
-      expect(result2p.remainingBag.length).toBe(112 - result2p.drawn.length);
+      expect(result2p.remainingBag.length).toBe(114 - result2p.drawn.length);
 
-      // For 4 players: limit is 4 + 3 = 7 regular tiles
+      // For 4 players cleanup: 4 + 3 = 7 regular tiles
       const result4p = drawTechTilesForRound(bag, 4);
       expect(result4p.regularDrawn).toBe(7);
       expect(result4p.drawn.filter((t) => t.category !== 'rare').length).toBe(7);
     });
 
     it('correctly computes canonical discounts for regular and rare technologies', () => {
-      // Slot 3: Improved Hull in GRID_TECHS (cost: [6, 5, 4, 4])
+      // Slot 3: Improved Hull in GRID_TECHS (baseCost 6, minCost 4)
       const improvedHull = GRID_TECHS.find((t) => t.id === 'improved_hull')!;
       expect(improvedHull).toBeDefined();
       expect(calculateTechCost(improvedHull, 0)).toBe(6);
@@ -1150,20 +1199,23 @@ describe('Game Setup & Turn Engine Flow', () => {
       expect(calculateTechCost(improvedHull, 3)).toBe(4);
       expect(calculateTechCost(improvedHull, 6)).toBe(4);
 
-      // Slot 8: Artifact Key (cost: [16, 14, 12, 8])
+      // Slot 8: Artifact Key (baseCost 16, minCost 8, discounts: [0, 1, 2, 3, 4, 6, 8])
       const artifactKey = NANO_TECHS.find((t) => t.id === 'artifact_key')!;
       expect(calculateTechCost(artifactKey, 0)).toBe(16);
-      expect(calculateTechCost(artifactKey, 1)).toBe(14);
-      expect(calculateTechCost(artifactKey, 2)).toBe(12);
-      expect(calculateTechCost(artifactKey, 3)).toBe(8);
-      expect(calculateTechCost(artifactKey, 5)).toBe(8);
+      expect(calculateTechCost(artifactKey, 1)).toBe(15);
+      expect(calculateTechCost(artifactKey, 2)).toBe(14);
+      expect(calculateTechCost(artifactKey, 3)).toBe(13);
+      expect(calculateTechCost(artifactKey, 4)).toBe(12);
+      expect(calculateTechCost(artifactKey, 5)).toBe(10);
+      expect(calculateTechCost(artifactKey, 6)).toBe(8);
 
-      // Rare: Ancient Labs (cost: [13, 11, 9, 9])
+      // Rare: Ancient Labs (baseCost 13, minCost 9)
       const ancientLabs = RARE_TECHS.find((t) => t.id === 'ancient_labs')!;
       expect(calculateTechCost(ancientLabs, 0)).toBe(13);
-      expect(calculateTechCost(ancientLabs, 1)).toBe(11);
-      expect(calculateTechCost(ancientLabs, 2)).toBe(9);
-      expect(calculateTechCost(ancientLabs, 3)).toBe(9);
+      expect(calculateTechCost(ancientLabs, 1)).toBe(12);
+      expect(calculateTechCost(ancientLabs, 2)).toBe(11);
+      expect(calculateTechCost(ancientLabs, 3)).toBe(10);
+      expect(calculateTechCost(ancientLabs, 4)).toBe(9);
     });
 
     it('researches a technology, deducts discounted science, and replenishes supply in cleanup', () => {
@@ -1208,6 +1260,52 @@ describe('Game Setup & Turn Engine Flow', () => {
       // Tech supply must have received at least 5 regular tiles!
       expect(pass2.newState.techSupply.length).toBeGreaterThanOrEqual(supplyBeforeCleanup + 5);
       expect(pass2.newState.techBag.length).toBeLessThan(bagBeforeCleanup);
+    });
+
+    it('grants exactly 1 bonus Influence Disc for Advanced Robotics and 2 for Quantum Grid', () => {
+      const game = createInitialGame(2);
+      const p1 = game.players[0]!;
+      p1.resources.science = 50;
+
+      const initialTotalDiscs = p1.influenceTrack.totalDiscs;
+      const initialDiscsOnTrack = p1.influenceTrack.discsOnTrack;
+
+      // 1. Research Advanced Robotics
+      const advRobotics = NANO_TECHS.find((t) => t.id === 'advanced_robotics')!;
+      game.techSupply.unshift(advRobotics);
+
+      const res1 = executeAction(game, {
+        type: 'RESEARCH',
+        playerId: p1.id,
+        techId: 'advanced_robotics',
+      });
+      expect(res1.success).toBe(true);
+
+      const p1AfterRobotics = res1.newState.players[0]!;
+      // Advanced Robotics must add exactly 1 disc:
+      // totalDiscs increases from 13 -> 14 (+1)
+      expect(p1AfterRobotics.influenceTrack.totalDiscs).toBe(initialTotalDiscs + 1);
+      // discsOnTrack: -1 (action disc placed on research) + 1 (bonus disc from Robotics) = initialDiscsOnTrack
+      expect(p1AfterRobotics.influenceTrack.discsOnTrack).toBe(initialDiscsOnTrack - 1 + 1);
+
+      // 2. Research Quantum Grid
+      res1.newState.activePlayerIndex = 0;
+      const quantumGrid = GRID_TECHS.find((t) => t.id === 'quantum_grid')!;
+      res1.newState.techSupply.unshift(quantumGrid);
+
+      const discsOnTrackBeforeQuantum = p1AfterRobotics.influenceTrack.discsOnTrack;
+      const res2 = executeAction(res1.newState, {
+        type: 'RESEARCH',
+        playerId: p1.id,
+        techId: 'quantum_grid',
+      });
+      expect(res2.success).toBe(true);
+
+      const p1AfterQuantum = res2.newState.players[0]!;
+      // Quantum Grid adds 2 discs: totalDiscs 14 -> 16 (+2)
+      expect(p1AfterQuantum.influenceTrack.totalDiscs).toBe(initialTotalDiscs + 3);
+      // discsOnTrack: -1 (action disc) + 2 (bonus discs from Quantum Grid) = discsOnTrackBeforeQuantum + 1
+      expect(p1AfterQuantum.influenceTrack.discsOnTrack).toBe(discsOnTrackBeforeQuantum - 1 + 2);
     });
 
     it('ensures all home systems contain an Artifact and Artifact Key rewards controlled artifacts without inherent VP', () => {
@@ -1522,7 +1620,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       const updatedRows = getPlayerTechRows(p1);
       // Military row has 4 military techs + 1 rare tech placed in military = 5 total
       expect(updatedRows.military.count).toBe(5);
-      expect(updatedRows.military.nextDiscount).toBe(5); // 5 discount for 6th tech
+      expect(updatedRows.military.nextDiscount).toBe(6); // 6 discount for 6th tech (table: [0, 1, 2, 3, 4, 6, 8])
       expect(updatedRows.military.victoryPoints).toBe(2); // 5 techs in row = 2 VP!
 
       // Grid row has 1 tech
@@ -2077,42 +2175,42 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
     describe('2. Income Cubes & Forecast on Player Board', () => {
       it('correctly calculates current income, next 1 cube and next 2 cubes deltas', () => {
-        // At 12 cubes on board (none colonized): income is 2
-        const f12 = getIncomeForecast(12);
-        expect(f12.currentIncome).toBe(2);
-        expect(f12.next1Cube.income).toBe(3);
-        expect(f12.next1Cube.delta).toBe(1); // +1 gain
-        expect(f12.next2Cubes.income).toBe(4);
-        expect(f12.next2Cubes.delta).toBe(2); // +2 gain
-
-        // At 11 cubes on board (1 colonized): income is 3
+        // At 11 cubes on board (none colonized): income is 2
         const f11 = getIncomeForecast(11);
-        expect(f11.currentIncome).toBe(3);
-        expect(f11.next1Cube.income).toBe(4);
-        expect(f11.next1Cube.delta).toBe(1);
-        expect(f11.next2Cubes.income).toBe(6);
-        expect(f11.next2Cubes.delta).toBe(3); // from 3 to 6 is +3!
+        expect(f11.currentIncome).toBe(2);
+        expect(f11.next1Cube.income).toBe(3);
+        expect(f11.next1Cube.delta).toBe(1); // +1 gain
+        expect(f11.next2Cubes.income).toBe(4);
+        expect(f11.next2Cubes.delta).toBe(2); // +2 gain
 
-        // At 5 cubes on board: income is 15
+        // At 10 cubes on board (1 colonized): income is 3
+        const f10 = getIncomeForecast(10);
+        expect(f10.currentIncome).toBe(3);
+        expect(f10.next1Cube.income).toBe(4);
+        expect(f10.next1Cube.delta).toBe(1);
+        expect(f10.next2Cubes.income).toBe(6);
+        expect(f10.next2Cubes.delta).toBe(3); // from 3 to 6 is +3!
+
+        // At 5 cubes on board: income is 12
         const f5 = getIncomeForecast(5);
-        expect(f5.currentIncome).toBe(15);
-        expect(f5.next1Cube.income).toBe(18);
+        expect(f5.currentIncome).toBe(12);
+        expect(f5.next1Cube.income).toBe(15);
         expect(f5.next1Cube.delta).toBe(3);
-        expect(f5.next2Cubes.income).toBe(21);
+        expect(f5.next2Cubes.income).toBe(18);
         expect(f5.next2Cubes.delta).toBe(6);
       });
 
-      it('verifies POPULATION_TRACK_SPACES ascending order (2 to 32) and correct active/covered state logic', () => {
-        const expectedValues = [2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28, 32];
+      it('verifies POPULATION_TRACK_SPACES ascending order (2 to 28) and correct active/covered state logic', () => {
+        const expectedValues = [2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28];
         expect(POPULATION_TRACK_SPACES.map((s) => s.value)).toEqual(expectedValues);
 
-        // At 11 cubes on board (game start, 1 colonized):
+        // At 10 cubes on board (game start, 1 colonized):
         // Space 2 (slot 0) is passed (uncovered)
         // Space 3 (slot 1) is ACTIVE (income = 3)
         // Space 4 (slot 2) is NEXT cube (+1 delta)
         // Space 6 (slot 3) is +2 cubes (+3 delta)
-        // Spaces 4 through 32 have 11 cubes
-        const cubesOnBoard = 11;
+        // Spaces 4 through 28 have 10 cubes
+        const cubesOnBoard = 10;
         const activeSpace = POPULATION_TRACK_SPACES.find((s) => s.cubesOnBoardThreshold === cubesOnBoard)!;
         expect(activeSpace.value).toBe(3);
 
@@ -2120,8 +2218,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(nextSpace.value).toBe(4);
 
         const coveredSpaces = POPULATION_TRACK_SPACES.filter((s) => cubesOnBoard > s.cubesOnBoardThreshold);
-        expect(coveredSpaces.length).toBe(11); // 11 cubes covering spaces 4 through 32
-        expect(coveredSpaces.map((s) => s.value)).toEqual([4, 6, 8, 10, 12, 15, 18, 21, 24, 28, 32]);
+        expect(coveredSpaces.length).toBe(10); // 10 cubes covering spaces 4 through 28
+        expect(coveredSpaces.map((s) => s.value)).toEqual([4, 6, 8, 10, 12, 15, 18, 21, 24, 28]);
       });
     });
 
@@ -2383,6 +2481,68 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(stepRes.newState.pendingCombatConquest?.winnerPlayerId).toBe(p1.id);
       });
 
+      it('6b. Population Bombardment without defending ships: enemy ship in controlled sector bombards population and overthrows control even with 0 defending ships', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // P2 controls sector 201 with an influence disc and 1 colonized population cube
+        const targetSec: SectorTile = {
+          id: 'sec_201_controlled',
+          sectorNumber: 201,
+          ring: 2,
+          coord: { q: 2, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          discOwner: p2.id,
+          planets: [
+            {
+              resource: 'money',
+              isAdvanced: false,
+              colonizedBy: p2.id,
+              colonizedResource: 'money',
+            },
+          ],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: false,
+          discoveryClaimed: false,
+          ancientsCount: 0,
+          // P1 has an Interceptor in this sector; P2 has ZERO ships in this sector!
+          ships: [
+            {
+              id: 'p1_interceptor_1',
+              ownerId: p1.id,
+              type: 'interceptor',
+              damage: 0,
+            },
+          ],
+        };
+
+        p2.influenceTrack.discsOnTrack = 10;
+        p2.population.money.cubesOnBoard = 9; // 1 cube in home, 1 cube in sec 201
+        p1.techTrack.researched.push(MILITARY_TECHS.find((t) => t.id === 'neutron_bombs')!);
+
+        game.sectors.push(targetSec);
+
+        // Both players pass to conclude ACTION_PHASE and enter COMBAT_PHASE
+        const pass1 = executeAction(game, { type: 'PASS', playerId: p1.id });
+        expect(pass1.success).toBe(true);
+        const pass2 = executeAction(pass1.newState, { type: 'PASS', playerId: p2.id });
+        expect(pass2.success).toBe(true);
+
+        // The game should have entered COMBAT_PHASE, bombarded P2's population, overthrown P2's disc,
+        // and paused with pendingCombatConquest for P1!
+        expect(pass2.newState.phase).toBe('COMBAT_PHASE');
+        const updatedSec = pass2.newState.sectors.find((s) => s.id === targetSec.id)!;
+        expect(updatedSec.planets[0]!.colonizedBy).toBeUndefined(); // Population wiped
+        expect(updatedSec.discOwner).toBeUndefined(); // Disc overthrown
+        expect(pass2.newState.players[1]!.influenceTrack.discsOnTrack).toBe(11); // Disc returned to P2
+        expect(pass2.newState.players[1]!.population.money.cubesOnBoard).toBe(10); // Cube returned to P2
+        expect(pass2.newState.pendingCombatConquest?.winnerPlayerId).toBe(p1.id);
+        expect(pass2.newState.pendingCombatConquest?.sectorId).toBe(targetSec.id);
+      });
+
       it('7. Ship Base Initiative & Defender Tie-Breaking: verifies official Human base initiatives and defender tie priority', () => {
         const bps = createDefaultHumanBlueprints();
         // Base initiatives:
@@ -2572,8 +2732,317 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(abandonRes.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 2);
       });
     });
+
+    describe('11. Authentic 36 Discovery Tiles & Missile Combat Logic', () => {
+      test('official discovery bag contains exactly 36 tiles across 24 distinct types', () => {
+        expect(DISCOVERY_TILES.length).toBe(36);
+
+        // 11 Resource tiles
+        const mat6 = DISCOVERY_TILES.filter((t) => t.immediateReward?.materials === 6);
+        const sci5 = DISCOVERY_TILES.filter((t) => t.immediateReward?.science === 5);
+        const mon8 = DISCOVERY_TILES.filter((t) => t.immediateReward?.money === 8);
+        const multi = DISCOVERY_TILES.filter(
+          (t) =>
+            t.immediateReward?.materials === 2 &&
+            t.immediateReward?.science === 2 &&
+            t.immediateReward?.money === 3
+        );
+        expect(mat6.length).toBe(3);
+        expect(sci5.length).toBe(3);
+        expect(mon8.length).toBe(3);
+        expect(multi.length).toBe(2);
+
+        // 10 Special / Structure tiles
+        const techTiles = DISCOVERY_TILES.filter((t) => t.immediateReward?.ancientTech);
+        const cruiserTiles = DISCOVERY_TILES.filter((t) => t.immediateReward?.grantShipType === 'cruiser');
+        const orbitalTiles = DISCOVERY_TILES.filter((t) => t.immediateReward?.grantStructure === 'orbital');
+        const monolithTiles = DISCOVERY_TILES.filter((t) => t.immediateReward?.grantStructure === 'monolith');
+        const warpPortalTiles = DISCOVERY_TILES.filter((t) => t.immediateReward?.warpPortal);
+
+        expect(techTiles.length).toBe(3);
+        expect(cruiserTiles.length).toBe(3);
+        expect(orbitalTiles.length).toBe(2);
+        expect(monolithTiles.length).toBe(1);
+        expect(warpPortalTiles.length).toBe(1);
+
+        // 15 Ancient Ship Parts
+        const partTiles = DISCOVERY_TILES.filter((t) => !!t.shipPartId);
+        expect(partTiles.length).toBe(15);
+
+        const expectedPartIds = [
+          'ion_disruptor',
+          'ion_turret',
+          'plasma_turret',
+          'soliton_charger',
+          'ion_missile',
+          'axion_computer',
+          'antimatter_missile',
+          'muon_source',
+          'flux_shield',
+          'conformal_drive',
+          'nonlinear_drive',
+          'shard_hull',
+          'hypergrid_source',
+          'inversion_shield',
+          'soliton_missile',
+        ];
+
+        for (const pid of expectedPartIds) {
+          const found = partTiles.find((t) => t.shipPartId === pid);
+          expect(found).toBeDefined();
+          // Verify part is defined in SHIP_PARTS
+          const partDef = SHIP_PARTS[pid];
+          expect(partDef).toBeDefined();
+          expect(partDef.id).toBe(pid);
+        }
+
+        // Verify setup initializes a 36-tile discoveryBag
+        const game = createInitialGame(2);
+        expect(game.discoveryBag.length).toBe(36);
+      });
+
+      test('resolves discovery choices: Ancient Tech grants lowest cost regular tech for free', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+
+        // Sort supply regular techs to know lowest cost
+        const regularTechs = game.techSupply
+          .filter((t) => t.category !== 'rare')
+          .sort((a, b) => a.baseCost - b.baseCost);
+        const lowestTech = regularTechs[0]!;
+
+        const initialScience = p1.resources.science;
+        const initialResearchedCount = p1.techTrack.researched.length;
+
+        game.pendingDiscovery = {
+          sectorId: game.sectors[1]!.id,
+          playerId: p1.id,
+          discovery: {
+            id: 'disc_ancient_tech_test',
+            name: 'Ancient Tech',
+            description: 'Free tech',
+            immediateReward: { ancientTech: true, victoryPoints: 2 },
+          },
+        };
+
+        const res = executeAction(game, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: game.sectors[1]!.id,
+          keepForVictoryPoints: false,
+        });
+
+        expect(res.success).toBe(true);
+        const updatedP1 = res.newState.players[0]!;
+        expect(updatedP1.techTrack.researched.length).toBe(initialResearchedCount + 1);
+        expect(updatedP1.techTrack.researched.some((t) => t.id === lowestTech.id)).toBe(true);
+        // Free: science must NOT be deducted
+        expect(updatedP1.resources.science).toBe(initialScience);
+      });
+
+      test('resolves discovery choices: Ancient Orbital, Monolith, and Warp Portal', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const testSector = game.sectors[1]!;
+
+        // 1. Orbital Discovery
+        game.pendingDiscovery = {
+          sectorId: testSector.id,
+          playerId: p1.id,
+          discovery: {
+            id: 'disc_orbital_test',
+            name: 'Ancient Orbital',
+            description: 'Free orbital',
+            immediateReward: { grantStructure: 'orbital', materials: 2, victoryPoints: 2 },
+          },
+        };
+
+        const initialMat = p1.resources.materials;
+        const orbRes = executeAction(game, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: testSector.id,
+          keepForVictoryPoints: false,
+        });
+
+        expect(orbRes.success).toBe(true);
+        const updatedSec = orbRes.newState.sectors.find((s) => s.id === testSector.id)!;
+        expect(updatedSec.structures?.orbital).toBe(true);
+        expect(updatedSec.planets.some((p) => p.isOrbital)).toBe(true);
+        expect(orbRes.newState.players[0]!.resources.materials).toBe(initialMat + 2);
+
+        // 2. Warp Portal Discovery
+        orbRes.newState.pendingDiscovery = {
+          sectorId: testSector.id,
+          playerId: p1.id,
+          discovery: {
+            id: 'disc_warp_test',
+            name: 'Ancient Warp Portal',
+            description: 'Warp portal',
+            immediateReward: { warpPortal: true, victoryPoints: 2 },
+          },
+        };
+
+        const warpRes = executeAction(orbRes.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: testSector.id,
+          keepForVictoryPoints: false,
+        });
+
+        expect(warpRes.success).toBe(true);
+        const warpSec = warpRes.newState.sectors.find((s) => s.id === testSector.id)!;
+        expect(warpSec.hasWarpPortal).toBe(true);
+
+        // Test connectivity between two Warp Portal sectors
+        const anotherWarpSec: SectorTile = {
+          ...game.sectors[2]!,
+          id: 'warp_sec_remote',
+          hasWarpPortal: true,
+          coord: { q: 10, r: 10 }, // Far away
+        };
+        expect(areSectorsConnected(warpSec, anotherWarpSec)).toBe(true);
+      });
+
+      test('resolves discovery choices: Equipping Ancient Missile to Cruiser blueprint', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const testSector = game.sectors[1]!;
+
+        game.pendingDiscovery = {
+          sectorId: testSector.id,
+          playerId: p1.id,
+          discovery: {
+            id: 'disc_soliton_missile',
+            name: 'Soliton Missile',
+            description: 'Missiles',
+            shipPartId: 'soliton_missile',
+          },
+        };
+
+        const res = executeAction(game, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: testSector.id,
+          keepForVictoryPoints: false,
+          equipShipType: 'cruiser',
+          equipSlotIndex: 0,
+        });
+
+        expect(res.success).toBe(true);
+        const updatedP1 = res.newState.players[0]!;
+        expect(updatedP1.blueprints.cruiser.slots[0]?.id).toBe('soliton_missile');
+        expect(updatedP1.unlockedAncientParts).toContain('soliton_missile');
+      });
+
+      test('combat sequence: missiles fire once in initiative order, then regular round fires cannons', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+        const battleSector = game.sectors[1]!;
+
+        // Equip P1 Cruiser with Soliton Missile (2 blue dice, 3 dmg each, isMissile: true, +2 initiative)
+        // Soliton Missile gives initiative 2 + Cruiser base 1 + nuclear drive 1 = 4 initiative
+        p1.blueprints.cruiser.slots[0] = SHIP_PARTS.soliton_missile;
+        p1.blueprints.cruiser.slots[1] = SHIP_PARTS.ion_cannon; // 1 yellow die (1 dmg)
+
+        // P2 Cruiser has only Ion Cannon (initiative 2, 1 yellow die)
+        p2.blueprints.cruiser.slots[0] = SHIP_PARTS.ion_cannon;
+        p2.blueprints.cruiser.slots[1] = SHIP_PARTS.improved_hull; // 3 HP total
+
+        // Place 1 P1 cruiser and 1 P2 cruiser in sector
+        battleSector.ships = [
+          { id: 'p1_cruiser', ownerId: p1.id, type: 'cruiser', damage: 0 },
+          { id: 'p2_cruiser', ownerId: p2.id, type: 'cruiser', damage: 0 },
+        ];
+        battleSector.discOwner = p2.id; // P2 is Defender
+
+        // Advance to COMBAT_PHASE
+        game.phase = 'COMBAT_PHASE';
+        game.resolvedCombatSectorIds = [];
+
+        // Calling checkAndTriggerCombat
+        checkAndTriggerCombat(game);
+
+        expect(game.activeCombat).toBeDefined();
+        // Since P1 Cruiser has missiles, combat must initialize into 'missile' stage
+        expect(game.activeCombat!.stage).toBe('missile');
+        expect(game.activeCombat!.roundNumber).toBe(1);
+
+        const units = buildCombatUnitsForSector(battleSector, [p1, p2]);
+        expect(units.find((u) => u.id === 'p1_cruiser')!.weapons.some((w) => w.isMissile)).toBe(true);
+
+        // Step 1: P1 Cruiser fires missiles
+        const step1 = executeCombatStep(units, game.activeCombat!, undefined, p2.id);
+
+        // Missiles were fired
+        expect(step1.rolls.length).toBeGreaterThan(0);
+        // All rolls in step 1 must be blue (soliton missile)
+        for (const r of step1.rolls) {
+          expect(r.dieColor).toBe('blue');
+        }
+
+        // If P2 wasn't destroyed by missiles, stage must transition to 'regular' because P2 has no missiles
+        if (!step1.isCombatOver) {
+          expect(game.activeCombat!.stage).toBe('regular');
+          expect(game.activeCombat!.roundNumber).toBe(1);
+
+          // Step 2: Engagement round begins (cannons only)
+          const step2 = executeCombatStep(step1.updatedUnits, game.activeCombat!, undefined, p2.id);
+          for (const r of step2.rolls) {
+            // Must be yellow (Ion Cannons), NOT blue (Soliton Missiles cannot fire in regular round!)
+            expect(r.dieColor).toBe('yellow');
+          }
+        }
+      });
+
+      test('combat stalemate: ships armed only with missiles trigger stalemate in regular round', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+        const battleSector = game.sectors[1]!;
+
+        // Both ships only have missiles and NO cannons
+        p1.blueprints.interceptor.slots = [
+          SHIP_PARTS.nuclear_drive,
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.flux_missile, // Yellow missiles, no cannons
+          null,
+        ];
+
+        p2.blueprints.interceptor.slots = [
+          SHIP_PARTS.nuclear_drive,
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.flux_missile, // Yellow missiles, no cannons
+          null,
+        ];
+
+        battleSector.ships = [
+          { id: 'p1_int', ownerId: p1.id, type: 'interceptor', damage: 0 },
+          { id: 'p2_int', ownerId: p2.id, type: 'interceptor', damage: 0 },
+        ];
+        battleSector.discOwner = p2.id; // Defender is P2
+
+        const combatState: CombatState = {
+          sectorId: battleSector.id,
+          defenderOwnerId: p2.id,
+          roundNumber: 1,
+          stage: 'regular', // Missiles were already fired in missile stage
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          retreatDeclared: {},
+          missileFiredShipIds: ['p1_int', 'p2_int'],
+        };
+
+        const units = buildCombatUnitsForSector(battleSector, [p1, p2]);
+        // Execute regular combat step when no units have cannons
+        const result = executeCombatStep(units, combatState, undefined, p2.id);
+
+        // Stalemate: attacker (p1) is destroyed/eliminated, defender (p2) wins!
+        expect(result.isCombatOver).toBe(true);
+        expect(result.winnerOwnerId).toBe(p2.id);
+      });
+    });
   });
 });
-
-
-

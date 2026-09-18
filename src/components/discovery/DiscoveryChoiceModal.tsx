@@ -76,8 +76,18 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   Ancient Tech Module: {part.name}
                 </div>
                 <div className="text-[11px] text-slate-400 mt-0.5">
-                  Power Consumed: {part.powerConsumed} | Power Produced: {part.powerProduced} | Hull: +{part.hullBonus} | Shield: -{part.shieldBonus} | Computer: +{part.computerBonus}
-                  {part.dice && part.dice.length > 0 && ` | ${part.dice[0].count}x ${part.dice[0].color} dice`}
+                  {part.powerConsumed > 0 && `Power Consumed: ${part.powerConsumed} | `}
+                  {part.powerProduced > 0 && `Power Produced: +${part.powerProduced} | `}
+                  {part.initiativeBonus > 0 && `Initiative: +${part.initiativeBonus} | `}
+                  {part.driveSpeed && `Drive Speed: ${part.driveSpeed} | `}
+                  {part.hullBonus > 0 && `Hull: +${part.hullBonus} | `}
+                  {part.shieldBonus > 0 && `Shield: -${part.shieldBonus} | `}
+                  {part.computerBonus > 0 && `Computer: +${part.computerBonus} | `}
+                  {part.dice && part.dice.length > 0 && (
+                    <span className="text-amber-300 font-semibold">
+                      {part.dice.map((d) => `${d.count}x ${d.damagePerHit} Dmg ${d.color} ${d.isMissile ? '🚀 (Missile)' : '(Cannon)'}`).join(', ')}
+                    </span>
+                  )}
                 </div>
               </div>
               <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[10px] font-mono font-bold">
@@ -110,6 +120,30 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                 <span className="px-2.5 py-1 bg-purple-500/20 border border-purple-500/40 text-purple-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Rocket className="w-3.5 h-3.5 text-purple-400" />
                   +1 Free {discovery.immediateReward.grantShipType.toUpperCase()}
+                </span>
+              )}
+              {discovery.immediateReward.ancientTech && (
+                <span className="px-2.5 py-1 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 rounded-md text-xs font-bold flex items-center gap-1.5">
+                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
+                  +1 Free Regular Technology (Lowest Printed Cost)
+                </span>
+              )}
+              {discovery.immediateReward.grantStructure === 'orbital' && (
+                <span className="px-2.5 py-1 bg-blue-500/20 border border-blue-500/40 text-blue-300 rounded-md text-xs font-bold flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-blue-400" />
+                  +1 Ancient Orbital (+2 Materials)
+                </span>
+              )}
+              {discovery.immediateReward.grantStructure === 'monolith' && (
+                <span className="px-2.5 py-1 bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-md text-xs font-bold flex items-center gap-1.5">
+                  <Trophy className="w-3.5 h-3.5 text-yellow-400" />
+                  +1 Ancient Monolith (3 VP)
+                </span>
+              )}
+              {discovery.immediateReward.warpPortal && (
+                <span className="px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-md text-xs font-bold flex items-center gap-1.5">
+                  <Rocket className="w-3.5 h-3.5 text-emerald-400" />
+                  Ancient Warp Portal (Connects all Warp Portals, 2 VP)
                 </span>
               )}
             </div>
