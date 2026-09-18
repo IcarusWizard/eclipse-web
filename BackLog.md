@@ -176,3 +176,4 @@
 - [ ] In think the GCDS is wrongly implemented with the weapons, it should be 4 yellow dices.
 - [ ] When draco choose from the two explore system, the preview on the map doesn't change together when I switch the system, the second system only shows up when I select to place the second system.
 - [ ] There is a maxima number of ring 3 tiles available given different numbers of players. When all the tiles possible to be explore are gone, the player should be prevent to do more explore actions. There should also be a place to hind the player how much ring 3 tiles are left.
+- [ ] There should be a starting page when I open the website other than jump into the game directly. Each table should have their own sub link with different player with a sub link under the table link.
