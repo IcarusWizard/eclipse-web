@@ -20,10 +20,13 @@ export type ActionType =
   | 'DISCOVERY_CHOICE'
   | 'COMBAT_CONQUEST'
   | 'ALLOCATE_ARTIFACT_REWARD'
-  | 'ABANDON_SECTOR_BANKRUPTCY';
+  | 'ABANDON_SECTOR_BANKRUPTCY'
+  | 'CONFIRM_TURN_ACTION'
+  | 'REVERT_TURN_ACTION';
 
 export interface BaseAction {
   playerId: string;
+  requireConfirmation?: boolean;
 }
 
 export interface ExploreAction extends BaseAction {
@@ -151,6 +154,14 @@ export interface AbandonSectorBankruptcyAction extends BaseAction {
   sectorId: string;
 }
 
+export interface ConfirmTurnAction extends BaseAction {
+  type: 'CONFIRM_TURN_ACTION';
+}
+
+export interface RevertTurnAction extends BaseAction {
+  type: 'REVERT_TURN_ACTION';
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -167,4 +178,6 @@ export type GameAction =
   | CombatConquestAction
   | ClaimReputationTileAction
   | AllocateArtifactRewardAction
-  | AbandonSectorBankruptcyAction;
+  | AbandonSectorBankruptcyAction
+  | ConfirmTurnAction
+  | RevertTurnAction;

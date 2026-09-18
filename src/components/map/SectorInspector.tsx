@@ -517,19 +517,42 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
               </div>
             )}
 
-            {sector.discoveryTile && (
-              <div className="p-2 rounded-lg bg-amber-950/30 border border-amber-800/50">
-                <div className="flex items-center justify-between mb-1">
-                  <span className="text-amber-300 font-bold">
-                    ★ {sector.discoveryTile.name}
-                  </span>
-                  <span className="text-[10px] text-amber-400 font-mono">
-                    {sector.discoveryClaimed ? 'Claimed' : 'Unclaimed'}
-                  </span>
-                </div>
-                <div className="text-[10px] text-slate-400">
-                  {sector.discoveryTile.description}
-                </div>
+            {(sector.discoveryTile || (sector.hasDiscovery && !sector.discoveryClaimed)) && (
+              <div className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-800/50">
+                {sector.discoveryClaimed && sector.discoveryTile ? (
+                  <>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-amber-300 font-bold text-xs">
+                        ★ {sector.discoveryTile.name}
+                      </span>
+                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-950/60 text-emerald-300 font-mono border border-emerald-800">
+                        Claimed
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-400">
+                      {sector.discoveryTile.description}
+                    </div>
+                  </>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-6 h-6 rounded bg-amber-500/20 border border-amber-500/40 text-amber-300 flex items-center justify-center font-bold text-xs font-mono shadow">
+                        ★
+                      </div>
+                      <div>
+                        <span className="text-amber-300 font-bold text-xs block">
+                          Face-Down Discovery Tile
+                        </span>
+                        <span className="text-[10px] text-slate-400">
+                          Hidden from all players until claimed by securing sector control.
+                        </span>
+                      </div>
+                    </div>
+                    <span className="text-[10px] px-2 py-0.5 rounded bg-amber-900/40 text-amber-300 font-mono font-bold border border-amber-700/50">
+                      Unexplored
+                    </span>
+                  </div>
+                )}
               </div>
             )}
           </div>

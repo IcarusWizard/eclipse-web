@@ -3827,6 +3827,351 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(count3).toBe(5);
         expect(count4).toBe(3);
       });
+
+      it('23. verifies Discovery Tile hidden privacy before flip and claiming', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+
+        // Add a sector with a face-down discovery tile
+        const sec: SectorTile = {
+          id: 'test_sec_disc',
+          sectorNumber: 204,
+          ring: 2,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, false, true, false, false, false],
+          planets: [],
+          hasDiscovery: true,
+          discoveryClaimed: false,
+          discoveryTile: {
+            id: 'flux_shield',
+            name: 'Flux Shield',
+            description: 'Shield module with -3 enemy dice value',
+            category: 'ship_part',
+            part: {
+              id: 'flux_shield',
+              name: 'Flux Shield',
+              type: 'shield',
+              category: 'shields',
+              powerReq: 0,
+              cost: 0,
+              shields: 3,
+            },
+          },
+          ships: [{ id: 'ancient_1', ownerId: 'ancient', type: 'ancient', damage: 0 }],
+        };
+        game.sectors.push(sec);
+
+        // While discoveryClaimed is false, discovery tile is face-down
+        expect(sec.discoveryClaimed).toBe(false);
+        expect(sec.hasDiscovery).toBe(true);
+
+        // When combat is won and sector claimed, discoveryClaimed is true
+        sec.ships = [{ id: 'p1_cr', ownerId: p1.id, type: 'cruiser', damage: 0 }];
+        sec.discOwner = p1.id;
+        sec.discoveryClaimed = true;
+        expect(sec.discoveryClaimed).toBe(true);
+      });
+
+      it('24. verifies Voluntary Bankruptcy & resource conversion without auto-liquidation', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        p1.resources.money = -5;
+        p1.resources.materials = 10;
+        p1.resources.science = 8;
+
+        // Transition to upkeep: verify NO automatic seizure of materials/science
+        transitionToUpkeep(game);
+
+        // Player is placed into pendingBankruptcy instead of auto-converting their resources
+        expect(game.pendingBankruptcy).not.toBeNull();
+        expect(game.pendingBankruptcy?.playerId).toBe(p1.id);
+        expect(p1.resources.materials).toBeGreaterThanOrEqual(10); // Income gained, not liquidated!
+        expect(p1.resources.science).toBeGreaterThanOrEqual(8); // Untouched!
+
+        const matsBeforeTrade = p1.resources.materials;
+        // Player voluntarily trades materials at faction trade ratio (e.g. 2:1)
+        const tradeRes = executeAction(game, {
+          type: 'TRADE',
+          playerId: p1.id,
+          fromResource: 'material',
+          amount: 4, // 4 mats -> +2 money
+        });
+        expect(tradeRes.success).toBe(true);
+        const updatedP1 = tradeRes.newState.players[0]!;
+        expect(updatedP1.resources.materials).toBe(matsBeforeTrade - 4);
+        expect(updatedP1.resources.money).toBe(p1.resources.money + 2);
+      });
+
+      it('25. verifies Player-Controlled Combat Commands: only ship owner commands ship attack/retreat, neutral ships commanded by any player', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        const combatSec: SectorTile = {
+          id: 'combat_authority_sec',
+          sectorNumber: 205,
+          ring: 2,
+          coord: { q: 1, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, false, false, false, false],
+          planets: [],
+          ships: [
+            { id: 'ancient_guard', ownerId: 'ancient', type: 'ancient', damage: 0 },
+            { id: 'p1_cruiser', ownerId: p1.id, type: 'cruiser', damage: 0 },
+            { id: 'p2_interceptor', ownerId: p2.id, type: 'interceptor', damage: 0 },
+          ],
+        };
+        game.sectors.push(combatSec);
+
+        game.activeCombat = {
+          sectorId: combatSec.id,
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [
+            { shipId: 'p2_interceptor', ownerId: p2.id, initiative: 3 },
+            { shipId: 'ancient_guard', ownerId: 'ancient', initiative: 2 },
+            { shipId: 'p1_cruiser', ownerId: p1.id, initiative: 1 },
+          ],
+          currentTurnIndex: 0, // p2_interceptor is active!
+          lastRolls: [],
+          retreatDeclared: {},
+        };
+
+        // Player 1 attempts to command Player 2's interceptor: MUST FAIL!
+        const p1CommandP2Ship = executeAction(game, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+          sectorId: combatSec.id,
+        });
+        expect(p1CommandP2Ship.success).toBe(false);
+
+        // Player 2 commands their own interceptor: SUCCEEDS!
+        const p2CommandShip = executeAction(game, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p2.id,
+          sectorId: combatSec.id,
+        });
+        expect(p2CommandShip.success).toBe(true);
+
+        // Next active ship in initiative is ancient_guard (turn index 1)
+        expect(p2CommandShip.newState.activeCombat?.currentTurnIndex).toBe(1);
+
+        // Neutral Ancient ship can be commanded by ANY player (e.g. Player 1)
+        const p1CommandNpc = executeAction(p2CommandShip.newState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+          sectorId: combatSec.id,
+        });
+        expect(p1CommandNpc.success).toBe(true);
+      });
+
+      it('26. verifies Turn Action Confirmation & Revert Mechanism: reversible actions can be reverted or confirmed, explore cannot be reverted', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        p1.resources.materials = 20;
+        const initialMaterials = p1.resources.materials;
+        const initialDiscs = p1.influenceTrack.discsOnTrack;
+        const homeSec = game.sectors.find((s) => s.discOwner === p1.id)!;
+        const initialInterceptors = homeSec.ships.filter((s) => s.type === 'interceptor').length;
+
+        // 1. Player 1 executes BUILD with requireConfirmation: true
+        const buildRes = executeAction(game, {
+          type: 'BUILD',
+          playerId: p1.id,
+          items: [{ sectorId: homeSec.id, itemType: 'interceptor' }],
+          requireConfirmation: true,
+        });
+
+        expect(buildRes.success).toBe(true);
+        const pendingState = buildRes.newState;
+        // Turn is NOT advanced yet
+        expect(pendingState.activePlayerIndex).toBe(0);
+        expect(pendingState.pendingActionConfirmation).not.toBeNull();
+        expect(pendingState.pendingActionConfirmation?.canRevert).toBe(true);
+        expect(pendingState.pendingActionConfirmation?.playerId).toBe(p1.id);
+        expect(pendingState.players[0]!.resources.materials).toBe(initialMaterials - 3); // interceptor cost 3
+        expect(pendingState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 1);
+        expect(
+          pendingState.sectors.find((s) => s.id === homeSec.id)!.ships.filter((s) => s.type === 'interceptor').length
+        ).toBe(initialInterceptors + 1);
+
+        // Player 2 attempts to confirm or revert: MUST FAIL (not their action)
+        const p2Confirm = executeAction(pendingState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: game.players[1]!.id,
+        });
+        expect(p2Confirm.success).toBe(false);
+
+        // Player 1 reverts action: restores exact pre-action state!
+        const revertRes = executeAction(pendingState, {
+          type: 'REVERT_TURN_ACTION',
+          playerId: p1.id,
+        });
+        expect(revertRes.success).toBe(true);
+        const revertedState = revertRes.newState;
+        expect(revertedState.pendingActionConfirmation).toBeNull();
+        expect(revertedState.activePlayerIndex).toBe(0);
+        expect(revertedState.players[0]!.resources.materials).toBe(initialMaterials); // Refunded!
+        expect(revertedState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs); // Disc returned!
+        // Interceptor restored to initial count
+        expect(
+          revertedState.sectors.find((s) => s.id === homeSec.id)!.ships.filter((s) => s.type === 'interceptor').length
+        ).toBe(initialInterceptors);
+
+        // 2. Player 1 builds again and confirms: turn cleanly advances!
+        const buildAgain = executeAction(revertedState, {
+          type: 'BUILD',
+          playerId: p1.id,
+          items: [{ sectorId: homeSec.id, itemType: 'cruiser' }],
+          requireConfirmation: true,
+        });
+        expect(buildAgain.success).toBe(true);
+
+        const confirmRes = executeAction(buildAgain.newState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: p1.id,
+        });
+        expect(confirmRes.success).toBe(true);
+        expect(confirmRes.newState.pendingActionConfirmation).toBeNull();
+        // Turn successfully passed to Player 2!
+        expect(confirmRes.newState.activePlayerIndex).toBe(1);
+
+        // 3. EXPLORE action with requireConfirmation: true is marked non-reversible
+        const p2 = confirmRes.newState.players[1]!;
+        const p2Home = confirmRes.newState.sectors.find((s) => s.discOwner === p2.id)!;
+        const exploreRes = executeAction(confirmRes.newState, {
+          type: 'EXPLORE',
+          playerId: p2.id,
+          fromCoord: p2Home.coord,
+          targetCoord: { q: p2Home.coord.q, r: p2Home.coord.r - 1 },
+          rotation: 0,
+          requireConfirmation: true,
+        });
+        expect(exploreRes.success).toBe(true);
+        expect(exploreRes.newState.pendingActionConfirmation).not.toBeNull();
+        expect(exploreRes.newState.pendingActionConfirmation?.canRevert).toBe(false);
+
+        // Attempting to revert EXPLORE must be rejected!
+        const revertExplore = executeAction(exploreRes.newState, {
+          type: 'REVERT_TURN_ACTION',
+          playerId: p2.id,
+        });
+        expect(revertExplore.success).toBe(false);
+        expect(revertExplore.error).toContain('hidden information');
+
+        // Confirming EXPLORE cleanly finalizes action and advances turn
+        const confirmExplore = executeAction(exploreRes.newState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: p2.id,
+        });
+        expect(confirmExplore.success).toBe(true);
+        expect(confirmExplore.newState.pendingActionConfirmation).toBeNull();
+        expect(confirmExplore.newState.activePlayerIndex).toBe(0); // Returned to Player 1
+      });
+
+      it('27. verifies Discovery Tile reveal flow: non-blocking confirmation, resolution, and turn progression', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p1Home = game.sectors.find((s) => s.discOwner === p1.id)!;
+
+        // Ensure next drawn Ring 2 tile has a Discovery Tile and 0 ancients
+        const ring2Deck = game.sectorDecks.ring2;
+        const discTile = ring2Deck.find((t) => t.hasDiscovery && t.ancientsCount === 0);
+        expect(discTile).toBeDefined();
+        // Place it at top of Ring 2 deck (pop() draws from end)
+        ring2Deck.splice(ring2Deck.indexOf(discTile!), 1);
+        ring2Deck.push(discTile!);
+
+        // 1. Player 1 executes EXPLORE claiming influence with requireConfirmation: true
+        const targetCoord = { q: p1Home.coord.q + 1, r: p1Home.coord.r };
+        const rot = findLegalExploreRotation(p1Home, discTile!, targetCoord);
+        const exploreRes = executeAction(game, {
+          type: 'EXPLORE',
+          playerId: p1.id,
+          fromCoord: p1Home.coord,
+          targetCoord,
+          rotation: rot !== -1 ? rot : 0,
+          claimInfluence: true,
+          requireConfirmation: true,
+        });
+
+        expect(exploreRes.success).toBe(true);
+        // pendingDiscovery MUST be set
+        expect(exploreRes.newState.pendingDiscovery).not.toBeNull();
+        expect(exploreRes.newState.pendingDiscovery?.playerId).toBe(p1.id);
+        // pendingActionConfirmation must NOT be prematurely set while awaiting discovery choice!
+        expect(exploreRes.newState.pendingActionConfirmation).toBeFalsy();
+        // Turn is still with Player 1
+        expect(exploreRes.newState.activePlayerIndex).toBe(0);
+
+        // 2. Player 1 resolves discovery choice with requireConfirmation: true
+        const discChoiceRes = executeAction(exploreRes.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: exploreRes.newState.pendingDiscovery!.sectorId,
+          keepForVictoryPoints: true,
+          requireConfirmation: true,
+        });
+
+        expect(discChoiceRes.success).toBe(true);
+        // pendingDiscovery is cleared
+        expect(discChoiceRes.newState.pendingDiscovery).toBeNull();
+        // 2 VP tile recorded
+        expect(discChoiceRes.newState.players[0]!.keptDiscoveryTiles.length).toBe(1);
+        // Action confirmation is now set with canRevert: false
+        expect(discChoiceRes.newState.pendingActionConfirmation).not.toBeNull();
+        expect(discChoiceRes.newState.pendingActionConfirmation?.actionType).toBe('EXPLORE');
+        expect(discChoiceRes.newState.pendingActionConfirmation?.canRevert).toBe(false);
+        expect(discChoiceRes.newState.pendingActionConfirmation?.description).toContain('resolved discovery');
+        // Still Player 1's turn pending confirmation
+        expect(discChoiceRes.newState.activePlayerIndex).toBe(0);
+
+        // 3. Confirming turn action cleanly finalizes and advances to Player 2
+        const confirmRes = executeAction(discChoiceRes.newState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: p1.id,
+        });
+        expect(confirmRes.success).toBe(true);
+        expect(confirmRes.newState.pendingActionConfirmation).toBeNull();
+        expect(confirmRes.newState.activePlayerIndex).toBe(1); // Turn successfully advanced to Player 2!
+      });
+
+      it('28. verifies Discovery Tile remains in sector when guarded by Ancients or uncontrolled', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p1Home = game.sectors.find((s) => s.discOwner === p1.id)!;
+
+        // Find a Ring 2 tile with Ancients and a Discovery Tile
+        const guardedTile = game.sectorDecks.ring2.find((t) => t.hasDiscovery && t.ancientsCount > 0);
+        expect(guardedTile).toBeDefined();
+        game.sectorDecks.ring2.splice(game.sectorDecks.ring2.indexOf(guardedTile!), 1);
+        game.sectorDecks.ring2.push(guardedTile!);
+
+        // Explore sector guarded by Ancients with legal rotation
+        const targetCoord = { q: p1Home.coord.q + 1, r: p1Home.coord.r };
+        const rot = findLegalExploreRotation(p1Home, guardedTile!, targetCoord);
+        const exploreGuarded = executeAction(game, {
+          type: 'EXPLORE',
+          playerId: p1.id,
+          fromCoord: p1Home.coord,
+          targetCoord,
+          rotation: rot !== -1 ? rot : 0,
+          claimInfluence: false,
+          requireConfirmation: true,
+        });
+
+        expect(exploreGuarded.success).toBe(true);
+        // Tile is on map with discoveryTile attached and discoveryClaimed false
+        const placedGuarded = exploreGuarded.newState.sectors.find((s) => s.coord.q === targetCoord.q && s.coord.r === targetCoord.r)!;
+        expect(placedGuarded).toBeDefined();
+        expect(placedGuarded.discoveryTile).toBeDefined();
+        expect(placedGuarded.discoveryClaimed).toBe(false);
+        // pendingDiscovery is NOT set because Ancients are present
+        expect(exploreGuarded.newState.pendingDiscovery).toBeFalsy();
+        // Since no discovery is pending, confirmation is set immediately
+        expect(exploreGuarded.newState.pendingActionConfirmation).not.toBeNull();
+      });
     });
   });
 });

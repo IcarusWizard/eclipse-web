@@ -1,5 +1,6 @@
 import React from 'react';
 import { PlayerState } from '../../engine/types/player';
+import { PendingActionConfirmation } from '../../engine/types/state';
 import {
   Compass,
   Cpu,
@@ -8,6 +9,10 @@ import {
   Rocket,
   CircleOff,
   CircleDot,
+  CheckCircle2,
+  Check,
+  Undo2,
+  Lock,
 } from 'lucide-react';
 
 import {
@@ -30,6 +35,9 @@ interface ActionBarProps {
   onOpenInfluence: () => void;
   onPass: () => void;
   isTurnGated?: boolean;
+  pendingConfirmation?: PendingActionConfirmation | null;
+  onConfirmAction?: () => void;
+  onRevertAction?: () => void;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -43,7 +51,74 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenInfluence,
   onPass,
   isTurnGated = false,
+  pendingConfirmation,
+  onConfirmAction,
+  onRevertAction,
 }) => {
+  if (pendingConfirmation) {
+    const isMyAction = !isTurnGated;
+    return (
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-slate-950/95 backdrop-blur-md px-5 py-3 rounded-2xl border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+        {/* Active Commander Indicator */}
+        <div className="flex items-center gap-2 pr-3 border-r border-slate-800 text-xs">
+          <div
+            className="w-3 h-3 rounded-full ring-2 ring-white/20"
+            style={{ backgroundColor: activePlayer.color }}
+          />
+          <div className="flex flex-col text-left">
+            <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">Action Taken</span>
+            <span className="font-bold text-slate-100 leading-none">{activePlayer.name}</span>
+          </div>
+        </div>
+
+        {/* Action Summary */}
+        <div className="flex flex-col text-left pr-3 border-r border-slate-800 max-w-sm">
+          <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" /> Action Completed
+          </span>
+          <span className="text-xs font-semibold text-slate-200 truncate" title={pendingConfirmation.description}>
+            {pendingConfirmation.description}
+          </span>
+        </div>
+
+        {/* Controls */}
+        {isMyAction ? (
+          <div className="flex items-center gap-2">
+            {pendingConfirmation.canRevert ? (
+              <button
+                type="button"
+                onClick={onRevertAction}
+                className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-rose-300 hover:text-white font-bold text-xs uppercase tracking-wider border border-rose-800/80 transition shadow cursor-pointer"
+                title="Undo action and reset turn"
+              >
+                <Undo2 className="w-3.5 h-3.5" />
+                <span>Revert Action</span>
+              </button>
+            ) : (
+              <span className="px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-400 flex items-center gap-1">
+                <Lock className="w-3 h-3 text-slate-500" /> Non-Reversible (Secret Info)
+              </span>
+            )}
+
+            <button
+              type="button"
+              onClick={onConfirmAction}
+              className="flex items-center gap-1.5 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition shadow-lg shadow-emerald-950/80 cursor-pointer"
+              title="Finalize action and pass turn to next player"
+            >
+              <Check className="w-4 h-4" />
+              <span>Confirm & End Turn</span>
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>Waiting for {activePlayer.name} to confirm or revert their action...</span>
+          </div>
+        )}
+      </div>
+    );
+  }
   const hasDiscs = activePlayer.influenceTrack.discsOnTrack > 0;
   const hasPassed = activePlayer.hasPassed;
   const canAct = !isTurnGated && hasDiscs && !hasPassed;

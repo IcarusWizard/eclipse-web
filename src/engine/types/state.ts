@@ -88,6 +88,14 @@ export interface PendingBankruptcy {
   deficit: number;
 }
 
+export interface PendingActionConfirmation {
+  actionType: string;
+  playerId: string;
+  description: string;
+  canRevert: boolean;
+  snapshot?: string; // Serialized GameState snapshot before action execution
+}
+
 export interface GameState {
   id: string;
   round: number;
@@ -115,6 +123,7 @@ export interface GameState {
   pendingCombatConquest: PendingCombatConquest | null;
   pendingArtifactReward?: PendingArtifactReward | null;
   pendingBankruptcy?: PendingBankruptcy | null;
+  pendingActionConfirmation?: PendingActionConfirmation | null;
   pendingReputationDraw?: PendingReputationDraw | null;
   pendingReputationDrawQueue?: PendingReputationDraw[];
   resolvedCombatSectorIds?: string[];

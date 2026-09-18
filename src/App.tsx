@@ -6,6 +6,7 @@ import { createInitialGame } from './engine/rules/setup';
 import { executeAction, getMaxMoveActivations } from './engine/rules/gameReducer';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
+import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative } from './engine/rules/combatEngine';
 
 // UI Components
 import { Header } from './components/layout/Header';
@@ -254,6 +255,37 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleEmergencyTradeBankruptcy = (from: 'materials' | 'science') => {
+    if (!state.pendingBankruptcy) return;
+    const player =
+      state.players.find((p) => p.id === state.pendingBankruptcy!.playerId) || activePlayer;
+    const ratio = player.faction.tradeRatio || 2;
+    if (player.resources[from] < ratio) return;
+
+    const result = executeAction(state, {
+      type: 'TRADE_RESOURCE',
+      from,
+      to: 'money',
+      amount: ratio,
+    });
+    if (result.success) {
+      const updated = result.newState;
+      const updatedPlayer = updated.players.find((p) => p.id === player.id)!;
+      if (updatedPlayer.resources.money >= 0) {
+        updated.pendingBankruptcy = null;
+        showToast('Treasury balanced! Bankruptcy averted.');
+      } else {
+        updated.pendingBankruptcy = {
+          playerId: player.id,
+          deficit: Math.abs(updatedPlayer.resources.money),
+        };
+      }
+      setState(updated);
+    } else {
+      showToast(result.error || 'Failed to trade resources.');
+    }
+  };
+
   const handleAbandonSectorBankruptcy = (sectorId: string) => {
     if (!state.pendingBankruptcy) return;
     const result = executeAction(state, {
@@ -322,6 +354,7 @@ export const App: React.FC = () => {
       claimInfluence,
       chosenTileIndex,
       isSecondActivation: isSecond,
+      requireConfirmation: true,
     });
 
     if (res.success) {
@@ -351,6 +384,7 @@ export const App: React.FC = () => {
       discard: true,
       chosenTileIndex,
       isSecondActivation: isSecond,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
@@ -361,6 +395,8 @@ export const App: React.FC = () => {
       } else {
         setSelectedViewIndex(res.newState.activePlayerIndex);
       }
+    } else {
+      showToast(res.error || 'Exploration failed.');
     }
   };
 
@@ -368,6 +404,7 @@ export const App: React.FC = () => {
     const res = executeAction(state, {
       type: 'FINISH_EXPLORE',
       playerId: activePlayer.id,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
@@ -396,6 +433,7 @@ export const App: React.FC = () => {
       type: 'RESEARCH',
       playerId: activePlayer.id,
       researches,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
@@ -414,6 +452,7 @@ export const App: React.FC = () => {
       type: 'UPGRADE',
       playerId: activePlayer.id,
       upgrades,
+      requireConfirmation: true,
     });
 
     if (res.success) {
@@ -688,6 +727,7 @@ export const App: React.FC = () => {
       type: 'BUILD',
       playerId: activePlayer.id,
       items,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
@@ -704,6 +744,7 @@ export const App: React.FC = () => {
       type: 'MOVE',
       playerId: activePlayer.id,
       moves,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
@@ -741,6 +782,7 @@ export const App: React.FC = () => {
       playerId: activePlayer.id,
       fromResource,
       amount,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
@@ -755,12 +797,44 @@ export const App: React.FC = () => {
     const res = executeAction(state, {
       type: 'PASS',
       playerId: activePlayer.id,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
       setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Failed to pass turn.');
+    }
+  };
+
+  // Turn action confirm and revert handlers
+  const handleConfirmTurnAction = () => {
+    if (!state.pendingActionConfirmation) return;
+    const res = executeAction(state, {
+      type: 'CONFIRM_TURN_ACTION',
+      playerId: state.pendingActionConfirmation.playerId,
+    });
+    if (res.success) {
+      setState(res.newState);
+      setSelectedViewIndex(res.newState.activePlayerIndex);
+      showToast('Action confirmed and turn passed.');
+    } else {
+      showToast(res.error || 'Failed to confirm action.');
+    }
+  };
+
+  const handleRevertTurnAction = () => {
+    if (!state.pendingActionConfirmation) return;
+    const res = executeAction(state, {
+      type: 'REVERT_TURN_ACTION',
+      playerId: state.pendingActionConfirmation.playerId,
+    });
+    if (res.success) {
+      setState(res.newState);
+      setSelectedViewIndex(res.newState.activePlayerIndex);
+      showToast('Action reverted.');
+    } else {
+      showToast(res.error || 'Failed to revert action.');
     }
   };
 
@@ -778,12 +852,14 @@ export const App: React.FC = () => {
       keepForVictoryPoints,
       equipShipType,
       equipSlotIndex,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
       if (equipShipType && equipSlotIndex !== undefined) {
         showToast(`Ancient tech installed on ${equipShipType.toUpperCase()}!`);
       }
+      setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Failed to claim discovery.');
     }
@@ -796,6 +872,7 @@ export const App: React.FC = () => {
       playerId: activePlayer.id,
       claimSectors: claimSectors.length > 0 ? claimSectors : undefined,
       abandonSectors: abandonSectors.length > 0 ? abandonSectors : undefined,
+      requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
@@ -837,9 +914,40 @@ export const App: React.FC = () => {
   // Step Combat
   const handleStepCombat = (retreatShipIds?: string[], retreatDestinationSectorId?: string) => {
     if (!state.activeCombat) return;
+
+    // Determine commanding player ID
+    let commandingPlayerId = typeof currentSeat === 'number' && state.players[currentSeat]
+      ? state.players[currentSeat].id
+      : undefined;
+
+    if (!commandingPlayerId) {
+      // In 'all' mode: automatically use the active ship's owner (or activePlayer if neutral)
+      const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
+      if (sec) {
+        const units = buildCombatUnitsForSector(sec, state.players);
+        const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec);
+        const aliveUnits = sortUnitsByInitiative(
+          units.filter((u) => u.currentDamage < u.maxHull),
+          defenderId
+        );
+        const isMissileStage = state.activeCombat.stage === 'missile';
+        const pendingMissileUnits = isMissileStage
+          ? aliveUnits.filter(
+              (u) => u.weapons.some((w) => w.isMissile) && !state.activeCombat!.missileFiredShipIds?.includes(u.id)
+            )
+          : [];
+        const activeAttacker = isMissileStage
+          ? (pendingMissileUnits[0] || null)
+          : (aliveUnits.length > 0 ? aliveUnits[state.activeCombat.currentTurnIndex % aliveUnits.length] : null);
+        if (activeAttacker && activeAttacker.ownerId.startsWith('player_')) {
+          commandingPlayerId = activeAttacker.ownerId;
+        }
+      }
+    }
+
     const res = executeAction(state, {
       type: 'RESOLVE_COMBAT_STEP',
-      playerId: activePlayer.id,
+      playerId: commandingPlayerId || activePlayer.id,
       sectorId: state.activeCombat.sectorId,
       retreatShipIds,
       retreatDestinationSectorId,
@@ -1114,6 +1222,9 @@ export const App: React.FC = () => {
             onOpenInfluence={() => setIsInfluenceOpen(true)}
             onPass={handlePass}
             isTurnGated={isTurnGated}
+            pendingConfirmation={state.pendingActionConfirmation}
+            onConfirmAction={handleConfirmTurnAction}
+            onRevertAction={handleRevertTurnAction}
           />
         )}
 
@@ -1229,6 +1340,7 @@ export const App: React.FC = () => {
           combat={state.activeCombat}
           onStepCombat={handleStepCombat}
           onAutoResolve={handleAutoResolveCombat}
+          currentSeat={currentSeat}
         />
       )}
 
@@ -1280,6 +1392,9 @@ export const App: React.FC = () => {
           deficit={state.pendingBankruptcy.deficit}
           sectors={state.sectors}
           onAbandonSector={handleAbandonSectorBankruptcy}
+          onEmergencyTrade={handleEmergencyTradeBankruptcy}
+          onSelectSector={(s) => setSelectedSector(s)}
+          selectedSectorId={selectedSector?.id || null}
         />
       )}
 

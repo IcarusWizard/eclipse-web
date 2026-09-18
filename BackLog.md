@@ -227,7 +227,26 @@
   - Updated `ShipBlueprintEditor.tsx` to restrict the component supply palette to only items currently unlocked and available to the player (`isStandard || isTechResearched || isAncientUnlocked`).
   - Standard base components (`nuclear_source`, `nuclear_drive`, `electron_computer`, `ion_cannon`, `hull`), researched technologies, and kept Ancient discovery modules are clearly displayed.
   - Added category filter chips (`All`, `Cannons`, `Missiles`, `Shields`, `Computers`, `Drives`, `Power`, `Hulls`) for rapid blueprint customisation without cluttering the UI with locked parts.
-- [ ] The discovry tile should be hidden before flip, no one should peak it.
-- [ ] The bankcrapt is also not impleneted correctly, I feel like some resource are automatically converted to feed into the bankcrupt. Also, it is better to let the player to see the map when decide which influence disc to take off.
-- [ ] The combat is also player triggered, only the player that control the ship can demand the attack or retreat of the ship, the nutral ship can be demand by any players.
-- [ ] there should be a confirm button for the player to finalise the actions before actually pass the turn to next player so that if something is done wrong they can revert it. But some action reveal new information cannot be revertted, for example explore action knowing the tile already.
+- [x] **Discovery Tile Hidden Before Flip & Secure Claims**:
+  - In `SectorInspector.tsx`, concealed discovery tile contents (`name`, `description`, `category`) behind a secret face-down star badge whenever `discoveryClaimed` is false.
+  - Secret tile specifications and bonuses are strictly hidden until the sector is secured by defeating hostile ships or successfully exploring empty space.
+- [x] **Proper Bankruptcy Mechanics & Map Inspection**:
+  - In `gameReducer.ts`, eliminated automatic seizure / forced liquidation of materials and science during upkeep deficit calculations.
+  - In `BankruptcyModal.tsx`, added voluntary conversion buttons allowing commanders to exchange Materials and Science into Credits at their faction's exact exchange ratio (`tradeRatio`).
+  - Added a responsive `[ 🗺️ View Map ]` / `[ 📋 Expand Details ]` minimize toggle so bankrupt commanders can freely inspect, pan, and zoom the galaxy map when deciding which sector discs to abandon.
+  - Integrated per-sector map focus pins (`MapPin`) and dynamic upkeep savings readouts (`Abandon Disc (+N 💰)`).
+- [x] **Player-Controlled Combat Commands & Neutral Salvos**:
+  - In `CombatModal.tsx` and `gameReducer.ts`, enforced ship authority rules: only the player controlling the active attacking ship can demand its attack, missile volley, or retreat.
+  - Neutral NPC vessels (Ancients, Guardians, and GCDS) can be triggered by any commander to keep combat flowing synchronously.
+  - In multiplayer seated mode, opponents see a clear waiting status (`Waiting for Commander [Name] to command their [ShipType]...`) with combat controls disabled until it is their unit's initiative.
+- [x] **Turn Action Confirmation & Revert Mechanism**:
+  - Added `pendingActionConfirmation` to `GameState` and `CONFIRM_TURN_ACTION` / `REVERT_TURN_ACTION` to the game engine.
+  - Reversible actions (`BUILD`, `UPGRADE`, `MOVE`, `RESEARCH`, `INFLUENCE`, `TRADE`, `PASS`) take a clean pre-action state snapshot, allowing commanders to revert misclicks (`[ ↩ Revert Action ]`) or finalize their turn action (`[ ✓ Confirm & End Turn ]`).
+  - Non-reversible actions that disclose hidden deck information (such as `EXPLORE` revealing secret sector tiles) cannot be reverted and are cleanly badged with `🔒 Non-Reversible (Secret Info)`.
+  - Added an intuitive Action Confirmation HUD directly inside `ActionBar.tsx` displaying the completed action summary with real-time multiplayer synchronization.
+- [x] **Discovery Tile Reveal & Non-Blocking Turn Confirmation**:
+  - Fixed a deadlock where drawing a Discovery Tile during an EXPLORE action with action confirmation enabled caused both `pendingDiscovery` and `pendingActionConfirmation` to be active simultaneously, while `validateAction` rejected `DISCOVERY_CHOICE`.
+  - Allowed `DISCOVERY_CHOICE` and combat resolutions through `validateAction` without getting blocked by `pendingActionConfirmation`.
+  - Deferred turn confirmation during `EXPLORE` until after the commander resolves their discovery choice (`DISCOVERY_CHOICE`), cleanly presenting the non-reversible confirmation bar or advancing the turn afterward.
+  - Ensured Discovery Tiles are only immediately claimed upon exploration if the sector has 0 Ancients AND the player places an Influence Disc (`drawnTile.discOwner === player.id`), leaving the Discovery Tile face-down in the sector if Ancients guard it or if the sector remains uncontrolled.
+  - Added support for claiming uncontrolled discovery tiles when later placing an influence disc via the `INFLUENCE` action.

@@ -3,13 +3,13 @@
  */
 
 import { GameState, GamePhase, GameLogEntry, CombatState } from '../types/state';
-import { GameAction } from '../types/actions';
+import { GameAction, BuildAction, UpgradeAction, MoveAction, ResearchAction } from '../types/actions';
 import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge } from './hexMath';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs } from './economyEngine';
-import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6 } from './combatEngine';
+import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, sortUnitsByInitiative } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 
@@ -93,7 +93,25 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return { valid: false, error: 'Player not found.' };
   }
 
-  // Active player check (except combat, colonization, trade, conquest, or discovery choices)
+  // If an action is pending confirmation, only CONFIRM_TURN_ACTION or REVERT_TURN_ACTION is permitted
+  if (state.pendingActionConfirmation) {
+    if (
+      action.type !== 'CONFIRM_TURN_ACTION' &&
+      action.type !== 'REVERT_TURN_ACTION' &&
+      action.type !== 'DISCOVERY_CHOICE' &&
+      action.type !== 'COMBAT_CONQUEST' &&
+      action.type !== 'RESOLVE_COMBAT_STEP' &&
+      action.type !== 'CLAIM_REPUTATION_TILE' &&
+      action.type !== 'ALLOCATE_ARTIFACT_REWARD'
+    ) {
+      return {
+        valid: false,
+        error: 'Please confirm or revert the pending action before taking another action.',
+      };
+    }
+  }
+
+  // Active player check (except combat, colonization, trade, conquest, discovery choices, confirm/revert)
   if (state.phase === 'ACTION_PHASE') {
     const activePlayer = state.players[state.activePlayerIndex];
     if (
@@ -105,7 +123,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'RESOLVE_COMBAT_STEP' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
-      action.type !== 'ABANDON_SECTOR_BANKRUPTCY'
+      action.type !== 'ABANDON_SECTOR_BANKRUPTCY' &&
+      action.type !== 'CONFIRM_TURN_ACTION' &&
+      action.type !== 'REVERT_TURN_ACTION'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -769,6 +789,81 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'RESOLVE_COMBAT_STEP': {
+      if (!state.activeCombat) {
+        return { valid: false, error: 'No active combat in progress.' };
+      }
+      const sector = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
+      if (!sector) {
+        return { valid: false, error: 'Combat sector not found.' };
+      }
+      const units = buildCombatUnitsForSector(sector, state.players);
+      const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector);
+      const aliveUnits = sortUnitsByInitiative(
+        units.filter((u) => u.currentDamage < u.maxHull),
+        defenderId
+      );
+      if (aliveUnits.length > 0) {
+        const isMissileStage = state.activeCombat.stage === 'missile';
+        const pendingMissileUnits = isMissileStage
+          ? aliveUnits.filter(
+              (u) => u.weapons.some((w) => w.isMissile) && !state.activeCombat!.missileFiredShipIds?.includes(u.id)
+            )
+          : [];
+        const activeAttacker = isMissileStage
+          ? (pendingMissileUnits[0] || null)
+          : aliveUnits[state.activeCombat.currentTurnIndex % aliveUnits.length];
+
+        if (activeAttacker) {
+          const isPlayerShip = state.players.some((p) => p.id === activeAttacker.ownerId);
+          if (isPlayerShip && action.playerId && action.playerId !== activeAttacker.ownerId) {
+            return {
+              valid: false,
+              error: `Only player ${activeAttacker.ownerId} can command their ${activeAttacker.type}.`,
+            };
+          }
+        }
+      }
+      if (action.retreatShipIds && action.playerId) {
+        const otherShip = sector.ships.find(
+          (s) => action.retreatShipIds!.includes(s.id) && s.ownerId !== action.playerId
+        );
+        if (otherShip) {
+          return { valid: false, error: 'Cannot retreat ships belonging to another player.' };
+        }
+      }
+      return { valid: true };
+    }
+
+    case 'CONFIRM_TURN_ACTION': {
+      if (!state.pendingActionConfirmation) {
+        return { valid: false, error: 'No action pending confirmation.' };
+      }
+      if (action.playerId !== state.pendingActionConfirmation.playerId) {
+        return { valid: false, error: 'Only the acting player can confirm their action.' };
+      }
+      return { valid: true };
+    }
+
+    case 'REVERT_TURN_ACTION': {
+      if (!state.pendingActionConfirmation) {
+        return { valid: false, error: 'No action pending confirmation.' };
+      }
+      if (action.playerId !== state.pendingActionConfirmation.playerId) {
+        return { valid: false, error: 'Only the acting player can revert their action.' };
+      }
+      if (!state.pendingActionConfirmation.canRevert) {
+        return {
+          valid: false,
+          error: 'This action cannot be reverted because it revealed hidden information (e.g. exploration or discovery tile).',
+        };
+      }
+      if (!state.pendingActionConfirmation.snapshot) {
+        return { valid: false, error: 'No state snapshot available to revert.' };
+      }
+      return { valid: true };
+    }
+
     default:
       return { valid: true };
   }
@@ -796,6 +891,10 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       type,
     });
   };
+
+  const snapshotJson = action.requireConfirmation
+    ? JSON.stringify({ ...state, pendingActionConfirmation: null })
+    : undefined;
 
   switch (action.type) {
     case 'EXPLORE': {
@@ -867,15 +966,17 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           if (disc) {
             drawnTile.discoveryTile = disc;
             drawnTile.discoveryClaimed = false;
-            if (drawnTile.ancientsCount === 0) {
+            if (drawnTile.ancientsCount === 0 && drawnTile.discOwner === player.id) {
               newState.pendingDiscovery = {
                 sectorId: drawnTile.id,
                 discovery: disc,
                 playerId: player.id,
               };
               addLog(`${player.name} discovered an Ancient artifact in Sector ${drawnTile.sectorNumber}! Awaiting commander's decision...`);
-            } else {
+            } else if (drawnTile.ancientsCount > 0) {
               addLog(`${player.name} revealed Sector ${drawnTile.sectorNumber} containing a Discovery Tile, guarded by ${drawnTile.ancientsCount} Ancient ship(s)!`);
+            } else {
+              addLog(`${player.name} revealed Sector ${drawnTile.sectorNumber} containing a Discovery Tile (uncontrolled).`);
             }
           }
         }
@@ -1134,6 +1235,14 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             player.influenceTrack.discsOnTrack -= 1;
             sec.discOwner = player.id;
             addLog(`${player.name} claimed control of Sector ${sec.sectorNumber} with an Influence Disc!`);
+            if (sec.discoveryTile && !sec.discoveryClaimed && (!sec.ancientsCount || sec.ancientsCount === 0) && !newState.pendingDiscovery) {
+              newState.pendingDiscovery = {
+                sectorId: sec.id,
+                discovery: sec.discoveryTile,
+                playerId: player.id,
+              };
+              addLog(`${player.name} discovered an Ancient artifact in Sector ${sec.sectorNumber}! Awaiting commander's decision...`);
+            }
           }
         }
       }
@@ -1296,10 +1405,13 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         addLog(`${player.name} claimed Discovery Reward: ${disc.name} (${disc.description})!`);
       }
       newState.pendingDiscovery = null;
-      if (newState.phase === 'COMBAT_PHASE' && !newState.pendingCombatConquest && !newState.activeCombat) {
-        checkAndTriggerCombat(newState);
+      if (newState.phase === 'COMBAT_PHASE') {
+        if (!newState.pendingCombatConquest && !newState.activeCombat) {
+          checkAndTriggerCombat(newState);
+        }
+        return { success: true, newState };
       }
-      return { success: true, newState };
+      break;
     }
 
     case 'COMBAT_CONQUEST': {
@@ -1640,6 +1752,57 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
       return { success: true, newState };
     }
+
+    case 'CONFIRM_TURN_ACTION': {
+      const conf = newState.pendingActionConfirmation!;
+      newState.pendingActionConfirmation = null;
+      const actingPlayer = newState.players.find((p) => p.id === conf.playerId);
+      addLog(
+        `${actingPlayer ? actingPlayer.name : 'Commander'} confirmed action (${conf.description}) and passed turn.`,
+        'action'
+      );
+      // Advance turn or proceed to combat phase if all passed
+      const activePlayers = newState.players.filter((p) => !p.isEliminated);
+      const allPassed = activePlayers.every((p) => newState.passedPlayerIds.includes(p.id));
+      if (allPassed) {
+        addLog(`All commanders have passed! Proceeding to Combat Phase.`, 'system');
+        newState.phase = 'COMBAT_PHASE';
+        newState.resolvedCombatSectorIds = [];
+        checkAndTriggerCombat(newState);
+      } else {
+        let nextIdx = (newState.activePlayerIndex + 1) % newState.players.length;
+        let loops = 0;
+        while (
+          (newState.passedPlayerIds.includes(newState.players[nextIdx]!.id) ||
+            newState.players[nextIdx]!.isEliminated) &&
+          loops < newState.players.length
+        ) {
+          nextIdx = (nextIdx + 1) % newState.players.length;
+          loops++;
+        }
+        newState.activePlayerIndex = nextIdx;
+      }
+      return { success: true, newState };
+    }
+
+    case 'REVERT_TURN_ACTION': {
+      const conf = state.pendingActionConfirmation!;
+      const restoredState: GameState = JSON.parse(conf.snapshot!);
+      restoredState.pendingActionConfirmation = null;
+      const actingPlayer = restoredState.players.find((p) => p.id === conf.playerId);
+      if (actingPlayer) {
+        restoredState.log.unshift({
+          id: `log_${Date.now()}_revert`,
+          timestamp: Date.now(),
+          round: restoredState.round,
+          phase: restoredState.phase,
+          playerId: actingPlayer.id,
+          message: `${actingPlayer.name} reverted their action (${conf.description}).`,
+          type: 'action',
+        });
+      }
+      return { success: true, newState: restoredState };
+    }
   }
 
   // Turn management during ACTION_PHASE
@@ -1652,6 +1815,53 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       // Multiple resources choice pending for Artifact Key: do not advance turn yet!
       return { success: true, newState };
     }
+    if (newState.pendingDiscovery) {
+      // Discovery tile choice pending: do not advance turn or prompt confirmation yet!
+      return { success: true, newState };
+    }
+
+    if (action.requireConfirmation) {
+      const canRevert =
+        action.type !== 'EXPLORE' &&
+        action.type !== 'FINISH_EXPLORE' &&
+        action.type !== 'DISCOVERY_CHOICE';
+      let description = `${action.type} Action`;
+      if (action.type === 'BUILD') {
+        const buildAct = action as BuildAction;
+        const count = buildAct.items?.length || 0;
+        description = `Built ${count} unit(s) / structure(s)`;
+      } else if (action.type === 'UPGRADE') {
+        const upAct = action as UpgradeAction;
+        description = `Upgraded ${upAct.upgrades?.length || 0} blueprint part(s)`;
+      } else if (action.type === 'MOVE') {
+        const mvAct = action as MoveAction;
+        description = `Executed ${mvAct.moves?.length || 0} fleet move(s)`;
+      } else if (action.type === 'RESEARCH') {
+        const resAct = action as ResearchAction;
+        const count = resAct.researches?.length || 1;
+        description = `Researched ${count} technology(ies)`;
+      } else if (action.type === 'INFLUENCE') {
+        description = `Updated influence discs & colony ships`;
+      } else if (action.type === 'TRADE') {
+        description = `Traded resources at treasury`;
+      } else if (action.type === 'EXPLORE' || action.type === 'FINISH_EXPLORE') {
+        description = `Explored sector hexes`;
+      } else if (action.type === 'DISCOVERY_CHOICE') {
+        description = `Explored sector & resolved discovery`;
+      } else if (action.type === 'PASS') {
+        description = `Passed turn for this round`;
+      }
+
+      newState.pendingActionConfirmation = {
+        actionType: action.type === 'DISCOVERY_CHOICE' ? 'EXPLORE' : action.type,
+        playerId: action.playerId,
+        description,
+        canRevert,
+        snapshot: canRevert ? snapshotJson : undefined,
+      };
+      return { success: true, newState };
+    }
+
     const activePlayers = newState.players.filter((p) => !p.isEliminated);
     const allPassed = activePlayers.every((p) => newState.passedPlayerIds.includes(p.id));
     if (allPassed) {
@@ -1979,50 +2189,6 @@ export function transitionToUpkeep(state: GameState): void {
       total: p.colonyShips.total,
       ready: p.colonyShips.total,
     };
-
-    // 4. Emergency auto-trade if budget is negative
-    if (p.resources.money < 0) {
-      const tradeRatio = p.faction.tradeRatio || 2;
-      if (p.resources.money < 0 && p.resources.materials > 0) {
-        const neededMoney = Math.abs(p.resources.money);
-        const matsToTrade = Math.min(p.resources.materials, neededMoney * tradeRatio);
-        const unitsTraded = Math.floor(matsToTrade / tradeRatio) * tradeRatio;
-        if (unitsTraded > 0) {
-          const gained = unitsTraded / tradeRatio;
-          p.resources.materials -= unitsTraded;
-          p.resources.money += gained;
-          state.log.unshift({
-            id: `log_${Date.now()}_trade_mats_${p.id}`,
-            timestamp: Date.now(),
-            round: state.round,
-            phase: 'UPKEEP_PHASE',
-            playerId: p.id,
-            message: `${p.name} made an emergency trade of ${unitsTraded} Materials for ${gained} Credits.`,
-            type: 'economy',
-          });
-        }
-      }
-
-      if (p.resources.money < 0 && p.resources.science > 0) {
-        const neededMoney = Math.abs(p.resources.money);
-        const sciToTrade = Math.min(p.resources.science, neededMoney * tradeRatio);
-        const unitsTraded = Math.floor(sciToTrade / tradeRatio) * tradeRatio;
-        if (unitsTraded > 0) {
-          const gained = unitsTraded / tradeRatio;
-          p.resources.science -= unitsTraded;
-          p.resources.money += gained;
-          state.log.unshift({
-            id: `log_${Date.now()}_trade_sci_${p.id}`,
-            timestamp: Date.now(),
-            round: state.round,
-            phase: 'UPKEEP_PHASE',
-            playerId: p.id,
-            message: `${p.name} made an emergency trade of ${unitsTraded} Science for ${gained} Credits.`,
-            type: 'economy',
-          });
-        }
-      }
-    }
   }
 
   // Check if any player entered tactical bankruptcy
