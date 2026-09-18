@@ -499,13 +499,8 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
 ];
 
 
-export function generateSectorDecks(playerCount?: number): {
-  ring1: SectorTile[];
-  ring2: SectorTile[];
-  ring3: SectorTile[];
-} {
-  // Official Ring 1 (Inner sectors: 101 to 110)
-  const ring1Configs = [
+// Official Ring 1 (Inner sectors: 101 to 110)
+export const RING_1_CONFIGS = [
     {
       sectorNum: 101,
       name: 'Castor',
@@ -642,35 +637,10 @@ export function generateSectorDecks(playerCount?: number): {
       discovery: true,
       wh: [true, false, true, false, true, true],
     },
-  ];
+];
 
-  const ring1: SectorTile[] = ring1Configs.map((cfg) => ({
-    id: `sector_${cfg.sectorNum}`,
-    sectorNumber: cfg.sectorNum,
-    name: cfg.name,
-    ring: 1,
-    coord: { q: 999, r: 999 },
-    rotation: 0,
-    wormholes: cfg.wh,
-    planets: cfg.planets.map((p, pIdx) => ({
-      id: `p_${cfg.sectorNum}_${pIdx + 1}`,
-      resource: p.resource,
-      isAdvanced: p.isAdvanced,
-    })),
-    victoryPoints: cfg.vp,
-    hasArtifact: cfg.artifact,
-    hasDiscovery: cfg.discovery,
-    ancientsCount: cfg.ancients,
-    ships: Array.from({ length: cfg.ancients }, (_, aIdx) => ({
-      id: `ancient_${cfg.sectorNum}_${aIdx}`,
-      ownerId: 'ancient',
-      type: 'ancient' as const,
-      damage: 0,
-    })),
-  }));
-
-  // Official Ring 2 (Middle sectors: 201 to 211, 214, 281)
-  const ring2Configs = [
+// Official Ring 2 (Middle sectors: 201 to 211, 214, 281)
+export const RING_2_CONFIGS = [
     {
       sectorNum: 201,
       name: 'Alpha Centauri',
@@ -836,35 +806,10 @@ export function generateSectorDecks(playerCount?: number): {
       discovery: true,
       wh: [true, true, false, true, true, false],
     },
-  ];
+];
 
-  const ring2: SectorTile[] = ring2Configs.map((cfg) => ({
-    id: `sector_${cfg.sectorNum}`,
-    sectorNumber: cfg.sectorNum,
-    name: cfg.name,
-    ring: 2,
-    coord: { q: 999, r: 999 },
-    rotation: 0,
-    wormholes: cfg.wh,
-    planets: cfg.planets.map((p, pIdx) => ({
-      id: `p_${cfg.sectorNum}_${pIdx + 1}`,
-      resource: p.resource,
-      isAdvanced: p.isAdvanced,
-    })),
-    victoryPoints: cfg.vp,
-    hasArtifact: cfg.artifact,
-    hasDiscovery: cfg.discovery,
-    ancientsCount: cfg.ancients,
-    ships: Array.from({ length: cfg.ancients }, (_, aIdx) => ({
-      id: `ancient_${cfg.sectorNum}_${aIdx}`,
-      ownerId: 'ancient',
-      type: 'ancient' as const,
-      damage: 0,
-    })),
-  }));
-
-  // Official Ring 3 (Outer sectors: 301 to 318, 381, 382)
-  const ring3Configs = [
+// Official Ring 3 (Outer sectors: 301 to 318, 381, 382)
+export const RING_3_CONFIGS = [
     {
       sectorNum: 301,
       name: 'Zeta Draconis',
@@ -1110,9 +1055,64 @@ export function generateSectorDecks(playerCount?: number): {
       discovery: true,
       wh: [false, true, true, false, false, true],
     },
-  ];
+];
 
-  const ring3: SectorTile[] = ring3Configs.map((cfg) => ({
+export function generateSectorDecks(playerCount?: number): {
+  ring1: SectorTile[];
+  ring2: SectorTile[];
+  ring3: SectorTile[];
+} {
+  const ring1: SectorTile[] = RING_1_CONFIGS.map((cfg) => ({
+    id: `sector_${cfg.sectorNum}`,
+    sectorNumber: cfg.sectorNum,
+    name: cfg.name,
+    ring: 1,
+    coord: { q: 999, r: 999 },
+    rotation: 0,
+    wormholes: cfg.wh,
+    planets: cfg.planets.map((p, pIdx) => ({
+      id: `p_${cfg.sectorNum}_${pIdx + 1}`,
+      resource: p.resource,
+      isAdvanced: p.isAdvanced,
+    })),
+    victoryPoints: cfg.vp,
+    hasArtifact: cfg.artifact,
+    hasDiscovery: cfg.discovery,
+    ancientsCount: cfg.ancients,
+    ships: Array.from({ length: cfg.ancients }, (_, aIdx) => ({
+      id: `ancient_${cfg.sectorNum}_${aIdx}`,
+      ownerId: 'ancient',
+      type: 'ancient' as const,
+      damage: 0,
+    })),
+  }));
+
+  const ring2: SectorTile[] = RING_2_CONFIGS.map((cfg) => ({
+    id: `sector_${cfg.sectorNum}`,
+    sectorNumber: cfg.sectorNum,
+    name: cfg.name,
+    ring: 2,
+    coord: { q: 999, r: 999 },
+    rotation: 0,
+    wormholes: cfg.wh,
+    planets: cfg.planets.map((p, pIdx) => ({
+      id: `p_${cfg.sectorNum}_${pIdx + 1}`,
+      resource: p.resource,
+      isAdvanced: p.isAdvanced,
+    })),
+    victoryPoints: cfg.vp,
+    hasArtifact: cfg.artifact,
+    hasDiscovery: cfg.discovery,
+    ancientsCount: cfg.ancients,
+    ships: Array.from({ length: cfg.ancients }, (_, aIdx) => ({
+      id: `ancient_${cfg.sectorNum}_${aIdx}`,
+      ownerId: 'ancient',
+      type: 'ancient' as const,
+      damage: 0,
+    })),
+  }));
+
+  const ring3: SectorTile[] = RING_3_CONFIGS.map((cfg) => ({
     id: `sector_${cfg.sectorNum}`,
     sectorNumber: cfg.sectorNum,
     name: cfg.name,
@@ -1137,7 +1137,6 @@ export function generateSectorDecks(playerCount?: number): {
     })),
   }));
 
-  // Official Ring 3 deck limits by player count (2p: 5, 3p: 8, 4p: 14, 5p: 16, 6p: 18)
   const ring3Limits: Record<number, number> = {
     1: 5,
     2: 5,
@@ -1149,10 +1148,146 @@ export function generateSectorDecks(playerCount?: number): {
   const maxRing3 = playerCount !== undefined ? (ring3Limits[playerCount] ?? 18) : 20;
   const shuffledRing3 = ring3.sort(() => Math.random() - 0.5).slice(0, maxRing3);
 
-  // Shuffle decks for play
   return {
     ring1: ring1.sort(() => Math.random() - 0.5),
     ring2: ring2.sort(() => Math.random() - 0.5),
     ring3: shuffledRing3,
   };
 }
+
+export interface SectorCatalogEntry {
+  sectorNumber: number;
+  name: string;
+  ring: number | string;
+  category: 'Galactic Center' | 'Inner (Ring 1)' | 'Middle (Ring 2)' | 'Guardian' | 'Home System' | 'Outer (Ring 3)';
+  victoryPoints: number;
+  hasArtifact: boolean;
+  hasDiscovery: boolean;
+  ancientsCount: number;
+  guardianCount?: number;
+  hasGCDS?: boolean;
+  wormholes: boolean[];
+  planets: { resource: string; isAdvanced: boolean }[];
+  factionName?: string;
+}
+
+export function getAllSectorsCatalog(): SectorCatalogEntry[] {
+  const entries: SectorCatalogEntry[] = [];
+
+  // 1. Center
+  entries.push({
+    sectorNumber: CENTER_SECTOR.sectorNumber,
+    name: CENTER_SECTOR.name,
+    ring: 0,
+    category: 'Galactic Center',
+    victoryPoints: CENTER_SECTOR.victoryPoints,
+    hasArtifact: CENTER_SECTOR.hasArtifact,
+    hasDiscovery: CENTER_SECTOR.hasDiscovery,
+    ancientsCount: 0,
+    hasGCDS: true,
+    wormholes: CENTER_SECTOR.wormholes,
+    planets: CENTER_SECTOR.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
+  });
+
+  // 2. Ring 1 Inner
+  for (const cfg of RING_1_CONFIGS) {
+    entries.push({
+      sectorNumber: cfg.sectorNum,
+      name: cfg.name,
+      ring: 1,
+      category: 'Inner (Ring 1)',
+      victoryPoints: cfg.vp,
+      hasArtifact: cfg.artifact,
+      hasDiscovery: cfg.discovery,
+      ancientsCount: cfg.ancients,
+      wormholes: cfg.wh,
+      planets: cfg.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
+    });
+  }
+
+  // 3. Ring 2 Middle
+  for (const cfg of RING_2_CONFIGS) {
+    entries.push({
+      sectorNumber: cfg.sectorNum,
+      name: cfg.name,
+      ring: 2,
+      category: 'Middle (Ring 2)',
+      victoryPoints: cfg.vp,
+      hasArtifact: cfg.artifact,
+      hasDiscovery: cfg.discovery,
+      ancientsCount: cfg.ancients,
+      wormholes: cfg.wh,
+      planets: cfg.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
+    });
+  }
+
+  // 4. Guardian Sectors
+  for (const [secNumStr, g] of Object.entries(GUARDIAN_SECTORS)) {
+    entries.push({
+      sectorNumber: Number(secNumStr),
+      name: g.name || `Sector ${secNumStr}`,
+      ring: 2,
+      category: 'Guardian',
+      victoryPoints: g.victoryPoints ?? 2,
+      hasArtifact: g.hasArtifact ?? true,
+      hasDiscovery: g.hasDiscovery ?? true,
+      ancientsCount: 0,
+      guardianCount: 1,
+      wormholes: g.wormholes ?? [true, false, true, true, false, true],
+      planets: (g.planets || []).map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
+    });
+  }
+
+  // 5. Home Sectors (Human & Alien)
+  const homeFactionEntries: { key: string; name: string; factionName: string; cfg: Partial<SectorTile> }[] = [
+    { key: 'terran_federation', name: 'Sol (Federation)', factionName: 'Terran Federation', cfg: HUMAN_HOME_SECTORS.terran_federation! },
+    { key: 'terran_directorate', name: 'Sol (Directorate)', factionName: 'Terran Directorate', cfg: HUMAN_HOME_SECTORS.terran_directorate! },
+    { key: 'terran_republic', name: 'Sol (Republic)', factionName: 'Terran Republic', cfg: HUMAN_HOME_SECTORS.terran_republic! },
+    { key: 'terran_conglomerate', name: 'Sol (Conglomerate)', factionName: 'Terran Conglomerate', cfg: HUMAN_HOME_SECTORS.terran_conglomerate! },
+    { key: 'terran_alliance', name: 'Sol (Alliance)', factionName: 'Terran Alliance', cfg: HUMAN_HOME_SECTORS.terran_alliance! },
+    { key: 'terran_union', name: 'Sol (Union)', factionName: 'Terran Union', cfg: HUMAN_HOME_SECTORS.terran_union! },
+    { key: 'eridani_empire', name: 'Epsilon Eridani', factionName: 'Eridani Empire', cfg: ALIEN_HOME_SECTORS.eridani_empire! },
+    { key: 'hydran_progress', name: 'Beta Hydri', factionName: 'Hydran Progress', cfg: ALIEN_HOME_SECTORS.hydran_progress! },
+    { key: 'planta', name: 'Cygnus', factionName: 'Planta', cfg: ALIEN_HOME_SECTORS.planta! },
+    { key: 'descendants_of_draco', name: 'Draco', factionName: 'Descendants of Draco', cfg: ALIEN_HOME_SECTORS.descendants_of_draco! },
+    { key: 'mechanema', name: 'Auriga', factionName: 'Mechanema', cfg: ALIEN_HOME_SECTORS.mechanema! },
+    { key: 'orion_hegemony', name: 'Rigel', factionName: 'Orion Hegemony', cfg: ALIEN_HOME_SECTORS.orion_hegemony! },
+  ];
+
+  for (const h of homeFactionEntries) {
+    if (h.cfg) {
+      entries.push({
+        sectorNumber: h.cfg.sectorNumber || 220,
+        name: h.name,
+        ring: 'Home',
+        category: 'Home System',
+        victoryPoints: h.cfg.victoryPoints ?? 3,
+        hasArtifact: h.cfg.hasArtifact ?? true,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        wormholes: h.cfg.wormholes || [true, false, true, true, false, true],
+        planets: (h.cfg.planets || []).map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
+        factionName: h.factionName,
+      });
+    }
+  }
+
+  // 6. Ring 3 Outer
+  for (const cfg of RING_3_CONFIGS) {
+    entries.push({
+      sectorNumber: cfg.sectorNum,
+      name: cfg.name,
+      ring: 3,
+      category: 'Outer (Ring 3)',
+      victoryPoints: cfg.vp,
+      hasArtifact: cfg.artifact,
+      hasDiscovery: cfg.discovery,
+      ancientsCount: cfg.ancients,
+      wormholes: cfg.wh,
+      planets: cfg.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
+    });
+  }
+
+  return entries;
+}
+

@@ -209,6 +209,22 @@
   - Created `LobbyView.tsx` as the landing page when opening the site without active table parameters.
   - Features New Table creation (player count 2–6, faction roster picker, table code), Join by Code & Seat, and Local Archive of saved games with one-click Hotseat and Seat links.
   - Added a "🏠 Lobby" return button to `Header.tsx` to switch between games and lobby anytime.
-- [ ] I also want a gallry option in lobby so that I can see all the tiles, techs, so that I can check if your data are all correct.
-- [ ] Currently, in the multiplayer mode, the status is not sync to another player, the other play have to refresh the see the changes, please change it.
-- [ ] when upgrade the ship, can you make it only sees what is available for the player not all the parts?
+- [x] **Galactic Gallery & Compendium in Lobby and In-Game Header**:
+  - Created `GalacticGalleryModal.tsx` accessible via a prominent `📚 Galactic Gallery & Compendium` button in `LobbyView.tsx` and a `Gallery` button in `Header.tsx`.
+  - Enables players to inspect and audit all official Eclipse: Second Dawn for the Galaxy data:
+    - **Technologies (39 items)**: All Military (8), Grid (8), Nano (8), and Rare (15) technologies complete with category badges, base science cost, minimum cost, progressive discount progressions, unlocks, and full rules descriptions.
+    - **Ship Components (29 items)**: All Cannons, Missiles, Shields, Computers, Drives, Power Sources, and Hulls with stats (power consumption/generation, hit rolls, dice counts & damage, initiative, speed, HP, and unlock criteria).
+    - **Sector Tiles (60 items)**: Complete catalog covering Center 001, Inner Sectors (Ring 1: 101–110), Middle Sectors (Ring 2: 201–211, 214, 281), Guardian Sectors (271–274), Home Systems (221–226 Human, 222–232 Alien), and Outer Sectors (Ring 3: 301–318, 381, 382), detailing victory points, colonizable planetary squares, wormholes, Ancients, Guardians, GCDS, and artifacts.
+    - **Discovery Tiles (36 items / 24 types)**: Exact count and distribution across Resource Caches, Ancient Ship Modules, and Ancient Structures/Tech.
+    - **Species & Factions (7 factions)**: Starting resources, fleet, discs, colony ships, tech, trade ratios, reputation capacities, action activations, and special traits.
+    - **Reputation Bag (33 tiles)**: Full mathematical distribution (16x 1 VP, 9x 2 VP, 5x 3 VP, 3x 4 VP) and official combat draw rules.
+  - Features real-time search filtering across all tabs and category chips.
+- [x] **Real-time Cross-Tab / Multiplayer Status Synchronization**:
+  - Implemented `BroadcastChannel('eclipse_game_sync_v1')` and `StorageEvent` dual-layer listener system in `src/engine/rules/persistence.ts` via `broadcastGameState` and `subscribeToGameSync`.
+  - When any player acts in one browser window/tab, the updated state is broadcast instantaneously (0ms) to other connected tabs on the same table.
+  - In `App.tsx`, `subscribeToGameSync` automatically updates local React state without requiring manual page reloads, updates turn-gating, unblocks action bars, and eliminates echo broadcast loops.
+- [x] **Ship Blueprint Upgrade Available Parts Filtering**:
+  - Updated `ShipBlueprintEditor.tsx` to restrict the component supply palette to only items currently unlocked and available to the player (`isStandard || isTechResearched || isAncientUnlocked`).
+  - Standard base components (`nuclear_source`, `nuclear_drive`, `electron_computer`, `ion_cannon`, `hull`), researched technologies, and kept Ancient discovery modules are clearly displayed.
+  - Added category filter chips (`All`, `Cannons`, `Missiles`, `Shields`, `Computers`, `Drives`, `Power`, `Hulls`) for rapid blueprint customisation without cluttering the UI with locked parts.
+

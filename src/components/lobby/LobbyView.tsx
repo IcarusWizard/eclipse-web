@@ -15,16 +15,19 @@ import {
   ExternalLink,
   PlusCircle,
   LogIn,
+  BookOpen,
 } from 'lucide-react';
 
 interface LobbyViewProps {
   onStartNewGame: (playerCount: number, factionIds: string[], tableId: string, seat: number | 'all') => void;
   onJoinTable: (tableId: string, seat: number | 'all' | 'spectator') => void;
+  onOpenGallery?: () => void;
 }
 
 export const LobbyView: React.FC<LobbyViewProps> = ({
   onStartNewGame,
   onJoinTable,
+  onOpenGallery,
 }) => {
   const [savedTables, setSavedTables] = useState<SavedTableSummary[]>(() => listSavedTables());
 
@@ -100,6 +103,18 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         <p className="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto leading-relaxed">
           High-fidelity multiplayer web adaptation of Eclipse: Second Dawn. Create tables, distribute private seat links to commanders, or play local hotseat.
         </p>
+        {onOpenGallery && (
+          <div className="mt-4 flex justify-center">
+            <button
+              type="button"
+              onClick={onOpenGallery}
+              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-slate-900/90 border border-cyan-500/40 hover:border-cyan-400 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 text-xs font-bold tracking-wider uppercase shadow-lg shadow-cyan-950/40 transition-all cursor-pointer"
+            >
+              <BookOpen className="w-4 h-4 text-cyan-400" />
+              <span>📚 Galactic Gallery & Compendium</span>
+            </button>
+          </div>
+        )}
       </header>
 
       {/* Main Grid */}

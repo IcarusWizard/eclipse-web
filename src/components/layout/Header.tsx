@@ -2,7 +2,7 @@ import React from 'react';
 import { GameState } from '../../engine/types/state';
 import { computeCurrentScores } from '../../engine/rules/gameReducer';
 import { getTableNumber } from '../../engine/rules/persistence';
-import { Shield, Users, RefreshCw, Trophy, Radio, Cpu, LayoutDashboard, Home, Share2, Check, User } from 'lucide-react';
+import { Shield, Users, RefreshCw, Trophy, Radio, Cpu, LayoutDashboard, Home, Share2, Check, User, BookOpen } from 'lucide-react';
 
 interface HeaderProps {
   state: GameState;
@@ -13,6 +13,7 @@ interface HeaderProps {
   onOpenPlayerBoard?: () => void;
   onOpenScoreboard?: () => void;
   onOpenTableSession?: () => void;
+  onOpenGallery?: () => void;
   onReturnToLobby?: () => void;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
@@ -27,6 +28,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenPlayerBoard,
   onOpenScoreboard,
   onOpenTableSession,
+  onOpenGallery,
   onReturnToLobby,
   currentSeat = 'all',
   onChangeSeat,
@@ -158,6 +160,17 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <Trophy className="w-3.5 h-3.5 text-amber-400" />
             <span>Standings</span>
+          </button>
+        )}
+
+        {onOpenGallery && (
+          <button
+            onClick={onOpenGallery}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-cyan-500/40 text-cyan-300 hover:text-cyan-200 text-xs font-bold transition-all shadow"
+            title="Open Galactic Compendium & Data Gallery"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Gallery</span>
           </button>
         )}
 

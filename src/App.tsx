@@ -33,7 +33,13 @@ import { TableSessionModal } from './components/layout/TableSessionModal';
 import { ArtifactKeyModal } from './components/actions/ArtifactKeyModal';
 import { BankruptcyModal } from './components/actions/BankruptcyModal';
 import { LobbyView } from './components/lobby/LobbyView';
-import { loadActiveGameState, saveGameState, loadTable } from './engine/rules/persistence';
+import { GalacticGalleryModal } from './components/gallery/GalacticGalleryModal';
+import {
+  loadActiveGameState,
+  saveGameState,
+  loadTable,
+  subscribeToGameSync,
+} from './engine/rules/persistence';
 
 export const App: React.FC = () => {
   const [state, setState] = useState<GameState>(() => {
@@ -43,12 +49,25 @@ export const App: React.FC = () => {
   const [selectedSector, setSelectedSector] = useState<SectorTile | null>(null);
   const [selectedViewIndex, setSelectedViewIndex] = useState<number>(0);
 
-  // Auto-save game state to localStorage on every state change
+  const isRemoteSyncRef = React.useRef<boolean>(false);
+  const lastStateJsonRef = React.useRef<string>(JSON.stringify(state));
+
+  // Auto-save game state to localStorage on local state changes
   useEffect(() => {
-    saveGameState(state);
+    const currentJson = JSON.stringify(state);
+    if (isRemoteSyncRef.current) {
+      isRemoteSyncRef.current = false;
+      lastStateJsonRef.current = currentJson;
+      return;
+    }
+    if (currentJson !== lastStateJsonRef.current) {
+      lastStateJsonRef.current = currentJson;
+      saveGameState(state);
+    }
   }, [state]);
 
   // Modal visibility states
+  const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
   const [isExploreMode, setIsExploreMode] = useState<boolean>(false);
   const [pendingExploreCoords, setPendingExploreCoords] = useState<{
     from: HexCoord;
@@ -132,6 +151,22 @@ export const App: React.FC = () => {
     typeof currentSeat === 'number' &&
     viewedPlayer.id !== state.players[currentSeat]?.id &&
     state.phase !== 'GAME_OVER';
+
+  // Real-time Cross-Tab / Multiplayer Status Sync
+  useEffect(() => {
+    if (!inGame || !state.id) return;
+
+    const unsubscribe = subscribeToGameSync(state.id, (remoteState) => {
+      const remoteJson = JSON.stringify(remoteState);
+      if (remoteJson !== lastStateJsonRef.current) {
+        lastStateJsonRef.current = remoteJson;
+        isRemoteSyncRef.current = true;
+        setState(remoteState);
+      }
+    });
+
+    return unsubscribe;
+  }, [inGame, state.id]);
 
   const handleStartNewGameFromLobby = (
     playerCount: number,
@@ -927,10 +962,17 @@ export const App: React.FC = () => {
 
   if (!inGame) {
     return (
-      <LobbyView
-        onStartNewGame={handleStartNewGameFromLobby}
-        onJoinTable={handleJoinTableFromLobby}
-      />
+      <>
+        <LobbyView
+          onStartNewGame={handleStartNewGameFromLobby}
+          onJoinTable={handleJoinTableFromLobby}
+          onOpenGallery={() => setIsGalleryOpen(true)}
+        />
+        <GalacticGalleryModal
+          isOpen={isGalleryOpen}
+          onClose={() => setIsGalleryOpen(false)}
+        />
+      </>
     );
   }
 
@@ -946,6 +988,7 @@ export const App: React.FC = () => {
         onOpenPlayerBoard={() => setIsPhysicalBoardOpen(true)}
         onOpenScoreboard={() => setIsScoreboardOpen(true)}
         onOpenTableSession={() => setIsTableSessionOpen(true)}
+        onOpenGallery={() => setIsGalleryOpen(true)}
         onReturnToLobby={handleReturnToLobby}
         currentSeat={currentSeat}
         onChangeSeat={handleChangeSeat}
@@ -1299,6 +1342,11 @@ export const App: React.FC = () => {
           onClose={() => setIsNewGameOpen(false)}
         />
       )}
+
+      <GalacticGalleryModal
+        isOpen={isGalleryOpen}
+        onClose={() => setIsGalleryOpen(false)}
+      />
     </div>
   );
 };

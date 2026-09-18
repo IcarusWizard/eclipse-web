@@ -61,10 +61,43 @@ export function getTableNumber(state: GameState): number {
   return 100 + (Math.abs(hash) % 900);
 }
 
+const SYNC_CHANNEL_NAME = 'eclipse_game_sync_v1';
+let syncChannel: BroadcastChannel | null = null;
+
+export function getSyncChannel(): BroadcastChannel | null {
+  try {
+    if (typeof BroadcastChannel !== 'undefined') {
+      if (!syncChannel) {
+        syncChannel = new BroadcastChannel(SYNC_CHANNEL_NAME);
+      }
+      return syncChannel;
+    }
+  } catch {}
+  return null;
+}
+
+export function broadcastGameState(state: GameState, stateJson?: string): void {
+  try {
+    const channel = getSyncChannel();
+    if (channel) {
+      const tableNumber = getTableNumber(state);
+      channel.postMessage({
+        type: 'ECLIPSE_GAME_SYNC',
+        tableId: state.id,
+        tableNumber,
+        timestamp: Date.now(),
+        stateJson: stateJson ?? JSON.stringify(state),
+      });
+    }
+  } catch (err) {
+    console.error('Failed to broadcast game state:', err);
+  }
+}
+
 /**
- * Persists current GameState to localStorage.
+ * Persists current GameState to localStorage and broadcasts update to other tabs.
  */
-export function saveGameState(state: GameState): void {
+export function saveGameState(state: GameState, skipBroadcast: boolean = false): void {
   try {
     const tableNumber = getTableNumber(state);
     (state as any).tableNumber = tableNumber;
@@ -93,6 +126,10 @@ export function saveGameState(state: GameState): void {
     };
 
     storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+
+    if (!skipBroadcast) {
+      broadcastGameState(state, stateJson);
+    }
   } catch (err) {
     console.error('Failed to save game state to localStorage:', err);
   }
@@ -197,3 +234,98 @@ export function deleteSavedTable(tableId: string): void {
     console.error('Failed to delete saved table:', err);
   }
 }
+
+/**
+ * Subscribes to real-time game state synchronization across tabs/windows.
+ * Combines BroadcastChannel (instant in-memory broadcast) with StorageEvent and interval polling fallback.
+ */
+export function subscribeToGameSync(
+  tableIdentifier: string | number,
+  callback: (remoteState: GameState) => void
+): () => void {
+  const targetIdStr = String(tableIdentifier);
+  const targetNum = parseInt(targetIdStr, 10);
+  let lastKnownJson: string | null = null;
+
+  // Initialize with currently saved state if present
+  const initial = loadTable(tableIdentifier);
+  if (initial) {
+    lastKnownJson = JSON.stringify(initial);
+  }
+
+  // 1. BroadcastChannel message listener (0ms instant cross-tab sync)
+  const channel = getSyncChannel();
+  const handleChannelMessage = (event: MessageEvent) => {
+    try {
+      const data = event.data;
+      if (!data || data.type !== 'ECLIPSE_GAME_SYNC') return;
+      const matches =
+        data.tableId === targetIdStr ||
+        (!isNaN(targetNum) && data.tableNumber === targetNum);
+      if (matches && data.stateJson && data.stateJson !== lastKnownJson) {
+        lastKnownJson = data.stateJson;
+        const parsed: GameState = JSON.parse(data.stateJson);
+        callback(parsed);
+      }
+    } catch (err) {
+      console.error('Error handling sync message:', err);
+    }
+  };
+
+  if (channel) {
+    channel.addEventListener('message', handleChannelMessage);
+  }
+
+  // 2. Storage event listener (cross-tab localStorage change event)
+  const handleStorageEvent = (event: StorageEvent) => {
+    try {
+      if (event.key === SAVED_TABLES_KEY || event.key === ACTIVE_GAME_KEY) {
+        const latest = loadTable(targetIdStr) || loadActiveGameState();
+        if (latest) {
+          const currentMatches =
+            latest.id === targetIdStr ||
+            (!isNaN(targetNum) && (latest as any).tableNumber === targetNum);
+          if (currentMatches) {
+            const json = JSON.stringify(latest);
+            if (json !== lastKnownJson) {
+              lastKnownJson = json;
+              callback(latest);
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error handling storage sync:', err);
+    }
+  };
+
+  if (typeof window !== 'undefined') {
+    window.addEventListener('storage', handleStorageEvent);
+  }
+
+  // 3. Periodic fallback poll check (every 1s)
+  const pollInterval = setInterval(() => {
+    try {
+      const latest = loadTable(targetIdStr);
+      if (latest) {
+        const json = JSON.stringify(latest);
+        if (json !== lastKnownJson) {
+          lastKnownJson = json;
+          callback(latest);
+        }
+      }
+    } catch {}
+  }, 1000);
+
+  // Return unsubscribe cleanup handler
+  return () => {
+    if (channel) {
+      channel.removeEventListener('message', handleChannelMessage);
+    }
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('storage', handleStorageEvent);
+    }
+    clearInterval(pollInterval);
+  };
+}
+

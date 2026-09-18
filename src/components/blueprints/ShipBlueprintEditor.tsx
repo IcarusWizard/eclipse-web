@@ -34,6 +34,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 }) => {
   const [activeShipType, setActiveShipType] = useState<ShipType>('interceptor');
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Local draft of blueprints
   const [draftBlueprints, setDraftBlueprints] = useState<Record<ShipType, (ShipPart | null)[]>>(() => ({
@@ -44,6 +45,28 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   }));
 
   const maxUpgrades = getMaxUpgradeActivations(player);
+
+  // Available ship parts unlocked for the player (standard base, researched techs, and ancient discoveries)
+  const STANDARD_PART_IDS = useMemo(
+    () => ['nuclear_source', 'nuclear_drive', 'electron_computer', 'ion_cannon', 'hull'],
+    []
+  );
+
+  const availableParts = useMemo(() => {
+    return Object.values(SHIP_PARTS).filter((part) => {
+      const isStandard = STANDARD_PART_IDS.includes(part.id);
+      const isAncientUnlocked = (player.unlockedAncientParts || []).includes(part.id);
+      const isTechResearched = (player.techTrack.researched || []).some(
+        (t) => t.unlocksPartId === part.id || t.id === part.id
+      );
+      return isStandard || isTechResearched || isAncientUnlocked;
+    });
+  }, [player.unlockedAncientParts, player.techTrack.researched, STANDARD_PART_IDS]);
+
+  const displayedParts = useMemo(() => {
+    if (selectedCategory === 'all') return availableParts;
+    return availableParts.filter((p) => p.category === selectedCategory);
+  }, [availableParts, selectedCategory]);
 
   // Compute modified slots across all ship classes relative to original player blueprints
   const modifiedSlots = useMemo(() => {
@@ -430,16 +453,51 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
           {/* Right Col: Ship Parts Supply Tray */}
           <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col">
             <h3 className="text-xs font-bold text-cyan-400 tracking-wider mb-2 uppercase flex items-center justify-between">
-              <span>Component Supply</span>
+              <span>Available Components ({availableParts.length})</span>
               <span className="text-[10px] text-slate-400 font-mono lowercase">
                 ({remainingActivations} upgrade(s) left)
               </span>
             </h3>
-            <p className="text-[11px] text-slate-400 mb-3">
+            <p className="text-[11px] text-slate-400 mb-2.5">
               {selectedSlotIndex !== null
-                ? `Select a component to equip in Slot ${selectedSlotIndex + 1}:`
+                ? `Select an available component to equip in Slot ${selectedSlotIndex + 1}:`
                 : 'Click any slot on the left to equip a component.'}
             </p>
+
+            {/* Category Filter Chips */}
+            <div className="flex flex-wrap gap-1 mb-2.5">
+              {[
+                { id: 'all', label: 'All' },
+                { id: 'cannon', label: 'Cannons' },
+                { id: 'missile', label: 'Missiles' },
+                { id: 'shield', label: 'Shields' },
+                { id: 'computer', label: 'Computers' },
+                { id: 'drive', label: 'Drives' },
+                { id: 'reactor', label: 'Power' },
+                { id: 'hull', label: 'Hulls' },
+              ].map((cat) => {
+                const count =
+                  cat.id === 'all'
+                    ? availableParts.length
+                    : availableParts.filter((p) => p.category === cat.id).length;
+                const active = selectedCategory === cat.id;
+                return (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`px-2 py-0.5 rounded text-[10px] font-semibold border transition-all ${
+                      active
+                        ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                        : count > 0
+                        ? 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200 hover:border-slate-600'
+                        : 'bg-slate-950/40 border-slate-800 text-slate-600'
+                    }`}
+                  >
+                    {cat.label} ({count})
+                  </button>
+                );
+              })}
+            </div>
 
             {selectedSlotIndex !== null &&
               !modifiedSlots.some(
@@ -453,87 +511,76 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
               )}
 
             <div className="space-y-2 overflow-y-auto max-h-[380px] pr-1">
-              {Object.values(SHIP_PARTS).map((part) => {
-                const STANDARD_PART_IDS = ['nuclear_source', 'nuclear_drive', 'electron_computer', 'ion_cannon', 'hull'];
-                const ANCIENT_PART_IDS = ['ion_turret', 'shard_hull', 'flux_shield'];
-                const isStandard = STANDARD_PART_IDS.includes(part.id);
-                const isAncientPart = ANCIENT_PART_IDS.includes(part.id);
-                const isAncientUnlocked = (player.unlockedAncientParts || []).includes(part.id);
-                const isTechResearched = (player.techTrack.researched || []).some(
-                  (t) => t.unlocksPartId === part.id || t.id === part.id
-                );
-                const isUnlocked = isStandard || isTechResearched || isAncientUnlocked;
+              {displayedParts.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 text-xs italic">
+                  No unlocked components in this category. Research technologies or discover Ancient modules to unlock additional parts.
+                </div>
+              ) : (
+                displayedParts.map((part) => {
+                  const isAncientUnlocked = (player.unlockedAncientParts || []).includes(part.id);
+                  const isSelectedSlotModified =
+                    selectedSlotIndex !== null &&
+                    modifiedSlots.some(
+                      (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex
+                    );
+                  const canEquip =
+                    selectedSlotIndex !== null &&
+                    (isSelectedSlotModified || remainingActivations > 0);
 
-                const isSelectedSlotModified =
-                  selectedSlotIndex !== null &&
-                  modifiedSlots.some(
-                    (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex
-                  );
-                const canEquip =
-                  isUnlocked &&
-                  selectedSlotIndex !== null &&
-                  (isSelectedSlotModified || remainingActivations > 0);
-
-                return (
-                  <button
-                    key={part.id}
-                    disabled={!canEquip}
-                    onClick={() => handleInstallPart(part)}
-                    className={`w-full text-left p-2.5 rounded border transition-all ${
-                      isAncientUnlocked
-                        ? 'border-amber-500/50 bg-amber-950/20 hover:bg-amber-950/40 hover:border-amber-400'
-                        : isUnlocked
-                        ? 'border-slate-800 bg-slate-900/90 hover:bg-slate-800 hover:border-slate-600'
-                        : 'border-slate-900 bg-slate-950/60 opacity-50 cursor-not-allowed'
-                    } ${canEquip ? 'cursor-pointer' : 'cursor-not-allowed opacity-40'}`}
-                  >
-                    <div className="flex justify-between items-center text-xs font-bold text-slate-200">
-                      <span className="flex items-center gap-1.5">
-                        {part.name}
-                        {isAncientUnlocked && (
-                          <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded font-mono">
-                            ANCIENT
-                          </span>
-                        )}
-                        {!isUnlocked && (
-                          <span className="text-[9px] text-slate-500 flex items-center gap-0.5">
-                            <Lock className="w-2.5 h-2.5 inline" /> {isAncientPart ? 'Discovery' : 'Research'}
-                          </span>
-                        )}
-                      </span>
-                      <span className="text-[10px] text-slate-400 uppercase">{part.category}</span>
-                    </div>
-                    <div className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-1.5">
-                      {part.powerProduced > 0 && (
-                        <span className="text-emerald-400">+{part.powerProduced} Pwr</span>
-                      )}
-                      {part.powerConsumed > 0 && (
-                        <span className="text-amber-400">-{part.powerConsumed} Pwr</span>
-                      )}
-                      {part.dice && (
-                        <span className="text-orange-400">
-                          {part.dice.map((d) => `${d.count} ${d.color}`).join(', ')}
+                  return (
+                    <button
+                      key={part.id}
+                      disabled={!canEquip}
+                      onClick={() => handleInstallPart(part)}
+                      className={`w-full text-left p-2.5 rounded border transition-all ${
+                        isAncientUnlocked
+                          ? 'border-amber-500/50 bg-amber-950/20 hover:bg-amber-950/40 hover:border-amber-400'
+                          : 'border-slate-800 bg-slate-900/90 hover:bg-slate-800 hover:border-slate-600'
+                      } ${canEquip ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                    >
+                      <div className="flex justify-between items-center text-xs font-bold text-slate-200">
+                        <span className="flex items-center gap-1.5">
+                          {part.name}
+                          {isAncientUnlocked && (
+                            <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded font-mono">
+                              ANCIENT
+                            </span>
+                          )}
                         </span>
-                      )}
-                      {part.driveSpeed && (
-                        <span className="text-cyan-400">Speed {part.driveSpeed}</span>
-                      )}
-                      {part.initiativeBonus > 0 && (
-                        <span className="text-violet-400 font-bold">+{part.initiativeBonus} Init</span>
-                      )}
-                      {part.computerBonus > 0 && (
-                        <span className="text-indigo-400">+{part.computerBonus} Hit</span>
-                      )}
-                      {part.shieldBonus > 0 && (
-                        <span className="text-blue-400">-{part.shieldBonus} Shield</span>
-                      )}
-                      {part.hullBonus > 0 && (
-                        <span className="text-rose-400">+{part.hullBonus} HP</span>
-                      )}
-                    </div>
-                  </button>
-                );
-              })}
+                        <span className="text-[10px] text-slate-400 uppercase font-mono">{part.category}</span>
+                      </div>
+                      <div className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-1.5">
+                        {part.powerProduced > 0 && (
+                          <span className="text-emerald-400 font-mono">+{part.powerProduced} Pwr</span>
+                        )}
+                        {part.powerConsumed > 0 && (
+                          <span className="text-amber-400 font-mono">-{part.powerConsumed} Pwr</span>
+                        )}
+                        {part.dice && (
+                          <span className="text-orange-400 font-mono">
+                            {part.dice.map((d) => `${d.count} ${d.color}`).join(', ')}
+                          </span>
+                        )}
+                        {part.driveSpeed && (
+                          <span className="text-cyan-400 font-mono">Speed {part.driveSpeed}</span>
+                        )}
+                        {part.initiativeBonus > 0 && (
+                          <span className="text-violet-400 font-bold font-mono">+{part.initiativeBonus} Init</span>
+                        )}
+                        {part.computerBonus > 0 && (
+                          <span className="text-indigo-400 font-mono">+{part.computerBonus} Hit</span>
+                        )}
+                        {part.shieldBonus > 0 && (
+                          <span className="text-blue-400 font-mono">-{part.shieldBonus} Shield</span>
+                        )}
+                        {part.hullBonus > 0 && (
+                          <span className="text-rose-400 font-mono">+{part.hullBonus} HP</span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })
+              )}
             </div>
           </div>
         </div>
