@@ -184,7 +184,7 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     computerBonus: 0,
     shieldBonus: 0,
     hullBonus: 0,
-    dice: [{ color: 'orange', count: 2, damagePerHit: 2 }],
+    dice: [{ color: 'orange', count: 1, damagePerHit: 2 }],
   },
   antimatter_cannon: {
     id: 'antimatter_cannon',

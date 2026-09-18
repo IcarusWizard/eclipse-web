@@ -78,6 +78,7 @@ export interface ColonizeAction extends BaseAction {
   type: 'COLONIZE';
   sectorId: string;
   planetIndex: number;
+  chosenResource?: 'money' | 'science' | 'material';
 }
 
 export interface TradeAction extends BaseAction {
@@ -112,6 +113,12 @@ export interface CombatConquestAction extends BaseAction {
   colonizePlanetIndices?: number[];
 }
 
+export interface ClaimReputationTileAction extends BaseAction {
+  type: 'CLAIM_REPUTATION_TILE';
+  selectedTileIndex?: number; // index in drawnTiles to keep (-1 or undefined to discard all)
+  replaceTrackIndex?: number; // index on player.reputationTiles to replace if full
+}
+
 export type GameAction =
   | ExploreAction
   | ResearchAction
@@ -124,4 +131,5 @@ export type GameAction =
   | PassAction
   | DiscoveryChoiceAction
   | ResolveCombatStepAction
-  | CombatConquestAction;
+  | CombatConquestAction
+  | ClaimReputationTileAction;

@@ -20,6 +20,36 @@ export const INCOME_TABLE = [
   2,  // 12 cubes on board (0 colonized)
 ];
 
+/**
+ * Official track spaces from left to right as printed on the physical Control Board.
+ * Index 0 is the base space (2) uncovered when 12 cubes remain on board.
+ * Indices 1 to 12 correspond to spaces 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28, 32.
+ * Cubes are placed from space 3 to 28 during setup.
+ * As population cubes are placed onto planets, spaces are uncovered from left to right.
+ * The highest uncovered space value determines the income produced during Upkeep.
+ */
+export interface PopulationTrackSpace {
+  slotIndex: number; // 0 to 12
+  value: number; // 2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28, 32
+  cubesOnBoardThreshold: number; // When cubesOnBoard == threshold, this space is the active uncovered income
+}
+
+export const POPULATION_TRACK_SPACES: PopulationTrackSpace[] = [
+  { slotIndex: 0, value: 2, cubesOnBoardThreshold: 12 },
+  { slotIndex: 1, value: 3, cubesOnBoardThreshold: 11 },
+  { slotIndex: 2, value: 4, cubesOnBoardThreshold: 10 },
+  { slotIndex: 3, value: 6, cubesOnBoardThreshold: 9 },
+  { slotIndex: 4, value: 8, cubesOnBoardThreshold: 8 },
+  { slotIndex: 5, value: 10, cubesOnBoardThreshold: 7 },
+  { slotIndex: 6, value: 12, cubesOnBoardThreshold: 6 },
+  { slotIndex: 7, value: 15, cubesOnBoardThreshold: 5 },
+  { slotIndex: 8, value: 18, cubesOnBoardThreshold: 4 },
+  { slotIndex: 9, value: 21, cubesOnBoardThreshold: 3 },
+  { slotIndex: 10, value: 24, cubesOnBoardThreshold: 2 },
+  { slotIndex: 11, value: 28, cubesOnBoardThreshold: 1 },
+  { slotIndex: 12, value: 32, cubesOnBoardThreshold: 0 },
+];
+
 export const UPKEEP_TABLE: Record<number, number> = {
   16: 0,
   15: 0,
@@ -78,57 +108,161 @@ export function calculatePlayerRoundSummary(player: PlayerState): {
   };
 }
 
-export function applyUpkeepPhase(player: PlayerState): {
+export interface UpkeepPhaseResult {
   updatedPlayer: PlayerState;
   bankrupt: boolean;
-} {
-  const summary = calculatePlayerRoundSummary(player);
-  let newMoney = summary.projectedMoney;
-  let newScience = player.resources.science + summary.income.science;
-  let newMaterials = player.resources.materials + summary.income.materials;
+  abandonedSectorIds: string[];
+  eliminated: boolean;
+  bankruptcyLog: string[];
+}
+
+export function applyUpkeepPhase(
+  player: PlayerState,
+  sectors: SectorTile[] = []
+): UpkeepPhaseResult {
+  const log: string[] = [];
+  const updatedPlayer: PlayerState = JSON.parse(JSON.stringify(player));
+  const abandonedSectorIds: string[] = [];
+  let eliminated = false;
   let bankrupt = false;
 
-  if (newMoney < 0) {
-    // Attempt automated trading at 2:1 ratio to avoid bankruptcy
-    const deficit = Math.abs(newMoney);
-    const tradeRatio = player.faction.tradeRatio || 2;
-    const matsNeeded = deficit * tradeRatio;
+  // Add round production
+  const moneyIncome = getIncomeForTrack(updatedPlayer.population.money.cubesOnBoard);
+  const scienceIncome = getIncomeForTrack(updatedPlayer.population.science.cubesOnBoard);
+  const materialsIncome = getIncomeForTrack(updatedPlayer.population.material.cubesOnBoard);
 
-    if (newMaterials >= matsNeeded) {
-      newMaterials -= matsNeeded;
-      newMoney = 0;
-    } else {
-      const remainingDeficit = deficit - Math.floor(newMaterials / tradeRatio);
-      newMoney += Math.floor(newMaterials / tradeRatio);
-      newMaterials = newMaterials % tradeRatio;
+  updatedPlayer.resources.money += moneyIncome;
+  updatedPlayer.resources.science += scienceIncome;
+  updatedPlayer.resources.materials += materialsIncome;
 
-      const sciNeeded = remainingDeficit * tradeRatio;
-      if (newScience >= sciNeeded) {
-        newScience -= sciNeeded;
-        newMoney = 0;
-      } else {
-        bankrupt = true;
+  // Deduct upkeep
+  let upkeep = getUpkeepForDiscs(updatedPlayer.influenceTrack.discsOnTrack);
+  updatedPlayer.resources.money -= upkeep;
+
+  if (updatedPlayer.resources.money < 0) {
+    bankrupt = true;
+    log.push(
+      `${updatedPlayer.name} has a budget deficit of ${Math.abs(updatedPlayer.resources.money)} Credits and enters Bankruptcy!`
+    );
+
+    const tradeRatio = updatedPlayer.faction.tradeRatio || 2;
+
+    // Step 1: Emergency trade from materials to money
+    if (updatedPlayer.resources.money < 0 && updatedPlayer.resources.materials > 0) {
+      const neededMoney = Math.abs(updatedPlayer.resources.money);
+      const matsToTrade = Math.min(
+        updatedPlayer.resources.materials,
+        neededMoney * tradeRatio
+      );
+      const unitsTraded = Math.floor(matsToTrade / tradeRatio) * tradeRatio;
+      if (unitsTraded > 0) {
+        const gained = unitsTraded / tradeRatio;
+        updatedPlayer.resources.materials -= unitsTraded;
+        updatedPlayer.resources.money += gained;
+        log.push(
+          `${updatedPlayer.name} made an emergency trade of ${unitsTraded} Materials for ${gained} Credits.`
+        );
       }
+    }
+
+    // Step 2: Emergency trade from science to money
+    if (updatedPlayer.resources.money < 0 && updatedPlayer.resources.science > 0) {
+      const neededMoney = Math.abs(updatedPlayer.resources.money);
+      const sciToTrade = Math.min(
+        updatedPlayer.resources.science,
+        neededMoney * tradeRatio
+      );
+      const unitsTraded = Math.floor(sciToTrade / tradeRatio) * tradeRatio;
+      if (unitsTraded > 0) {
+        const gained = unitsTraded / tradeRatio;
+        updatedPlayer.resources.science -= unitsTraded;
+        updatedPlayer.resources.money += gained;
+        log.push(
+          `${updatedPlayer.name} made an emergency trade of ${unitsTraded} Science for ${gained} Credits.`
+        );
+      }
+    }
+
+    // Step 3: Abandon controlled sectors (start with non-home sectors)
+    if (updatedPlayer.resources.money < 0 && sectors.length > 0) {
+      const controlledSectors = sectors.filter(
+        (s) => s.discOwner === updatedPlayer.id
+      );
+
+      // Separate non-home and home sectors
+      const nonHome = controlledSectors.filter(
+        (s) => s.sectorNumber !== updatedPlayer.faction.startingSectorNumber
+      );
+      const home = controlledSectors.filter(
+        (s) => s.sectorNumber === updatedPlayer.faction.startingSectorNumber
+      );
+
+      const sectorsToConsider = [...nonHome, ...home];
+
+      for (const sec of sectorsToConsider) {
+        if (updatedPlayer.resources.money >= 0) break;
+
+        // Abandon this sector
+        sec.discOwner = undefined;
+        abandonedSectorIds.push(sec.id);
+        updatedPlayer.influenceTrack.discsOnTrack = Math.min(
+          updatedPlayer.influenceTrack.totalDiscs,
+          updatedPlayer.influenceTrack.discsOnTrack + 1
+        );
+
+        // Return population cubes from sector back to player board
+        for (const p of sec.planets) {
+          if (p.colonizedBy === updatedPlayer.id) {
+            const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+            if (res === 'money' || res === 'science' || res === 'material') {
+              updatedPlayer.population[res].cubesOnBoard = Math.min(
+                12,
+                updatedPlayer.population[res].cubesOnBoard + 1
+              );
+            }
+            p.colonizedBy = undefined;
+            p.colonizedResource = undefined;
+          }
+        }
+
+        // Recalculate Upkeep with new discsOnTrack
+        const oldUpkeep = upkeep;
+        upkeep = getUpkeepForDiscs(updatedPlayer.influenceTrack.discsOnTrack);
+        const upkeepSaved = oldUpkeep - upkeep;
+        updatedPlayer.resources.money += upkeepSaved;
+
+        log.push(
+          `${updatedPlayer.name} abandoned Sector ${sec.sectorNumber}, returning an Influence Disc and population cubes (saved ${upkeepSaved} upkeep).`
+        );
+      }
+    }
+
+    // Step 4: If STILL negative, player is eliminated!
+    if (updatedPlayer.resources.money < 0) {
+      eliminated = true;
+      updatedPlayer.isEliminated = true;
+      updatedPlayer.resources.money = 0;
+      log.push(
+        `🚨 CIVILIZATION COLLAPSE: ${updatedPlayer.name} cannot balance their budget and is ELIMINATED from the galaxy!`
+      );
     }
   }
 
-  // Refresh colony ships in Upkeep phase
-  const refreshedColonyShips = {
-    total: player.colonyShips.total,
-    ready: player.colonyShips.total,
-  };
+  // Refresh colony ships in Upkeep phase (unless eliminated)
+  if (!eliminated) {
+    updatedPlayer.colonyShips = {
+      total: updatedPlayer.colonyShips.total,
+      ready: updatedPlayer.colonyShips.total,
+    };
+  }
 
-  const updatedPlayer: PlayerState = {
-    ...player,
-    resources: {
-      money: Math.max(0, newMoney),
-      science: newScience,
-      materials: newMaterials,
-    },
-    colonyShips: refreshedColonyShips,
+  return {
+    updatedPlayer,
+    bankrupt,
+    abandonedSectorIds,
+    eliminated,
+    bankruptcyLog: log,
   };
-
-  return { updatedPlayer, bankrupt };
 }
 
 export interface ActionCostForecast {
@@ -252,5 +386,43 @@ export function getPlayerTechRows(player: PlayerState): PlayerTechRows {
     grid: getRowStats(gridTechs),
     nano: getRowStats(nanoTechs),
     rare: rareTechs,
+  };
+}
+
+export interface IncomeForecast {
+  currentCubes: number;
+  currentIncome: number;
+  next1Cube: {
+    cubesRemaining: number;
+    income: number;
+    delta: number;
+  };
+  next2Cubes: {
+    cubesRemaining: number;
+    income: number;
+    delta: number;
+  };
+}
+
+export function getIncomeForecast(cubesOnBoard: number): IncomeForecast {
+  const currentIncome = getIncomeForTrack(cubesOnBoard);
+  const c1 = Math.max(0, cubesOnBoard - 1);
+  const inc1 = getIncomeForTrack(c1);
+  const c2 = Math.max(0, cubesOnBoard - 2);
+  const inc2 = getIncomeForTrack(c2);
+
+  return {
+    currentCubes: cubesOnBoard,
+    currentIncome,
+    next1Cube: {
+      cubesRemaining: c1,
+      income: inc1,
+      delta: inc1 - currentIncome,
+    },
+    next2Cubes: {
+      cubesRemaining: c2,
+      income: inc2,
+      delta: inc2 - currentIncome,
+    },
   };
 }

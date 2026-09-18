@@ -6,6 +6,8 @@ import {
   getHexDistance,
   getOppositeEdge,
   hasWormholeOnEdge,
+  findLegalExploreRotation,
+  findNextLegalExploreRotation,
 } from '../rules/hexMath';
 import {
   calculateBlueprintStats,
@@ -15,14 +17,19 @@ import {
   getRemainingShipSupply,
 } from '../rules/shipValidation';
 import { SHIP_PARTS } from '../rules/partData';
+import { sortUnitsByInitiative, getSectorDefenderOwnerId } from '../rules/combatEngine';
 import { createInitialGame } from '../rules/setup';
 import { executeAction, validateAction } from '../rules/gameReducer';
+import type { SectorTile } from '../types/sector';
 import {
   getIncomeForTrack,
   getUpkeepForDiscs,
   calculateActionCostForecast,
   getPlayerTechRows,
   TECH_ROW_VP_TABLE,
+  getIncomeForecast,
+  applyUpkeepPhase,
+  POPULATION_TRACK_SPACES,
 } from '../rules/economyEngine';
 import { CENTER_SECTOR, generateSectorDecks } from '../rules/sectorData';
 import {
@@ -106,6 +113,45 @@ describe('Hexagonal Galaxy Math & Wormholes', () => {
 
     // With Wormhole Generator, one side having a wormhole is sufficient
     expect(areSectorsConnected(sectorA, sectorC, true)).toBe(true);
+
+    // Default legal rotation calculation:
+    // Sector A at (0, 0) has wormhole at Edge 0 (pointing East to (1, 0))
+    // Sector D at (1, 0) has wormhole ONLY at base edge 1
+    // Edge from D to A is Edge 3 (West).
+    // In clockwise rotation rot, edge 3 corresponds to baseIndex (3 - rot + 6) % 6.
+    // We want (3 - rot + 6) % 6 === 1 => rot = 2!
+    const sectorD = {
+      id: 'D',
+      sectorNumber: 104,
+      ring: 1 as const,
+      coord: { q: 1, r: 0 },
+      rotation: 0,
+      wormholes: [false, true, false, false, false, false], // wormhole only at index 1
+      planets: [],
+      victoryPoints: 1,
+      hasArtifact: false,
+      hasDiscovery: false,
+      ancientsCount: 0,
+      ships: [],
+    };
+
+    // At rotation 0, sector D does not connect
+    expect(areSectorsConnected(sectorA, sectorD)).toBe(false);
+
+    // findLegalExploreRotation should automatically find rotation 2
+    const legalRot = findLegalExploreRotation(sectorA, sectorD, { q: 1, r: 0 });
+    expect(legalRot).toBe(2);
+
+    // Verifying that rotation 2 is indeed connected
+    const rotatedD = { ...sectorD, rotation: legalRot };
+    expect(areSectorsConnected(sectorA, rotatedD)).toBe(true);
+
+    // findNextLegalExploreRotation cycles clockwise to the next valid orientation
+    const nextRot = findNextLegalExploreRotation(sectorA, sectorD, { q: 1, r: 0 }, 0);
+    expect(nextRot).toBe(2);
+
+    // If already legal at rotation 0, preserves 0
+    expect(findLegalExploreRotation(sectorA, sectorB, { q: 1, r: 0 })).toBe(0);
   });
 });
 
@@ -1857,5 +1903,677 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(failRes.error).toContain('Drive Speed 0 and cannot move');
     });
   });
+
+  describe('Official Eclipse: Second Dawn BackLog Fixes & Enhancements', () => {
+    describe('1. Wild (Gray) Population Slots & Orbitals', () => {
+      it('enforces Orbital build cost of 4 Materials and tech prerequisite', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const homeSec = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+
+        // Attempt build without Orbital tech
+        p1.resources.materials = 10;
+        const noTechRes = executeAction(game, {
+          type: 'BUILD',
+          playerId: p1.id,
+          items: [{ sectorId: homeSec.id, itemType: 'orbital' }],
+        });
+        expect(noTechRes.success).toBe(false);
+        expect(noTechRes.error).toContain('Must research Orbital tech');
+
+        // Research Orbital
+        p1.techTrack.researched.push({
+          id: 'orbital',
+          name: 'Orbital',
+          category: 'grid',
+          baseCost: 8,
+          minCost: 4,
+        });
+
+        const buildRes = executeAction(game, {
+          type: 'BUILD',
+          playerId: p1.id,
+          items: [{ sectorId: homeSec.id, itemType: 'orbital' }],
+        });
+        expect(buildRes.success).toBe(true);
+        expect(buildRes.newState.players[0]!.resources.materials).toBe(6); // 10 - 4 = 6!
+
+        // Max 1 orbital per sector
+        buildRes.newState.activePlayerIndex = 0;
+        const duplicateRes = executeAction(buildRes.newState, {
+          type: 'BUILD',
+          playerId: p1.id,
+          items: [{ sectorId: homeSec.id, itemType: 'orbital' }],
+        });
+        expect(duplicateRes.success).toBe(false);
+        expect(duplicateRes.error).toContain('already contains an Orbital structure');
+      });
+
+      it('allows colonizing an orbital slot with Money or Science and rejects Material', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const homeSec = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+
+        homeSec.planets.push({
+          id: 'orbital_slot_1',
+          resource: 'science',
+          isAdvanced: false,
+          isOrbital: true,
+        });
+        const orbIndex = homeSec.planets.length - 1;
+
+        // Try material on orbital
+        const matRes = executeAction(game, {
+          type: 'COLONIZE',
+          playerId: p1.id,
+          sectorId: homeSec.id,
+          planetIndex: orbIndex,
+          chosenResource: 'material',
+        });
+        expect(matRes.success).toBe(false);
+        expect(matRes.error).toContain('Orbitals can only produce Money or Science');
+
+        // Colonize with Money
+        const moneyCubesBefore = p1.population.money.cubesOnBoard;
+        const moneyRes = executeAction(game, {
+          type: 'COLONIZE',
+          playerId: p1.id,
+          sectorId: homeSec.id,
+          planetIndex: orbIndex,
+          chosenResource: 'money',
+        });
+        expect(moneyRes.success).toBe(true);
+        expect(moneyRes.newState.players[0]!.population.money.cubesOnBoard).toBe(moneyCubesBefore - 1);
+        const colonizedSlot = moneyRes.newState.sectors.find((s) => s.id === homeSec.id)!.planets[orbIndex]!;
+        expect(colonizedSlot.colonizedBy).toBe(p1.id);
+        expect(colonizedSlot.colonizedResource).toBe('money');
+      });
+
+      it('allows choosing Money, Science, or Material on wild gray slots and enforces advanced tech', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const homeSec = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+
+        homeSec.planets.push({
+          id: 'wild_adv_slot',
+          resource: 'any',
+          isAdvanced: true,
+        });
+        const wildIndex = homeSec.planets.length - 1;
+
+        // Try colonizing advanced wild without tech
+        const noTechRes = executeAction(game, {
+          type: 'COLONIZE',
+          playerId: p1.id,
+          sectorId: homeSec.id,
+          planetIndex: wildIndex,
+          chosenResource: 'science',
+        });
+        expect(noTechRes.success).toBe(false);
+        expect(noTechRes.error).toContain('Requires Advanced Labs or Metasynthesis');
+
+        // Grant Advanced Labs
+        p1.techTrack.researched.push({
+          id: 'advanced_labs',
+          name: 'Advanced Labs',
+          category: 'nano',
+          baseCost: 8,
+          minCost: 4,
+        });
+
+        const sciCubesBefore = p1.population.science.cubesOnBoard;
+        const colonizeRes = executeAction(game, {
+          type: 'COLONIZE',
+          playerId: p1.id,
+          sectorId: homeSec.id,
+          planetIndex: wildIndex,
+          chosenResource: 'science',
+        });
+        expect(colonizeRes.success).toBe(true);
+        expect(colonizeRes.newState.players[0]!.population.science.cubesOnBoard).toBe(sciCubesBefore - 1);
+        expect(colonizeRes.newState.sectors.find((s) => s.id === homeSec.id)!.planets[wildIndex]!.colonizedResource).toBe('science');
+      });
+
+      it('returns population cubes to player board tracks when a sector is abandoned via Influence', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const sec: SectorTile = {
+          id: 'sector_col_abandon',
+          sectorNumber: 991,
+          ring: 1,
+          coord: { q: 1, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [
+            { id: 'p1', resource: 'material', isAdvanced: false, colonizedBy: p1.id, colonizedResource: 'material' },
+            { id: 'p2', resource: 'science', isAdvanced: false, colonizedBy: p1.id, colonizedResource: 'science' },
+          ],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          discOwner: p1.id,
+          ships: [],
+        };
+        game.sectors.push(sec);
+        p1.population.material.cubesOnBoard = 10;
+        p1.population.science.cubesOnBoard = 10;
+
+        const abandonRes = executeAction(game, {
+          type: 'INFLUENCE',
+          playerId: p1.id,
+          abandonSectors: [sec.id],
+        });
+        expect(abandonRes.success).toBe(true);
+        const updatedP1 = abandonRes.newState.players[0]!;
+        expect(updatedP1.population.material.cubesOnBoard).toBe(11);
+        expect(updatedP1.population.science.cubesOnBoard).toBe(11);
+        const updatedSec = abandonRes.newState.sectors.find((s) => s.id === sec.id)!;
+        expect(updatedSec.discOwner).toBeUndefined();
+        expect(updatedSec.planets[0]!.colonizedBy).toBeUndefined();
+        expect(updatedSec.planets[1]!.colonizedBy).toBeUndefined();
+      });
+    });
+
+    describe('2. Income Cubes & Forecast on Player Board', () => {
+      it('correctly calculates current income, next 1 cube and next 2 cubes deltas', () => {
+        // At 12 cubes on board (none colonized): income is 2
+        const f12 = getIncomeForecast(12);
+        expect(f12.currentIncome).toBe(2);
+        expect(f12.next1Cube.income).toBe(3);
+        expect(f12.next1Cube.delta).toBe(1); // +1 gain
+        expect(f12.next2Cubes.income).toBe(4);
+        expect(f12.next2Cubes.delta).toBe(2); // +2 gain
+
+        // At 11 cubes on board (1 colonized): income is 3
+        const f11 = getIncomeForecast(11);
+        expect(f11.currentIncome).toBe(3);
+        expect(f11.next1Cube.income).toBe(4);
+        expect(f11.next1Cube.delta).toBe(1);
+        expect(f11.next2Cubes.income).toBe(6);
+        expect(f11.next2Cubes.delta).toBe(3); // from 3 to 6 is +3!
+
+        // At 5 cubes on board: income is 15
+        const f5 = getIncomeForecast(5);
+        expect(f5.currentIncome).toBe(15);
+        expect(f5.next1Cube.income).toBe(18);
+        expect(f5.next1Cube.delta).toBe(3);
+        expect(f5.next2Cubes.income).toBe(21);
+        expect(f5.next2Cubes.delta).toBe(6);
+      });
+
+      it('verifies POPULATION_TRACK_SPACES ascending order (2 to 32) and correct active/covered state logic', () => {
+        const expectedValues = [2, 3, 4, 6, 8, 10, 12, 15, 18, 21, 24, 28, 32];
+        expect(POPULATION_TRACK_SPACES.map((s) => s.value)).toEqual(expectedValues);
+
+        // At 11 cubes on board (game start, 1 colonized):
+        // Space 2 (slot 0) is passed (uncovered)
+        // Space 3 (slot 1) is ACTIVE (income = 3)
+        // Space 4 (slot 2) is NEXT cube (+1 delta)
+        // Space 6 (slot 3) is +2 cubes (+3 delta)
+        // Spaces 4 through 32 have 11 cubes
+        const cubesOnBoard = 11;
+        const activeSpace = POPULATION_TRACK_SPACES.find((s) => s.cubesOnBoardThreshold === cubesOnBoard)!;
+        expect(activeSpace.value).toBe(3);
+
+        const nextSpace = POPULATION_TRACK_SPACES.find((s) => s.cubesOnBoardThreshold === cubesOnBoard - 1)!;
+        expect(nextSpace.value).toBe(4);
+
+        const coveredSpaces = POPULATION_TRACK_SPACES.filter((s) => cubesOnBoard > s.cubesOnBoardThreshold);
+        expect(coveredSpaces.length).toBe(11); // 11 cubes covering spaces 4 through 32
+        expect(coveredSpaces.map((s) => s.value)).toEqual([4, 6, 8, 10, 12, 15, 18, 21, 24, 28, 32]);
+      });
+    });
+
+    describe('3. Bankruptcy Logic', () => {
+      it('resolves negative money deficit via emergency trade and sector abandonment', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        p1.resources.money = 0;
+        p1.influenceTrack.discsOnTrack = 2; // Upkeep = 18!
+        p1.population.money.cubesOnBoard = 11; // Income = 3. Net delta = 3 - 18 = -15!
+        p1.resources.materials = 22; // Emergency trade: 2:1 -> 22 mats = 11 credits -> deficit is -4
+        p1.resources.science = 0; // Emergency trade: science income (2) -> 2 sci = 1 credit -> deficit is -3 (abandoning sector saves 3 upkeep!)
+
+        // Controlled non-home sector
+        const nonHomeSec: SectorTile = {
+          id: 'sec_non_home_bankrupt',
+          sectorNumber: 981,
+          ring: 2,
+          coord: { q: 2, r: -2 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [{ id: 'p_bankrupt', resource: 'material', isAdvanced: false, colonizedBy: p1.id }],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          discOwner: p1.id,
+          ships: [],
+        };
+        game.sectors.push(nonHomeSec);
+
+        const upkeepRes = applyUpkeepPhase(p1, game.sectors);
+        expect(upkeepRes.bankrupt).toBe(true);
+        expect(upkeepRes.eliminated).toBe(false);
+        expect(upkeepRes.updatedPlayer.resources.money).toBeGreaterThanOrEqual(0);
+        expect(upkeepRes.abandonedSectorIds).toContain(nonHomeSec.id);
+      });
+
+      it('eliminates a player who cannot balance their budget after exhausting all assets', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        p1.resources.money = 0;
+        p1.resources.materials = 0;
+        p1.resources.science = 0;
+        p1.influenceTrack.discsOnTrack = 0; // Upkeep = 30!
+        p1.population.money.cubesOnBoard = 12; // Income = 2
+
+        const upkeepRes = applyUpkeepPhase(p1, []);
+        expect(upkeepRes.bankrupt).toBe(true);
+        expect(upkeepRes.eliminated).toBe(true);
+        expect(upkeepRes.updatedPlayer.isEliminated).toBe(true);
+      });
+    });
+
+    describe('4. Reputation Tiles System', () => {
+      it('creates official 33-tile reputation bag (16x1, 9x2, 5x3, 3x4)', () => {
+        const game = createInitialGame(2);
+        expect(game.reputationBag.length).toBe(33);
+        const counts: Record<number, number> = {};
+        for (const val of game.reputationBag) {
+          counts[val] = (counts[val] || 0) + 1;
+        }
+        expect(counts[1]).toBe(16);
+        expect(counts[2]).toBe(9);
+        expect(counts[3]).toBe(5);
+        expect(counts[4]).toBe(3);
+      });
+
+      it('allows claiming a reputation tile after combat, placing it on track, and replacing when full', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+
+        game.pendingReputationDraw = {
+          playerId: p1.id,
+          drawnTiles: [1, 2, 4],
+          sectorId: 'home_sector_player_1',
+        };
+
+        const claimRes = executeAction(game, {
+          type: 'CLAIM_REPUTATION_TILE',
+          playerId: p1.id,
+          selectedTileIndex: 2, // Keeps 4 VP tile!
+        });
+
+        expect(claimRes.success).toBe(true);
+        const updatedP1 = claimRes.newState.players[0]!;
+        expect(updatedP1.reputationTiles).toEqual([4]);
+        expect(claimRes.newState.pendingReputationDraw).toBeNull();
+
+        // Fill track to 5 tiles and test replacement
+        updatedP1.reputationTiles = [1, 2, 1, 2, 3];
+        claimRes.newState.pendingReputationDraw = {
+          playerId: p1.id,
+          drawnTiles: [4],
+          sectorId: 'home_sector_player_1',
+        };
+
+        const replaceRes = executeAction(claimRes.newState, {
+          type: 'CLAIM_REPUTATION_TILE',
+          playerId: p1.id,
+          selectedTileIndex: 0, // 4 VP
+          replaceTrackIndex: 0, // Replaces first 1 VP tile
+        });
+
+        expect(replaceRes.success).toBe(true);
+        expect(replaceRes.newState.players[0]!.reputationTiles).toContain(4);
+        expect(replaceRes.newState.players[0]!.reputationTiles.length).toBe(5);
+      });
+    });
+
+    describe('5. Combat Retreat', () => {
+      it('declares retreat for ships of a type and completes retreat to friendly adjacent sector on next activation', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // Ensure interceptor has extra hull to survive enemy salvo before its next activation
+        p1.blueprints.interceptor.slots[3] = SHIP_PARTS.hull;
+
+        const combatSec: SectorTile = {
+          id: 'sec_combat_test',
+          sectorNumber: 881,
+          ring: 1,
+          coord: { q: 0, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          discOwner: undefined,
+          ships: [
+            { id: 'p1_int_retreat', ownerId: p1.id, type: 'interceptor', damage: 0 },
+            { id: 'p2_cruiser_foe', ownerId: p2.id, type: 'cruiser', damage: 0 },
+          ],
+        };
+
+        // Friendly controlled retreat destination
+        const retreatDest: SectorTile = {
+          id: 'sec_retreat_dest',
+          sectorNumber: 882,
+          ring: 1,
+          coord: { q: 0, r: -2 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          discOwner: p1.id, // Controlled by p1!
+          ships: [], // No enemies
+        };
+
+        game.sectors.push(combatSec, retreatDest);
+
+        game.activeCombat = {
+          sectorId: combatSec.id,
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          retreatDeclared: {},
+        };
+
+        // Step 1: P1 Interceptor declares retreat during its activation
+        const declareRes = executeAction(game, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+          retreatShipIds: ['p1_int_retreat'],
+          retreatDestinationSectorId: retreatDest.id,
+        });
+
+        expect(declareRes.success).toBe(true);
+        expect(declareRes.newState.activeCombat?.retreatDeclared['p1_int_retreat']).toBe(retreatDest.id);
+
+        // Step 2: P2 Cruiser activates and attacks in initiative order
+        const p2AttackRes = executeAction(declareRes.newState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p2.id,
+        });
+        expect(p2AttackRes.success).toBe(true);
+
+        // Step 3: On its next activation (Engagement Round 2), P1 Interceptor completes its retreat!
+        const completeRes = executeAction(p2AttackRes.newState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+        });
+
+        expect(completeRes.success).toBe(true);
+        const updatedDest = completeRes.newState.sectors.find((s) => s.id === retreatDest.id)!;
+        expect(updatedDest.ships.some((s) => s.id === 'p1_int_retreat')).toBe(true);
+      });
+
+      it('6. Population Bombardment: destroys population cubes before disc overthrow; with neutron bombs wipes all', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // Give P1 Neutron Bombs
+        p1.techTrack.researched.push({
+          id: 'neutron_bombs',
+          name: 'Neutron Bombs',
+          category: 'military',
+          cost: 5,
+          minCost: 2,
+        });
+
+        // Set up Sector 102 controlled by P2 with 2 population cubes and 1 weak ship
+        const combatSec = game.sectors.find((s) => s.ring > 0)!;
+        combatSec.discOwner = p2.id;
+        combatSec.planets = [
+          { id: 'p_1', resource: 'money', isAdvanced: false, colonizedBy: p2.id, colonizedResource: 'money' },
+          { id: 'p_2', resource: 'science', isAdvanced: false, colonizedBy: p2.id, colonizedResource: 'science' },
+        ];
+        p2.population.money.cubesOnBoard = 10;
+        p2.population.science.cubesOnBoard = 10;
+        p2.influenceTrack.discsOnTrack = 10;
+
+        // P2 has 1 Interceptor with 1 hull remaining; P1 has 1 Dreadnought with full hull
+        combatSec.ships = [
+          { id: 'p2_ship', ownerId: p2.id, type: 'interceptor', damage: 0 },
+          { id: 'p1_dread', ownerId: p1.id, type: 'dreadnought', damage: 0 },
+        ];
+
+        game.phase = 'COMBAT_PHASE';
+        game.activeCombat = {
+          sectorId: combatSec.id,
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          retreatDeclared: {},
+        };
+
+        // P1 attacks and destroys P2's ship
+        // We set P2's ship damage to 1 right before combat concludes or step combat
+        combatSec.ships[0].damage = 1; // 1 damage kills interceptor (hull = 1)
+
+        const stepRes = executeAction(game, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+        });
+
+        expect(stepRes.success).toBe(true);
+        const updatedSec = stepRes.newState.sectors.find((s) => s.id === combatSec.id)!;
+        // Neutron bombs should have auto-annihilated all 2 P2 population cubes
+        expect(updatedSec.planets.every((p) => !p.colonizedBy)).toBe(true);
+        // P2 cubes returned to player board
+        expect(stepRes.newState.players[1]!.population.money.cubesOnBoard).toBe(11);
+        expect(stepRes.newState.players[1]!.population.science.cubesOnBoard).toBe(11);
+        // P2 Influence disc was overthrown and returned to track
+        expect(updatedSec.discOwner).toBeUndefined();
+        expect(stepRes.newState.players[1]!.influenceTrack.discsOnTrack).toBe(11);
+        // P1 victor gets pendingCombatConquest
+        expect(stepRes.newState.pendingCombatConquest?.winnerPlayerId).toBe(p1.id);
+      });
+
+      it('7. Ship Base Initiative & Defender Tie-Breaking: verifies official Human base initiatives and defender tie priority', () => {
+        const bps = createDefaultHumanBlueprints();
+        // Base initiatives:
+        expect(bps.interceptor.baseInitiative).toBe(2);
+        expect(bps.cruiser.baseInitiative).toBe(1);
+        expect(bps.dreadnought.baseInitiative).toBe(0);
+        expect(bps.starbase.baseInitiative).toBe(4);
+
+        // Calculated starting initiatives with components:
+        const intStats = calculateBlueprintStats(bps.interceptor);
+        expect(intStats.totalInitiative).toBe(3); // 2 base + 1 Nuclear Drive
+
+        const cruStats = calculateBlueprintStats(bps.cruiser);
+        expect(cruStats.totalInitiative).toBe(3); // 1 base + 1 Nuclear Drive + 1 Electron Computer
+
+        const dreStats = calculateBlueprintStats(bps.dreadnought);
+        expect(dreStats.totalInitiative).toBe(2); // 0 base + 1 Nuclear Drive + 1 Electron Computer
+
+        const staStats = calculateBlueprintStats(bps.starbase);
+        expect(staStats.totalInitiative).toBe(5); // 4 base + 1 Electron Computer
+
+        // Defender tie-breaking test:
+        const defenderUnit = {
+          id: 'def_1',
+          ownerId: 'player_def',
+          type: 'cruiser',
+          initiative: 3,
+          maxHull: 2,
+          currentDamage: 0,
+          computerBonus: 1,
+          shieldBonus: 0,
+          weapons: [],
+        };
+        const attackerUnit = {
+          id: 'atk_1',
+          ownerId: 'player_atk',
+          type: 'interceptor',
+          initiative: 3,
+          maxHull: 1,
+          currentDamage: 0,
+          computerBonus: 0,
+          shieldBonus: 0,
+          weapons: [],
+        };
+
+        const sorted = sortUnitsByInitiative([attackerUnit, defenderUnit], 'player_def');
+        expect(sorted[0].id).toBe('def_1'); // Defender wins the initiative tie!
+        expect(sorted[1].id).toBe('atk_1');
+      });
+
+      it('8. Plasma Cannon Die Count: confirms 1 orange die (2 damage per hit)', () => {
+        const pc = SHIP_PARTS.plasma_cannon;
+        expect(pc).toBeDefined();
+        expect(pc.dice).toBeDefined();
+        expect(pc.dice!.length).toBe(1);
+        expect(pc.dice![0].color).toBe('orange');
+        expect(pc.dice![0].count).toBe(1);
+        expect(pc.dice![0].damagePerHit).toBe(2);
+
+        // A dreadnought with 2 plasma cannons should have exactly 2 orange dice
+        const bps = createDefaultHumanBlueprints();
+        bps.dreadnought.slots[0] = SHIP_PARTS.plasma_cannon;
+        bps.dreadnought.slots[1] = SHIP_PARTS.plasma_cannon;
+
+        const diceCount = bps.dreadnought.slots
+          .filter((s) => s?.dice)
+          .flatMap((s) => s!.dice!)
+          .filter((d) => d.color === 'orange')
+          .reduce((sum, d) => sum + d.count, 0);
+
+        expect(diceCount).toBe(2); // 2 plasma cannons = 2 dice!
+      });
+
+      it('9. Combat Resolution Order: resolves multi-sector battles in descending Sector Number order', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // Add 2 combat sectors: Sector 102 (inner) and Sector 204 (middle)
+        const sec102 = {
+          id: 'sec_102',
+          sectorNumber: 102,
+          ring: 1 as const,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [
+            { id: 's_102_p1', ownerId: p1.id, type: 'interceptor' as const, damage: 0 },
+            { id: 's_102_p2', ownerId: p2.id, type: 'interceptor' as const, damage: 0 },
+          ],
+        };
+        const sec204 = {
+          id: 'sec_204',
+          sectorNumber: 204,
+          ring: 2 as const,
+          coord: { q: 2, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [
+            { id: 's_204_p1', ownerId: p1.id, type: 'cruiser' as const, damage: 0 },
+            { id: 's_204_p2', ownerId: p2.id, type: 'cruiser' as const, damage: 0 },
+          ],
+        };
+        game.sectors.push(sec102, sec204);
+
+        // Pass both players to enter COMBAT_PHASE
+        const pass1 = executeAction(game, { type: 'PASS', playerId: p1.id });
+        const pass2 = executeAction(pass1.newState, { type: 'PASS', playerId: p2.id });
+
+        expect(pass2.newState.phase).toBe('COMBAT_PHASE');
+        expect(pass2.newState.activeCombat).toBeDefined();
+
+        // Must select the sector with highest sectorNumber first (204 > 102)!
+        const activeSec = pass2.newState.sectors.find((s) => s.id === pass2.newState.activeCombat!.sectorId)!;
+        expect(activeSec.sectorNumber).toBe(204);
+      });
+
+      it('10. Influence Action: readies 2 used colony ships and allows claiming eligible sectors and abandoning controlled sectors', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // Exhaust all colony ships
+        p1.colonyShips.ready = 0;
+        const initialDiscs = p1.influenceTrack.discsOnTrack;
+
+        // Add an adjacent sector to claim
+        const homeSec = game.sectors.find((s) => s.discOwner === p1.id)!;
+        const targetSec = {
+          id: 'sec_target_inf',
+          sectorNumber: 105,
+          ring: 1 as const,
+          coord: { q: homeSec.coord.q + 1, r: homeSec.coord.r },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+        game.sectors.push(targetSec);
+
+        const infRes = executeAction(game, {
+          type: 'INFLUENCE',
+          playerId: p1.id,
+          claimSectors: [targetSec.id],
+        });
+
+        expect(infRes.success).toBe(true);
+        // Colony ships readied by 2
+        expect(infRes.newState.players[0]!.colonyShips.ready).toBe(2);
+        // Target sector claimed
+        expect(infRes.newState.sectors.find((s) => s.id === targetSec.id)!.discOwner).toBe(p1.id);
+        // Net discs: 1 action disc + 1 claim disc = 2 discs deducted
+        expect(infRes.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 2);
+
+        // P2 passes turn so active turn cycles back to P1
+        const p2Pass = executeAction(infRes.newState, {
+          type: 'PASS',
+          playerId: p2.id,
+        });
+        expect(p2Pass.success).toBe(true);
+
+        // Now take another INFLUENCE action to abandon targetSec
+        const abandonRes = executeAction(p2Pass.newState, {
+          type: 'INFLUENCE',
+          playerId: p1.id,
+          abandonSectors: [targetSec.id],
+        });
+
+        expect(abandonRes.success).toBe(true);
+        // Target sector abandoned
+        expect(abandonRes.newState.sectors.find((s) => s.id === targetSec.id)!.discOwner).toBeUndefined();
+        // 1 action disc deducted, 1 disc returned from abandoned sector: net delta = 0
+        expect(abandonRes.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 2);
+      });
+    });
+  });
 });
+
+
 

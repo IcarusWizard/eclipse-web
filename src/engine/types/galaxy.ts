@@ -26,6 +26,7 @@ export interface PlanetSlot {
   readonly isAdvanced: boolean; // Gray slot requiring Advanced Economy / Mining / Labs
   readonly isOrbital?: boolean; // Orbital structure slot
   colonizedBy?: string; // Player ID who has a population cube here
+  colonizedResource?: 'money' | 'science' | 'material'; // Type of cube placed on this slot
 }
 
 export type ShipType = 'interceptor' | 'cruiser' | 'dreadnought' | 'starbase';

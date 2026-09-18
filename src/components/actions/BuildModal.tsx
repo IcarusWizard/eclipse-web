@@ -134,10 +134,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     {
       type: 'orbital',
       name: 'Orbital Structure',
-      cost: 5,
+      cost: 4,
       unlocked: hasOrbitalTech,
       disabledReason: !hasOrbitalTech ? 'Requires Orbital tech' : undefined,
-      description: 'Artificial satellite providing an additional planetary slot (requires Orbital tech).',
+      description: 'Artificial satellite providing a Money or Science population slot (requires Orbital tech, max 1 per sector).',
     },
     {
       type: 'monolith',
@@ -156,7 +156,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       case 'dreadnought':
         return 8;
       case 'orbital':
-        return 5;
+        return 4;
       case 'monolith':
         return 10;
       default:

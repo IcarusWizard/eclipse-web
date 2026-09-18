@@ -86,4 +86,5 @@ export interface PlayerState {
   isFirstPasser: boolean;
   actionsTakenThisRound: number;
   graveyardShips: { type: string; count: number }[];
+  isEliminated?: boolean;
 }

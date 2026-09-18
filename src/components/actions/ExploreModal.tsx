@@ -4,6 +4,8 @@ import { SectorTile, HexCoord, PlanetResourceType } from '../../engine/types/gal
 import {
   areSectorsConnected,
   getRingFromCoord,
+  findLegalExploreRotation,
+  findNextLegalExploreRotation,
 } from '../../engine/rules/hexMath';
 import {
   Compass,
@@ -119,6 +121,21 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     player.influenceTrack.discsOnTrack > 0 &&
     claimInfluence;
 
+  // Ensure tile starts at a legal orientation on mount if not already connected
+  useEffect(() => {
+    if (!isConnected) {
+      const legal = findLegalExploreRotation(
+        sourceSector,
+        candidateTile,
+        targetCoord,
+        hasWormholeGen
+      );
+      if (legal !== rotation) {
+        onRotate(legal);
+      }
+    }
+  }, [candidateTile.id, targetCoord.q, targetCoord.r]);
+
   // Keyboard shortcut support: R to rotate, Enter to confirm, Esc to cancel
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -176,12 +193,26 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
 
           {/* Connection Status & Rotation Controls */}
           <div className="flex items-center gap-2.5">
-            <div
-              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1.5 ${
+            <button
+              type="button"
+              onClick={() => {
+                if (!isConnected) {
+                  const nextLegal = findNextLegalExploreRotation(
+                    sourceSector,
+                    candidateTile,
+                    targetCoord,
+                    rotation,
+                    hasWormholeGen
+                  );
+                  onRotate(nextLegal);
+                }
+              }}
+              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1.5 transition-all ${
                 isConnected
-                  ? 'bg-emerald-950/60 border-emerald-700/80 text-emerald-300'
-                  : 'bg-rose-950/60 border-rose-700/80 text-rose-300'
+                  ? 'bg-emerald-950/60 border-emerald-700/80 text-emerald-300 cursor-default'
+                  : 'bg-rose-950/60 border-rose-700/80 text-rose-300 hover:bg-rose-900/80 cursor-pointer animate-pulse'
               }`}
+              title={isConnected ? 'Wormholes Connected' : 'Click to snap to next legal rotation'}
             >
               <span
                 className={`w-1.5 h-1.5 rounded-full ${
@@ -189,7 +220,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 }`}
               />
               {isConnected ? 'Wormholes Connected' : 'Rotate to Connect'}
-            </div>
+            </button>
 
             {/* Rotation Buttons */}
             <div className="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-lg border border-slate-800">

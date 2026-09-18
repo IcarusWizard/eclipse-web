@@ -25,6 +25,7 @@ export interface CombatRoll {
 
 export interface CombatState {
   sectorId: string;
+  defenderOwnerId?: string;
   roundNumber: number;
   stage: 'missile' | 'regular' | 'bombardment' | 'resolved';
   initiativeOrder: {
@@ -35,6 +36,15 @@ export interface CombatState {
   currentTurnIndex: number;
   lastRolls: CombatRoll[];
   retreatDeclared: Record<string, string>; // shipId -> destinationSectorId
+  retreatAttemptedPlayerIds?: string[];
+  destroyedShips?: { shipId: string; type: string; ownerId: string; killerId?: string }[];
+  participatingPlayerIds?: string[];
+}
+
+export interface PendingReputationDraw {
+  playerId: string;
+  drawnTiles: number[];
+  sectorId: string;
 }
 
 export interface GameLogEntry {
@@ -90,6 +100,8 @@ export interface GameState {
   pendingExplore: PendingExplore | null;
   pendingDiscovery: PendingDiscovery | null;
   pendingCombatConquest: PendingCombatConquest | null;
+  pendingReputationDraw?: PendingReputationDraw | null;
+  pendingReputationDrawQueue?: PendingReputationDraw[];
   log: GameLogEntry[];
   winnerId?: string;
   finalScores?: Record<string, {

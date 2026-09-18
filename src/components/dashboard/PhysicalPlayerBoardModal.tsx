@@ -6,10 +6,11 @@ import { ShipPart } from '../../engine/types/blueprints';
 import {
   calculatePlayerRoundSummary,
   calculateActionCostForecast,
+  getIncomeForecast,
   getPlayerTechRows,
   TECH_ROW_SLOT_COUNT,
   UPKEEP_TABLE,
-  INCOME_TABLE,
+  POPULATION_TRACK_SPACES,
 } from '../../engine/rules/economyEngine';
 import { calculateBlueprintStats, countPlayerShips, SHIP_LIMITS } from '../../engine/rules/shipValidation';
 import {
@@ -65,6 +66,9 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   const forecast = useMemo(() => calculateActionCostForecast(player), [player]);
   const techRows = useMemo(() => getPlayerTechRows(player), [player]);
   const deployed = useMemo(() => countPlayerShips(sectors, player.id), [sectors, player.id]);
+  const moneyForecast = useMemo(() => getIncomeForecast(player.population.money.cubesOnBoard), [player.population.money.cubesOnBoard]);
+  const sciForecast = useMemo(() => getIncomeForecast(player.population.science.cubesOnBoard), [player.population.science.cubesOnBoard]);
+  const matForecast = useMemo(() => getIncomeForecast(player.population.material.cubesOnBoard), [player.population.material.cubesOnBoard]);
 
   const isActive = player.id === activePlayerId;
 
@@ -472,6 +476,86 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     })}
                   </div>
                 </div>
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================= */}
+          {/* SECTION 1.5: REPUTATION TRACK (5 SLOTS)                           */}
+          {/* Authentic 5-slot track for Reputation & Ambassador Tiles          */}
+          {/* ================================================================= */}
+          {(activeTab === 'all' || activeTab === 'tracks') && (
+            <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Trophy className="w-5 h-5 text-amber-400" />
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
+                      REPUTATION TRACK (5 SLOTS)
+                      <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-950/60 border border-amber-600/60 text-amber-300">
+                        Total: {player.reputationTiles.reduce((a, b) => a + b, 0)} VP
+                      </span>
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      Combat rewards and battle participation tiles placed facedown. Maximum 5 slots on species board.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
+                  <span>Slots Filled:</span>
+                  <span className="font-bold text-slate-200">
+                    {player.reputationTiles.length} / 5
+                  </span>
+                </div>
+              </div>
+
+              {/* 5 Physical Cardboard Slots */}
+              <div className="grid grid-cols-5 gap-3">
+                {Array.from({ length: 5 }).map((_, slotIdx) => {
+                  const tile = player.reputationTiles[slotIdx];
+                  const hasTile = tile !== undefined;
+
+                  return (
+                    <div
+                      key={`rep_slot_${slotIdx}`}
+                      className={`h-28 rounded-xl border-2 flex flex-col items-center justify-between p-2.5 transition-all relative ${
+                        hasTile
+                          ? 'bg-gradient-to-b from-amber-950/40 to-slate-950 border-amber-500/80 shadow-lg shadow-amber-950/50'
+                          : 'bg-slate-950 border-dashed border-slate-800/90'
+                      }`}
+                    >
+                      <div className="w-full flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                        <span>Slot #{slotIdx + 1}</span>
+                        {slotIdx === 0 && <span className="text-[9px] text-indigo-400">Amb / Rep</span>}
+                      </div>
+
+                      {hasTile ? (
+                        <div className="flex flex-col items-center">
+                          <div className="w-10 h-10 rounded-lg bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300 shadow-md">
+                            <Trophy className="w-5 h-5 text-amber-400" />
+                          </div>
+                          <span className="text-base font-extrabold font-display text-amber-300 mt-1">
+                            +{tile} VP
+                          </span>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col items-center text-center">
+                          <span className="text-xs text-slate-600 font-bold uppercase tracking-wider">
+                            Empty
+                          </span>
+                          <span className="text-[9px] text-slate-600 mt-0.5">
+                            Facedown Tile
+                          </span>
+                        </div>
+                      )}
+
+                      <div className="text-[9px] font-semibold text-slate-400">
+                        {hasTile ? 'Reputation Tile' : 'Available Slot'}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}
@@ -941,19 +1025,24 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
           {(activeTab === 'all' || activeTab === 'tracks') && (
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg space-y-4">
               <div className="border-b border-slate-800/80 pb-3">
-                <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
-                  <Layers className="w-5 h-5 text-yellow-400" />
-                  POPULATION & RESOURCE INCOME TRACKS
-                </h2>
-                <p className="text-xs text-slate-400">
-                  Each track holds 12 population cubes. Colonizing planets moves cubes from board to sectors, uncovering higher income for Upkeep.
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                  <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
+                    <Layers className="w-5 h-5 text-yellow-400" />
+                    POPULATION & RESOURCE PRODUCTION TRACKS
+                  </h2>
+                  <span className="text-[11px] text-cyan-400 font-mono bg-cyan-950/40 border border-cyan-800/50 px-2 py-0.5 rounded">
+                    Official Board Rule: Left to right (2 → 32)
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">
+                  Cubes are placed on spaces from left to right. When colonizing a planet, you remove cubes from left to right to your sectors. The <strong className="text-slate-200">highest uncovered number</strong> is what you currently earn during Upkeep.
                 </p>
               </div>
 
               {/* 3 Population Tracks */}
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {/* 1. Money Track */}
-                <div className="bg-slate-900/90 border border-yellow-950/80 rounded-xl p-3.5 space-y-2">
+                <div className="bg-slate-900/90 border border-yellow-950/80 rounded-xl p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-yellow-400 flex items-center gap-1.5 font-display">
                       <Coins className="w-4 h-4 text-yellow-400" /> MONEY TRACK
@@ -963,31 +1052,109 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-6 sm:grid-cols-6 gap-1.5">
-                    {INCOME_TABLE.map((incValue, idx) => {
-                      const cubesLeft = 12 - idx;
-                      const hasCube = player.population.money.cubesOnBoard >= cubesLeft;
-                      const isUncovered = player.population.money.cubesOnBoard === cubesLeft - 1;
+                  {/* Next-Cube Forecast Bar */}
+                  <div className="bg-slate-950/60 rounded-lg px-2.5 py-1.5 border border-yellow-900/40 text-[11px] flex flex-wrap items-center justify-between gap-1">
+                    <span className="text-yellow-400 font-bold uppercase tracking-wider text-[10px]">Forecast:</span>
+                    <div className="flex items-center gap-2 font-mono text-[10px]">
+                      <span className="text-slate-300">
+                        Active: <strong className="text-yellow-300">+{moneyForecast.currentIncome}</strong>
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-yellow-200">
+                        Next: <strong className="text-yellow-300">+{moneyForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{moneyForecast.next1Cube.delta})</span>
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-yellow-200">
+                        +2: <strong className="text-yellow-300">+{moneyForecast.next2Cubes.income}</strong> <span className="text-emerald-400">(+{moneyForecast.next2Cubes.delta})</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                    {POPULATION_TRACK_SPACES.map((space) => {
+                      const hasCube = player.population.money.cubesOnBoard > space.cubesOnBoardThreshold;
+                      const isActive = player.population.money.cubesOnBoard === space.cubesOnBoardThreshold;
+                      const isNext = player.population.money.cubesOnBoard - 1 === space.cubesOnBoardThreshold;
+                      const isNext2 = player.population.money.cubesOnBoard - 2 === space.cubesOnBoardThreshold;
 
                       return (
                         <div
-                          key={`money_cube_${idx}`}
-                          className={`h-10 rounded border flex flex-col items-center justify-center p-1 relative transition-all ${
-                            hasCube
-                              ? 'bg-slate-950 border-slate-800'
-                              : isUncovered
-                              ? 'bg-yellow-950/40 border-yellow-400 shadow ring-1 ring-yellow-400'
-                              : 'bg-yellow-950/20 border-yellow-900/50'
+                          key={`money_space_${space.slotIndex}`}
+                          title={`Space ${space.value} Credits: ${
+                            isActive
+                              ? `Current Active Income (${space.value} Credits/rnd)`
+                              : isNext
+                              ? `Next Cube to colonize! Uncovering increases income from ${moneyForecast.currentIncome} to ${space.value} (+${moneyForecast.next1Cube.delta} delta)`
+                              : isNext2
+                              ? `Second Cube! Uncovering increases income to ${space.value} (+${moneyForecast.next2Cubes.delta} delta)`
+                              : hasCube
+                              ? `Covered by population cube (uncovers ${space.value} Credits)`
+                              : `Uncovered (already passed)`
+                          }`}
+                          className={`h-16 rounded-lg border flex flex-col items-center justify-between p-1 relative transition-all ${
+                            isActive
+                              ? 'bg-yellow-950/60 border-yellow-400 shadow-lg shadow-yellow-950/60 ring-2 ring-yellow-400/80'
+                              : isNext
+                              ? 'bg-slate-950/90 border-yellow-500/50 hover:border-yellow-400'
+                              : hasCube
+                              ? 'bg-slate-950/80 border-slate-800'
+                              : 'bg-slate-950/30 border-slate-900 opacity-45'
                           }`}
                         >
-                          {hasCube ? (
-                            /* 3D Wooden Cube Token */
-                            <div className="w-5 h-5 rounded-sm bg-yellow-500 border border-yellow-200 shadow-md transform hover:scale-105" />
-                          ) : (
-                            <span className="text-xs font-bold text-yellow-300 font-mono">
-                              +{incValue}
+                          <div className="flex items-center justify-between w-full px-0.5 text-[10px] font-mono leading-none">
+                            <span
+                              className={`font-black ${
+                                isActive
+                                  ? 'text-yellow-300 text-xs'
+                                  : isNext
+                                  ? 'text-yellow-400 font-bold'
+                                  : hasCube
+                                  ? 'text-slate-400'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {space.value}
                             </span>
-                          )}
+                            {isNext && (
+                              <span className="text-[8px] font-bold text-emerald-400 font-mono">
+                                +{moneyForecast.next1Cube.delta}
+                              </span>
+                            )}
+                            {isNext2 && (
+                              <span className="text-[8px] font-bold text-cyan-400 font-mono">
+                                +{moneyForecast.next2Cubes.delta}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex-1 flex items-center justify-center my-0.5">
+                            {hasCube ? (
+                              <div
+                                className="w-5 h-5 rounded-sm bg-yellow-500 border border-yellow-200 shadow-md transform hover:scale-110 transition-transform"
+                                title="Wooden Population Cube"
+                              />
+                            ) : isActive ? (
+                              <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-yellow-400 text-slate-950 uppercase tracking-tight shadow">
+                                ACTIVE
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-600 font-mono">✓</span>
+                            )}
+                          </div>
+
+                          <div className="w-full text-center">
+                            <span
+                              className={`text-[8px] font-mono block truncate ${
+                                isActive
+                                  ? 'text-yellow-300 font-bold'
+                                  : isNext
+                                  ? 'text-emerald-400 font-semibold'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {isActive ? `${space.value}/rnd` : isNext ? 'Next cube' : hasCube ? 'Covered' : 'Empty'}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
@@ -995,7 +1162,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 </div>
 
                 {/* 2. Science Track */}
-                <div className="bg-slate-900/90 border border-pink-950/80 rounded-xl p-3.5 space-y-2">
+                <div className="bg-slate-900/90 border border-pink-950/80 rounded-xl p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-pink-400 flex items-center gap-1.5 font-display">
                       <FlaskConical className="w-4 h-4 text-pink-400" /> SCIENCE TRACK
@@ -1005,31 +1172,109 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-6 sm:grid-cols-6 gap-1.5">
-                    {INCOME_TABLE.map((incValue, idx) => {
-                      const cubesLeft = 12 - idx;
-                      const hasCube = player.population.science.cubesOnBoard >= cubesLeft;
-                      const isUncovered = player.population.science.cubesOnBoard === cubesLeft - 1;
+                  {/* Next-Cube Forecast Bar */}
+                  <div className="bg-slate-950/60 rounded-lg px-2.5 py-1.5 border border-pink-900/40 text-[11px] flex flex-wrap items-center justify-between gap-1">
+                    <span className="text-pink-400 font-bold uppercase tracking-wider text-[10px]">Forecast:</span>
+                    <div className="flex items-center gap-2 font-mono text-[10px]">
+                      <span className="text-slate-300">
+                        Active: <strong className="text-pink-300">+{sciForecast.currentIncome}</strong>
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-pink-200">
+                        Next: <strong className="text-pink-300">+{sciForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{sciForecast.next1Cube.delta})</span>
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-pink-200">
+                        +2: <strong className="text-pink-300">+{sciForecast.next2Cubes.income}</strong> <span className="text-emerald-400">(+{sciForecast.next2Cubes.delta})</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                    {POPULATION_TRACK_SPACES.map((space) => {
+                      const hasCube = player.population.science.cubesOnBoard > space.cubesOnBoardThreshold;
+                      const isActive = player.population.science.cubesOnBoard === space.cubesOnBoardThreshold;
+                      const isNext = player.population.science.cubesOnBoard - 1 === space.cubesOnBoardThreshold;
+                      const isNext2 = player.population.science.cubesOnBoard - 2 === space.cubesOnBoardThreshold;
 
                       return (
                         <div
-                          key={`sci_cube_${idx}`}
-                          className={`h-10 rounded border flex flex-col items-center justify-center p-1 relative transition-all ${
-                            hasCube
-                              ? 'bg-slate-950 border-slate-800'
-                              : isUncovered
-                              ? 'bg-pink-950/40 border-pink-400 shadow ring-1 ring-pink-400'
-                              : 'bg-pink-950/20 border-pink-900/50'
+                          key={`sci_space_${space.slotIndex}`}
+                          title={`Space ${space.value} Science: ${
+                            isActive
+                              ? `Current Active Income (${space.value} Science/rnd)`
+                              : isNext
+                              ? `Next Cube to colonize! Uncovering increases science from ${sciForecast.currentIncome} to ${space.value} (+${sciForecast.next1Cube.delta} delta)`
+                              : isNext2
+                              ? `Second Cube! Uncovering increases science to ${space.value} (+${sciForecast.next2Cubes.delta} delta)`
+                              : hasCube
+                              ? `Covered by population cube (uncovers ${space.value} Science)`
+                              : `Uncovered (already passed)`
+                          }`}
+                          className={`h-16 rounded-lg border flex flex-col items-center justify-between p-1 relative transition-all ${
+                            isActive
+                              ? 'bg-pink-950/60 border-pink-400 shadow-lg shadow-pink-950/60 ring-2 ring-pink-400/80'
+                              : isNext
+                              ? 'bg-slate-950/90 border-pink-500/50 hover:border-pink-400'
+                              : hasCube
+                              ? 'bg-slate-950/80 border-slate-800'
+                              : 'bg-slate-950/30 border-slate-900 opacity-45'
                           }`}
                         >
-                          {hasCube ? (
-                            /* 3D Wooden Cube Token */
-                            <div className="w-5 h-5 rounded-sm bg-pink-500 border border-pink-200 shadow-md transform hover:scale-105" />
-                          ) : (
-                            <span className="text-xs font-bold text-pink-300 font-mono">
-                              +{incValue}
+                          <div className="flex items-center justify-between w-full px-0.5 text-[10px] font-mono leading-none">
+                            <span
+                              className={`font-black ${
+                                isActive
+                                  ? 'text-pink-300 text-xs'
+                                  : isNext
+                                  ? 'text-pink-400 font-bold'
+                                  : hasCube
+                                  ? 'text-slate-400'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {space.value}
                             </span>
-                          )}
+                            {isNext && (
+                              <span className="text-[8px] font-bold text-emerald-400 font-mono">
+                                +{sciForecast.next1Cube.delta}
+                              </span>
+                            )}
+                            {isNext2 && (
+                              <span className="text-[8px] font-bold text-cyan-400 font-mono">
+                                +{sciForecast.next2Cubes.delta}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex-1 flex items-center justify-center my-0.5">
+                            {hasCube ? (
+                              <div
+                                className="w-5 h-5 rounded-sm bg-pink-500 border border-pink-200 shadow-md transform hover:scale-110 transition-transform"
+                                title="Wooden Population Cube"
+                              />
+                            ) : isActive ? (
+                              <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-pink-400 text-slate-950 uppercase tracking-tight shadow">
+                                ACTIVE
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-600 font-mono">✓</span>
+                            )}
+                          </div>
+
+                          <div className="w-full text-center">
+                            <span
+                              className={`text-[8px] font-mono block truncate ${
+                                isActive
+                                  ? 'text-pink-300 font-bold'
+                                  : isNext
+                                  ? 'text-emerald-400 font-semibold'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {isActive ? `${space.value}/rnd` : isNext ? 'Next cube' : hasCube ? 'Covered' : 'Empty'}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}
@@ -1037,7 +1282,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 </div>
 
                 {/* 3. Materials Track */}
-                <div className="bg-slate-900/90 border border-amber-950/80 rounded-xl p-3.5 space-y-2">
+                <div className="bg-slate-900/90 border border-amber-950/80 rounded-xl p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-amber-500 flex items-center gap-1.5 font-display">
                       <Hammer className="w-4 h-4 text-amber-500" /> MATERIALS TRACK
@@ -1047,31 +1292,109 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </span>
                   </div>
 
-                  <div className="grid grid-cols-6 sm:grid-cols-6 gap-1.5">
-                    {INCOME_TABLE.map((incValue, idx) => {
-                      const cubesLeft = 12 - idx;
-                      const hasCube = player.population.material.cubesOnBoard >= cubesLeft;
-                      const isUncovered = player.population.material.cubesOnBoard === cubesLeft - 1;
+                  {/* Next-Cube Forecast Bar */}
+                  <div className="bg-slate-950/60 rounded-lg px-2.5 py-1.5 border border-amber-900/40 text-[11px] flex flex-wrap items-center justify-between gap-1">
+                    <span className="text-amber-500 font-bold uppercase tracking-wider text-[10px]">Forecast:</span>
+                    <div className="flex items-center gap-2 font-mono text-[10px]">
+                      <span className="text-slate-300">
+                        Active: <strong className="text-amber-400">+{matForecast.currentIncome}</strong>
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-amber-200">
+                        Next: <strong className="text-amber-400">+{matForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{matForecast.next1Cube.delta})</span>
+                      </span>
+                      <span className="text-slate-500">•</span>
+                      <span className="text-amber-200">
+                        +2: <strong className="text-amber-400">+{matForecast.next2Cubes.income}</strong> <span className="text-emerald-400">(+{matForecast.next2Cubes.delta})</span>
+                      </span>
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-4 sm:grid-cols-7 gap-1.5">
+                    {POPULATION_TRACK_SPACES.map((space) => {
+                      const hasCube = player.population.material.cubesOnBoard > space.cubesOnBoardThreshold;
+                      const isActive = player.population.material.cubesOnBoard === space.cubesOnBoardThreshold;
+                      const isNext = player.population.material.cubesOnBoard - 1 === space.cubesOnBoardThreshold;
+                      const isNext2 = player.population.material.cubesOnBoard - 2 === space.cubesOnBoardThreshold;
 
                       return (
                         <div
-                          key={`mat_cube_${idx}`}
-                          className={`h-10 rounded border flex flex-col items-center justify-center p-1 relative transition-all ${
-                            hasCube
-                              ? 'bg-slate-950 border-slate-800'
-                              : isUncovered
-                              ? 'bg-amber-950/40 border-amber-400 shadow ring-1 ring-amber-400'
-                              : 'bg-amber-950/20 border-amber-900/50'
+                          key={`mat_space_${space.slotIndex}`}
+                          title={`Space ${space.value} Materials: ${
+                            isActive
+                              ? `Current Active Income (${space.value} Materials/rnd)`
+                              : isNext
+                              ? `Next Cube to colonize! Uncovering increases materials from ${matForecast.currentIncome} to ${space.value} (+${matForecast.next1Cube.delta} delta)`
+                              : isNext2
+                              ? `Second Cube! Uncovering increases materials to ${space.value} (+${matForecast.next2Cubes.delta} delta)`
+                              : hasCube
+                              ? `Covered by population cube (uncovers ${space.value} Materials)`
+                              : `Uncovered (already passed)`
+                          }`}
+                          className={`h-16 rounded-lg border flex flex-col items-center justify-between p-1 relative transition-all ${
+                            isActive
+                              ? 'bg-amber-950/60 border-amber-400 shadow-lg shadow-amber-950/60 ring-2 ring-amber-400/80'
+                              : isNext
+                              ? 'bg-slate-950/90 border-amber-500/50 hover:border-amber-400'
+                              : hasCube
+                              ? 'bg-slate-950/80 border-slate-800'
+                              : 'bg-slate-950/30 border-slate-900 opacity-45'
                           }`}
                         >
-                          {hasCube ? (
-                            /* 3D Wooden Cube Token */
-                            <div className="w-5 h-5 rounded-sm bg-amber-600 border border-amber-300 shadow-md transform hover:scale-105" />
-                          ) : (
-                            <span className="text-xs font-bold text-amber-300 font-mono">
-                              +{incValue}
+                          <div className="flex items-center justify-between w-full px-0.5 text-[10px] font-mono leading-none">
+                            <span
+                              className={`font-black ${
+                                isActive
+                                  ? 'text-amber-400 text-xs'
+                                  : isNext
+                                  ? 'text-amber-400 font-bold'
+                                  : hasCube
+                                  ? 'text-slate-400'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {space.value}
                             </span>
-                          )}
+                            {isNext && (
+                              <span className="text-[8px] font-bold text-emerald-400 font-mono">
+                                +{matForecast.next1Cube.delta}
+                              </span>
+                            )}
+                            {isNext2 && (
+                              <span className="text-[8px] font-bold text-cyan-400 font-mono">
+                                +{matForecast.next2Cubes.delta}
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex-1 flex items-center justify-center my-0.5">
+                            {hasCube ? (
+                              <div
+                                className="w-5 h-5 rounded-sm bg-amber-600 border border-amber-300 shadow-md transform hover:scale-110 transition-transform"
+                                title="Wooden Population Cube"
+                              />
+                            ) : isActive ? (
+                              <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 uppercase tracking-tight shadow">
+                                ACTIVE
+                              </span>
+                            ) : (
+                              <span className="text-[10px] text-slate-600 font-mono">✓</span>
+                            )}
+                          </div>
+
+                          <div className="w-full text-center">
+                            <span
+                              className={`text-[8px] font-mono block truncate ${
+                                isActive
+                                  ? 'text-amber-400 font-bold'
+                                  : isNext
+                                  ? 'text-emerald-400 font-semibold'
+                                  : 'text-slate-600'
+                              }`}
+                            >
+                              {isActive ? `${space.value}/rnd` : isNext ? 'Next cube' : hasCube ? 'Covered' : 'Empty'}
+                            </span>
+                          </div>
                         </div>
                       );
                     })}

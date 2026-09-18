@@ -1,12 +1,13 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { GameState, CombatState } from '../../engine/types/state';
-import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X } from 'lucide-react';
-import { buildCombatUnitsForSector } from '../../engine/rules/combatEngine';
+import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X, Navigation, ArrowRight } from 'lucide-react';
+import { buildCombatUnitsForSector, sortUnitsByInitiative, getSectorDefenderOwnerId } from '../../engine/rules/combatEngine';
+import { areSectorsConnected } from '../../engine/rules/hexMath';
 
 interface CombatModalProps {
   state: GameState;
   combat: CombatState;
-  onStepCombat: () => void;
+  onStepCombat: (retreatShipIds?: string[], retreatDestinationSectorId?: string) => void;
   onAutoResolve?: () => void;
 }
 
@@ -20,10 +21,51 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   if (!sector) return null;
 
   const units = buildCombatUnitsForSector(sector, state.players);
-  const aliveUnits = units.filter((u) => u.currentDamage < u.maxHull);
-  aliveUnits.sort((a, b) => b.initiative - a.initiative);
+  const defenderOwnerId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector);
+  const aliveUnits = sortUnitsByInitiative(
+    units.filter((u) => u.currentDamage < u.maxHull),
+    defenderOwnerId
+  );
   const activeAttackerIndex = aliveUnits.length > 0 ? combat.currentTurnIndex % aliveUnits.length : -1;
-  const activeAttackerId = activeAttackerIndex >= 0 ? aliveUnits[activeAttackerIndex]?.id : null;
+  const activeAttacker = activeAttackerIndex >= 0 ? aliveUnits[activeAttackerIndex] : null;
+  const activeAttackerId = activeAttacker?.id || null;
+
+  const attackerOwner = activeAttacker ? state.players.find((p) => p.id === activeAttacker.ownerId) : null;
+  const isPlayerShip = !!(activeAttacker && attackerOwner && activeAttacker.ownerId.startsWith('player_'));
+  const hasWormholeGen = attackerOwner?.techTrack.researched.some((t) => t.id === 'wormhole_generator') || false;
+
+  // Determine eligible retreat destination sectors:
+  // Must be adjacent, connected by wormhole (or wormhole generator), controlled by this player, with no enemy ships
+  const eligibleRetreatDestinations = isPlayerShip && activeAttacker.type !== 'starbase'
+    ? state.sectors.filter((s) => {
+        if (s.id === sector.id) return false;
+        if (s.discOwner !== attackerOwner.id) return false;
+        if (s.ships.some((sh) => sh.ownerId !== attackerOwner.id)) return false;
+        return areSectorsConnected(sector, s, hasWormholeGen);
+      })
+    : [];
+
+  const [selectedRetreatSectorId, setSelectedRetreatSectorId] = useState<string>(
+    eligibleRetreatDestinations[0]?.id || ''
+  );
+
+  const isAlreadyRetreating = activeAttacker ? !!combat.retreatDeclared?.[activeAttacker.id] : false;
+  const retreatDestination = isAlreadyRetreating && activeAttacker
+    ? state.sectors.find((s) => s.id === combat.retreatDeclared[activeAttacker.id])
+    : null;
+
+  const handleDeclareRetreat = () => {
+    if (!activeAttacker || !attackerOwner) return;
+    const destId = selectedRetreatSectorId || eligibleRetreatDestinations[0]?.id;
+    if (!destId) return;
+
+    // Move all ships of this type belonging to player to retreat status
+    const sameTypeIds = aliveUnits
+      .filter((u) => u.ownerId === activeAttacker.ownerId && u.type === activeAttacker.type)
+      .map((u) => u.id);
+
+    onStepCombat(sameTypeIds, destId);
+  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -58,6 +100,10 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 const owner = state.players.find((p) => p.id === unit.ownerId);
                 const isDestroyed = unit.currentDamage >= unit.maxHull;
                 const isAttacking = unit.id === activeAttackerId && !isDestroyed;
+                const isRetreating = !!combat.retreatDeclared?.[unit.id];
+                const destSec = isRetreating
+                  ? state.sectors.find((s) => s.id === combat.retreatDeclared[unit.id])
+                  : null;
 
                 return (
                   <div
@@ -67,12 +113,19 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         ? 'bg-slate-950/40 border-slate-900 opacity-40'
                         : isAttacking
                         ? 'bg-slate-900 border-rose-500 shadow-lg shadow-rose-950/50 ring-1 ring-rose-500/60'
+                        : isRetreating
+                        ? 'bg-amber-950/20 border-amber-500/60 shadow'
                         : 'bg-slate-950 border-slate-800 shadow'
                     }`}
                   >
                     {isAttacking && (
                       <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider rounded bg-rose-600 text-white shadow">
                         Attacking
+                      </span>
+                    )}
+                    {isRetreating && !isAttacking && (
+                      <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider rounded bg-amber-500 text-slate-950 shadow">
+                        Retreating (Sec {destSec?.sectorNumber || '?'})
                       </span>
                     )}
                     <div className="flex justify-between items-start">
@@ -86,6 +139,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         <span className="font-bold text-xs uppercase text-slate-200 font-display">
                           {unit.type}
                         </span>
+                        {isRetreating && isAttacking && (
+                          <span className="text-[9px] font-bold text-amber-400 font-mono">
+                            [Retreat Ready]
+                          </span>
+                        )}
                       </div>
                       <span className="text-[10px] text-indigo-400 font-bold">
                         Init +{unit.initiative}
@@ -175,27 +233,71 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             {aliveUnits.length > 0 && activeAttackerIndex >= 0 && (
               <span>
                 Salvo <strong className="text-slate-200">#{combat.currentTurnIndex + 1}</strong> • Active Initiative:{' '}
-                <strong className="text-rose-400">{aliveUnits[activeAttackerIndex]?.type.toUpperCase()}</strong> (+{aliveUnits[activeAttackerIndex]?.initiative})
+                <strong className="text-rose-400">{activeAttacker?.type.toUpperCase()}</strong> (+{activeAttacker?.initiative})
+                {isAlreadyRetreating && (
+                  <span className="text-amber-400 ml-1">
+                    (Retreating to Sec {retreatDestination?.sectorNumber || '?'})
+                  </span>
+                )}
               </span>
             )}
           </div>
-          <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-            {onAutoResolve && (
+
+          <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
+            {/* Auto-Resolve Option */}
+            {onAutoResolve && !isAlreadyRetreating && (
               <button
                 type="button"
                 onClick={onAutoResolve}
-                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition shadow cursor-pointer"
+                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition shadow cursor-pointer"
               >
-                <Zap className="w-4 h-4 text-amber-400" /> Auto-Resolve
+                <Zap className="w-3.5 h-3.5 text-amber-400" /> Auto-Resolve
               </button>
             )}
-            <button
-              type="button"
-              onClick={onStepCombat}
-              className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-5 py-2.5 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs tracking-wider uppercase shadow-lg shadow-rose-950 transition cursor-pointer"
-            >
-              <Dices className="w-4 h-4" /> Fire Salvo
-            </button>
+
+            {/* Declare Retreat Option (If active unit is mobile player ship and has eligible retreat destination) */}
+            {!isAlreadyRetreating && isPlayerShip && eligibleRetreatDestinations.length > 0 && (
+              <div className="flex items-center gap-1.5 bg-slate-900/90 border border-amber-600/50 rounded-lg p-1">
+                <select
+                  value={selectedRetreatSectorId || eligibleRetreatDestinations[0]?.id}
+                  onChange={(e) => setSelectedRetreatSectorId(e.target.value)}
+                  className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:outline-none"
+                >
+                  {eligibleRetreatDestinations.map((dest) => (
+                    <option key={dest.id} value={dest.id}>
+                      Sector {dest.sectorNumber}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleDeclareRetreat}
+                  className="flex items-center gap-1 px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs uppercase shadow transition cursor-pointer"
+                  title="Retreat all ships of this type to selected sector"
+                >
+                  <Navigation className="w-3.5 h-3.5" /> Retreat
+                </button>
+              </div>
+            )}
+
+            {/* Complete Retreat or Fire Salvo */}
+            {isAlreadyRetreating ? (
+              <button
+                type="button"
+                onClick={() => onStepCombat()}
+                className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-lg shadow-amber-950 transition cursor-pointer"
+              >
+                <Navigation className="w-4 h-4" /> Complete Retreat
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => onStepCombat()}
+                className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs tracking-wider uppercase shadow-lg shadow-rose-950 transition cursor-pointer"
+              >
+                <Dices className="w-4 h-4" /> Fire Salvo
+              </button>
+            )}
           </div>
         </div>
       </div>

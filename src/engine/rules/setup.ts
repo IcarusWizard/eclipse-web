@@ -269,8 +269,13 @@ export function createInitialGame(playerCount: number = 2): GameState {
   const { drawn: techSupply, remainingBag: techBag, regularDrawn, rareDrawn } =
     drawTechTilesForRound(fullBag, players.length);
 
-  // Reputation bag: 1, 2, 2, 2, 3, 3, 4
-  const reputationBag = [1, 1, 2, 2, 2, 2, 3, 3, 3, 4, 4].sort(() => Math.random() - 0.5);
+  // Official Eclipse: Second Dawn Reputation Bag: 33 tiles (16x 1 VP, 9x 2 VP, 5x 3 VP, 3x 4 VP)
+  const reputationBag: number[] = [
+    ...Array(16).fill(1),
+    ...Array(9).fill(2),
+    ...Array(5).fill(3),
+    ...Array(3).fill(4),
+  ].sort(() => Math.random() - 0.5);
 
   const turnOrder = players.map((p) => p.id);
 

@@ -5,7 +5,7 @@ import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
 import { executeAction, getMaxMoveActivations } from './engine/rules/gameReducer';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
-import { getRingFromCoord, areSectorsConnected } from './engine/rules/hexMath';
+import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
 
 // UI Components
 import { Header } from './components/layout/Header';
@@ -18,9 +18,11 @@ import { TechMarketModal } from './components/tech/TechMarketModal';
 import { ExploreModal } from './components/actions/ExploreModal';
 import { BuildModal, BuildItemPayload } from './components/actions/BuildModal';
 import { MoveModal, MoveStepPayload, PlannedMove } from './components/actions/MoveModal';
+import { InfluenceModal } from './components/actions/InfluenceModal';
 import { TradeModal } from './components/actions/TradeModal';
 import { CombatModal } from './components/combat/CombatModal';
 import { CombatConquestModal } from './components/combat/CombatConquestModal';
+import { ReputationTileModal } from './components/combat/ReputationTileModal';
 import { GameOverModal } from './components/gameover/GameOverModal';
 import { NewGameModal } from './components/setup/NewGameModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
@@ -44,6 +46,7 @@ export const App: React.FC = () => {
   const [isPhysicalBoardOpen, setIsPhysicalBoardOpen] = useState<boolean>(false);
   const [isBuildOpen, setIsBuildOpen] = useState<boolean>(false);
   const [isMoveOpen, setIsMoveOpen] = useState<boolean>(false);
+  const [isInfluenceOpen, setIsInfluenceOpen] = useState<boolean>(false);
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
   const [isNewGameOpen, setIsNewGameOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -94,7 +97,24 @@ export const App: React.FC = () => {
   // Explore flow: User clicks an explorable hex on map
   const handleExploreTarget = (fromCoord: HexCoord, targetCoord: HexCoord) => {
     setPendingExploreCoords({ from: fromCoord, target: targetCoord });
-    setExploreRotation(0);
+    const ring = getRingFromCoord(targetCoord);
+    const deck =
+      ring === 1
+        ? state.sectorDecks.ring1
+        : ring === 2
+        ? state.sectorDecks.ring2
+        : state.sectorDecks.ring3;
+    const candidate = deck[deck.length - 1];
+    const source = state.sectors.find((s) => areCoordsEqual(s.coord, fromCoord));
+    const hasWormholeGen = activePlayer.techTrack.researched.some(
+      (t) => t.id === 'wormhole_generator'
+    );
+
+    const defaultRotation = (source && candidate)
+      ? findLegalExploreRotation(source, candidate, targetCoord, hasWormholeGen, state.sectors)
+      : 0;
+
+    setExploreRotation(defaultRotation);
     setIsExploreMode(false);
   };
 
@@ -462,12 +482,17 @@ export const App: React.FC = () => {
   };
 
   // Colonize planet flow
-  const handleColonizePlanet = (sectorId: string, planetIndex: number) => {
+  const handleColonizePlanet = (
+    sectorId: string,
+    planetIndex: number,
+    chosenResource?: 'money' | 'science' | 'material'
+  ) => {
     const res = executeAction(state, {
       type: 'COLONIZE',
       playerId: activePlayer.id,
       sectorId,
       planetIndex,
+      chosenResource,
     });
     if (res.success) {
       setState(res.newState);
@@ -532,6 +557,22 @@ export const App: React.FC = () => {
   };
 
   // Influence flow (Claim / Abandon sector control)
+  const handleExecuteInfluence = (claimSectors: string[], abandonSectors: string[]) => {
+    const res = executeAction(state, {
+      type: 'INFLUENCE',
+      playerId: activePlayer.id,
+      claimSectors: claimSectors.length > 0 ? claimSectors : undefined,
+      abandonSectors: abandonSectors.length > 0 ? abandonSectors : undefined,
+    });
+    if (res.success) {
+      setState(res.newState);
+      setIsInfluenceOpen(false);
+      showToast('Influence Action executed successfully! Colony ships readied.');
+    } else {
+      showToast(res.error || 'Failed to execute Influence action.');
+    }
+  };
+
   const handleClaimInfluence = (sectorId: string) => {
     const res = executeAction(state, {
       type: 'INFLUENCE',
@@ -561,18 +602,38 @@ export const App: React.FC = () => {
   };
 
   // Step Combat
-  const handleStepCombat = () => {
+  const handleStepCombat = (retreatShipIds?: string[], retreatDestinationSectorId?: string) => {
     if (!state.activeCombat) return;
     const res = executeAction(state, {
       type: 'RESOLVE_COMBAT_STEP',
       playerId: activePlayer.id,
       sectorId: state.activeCombat.sectorId,
+      retreatShipIds,
+      retreatDestinationSectorId,
     });
     if (res.success) {
       setState(res.newState);
       if (!res.newState.activeCombat) {
         showToast('Combat engagement concluded.');
       }
+    } else {
+      showToast(res.error || 'Combat action failed.');
+    }
+  };
+
+  // Claim Reputation Tile
+  const handleClaimReputationTile = (selectedTileIndex?: number, replaceTrackIndex?: number) => {
+    if (!state.pendingReputationDraw) return;
+    const res = executeAction(state, {
+      type: 'CLAIM_REPUTATION_TILE',
+      playerId: state.pendingReputationDraw.playerId,
+      selectedTileIndex,
+      replaceTrackIndex,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to claim reputation tile.');
     }
   };
 
@@ -745,8 +806,8 @@ export const App: React.FC = () => {
           </div>
         )}
 
-        {/* Action Bar (Bottom-Center) - Hidden during exploration, building, and moving so command dock takes focus */}
-        {state.phase === 'ACTION_PHASE' && !pendingExploreCoords && !isBuildOpen && !isMoveOpen && (
+        {/* Action Bar (Bottom-Center) - Hidden during exploration, building, moving, and influence so command dock takes focus */}
+        {state.phase === 'ACTION_PHASE' && !pendingExploreCoords && !isBuildOpen && !isMoveOpen && !isInfluenceOpen && (
           <ActionBar
             activePlayer={activePlayer}
             isExploreMode={isExploreMode}
@@ -755,6 +816,7 @@ export const App: React.FC = () => {
             onOpenUpgrade={() => setIsBlueprintOpen(true)}
             onOpenBuild={() => setIsBuildOpen(true)}
             onOpenMove={() => setIsMoveOpen(true)}
+            onOpenInfluence={() => setIsInfluenceOpen(true)}
             onPass={handlePass}
           />
         )}
@@ -850,12 +912,29 @@ export const App: React.FC = () => {
         />
       )}
 
+      {isInfluenceOpen && (
+        <InfluenceModal
+          player={activePlayer}
+          sectors={state.sectors}
+          onClose={() => setIsInfluenceOpen(false)}
+          onConfirm={handleExecuteInfluence}
+        />
+      )}
+
       {state.activeCombat && (
         <CombatModal
           state={state}
           combat={state.activeCombat}
           onStepCombat={handleStepCombat}
           onAutoResolve={handleAutoResolveCombat}
+        />
+      )}
+
+      {state.pendingReputationDraw && (
+        <ReputationTileModal
+          state={state}
+          pendingDraw={state.pendingReputationDraw}
+          onClaimTile={handleClaimReputationTile}
         />
       )}
 

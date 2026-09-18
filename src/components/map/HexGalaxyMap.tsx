@@ -60,7 +60,11 @@ interface HexGalaxyMapProps {
   onSelectSector: (sector: SectorTile) => void;
   onExploreTarget?: (fromCoord: HexCoord, targetCoord: HexCoord) => void;
   isExploreMode?: boolean;
-  onColonizePlanet?: (sectorId: string, planetIndex: number) => void;
+  onColonizePlanet?: (
+    sectorId: string,
+    planetIndex: number,
+    chosenResource?: 'money' | 'science' | 'material'
+  ) => void;
   pendingExplore?: {
     from: HexCoord;
     target: HexCoord;
@@ -876,7 +880,11 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         onClick={(e) => {
                           if (!planet.colonizedBy && sector.discOwner === activePlayer?.id) {
                             e.stopPropagation();
-                            onColonizePlanet?.(sector.id, pIdx);
+                            if (planet.isOrbital || planet.resource === 'any') {
+                              onSelectSector(sector);
+                            } else {
+                              onColonizePlanet?.(sector.id, pIdx, planet.resource as any);
+                            }
                           }
                         }}
                         className="cursor-pointer"

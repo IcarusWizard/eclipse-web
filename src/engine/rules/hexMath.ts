@@ -88,6 +88,96 @@ export function areSectorsConnected(
 }
 
 /**
+ * Finds the best legal rotation (0-5) for a candidate sector tile being placed
+ * at `targetCoord` explored from `sourceSector`.
+ *
+ * Rules:
+ * - A legal placement must connect an open wormhole on the new tile with the
+ *   wormhole of the exploring source sector (or satisfy Wormhole Generator tech).
+ * - Full two-way wormhole connections receive highest priority (+100 score).
+ * - Additional open wormhole connections formed with other existing adjacent sectors
+ *   on the map grant bonus score (+10 each) to maximize player connectivity.
+ * - Falls back to 0 if no rotation connects.
+ */
+export function findLegalExploreRotation(
+  sourceSector: SectorTile,
+  candidateTile: SectorTile,
+  targetCoord: HexCoord,
+  hasWormholeGenerator: boolean = false,
+  allSectors?: SectorTile[]
+): number {
+  let bestRot = -1;
+  let maxScore = -1;
+
+  for (let rot = 0; rot < 6; rot++) {
+    const testTile: SectorTile = {
+      ...candidateTile,
+      coord: targetCoord,
+      rotation: rot,
+    };
+
+    const edgeAtoB = getEdgeBetween(sourceSector.coord, targetCoord);
+    if (edgeAtoB === null) continue;
+
+    const edgeBtoA = getOppositeEdge(edgeAtoB);
+    const aHas = hasWormholeOnEdge(sourceSector, edgeAtoB);
+    const bHas = hasWormholeOnEdge(testTile, edgeBtoA);
+
+    const isConnected = hasWormholeGenerator ? (aHas || bHas) : (aHas && bHas);
+    if (!isConnected) continue;
+
+    let score = 0;
+    if (aHas && bHas) {
+      score += 100;
+    } else {
+      score += 50;
+    }
+
+    // Bonus for connecting to other already-placed sectors on the board
+    if (allSectors) {
+      for (const other of allSectors) {
+        if (areCoordsEqual(other.coord, sourceSector.coord)) continue;
+        if (areSectorsConnected(other, testTile, false)) {
+          score += 10;
+        }
+      }
+    }
+
+    if (score > maxScore) {
+      maxScore = score;
+      bestRot = rot;
+    }
+  }
+
+  return bestRot >= 0 ? bestRot : 0;
+}
+
+/**
+ * Finds the next legal rotation after `currentRotation` (clockwise).
+ * Returns `currentRotation` if no legal rotation exists.
+ */
+export function findNextLegalExploreRotation(
+  sourceSector: SectorTile,
+  candidateTile: SectorTile,
+  targetCoord: HexCoord,
+  currentRotation: number,
+  hasWormholeGenerator: boolean = false
+): number {
+  for (let step = 1; step <= 6; step++) {
+    const rot = (currentRotation + step) % 6;
+    const testTile: SectorTile = {
+      ...candidateTile,
+      coord: targetCoord,
+      rotation: rot,
+    };
+    if (areSectorsConnected(sourceSector, testTile, hasWormholeGenerator)) {
+      return rot;
+    }
+  }
+  return currentRotation;
+}
+
+/**
  * Converts axial hex coord to 2D pixel coordinates for SVG/Canvas rendering.
  * Pointy-topped hex formula:
  * x = size * (sqrt(3) * q + sqrt(3)/2 * r)

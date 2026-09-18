@@ -19,13 +19,18 @@ import {
   Layers,
   Lock,
   Check,
+  Globe,
 } from 'lucide-react';
 
 interface SectorInspectorProps {
   sector: SectorTile;
   players: PlayerState[];
   activePlayer: PlayerState;
-  onColonizePlanet?: (sectorId: string, planetIndex: number) => void;
+  onColonizePlanet?: (
+    sectorId: string,
+    planetIndex: number,
+    chosenResource?: 'money' | 'science' | 'material'
+  ) => void;
   onClaimInfluence?: (sectorId: string) => void;
   onAbandonInfluence?: (sectorId: string) => void;
   onClose: () => void;
@@ -307,16 +312,22 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                   (t) => t.id === 'advanced_mining' || t.id === 'metasynthesis'
                 );
 
-                const reqTechName =
-                  planet.resource === 'money'
-                    ? 'Advanced Economy'
-                    : planet.resource === 'science'
-                    ? 'Advanced Labs'
-                    : 'Advanced Mining';
+                const isWild = planet.resource === 'any';
+                const isOrb = !!planet.isOrbital;
+
+                const reqTechName = isWild
+                  ? 'Adv Economy / Labs / Mining'
+                  : planet.resource === 'money'
+                  ? 'Advanced Economy'
+                  : planet.resource === 'science'
+                  ? 'Advanced Labs'
+                  : 'Advanced Mining';
 
                 const hasRequiredTech =
                   !planet.isAdvanced ||
-                  (planet.resource === 'money'
+                  (isWild
+                    ? hasAdvancedEconomy || hasAdvancedLabs || hasAdvancedMining
+                    : planet.resource === 'money'
                     ? hasAdvancedEconomy
                     : planet.resource === 'science'
                     ? hasAdvancedLabs
@@ -327,38 +338,52 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                 const canColonize =
                   !planet.colonizedBy &&
                   sector.discOwner === activePlayer.id &&
-                  activePlayer.colonyShips.ready > 0 &&
-                  hasRequiredTech;
+                  activePlayer.colonyShips.ready > 0;
 
-                const resourceTheme =
-                  planet.resource === 'money'
-                    ? {
-                        name: 'Money (Economy)',
-                        badge: 'bg-yellow-400 text-slate-950 font-extrabold',
-                        border: 'border-yellow-500/40 bg-yellow-950/15',
-                        text: 'text-yellow-300',
-                        icon: <Coins className="w-3.5 h-3.5 text-yellow-400" />,
-                      }
-                    : planet.resource === 'science'
-                    ? {
-                        name: 'Science (Research)',
-                        badge: 'bg-pink-500 text-white font-bold',
-                        border: 'border-pink-500/40 bg-pink-950/15',
-                        text: 'text-pink-300',
-                        icon: <FlaskConical className="w-3.5 h-3.5 text-pink-400" />,
-                      }
-                    : {
-                        name: 'Materials (Production)',
-                        badge: 'bg-amber-900 text-amber-100 font-bold',
-                        border: 'border-amber-700/40 bg-amber-950/20',
-                        text: 'text-amber-400',
-                        icon: <Hammer className="w-3.5 h-3.5 text-amber-500" />,
-                      };
+                const resourceTheme = isOrb
+                  ? {
+                      name: 'Orbital Habitat (Money or Science)',
+                      badge: 'bg-cyan-500 text-slate-950 font-extrabold',
+                      border: 'border-cyan-500/40 bg-cyan-950/15',
+                      text: 'text-cyan-300',
+                      icon: <Sparkles className="w-3.5 h-3.5 text-cyan-400" />,
+                    }
+                  : isWild
+                  ? {
+                      name: 'Wild Habitat (Any Resource)',
+                      badge: 'bg-slate-300 text-slate-950 font-extrabold',
+                      border: 'border-slate-500/40 bg-slate-900/40',
+                      text: 'text-slate-200',
+                      icon: <Globe className="w-3.5 h-3.5 text-slate-300" />,
+                    }
+                  : planet.resource === 'money'
+                  ? {
+                      name: 'Money (Economy)',
+                      badge: 'bg-yellow-400 text-slate-950 font-extrabold',
+                      border: 'border-yellow-500/40 bg-yellow-950/15',
+                      text: 'text-yellow-300',
+                      icon: <Coins className="w-3.5 h-3.5 text-yellow-400" />,
+                    }
+                  : planet.resource === 'science'
+                  ? {
+                      name: 'Science (Research)',
+                      badge: 'bg-pink-500 text-white font-bold',
+                      border: 'border-pink-500/40 bg-pink-950/15',
+                      text: 'text-pink-300',
+                      icon: <FlaskConical className="w-3.5 h-3.5 text-pink-400" />,
+                    }
+                  : {
+                      name: 'Materials (Production)',
+                      badge: 'bg-amber-900 text-amber-100 font-bold',
+                      border: 'border-amber-700/40 bg-amber-950/20',
+                      text: 'text-amber-400',
+                      icon: <Hammer className="w-3.5 h-3.5 text-amber-500" />,
+                    };
 
                 return (
                   <div
                     key={planet.id}
-                    className={`p-2.5 rounded-xl border flex items-center justify-between ${resourceTheme.border}`}
+                    className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${resourceTheme.border}`}
                   >
                     <div className="flex items-center gap-2">
                       <div className="p-1 rounded-lg bg-slate-900 border border-slate-800">
@@ -379,7 +404,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                             )
                           ) : (
                             <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-400 uppercase font-mono">
-                              Standard
+                              {isOrb ? 'Orbital' : isWild ? 'Wild' : 'Standard'}
                             </span>
                           )}
                         </div>
@@ -392,6 +417,11 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                               className="w-2 h-2 rounded-sm inline-block"
                               style={{ backgroundColor: colonizer.color }}
                             />
+                            {planet.colonizedResource && (
+                              <span className="text-[9px] uppercase px-1 rounded bg-slate-800 text-slate-300 font-mono ml-1">
+                                {planet.colonizedResource}
+                              </span>
+                            )}
                           </div>
                         ) : (
                           <div className="text-[10px] text-slate-500 italic mt-0.5">
@@ -404,12 +434,63 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                     </div>
 
                     {canColonize && onColonizePlanet && (
-                      <button
-                        onClick={() => onColonizePlanet(sector.id, pIdx)}
-                        className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow transition-all font-sans"
-                      >
-                        Colonize
-                      </button>
+                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                        {isOrb ? (
+                          <>
+                            <button
+                              disabled={activePlayer.population.money.cubesOnBoard <= 0}
+                              onClick={() => onColonizePlanet(sector.id, pIdx, 'money')}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow"
+                              title="Colonize with Money Cube"
+                            >
+                              + Money ({activePlayer.population.money.cubesOnBoard})
+                            </button>
+                            <button
+                              disabled={activePlayer.population.science.cubesOnBoard <= 0}
+                              onClick={() => onColonizePlanet(sector.id, pIdx, 'science')}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-pink-500 hover:bg-pink-400 disabled:opacity-40 disabled:pointer-events-none text-white shadow"
+                              title="Colonize with Science Cube"
+                            >
+                              + Science ({activePlayer.population.science.cubesOnBoard})
+                            </button>
+                          </>
+                        ) : isWild ? (
+                          <>
+                            <button
+                              disabled={activePlayer.population.money.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedEconomy)}
+                              onClick={() => onColonizePlanet(sector.id, pIdx, 'money')}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow"
+                              title="Colonize with Money Cube"
+                            >
+                              + Money
+                            </button>
+                            <button
+                              disabled={activePlayer.population.science.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedLabs)}
+                              onClick={() => onColonizePlanet(sector.id, pIdx, 'science')}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-pink-500 hover:bg-pink-400 disabled:opacity-40 disabled:pointer-events-none text-white shadow"
+                              title="Colonize with Science Cube"
+                            >
+                              + Science
+                            </button>
+                            <button
+                              disabled={activePlayer.population.material.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedMining)}
+                              onClick={() => onColonizePlanet(sector.id, pIdx, 'material')}
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:pointer-events-none text-white shadow"
+                              title="Colonize with Material Cube"
+                            >
+                              + Material
+                            </button>
+                          </>
+                        ) : (
+                          <button
+                            disabled={!hasRequiredTech || activePlayer.population[planet.resource as 'money' | 'science' | 'material'].cubesOnBoard <= 0}
+                            onClick={() => onColonizePlanet(sector.id, pIdx, planet.resource as any)}
+                            className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow transition-all font-sans"
+                          >
+                            Colonize
+                          </button>
+                        )}
+                      </div>
                     )}
                   </div>
                 );

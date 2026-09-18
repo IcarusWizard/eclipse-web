@@ -100,7 +100,7 @@ export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
     interceptor: {
       type: 'interceptor',
       maxSlots: 4,
-      baseInitiative: 3,
+      baseInitiative: 2,
       baseBuildCost: 3,
       slots: [
         SHIP_PARTS.ion_cannon,
@@ -112,7 +112,7 @@ export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
     cruiser: {
       type: 'cruiser',
       maxSlots: 6,
-      baseInitiative: 2,
+      baseInitiative: 1,
       baseBuildCost: 5,
       slots: [
         SHIP_PARTS.ion_cannon,
@@ -126,7 +126,7 @@ export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
     dreadnought: {
       type: 'dreadnought',
       maxSlots: 8,
-      baseInitiative: 1,
+      baseInitiative: 0,
       baseBuildCost: 8,
       slots: [
         SHIP_PARTS.ion_cannon,

@@ -16,6 +16,7 @@ import {
   getMaxUpgradeActivations,
   getMaxBuildActivations,
   getMaxMoveActivations,
+  getMaxInfluenceActivations,
 } from '../../engine/rules/gameReducer';
 
 interface ActionBarProps {
@@ -26,6 +27,7 @@ interface ActionBarProps {
   onOpenUpgrade: () => void;
   onOpenBuild: () => void;
   onOpenMove: () => void;
+  onOpenInfluence: () => void;
   onPass: () => void;
 }
 
@@ -37,6 +39,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenUpgrade,
   onOpenBuild,
   onOpenMove,
+  onOpenInfluence,
   onPass,
 }) => {
   const hasDiscs = activePlayer.influenceTrack.discsOnTrack > 0;
@@ -46,6 +49,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   const maxUpgrade = getMaxUpgradeActivations(activePlayer);
   const maxBuild = getMaxBuildActivations(activePlayer);
   const maxMoves = getMaxMoveActivations(activePlayer);
+  const maxInfluence = getMaxInfluenceActivations(activePlayer);
 
   return (
     <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md p-2 rounded-2xl border border-slate-800 shadow-2xl">
@@ -137,6 +141,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       >
         <Rocket className="w-4 h-4" />
         <span>Move ({maxMoves})</span>
+      </button>
+
+      {/* Influence */}
+      <button
+        disabled={!hasDiscs || hasPassed}
+        onClick={onOpenInfluence}
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
+          hasDiscs && !hasPassed
+            ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800'
+            : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
+        }`}
+      >
+        <CircleDot className="w-4 h-4 text-cyan-400" />
+        <span>Influence ({maxInfluence})</span>
       </button>
 
       <div className="h-6 w-[1px] bg-slate-800 mx-1" />
