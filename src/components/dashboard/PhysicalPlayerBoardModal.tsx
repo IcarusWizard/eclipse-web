@@ -928,6 +928,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           <div>
                             <div className="text-[9px] text-slate-500 uppercase font-sans">Init</div>
                             <div className="text-xs font-bold text-indigo-300">+{stats.totalInitiative}</div>
+                            <div className="text-[7.5px] text-slate-500 font-mono">B+{bp?.baseInitiative ?? 0} P+{stats.totalInitiative - (bp?.baseInitiative ?? 0)}</div>
                           </div>
                           <div>
                             <div className="text-[9px] text-slate-500 uppercase font-sans">Power</div>
@@ -997,6 +998,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                         ? `-${part.powerConsumed} PWR`
                                         : '0 PWR'}
                                       {part.hullBonus > 0 && ` | +${part.hullBonus} HP`}
+                                      {part.initiativeBonus > 0 && ` | +${part.initiativeBonus} Init`}
                                       {part.computerBonus > 0 && ` | +${part.computerBonus} Aim`}
                                       {part.shieldBonus > 0 && ` | -${part.shieldBonus} Shld`}
                                     </div>

@@ -740,30 +740,43 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   );
                 })}
 
-                {/* Sector Number & VP Header */}
+                {/* Sector Number & Prominent VP Header */}
                 <text
                   x={x}
-                  y={y - HEX_RADIUS + (sector.name ? 19 : 22)}
+                  y={y - HEX_RADIUS + 16}
                   textAnchor="middle"
-                  fill="#cbd5e1"
-                  fontSize={sector.name ? '10' : '11'}
+                  fill="#94a3b8"
+                  fontSize="10"
                   fontWeight="bold"
-                  letterSpacing="0.5"
+                  letterSpacing="0.8"
                 >
-                  {sector.name || (isCenter ? 'GCDS 001' : `SEC ${sector.sectorNumber}`)}
-                  {sector.victoryPoints > 0 && ` (${sector.victoryPoints} VP)`}
+                  {isCenter ? 'GCDS 001' : `SEC ${sector.sectorNumber}`}
                 </text>
-                {sector.name && (
-                  <text
-                    x={x}
-                    y={y - HEX_RADIUS + 29}
-                    textAnchor="middle"
-                    fill="#64748b"
-                    fontSize="8"
-                    fontWeight="semibold"
-                  >
-                    SEC {sector.sectorNumber}
-                  </text>
+
+                {sector.victoryPoints > 0 && (
+                  <g transform={`translate(${x}, ${y - HEX_RADIUS + 29})`} className="pointer-events-none">
+                    <rect
+                      x="-18"
+                      y="-7"
+                      width="36"
+                      height="14"
+                      rx="3.5"
+                      fill="#1e1b4b"
+                      stroke="#f59e0b"
+                      strokeWidth="1.2"
+                    />
+                    <text
+                      x="0"
+                      y="3.5"
+                      textAnchor="middle"
+                      fill="#fbbf24"
+                      fontSize="9.5"
+                      fontWeight="900"
+                      letterSpacing="0.4"
+                    >
+                      ★ {sector.victoryPoints} VP
+                    </text>
+                  </g>
                 )}
 
                 {/* Center / Discovery / Ancient / Artifact Badges */}
@@ -889,16 +902,44 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         }}
                         className="cursor-pointer"
                       >
-                        <circle
-                          cx="0"
-                          cy="0"
-                          r={planet.isAdvanced ? '8.5' : '7.5'}
-                          fill={planet.colonizedBy ? colonizer?.color : 'rgba(15, 23, 42, 0.95)'}
-                          stroke={planet.isAdvanced ? '#ffffff' : planetColor}
-                          strokeWidth={planet.isAdvanced ? '2' : '1.8'}
-                        />
-                        {!planet.colonizedBy && (
-                          <circle cx="0" cy="0" r="3.2" fill={planetColor} />
+                        {planet.isOrbital ? (
+                          <g className="orbital-station">
+                            {/* Photovoltaic solar array wings */}
+                            <line x1="-11" y1="0" x2="11" y2="0" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" />
+                            <line x1="-10" y1="-3" x2="-10" y2="3" stroke="#38bdf8" strokeWidth="1.2" />
+                            <line x1="10" y1="-3" x2="10" y2="3" stroke="#38bdf8" strokeWidth="1.2" />
+                            {/* Rotating habitat ring */}
+                            <circle
+                              cx="0"
+                              cy="0"
+                              r="7"
+                              fill={planet.colonizedBy ? colonizer?.color : '#0f172a'}
+                              stroke="#38bdf8"
+                              strokeWidth="1.8"
+                              strokeDasharray={planet.colonizedBy ? 'none' : '3 1.5'}
+                            />
+                            {/* Station hub core */}
+                            <circle
+                              cx="0"
+                              cy="0"
+                              r="2.8"
+                              fill={planet.colonizedBy ? '#ffffff' : '#38bdf8'}
+                            />
+                          </g>
+                        ) : (
+                          <>
+                            <circle
+                              cx="0"
+                              cy="0"
+                              r={planet.isAdvanced ? '8.5' : '7.5'}
+                              fill={planet.colonizedBy ? colonizer?.color : 'rgba(15, 23, 42, 0.95)'}
+                              stroke={planet.isAdvanced ? '#ffffff' : planetColor}
+                              strokeWidth={planet.isAdvanced ? '2' : '1.8'}
+                            />
+                            {!planet.colonizedBy && (
+                              <circle cx="0" cy="0" r="3.2" fill={planetColor} />
+                            )}
+                          </>
                         )}
                       </g>
                     );
@@ -1062,7 +1103,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
                 {/* Build Mode Interactive Overlay Badges */}
                 {buildMode && isBuildEligible && (
-                  <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.name ? 40 : 36)})`} className="pointer-events-none">
+                  <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.victoryPoints > 0 ? 48 : 34)})`} className="pointer-events-none">
                     <rect
                       x="-38"
                       y="-8"
@@ -1142,7 +1183,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 )}
 
                 {moveMode && isMoveOrigin && (
-                  <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.name ? 40 : 36)})`} className="pointer-events-none">
+                  <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.victoryPoints > 0 ? 48 : 34)})`} className="pointer-events-none">
                     <rect
                       x="-40"
                       y="-8"

@@ -186,6 +186,94 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
   },
 };
 
+export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
+  eridani_empire: {
+    sectorNumber: 222,
+    name: 'Epsilon Eridani',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, true, true],
+    planets: [
+      { id: 'ee_p1', resource: 'science', isAdvanced: false },
+      { id: 'ee_p2', resource: 'science', isAdvanced: true },
+      { id: 'ee_p3', resource: 'money', isAdvanced: false },
+      { id: 'ee_p4', resource: 'money', isAdvanced: true },
+    ],
+  },
+  hydran_progress: {
+    sectorNumber: 224,
+    name: 'Beta Hydri',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, true, false, true, true, true],
+    planets: [
+      { id: 'hp_p1', resource: 'material', isAdvanced: false },
+      { id: 'hp_p2', resource: 'science', isAdvanced: true }, // Hydran starts with cube here
+      { id: 'hp_p3', resource: 'money', isAdvanced: false },
+    ],
+  },
+  planta: {
+    sectorNumber: 226,
+    name: 'Cygnus',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'pl_p1', resource: 'material', isAdvanced: false },
+      { id: 'pl_p2', resource: 'science', isAdvanced: false },
+    ],
+  },
+  descendants_of_draco: {
+    sectorNumber: 228,
+    name: 'Draco',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, true, true, false, true, true],
+    planets: [
+      { id: 'dd_p1', resource: 'material', isAdvanced: false },
+      { id: 'dd_p2', resource: 'science', isAdvanced: false },
+      { id: 'dd_p3', resource: 'money', isAdvanced: false },
+    ],
+  },
+  mechanema: {
+    sectorNumber: 230,
+    name: 'Auriga',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, true, true, true, true, false],
+    planets: [
+      { id: 'me_p1', resource: 'material', isAdvanced: false },
+      { id: 'me_p2', resource: 'science', isAdvanced: false },
+      { id: 'me_p3', resource: 'money', isAdvanced: false },
+      { id: 'me_p4', resource: 'money', isAdvanced: true },
+    ],
+  },
+  orion_hegemony: {
+    sectorNumber: 232,
+    name: 'Rigel',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, true, false, true, true, true],
+    planets: [
+      { id: 'oh_p1', resource: 'material', isAdvanced: false },
+      { id: 'oh_p2', resource: 'material', isAdvanced: true },
+      { id: 'oh_p3', resource: 'science', isAdvanced: false },
+      { id: 'oh_p4', resource: 'money', isAdvanced: true },
+    ],
+  },
+};
+
+export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
+  ...HUMAN_HOME_SECTORS,
+  ...ALIEN_HOME_SECTORS,
+};
+
 export const DISCOVERY_TILES: DiscoveryTile[] = [
   // 11 Resource Tiles
   {

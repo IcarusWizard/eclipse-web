@@ -93,8 +93,30 @@
     - 99 regular + 15 rare = 114 tiles total.
   - Added official setup drawing (`drawTechTilesForSetup` per rulebook page 5: 12 regular tiles for 2p, 14 for 3p, 16 for 4p, etc., rare tiles placed on tray bottom row without counting against limit) vs round cleanup drawing (`drawTechTilesForRound` per rulebook page 25: 5 regular tiles for 2p, 7 for 4p, etc.).
   - Corrected ship part attributes for `conifold_field` (3 Hull, 2 power consumed), `soliton_cannon` (blue die dealing 3 damage, 3 power consumed), and `transition_drive` (speed 3, 0 power consumed).
-- [ ] I still think the initive may be wrong, my crusier with Soliton Cannon, Gluon Computer, Improved Hull, Tachyon Source, Fusion Drive, Improved Hull, I don't understand how does it get +6 INT. It is also good to mark how much INT each component is providing.
-- [ ] the maintainance cost is wrong, when I place all the disc, the cost should be 30 not 25. 
-- [ ] We get the most things for the game rule, I now want to include all the alien factions. Their specially setup and rules are in the rulebook. Please implement and allow each player to choose the faction one by one before the game starts.
-- [ ] The current map is not clear how much VP each sector offers since sometimes it can be covered by other tiles. I think the name of the tile is not important, maybe move them to the details panel but only shows the important informations on the map?
-- [ ] Currently the orbeitor is implemented with the same icon on the map which is not clear, consider design a different icon for it.
+- [x] **Ship Initiative Calculation & Component Initiative Labeling**:
+  - Fixed component attributes in `partData.ts`: computers provide `computerBonus` (to-hit roll modifier) with 0 initiative, and power sources generate energy with 0 initiative. In *Eclipse: Second Dawn*, only Drives (and specific parts like Flux Missiles) confer initiative bonuses.
+  - A Cruiser equipped with *Soliton Cannon, Gluon Computer, Improved Hull, Tachyon Source, Fusion Drive, Improved Hull* now correctly evaluates to **+3 Initiative** (Base 1 + Fusion Drive 2 = 3), resolving the issue where it previously displayed +6.
+  - Blueprint slot badges and tray component cards in `ShipBlueprintEditor.tsx` now explicitly show `+X Init`, `+X Hit`, and `-X Shield` to clearly indicate what each component provides.
+  - Added an Initiative breakdown to the Blueprint Stats HUD (`+X Init (Base +Y | Parts +Z)`).
+- [x] **Maintenance / Upkeep Cost Table**:
+  - Corrected `UPKEEP_TABLE` in `economyEngine.ts` to match the official Second Dawn Control Board: placing all 13 starting discs (leaving 0 discs on track) incurs an upkeep of **30** Credits (previously was 25).
+  - Validated the complete progression: `[16-11: 0, 10: 1, 9: 2, 8: 3, 7: 5, 6: 7, 5: 10, 4: 13, 3: 17, 2: 21, 1: 25, 0: 30]`.
+- [x] **Official 6 Alien Factions & Turn-by-Turn Pre-Game Draft**:
+  - Implemented all 6 official Alien Species from the *Eclipse: Second Dawn* rulebook (pages 26–28):
+    1. **Eridani Empire** (Sector 222): 26 Credits, 2 Science, 4 Materials, 11 starting discs (starts with 2 fewer), starts with 2 facedown reputation tiles drawn from the bag, starting techs (*Gauss Shield, Fusion Drive, Plasma Cannon*), preprinted +1 power on Interceptor/Cruiser/Dreadnought, 3:1 trade ratio.
+    2. **Hydran Progress** (Sector 224): 2 Credits, 6 Science, 2 Materials, 13 discs, starting tech (*Advanced Labs*), 2 Research activations per action, starting population cube on Advanced Science space of Sector 224 (leaving 9 Science cubes on board), 3:1 trade ratio.
+    3. **Planta** (Sector 226): 2 Credits, 3 Science, 4 Materials, 4 ready colony ships, starting tech (*Starbase*), 2 Explore activations per action, compact blueprints (-1 slot and -1 base init with preprinted +1 computer and +2 power on ships, +5 power on Starbase), population cubes automatically destroyed by opponent ships in sector, +1 bonus VP per controlled sector at game end, 3:1 trade ratio.
+    4. **Descendants of Draco** (Sector 228): 2 Credits, 4 Science, 3 Materials, 13 discs, starting tech (*Fusion Drive*), peaceful coexistence with Ancients (Ancients do not pin Draco ships, Draco can place influence discs in Ancient sectors, no combat between Draco and Ancients alone), +1 VP per Ancient ship on the board at game end, 3:1 trade ratio.
+    5. **Mechanema** (Sector 230): 3 Credits, 3 Science, 4 Materials, starting tech (*Positron Computer*), 3 Upgrade and 3 Build activations per action, discounted construction costs (Interceptor 2, Cruiser 4, Dreadnought 7, Starbase 2, Orbital 3, Monolith 8), 3:1 trade ratio.
+    6. **Orion Hegemony** (Sector 232): 3 Credits, 3 Science, 4 Materials, starting techs (*Neutron Bombs, Gauss Shield*), starts with a Cruiser instead of an Interceptor in Sector 232, +1 base initiative on all ship blueprints, preprinted power (+1 Interceptor, +2 Cruiser, +3 Dreadnought), 4:1 trade ratio.
+  - Implemented an interactive pre-game **Turn-by-Turn Drafting System** (`NewGameModal.tsx`) supporting 1–6 players with category filters (All / Alien / Terran), faction ability inspection cards, step-by-step turn drafting, and quick randomize.
+- [x] **Map Sector VP Prominence & De-cluttering**:
+  - Removed long sector names from the map hexes in `HexGalaxyMap.tsx` to eliminate text clutter and overlapping. Full sector names and thematic lore remain readily accessible in the `SectorInspector` panel.
+  - Replaced crowded labels on the map with clean identifiers (`SEC {sectorNumber}` or `GCDS 001`) and added a prominent, high-contrast golden victory point crest badge (`★ {VP} VP`).
+  - Automatically offsets shipyard and active indicators to prevent badge overlapping.
+- [x] **Custom Distinct Orbital SVG Icon**:
+  - Replaced the standard circular planet representation for Orbitals on the galaxy map with a bespoke SVG space habitat station:
+    - Horizontal photovoltaic solar collector wings.
+    - Central station core hub.
+    - Rotating habitat ring rendered with dashed stroke when unoccupied and solid player color when colonized.
+

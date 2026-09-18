@@ -78,14 +78,14 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     driveSpeed: 3,
   },
 
-  // Computers
+  // Computers (Hit bonus added to dice rolls; 0 initiative in Second Dawn)
   electron_computer: {
     id: 'electron_computer',
     name: 'Electron Computer',
     category: 'computer',
     powerProduced: 0,
     powerConsumed: 0,
-    initiativeBonus: 1,
+    initiativeBonus: 0,
     computerBonus: 1,
     shieldBonus: 0,
     hullBonus: 0,
@@ -96,7 +96,7 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     category: 'computer',
     powerProduced: 0,
     powerConsumed: 1,
-    initiativeBonus: 2,
+    initiativeBonus: 0,
     computerBonus: 2,
     shieldBonus: 0,
     hullBonus: 0,
@@ -107,7 +107,7 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     category: 'computer',
     powerProduced: 0,
     powerConsumed: 2,
-    initiativeBonus: 3,
+    initiativeBonus: 0,
     computerBonus: 3,
     shieldBonus: 0,
     hullBonus: 0,
@@ -466,7 +466,7 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     category: 'reactor',
     powerProduced: 12,
     powerConsumed: 0,
-    initiativeBonus: 2,
+    initiativeBonus: 0,
     computerBonus: 0,
     shieldBonus: 0,
     hullBonus: 0,

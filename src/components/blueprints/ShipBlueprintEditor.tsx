@@ -281,6 +281,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 <span className="text-base font-bold text-indigo-300 mt-1">
                   +{stats.totalInitiative} Init
                 </span>
+                <span className="text-[10px] text-slate-400 font-mono">
+                  Base +{player.blueprints[activeShipType].baseInitiative} | Parts +{stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}
+                </span>
               </div>
             </div>
 
@@ -397,6 +400,15 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                             {part.driveSpeed && (
                               <span className="text-cyan-400">Spd {part.driveSpeed}</span>
                             )}
+                            {part.initiativeBonus > 0 && (
+                              <span className="text-violet-400 font-bold">+{part.initiativeBonus} Init</span>
+                            )}
+                            {part.computerBonus > 0 && (
+                              <span className="text-indigo-400 font-medium">+{part.computerBonus} Hit</span>
+                            )}
+                            {part.shieldBonus > 0 && (
+                              <span className="text-teal-400 font-medium">-{part.shieldBonus} Shield</span>
+                            )}
                             {part.hullBonus > 0 && (
                               <span className="text-rose-400">+{part.hullBonus} HP</span>
                             )}
@@ -505,6 +517,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                       )}
                       {part.driveSpeed && (
                         <span className="text-cyan-400">Speed {part.driveSpeed}</span>
+                      )}
+                      {part.initiativeBonus > 0 && (
+                        <span className="text-violet-400 font-bold">+{part.initiativeBonus} Init</span>
                       )}
                       {part.computerBonus > 0 && (
                         <span className="text-indigo-400">+{part.computerBonus} Hit</span>

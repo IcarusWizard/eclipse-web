@@ -61,12 +61,12 @@ export const UPKEEP_TABLE: Record<number, number> = {
   8: 3,  // 5 discs used -> 3 upkeep
   7: 5,  // 6 discs used -> 5 upkeep
   6: 7,  // 7 discs used -> 7 upkeep
-  5: 9,  // 8 discs used -> 9 upkeep
-  4: 12, // 9 discs used -> 12 upkeep
-  3: 15, // 10 discs used -> 15 upkeep
-  2: 18, // 11 discs used -> 18 upkeep
-  1: 21, // 12 discs used -> 21 upkeep
-  0: 25, // 13 discs used -> 25 upkeep
+  5: 10, // 8 discs used -> 10 upkeep
+  4: 13, // 9 discs used -> 13 upkeep
+  3: 17, // 10 discs used -> 17 upkeep
+  2: 21, // 11 discs used -> 21 upkeep
+  1: 25, // 12 discs used -> 25 upkeep
+  0: 30, // 13 discs used -> 30 upkeep
 };
 
 export function getIncomeForTrack(cubesOnBoard: number): number {

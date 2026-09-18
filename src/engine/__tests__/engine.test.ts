@@ -15,6 +15,7 @@ import {
   SHIP_LIMITS,
   countPlayerShips,
   getRemainingShipSupply,
+  createFactionBlueprints,
 } from '../rules/shipValidation';
 import { SHIP_PARTS } from '../rules/partData';
 import {
@@ -23,8 +24,8 @@ import {
   buildCombatUnitsForSector,
   executeCombatStep,
 } from '../rules/combatEngine';
-import { createInitialGame } from '../rules/setup';
-import { executeAction, validateAction, checkAndTriggerCombat } from '../rules/gameReducer';
+import { createInitialGame, ALIEN_FACTIONS } from '../rules/setup';
+import { executeAction, validateAction, checkAndTriggerCombat, calculateFinalScores } from '../rules/gameReducer';
 import type { SectorTile } from '../types/sector';
 import type { CombatState } from '../types/state';
 import {
@@ -273,7 +274,8 @@ describe('Economy & Upkeep', () => {
     expect(getUpkeepForDiscs(12)).toBe(0);
     expect(getUpkeepForDiscs(10)).toBe(1);
     expect(getUpkeepForDiscs(7)).toBe(5);
-    expect(getUpkeepForDiscs(3)).toBe(15);
+    expect(getUpkeepForDiscs(3)).toBe(17);
+    expect(getUpkeepForDiscs(0)).toBe(30);
   });
 });
 
@@ -1567,24 +1569,24 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(forecastMid.after2Actions.discsRemaining).toBe(6);
       expect(forecastMid.after2Actions.upkeep).toBe(7);
       expect(forecastMid.after2Actions.costIncrease).toBe(4);
-      // Next 3 actions: 5 discs -> 9 upkeep (increase: +6)
+      // Next 3 actions: 5 discs -> 10 upkeep (increase: +7)
       expect(forecastMid.after3Actions.discsRemaining).toBe(5);
-      expect(forecastMid.after3Actions.upkeep).toBe(9);
-      expect(forecastMid.after3Actions.costIncrease).toBe(6);
+      expect(forecastMid.after3Actions.upkeep).toBe(10);
+      expect(forecastMid.after3Actions.costIncrease).toBe(7);
 
       // 3. Late-turn / deep expansion state: 4 discs on track
       p1.influenceTrack.discsOnTrack = 4;
       const forecastLate = calculateActionCostForecast(p1);
-      expect(forecastLate.currentUpkeep).toBe(12); // 4 discs -> 12 upkeep
-      // Next 1 action: 3 discs -> 15 upkeep (+3)
-      expect(forecastLate.after1Action.upkeep).toBe(15);
-      expect(forecastLate.after1Action.costIncrease).toBe(3);
-      // Next 2 actions: 2 discs -> 18 upkeep (+6)
-      expect(forecastLate.after2Actions.upkeep).toBe(18);
-      expect(forecastLate.after2Actions.costIncrease).toBe(6);
-      // Next 3 actions: 1 disc -> 21 upkeep (+9)
-      expect(forecastLate.after3Actions.upkeep).toBe(21);
-      expect(forecastLate.after3Actions.costIncrease).toBe(9);
+      expect(forecastLate.currentUpkeep).toBe(13); // 4 discs -> 13 upkeep
+      // Next 1 action: 3 discs -> 17 upkeep (+4)
+      expect(forecastLate.after1Action.upkeep).toBe(17);
+      expect(forecastLate.after1Action.costIncrease).toBe(4);
+      // Next 2 actions: 2 discs -> 21 upkeep (+8)
+      expect(forecastLate.after2Actions.upkeep).toBe(21);
+      expect(forecastLate.after2Actions.costIncrease).toBe(8);
+      // Next 3 actions: 1 disc -> 25 upkeep (+12)
+      expect(forecastLate.after3Actions.upkeep).toBe(25);
+      expect(forecastLate.after3Actions.costIncrease).toBe(12);
     });
 
     it('correctly categorizes researched technologies into Military, Grid, and Nano rows and tracks discounts and VP', () => {
@@ -2551,18 +2553,18 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(bps.dreadnought.baseInitiative).toBe(0);
         expect(bps.starbase.baseInitiative).toBe(4);
 
-        // Calculated starting initiatives with components:
+        // Calculated starting initiatives with components (Computers provide die hit bonus, NOT initiative in 2nd Dawn; only Drives/parts give init):
         const intStats = calculateBlueprintStats(bps.interceptor);
         expect(intStats.totalInitiative).toBe(3); // 2 base + 1 Nuclear Drive
 
         const cruStats = calculateBlueprintStats(bps.cruiser);
-        expect(cruStats.totalInitiative).toBe(3); // 1 base + 1 Nuclear Drive + 1 Electron Computer
+        expect(cruStats.totalInitiative).toBe(2); // 1 base + 1 Nuclear Drive
 
         const dreStats = calculateBlueprintStats(bps.dreadnought);
-        expect(dreStats.totalInitiative).toBe(2); // 0 base + 1 Nuclear Drive + 1 Electron Computer
+        expect(dreStats.totalInitiative).toBe(1); // 0 base + 1 Nuclear Drive
 
         const staStats = calculateBlueprintStats(bps.starbase);
-        expect(staStats.totalInitiative).toBe(5); // 4 base + 1 Electron Computer
+        expect(staStats.totalInitiative).toBe(4); // 4 base (no drive)
 
         // Defender tie-breaking test:
         const defenderUnit = {
@@ -3042,6 +3044,207 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Stalemate: attacker (p1) is destroyed/eliminated, defender (p2) wins!
         expect(result.isCombatOver).toBe(true);
         expect(result.winnerOwnerId).toBe(p2.id);
+      });
+    });
+
+    describe('12. Official Alien Factions & BackLog Verifications', () => {
+      it('verifies Cruiser initiative with Soliton Cannon, Gluon Computer, Improved Hull, Tachyon Source, Fusion Drive, Improved Hull', () => {
+        const cruiserBp = {
+          type: 'cruiser' as const,
+          name: 'Cruiser',
+          baseInitiative: 1,
+          slots: [
+            SHIP_PARTS.soliton_cannon,
+            SHIP_PARTS.gluon_computer,
+            SHIP_PARTS.improved_hull,
+            SHIP_PARTS.tachyon_source,
+            SHIP_PARTS.fusion_drive,
+            SHIP_PARTS.improved_hull,
+          ],
+        };
+
+        const stats = calculateBlueprintStats(cruiserBp);
+        // Base initiative = 1
+        // Fusion Drive initiative = 2
+        // Soliton Cannon, Gluon Computer, Improved Hull, Tachyon Source = 0 initiative
+        // Total initiative = 1 + 2 = 3 (NOT 6!)
+        expect(stats.totalInitiative).toBe(3);
+        expect(stats.computerBonus).toBe(3); // Gluon Computer provides +3 hit modifier
+        expect(stats.totalPowerProduced).toBe(9); // Tachyon Source produces 9 power
+        expect(stats.totalPowerConsumed).toBe(7); // Soliton Cannon (3) + Gluon Computer (2) + Fusion Drive (2) = 7
+        expect(stats.isValid).toBe(true);
+      });
+
+      it('verifies official Upkeep Table progression (upkeep is 30 when 0 discs remain on track)', () => {
+        expect(getUpkeepForDiscs(16)).toBe(0);
+        expect(getUpkeepForDiscs(13)).toBe(0);
+        expect(getUpkeepForDiscs(12)).toBe(0);
+        expect(getUpkeepForDiscs(11)).toBe(0);
+        expect(getUpkeepForDiscs(10)).toBe(1);
+        expect(getUpkeepForDiscs(9)).toBe(2);
+        expect(getUpkeepForDiscs(8)).toBe(3);
+        expect(getUpkeepForDiscs(7)).toBe(5);
+        expect(getUpkeepForDiscs(6)).toBe(7);
+        expect(getUpkeepForDiscs(5)).toBe(10);
+        expect(getUpkeepForDiscs(4)).toBe(13);
+        expect(getUpkeepForDiscs(3)).toBe(17);
+        expect(getUpkeepForDiscs(2)).toBe(21);
+        expect(getUpkeepForDiscs(1)).toBe(25);
+        expect(getUpkeepForDiscs(0)).toBe(30);
+      });
+
+      it('verifies Eridani Empire setup and preprinted power', () => {
+        const game = createInitialGame(1, ['eridani_empire']);
+        const eridani = game.players[0]!;
+        expect(eridani.faction.id).toBe('eridani_empire');
+        expect(eridani.resources.money).toBe(26);
+        expect(eridani.resources.science).toBe(2);
+        expect(eridani.resources.materials).toBe(4);
+        expect(eridani.influenceTrack.totalDiscs).toBe(11);
+        expect(eridani.influenceTrack.discsOnTrack).toBe(10); // 1 disc placed on home sector 222
+        expect(eridani.reputationTiles.length).toBe(2); // 2 starting rep tiles drawn from bag
+        expect(eridani.techTrack.researched.map((t) => t.id).sort()).toEqual(
+          ['fusion_drive', 'gauss_shield', 'plasma_cannon'].sort()
+        );
+        // Preprinted power +1 on ships
+        expect(eridani.blueprints.interceptor.preprintedPower).toBe(1);
+        expect(eridani.blueprints.cruiser.preprintedPower).toBe(1);
+        expect(eridani.blueprints.dreadnought.preprintedPower).toBe(1);
+        // Home sector 222 exists and contains 1 Interceptor
+        const homeSector = game.sectors.find((s) => s.sectorNumber === 222);
+        expect(homeSector).toBeDefined();
+        expect(homeSector?.discOwner).toBe(eridani.id);
+        expect(homeSector?.ships.length).toBe(1);
+        expect(homeSector?.ships[0]?.type).toBe('interceptor');
+      });
+
+      it('verifies Hydran Progress setup, 2 research activations, and advanced science cube', () => {
+        const game = createInitialGame(1, ['hydran_progress']);
+        const hydran = game.players[0]!;
+        expect(hydran.faction.id).toBe('hydran_progress');
+        expect(hydran.resources.money).toBe(2);
+        expect(hydran.resources.science).toBe(6);
+        expect(hydran.resources.materials).toBe(2);
+        expect(hydran.faction.researchActivations).toBe(2);
+        expect(hydran.techTrack.researched.map((t) => t.id)).toEqual(['advanced_labs']);
+        // 9 science cubes remaining on board because 1 cube starts on the Advanced Science slot of Sector 224
+        expect(hydran.population.science.cubesOnBoard).toBe(9);
+        const homeSector = game.sectors.find((s) => s.sectorNumber === 224);
+        expect(homeSector).toBeDefined();
+        const advSciPlanet = homeSector?.planets.find((p) => p.isAdvanced && p.resource === 'science');
+        expect(advSciPlanet?.colonizedBy).toBe(hydran.id);
+      });
+
+      it('verifies Planta setup, colony ships, compact blueprints, and +1 VP per sector bonus', () => {
+        const game = createInitialGame(1, ['planta']);
+        const planta = game.players[0]!;
+        expect(planta.faction.id).toBe('planta');
+        expect(planta.resources.money).toBe(2);
+        expect(planta.resources.science).toBe(3);
+        expect(planta.resources.materials).toBe(4);
+        expect(planta.colonyShips.total).toBe(4);
+        expect(planta.colonyShips.ready).toBe(4);
+        expect(planta.faction.exploreActivations).toBe(2);
+        expect(planta.techTrack.researched.map((t) => t.id)).toEqual(['starbase']);
+        // Compact slot counts
+        expect(planta.blueprints.interceptor.slots.length).toBe(3);
+        expect(planta.blueprints.cruiser.slots.length).toBe(5);
+        expect(planta.blueprints.dreadnought.slots.length).toBe(7);
+        expect(planta.blueprints.starbase.slots.length).toBe(4);
+        // Preprinted stats
+        expect(planta.blueprints.interceptor.preprintedComputer).toBe(1);
+        expect(planta.blueprints.interceptor.preprintedPower).toBe(2);
+        expect(planta.blueprints.starbase.preprintedPower).toBe(5);
+        // Base initiative is lower (-1 compared to Human)
+        expect(planta.blueprints.interceptor.baseInitiative).toBe(1);
+        expect(planta.blueprints.cruiser.baseInitiative).toBe(0);
+
+        // Score bonus: +1 VP per controlled sector
+        calculateFinalScores(game);
+        expect(game.finalScores?.[planta.id]).toBeDefined();
+        expect(game.finalScores?.[planta.id]?.speciesBonus).toBe(1); // controls 1 sector (Sector 226)
+      });
+
+      it('verifies Descendants of Draco peaceful coexistence with Ancients and scoring bonus', () => {
+        const game = createInitialGame(1, ['descendants_of_draco']);
+        const draco = game.players[0]!;
+        expect(draco.faction.id).toBe('descendants_of_draco');
+        expect(draco.techTrack.researched.map((t) => t.id)).toEqual(['fusion_drive']);
+
+        // Set up an Ancient sector adjacent to Draco
+        const ancientSector: SectorTile = {
+          id: 'ancient_sec_101',
+          sectorNumber: 101,
+          coord: { q: 0, r: -1 },
+          ring: 1,
+          victoryPoints: 2,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ancientsCount: 1,
+          ships: [{ id: 'anc_1', ownerId: 'ancient', type: 'ancient', damage: 0 }],
+        };
+        game.sectors.push(ancientSector);
+
+        // Draco can claim influence in Ancient sector without combat
+        const canInfluence = validateAction(game, {
+          type: 'INFLUENCE',
+          playerId: draco.id,
+          sectorCoordsToClaim: [ancientSector.coord],
+        });
+        expect(canInfluence.valid).toBe(true);
+
+        // Final score calculation awards 1 VP per Ancient ship on map
+        calculateFinalScores(game);
+        expect(game.finalScores?.[draco.id]?.speciesBonus).toBeGreaterThanOrEqual(1);
+      });
+
+      it('verifies Mechanema discounted build costs and 3 build / 3 upgrade activations', () => {
+        const game = createInitialGame(1, ['mechanema']);
+        const mechanema = game.players[0]!;
+        expect(mechanema.faction.id).toBe('mechanema');
+        expect(mechanema.faction.upgradeActivations).toBe(3);
+        expect(mechanema.faction.buildActivations).toBe(3);
+        expect(mechanema.techTrack.researched.map((t) => t.id)).toEqual(['positron_computer']);
+
+        // Home sector: Sector 230
+        const homeSector = game.sectors.find((s) => s.sectorNumber === 230)!;
+
+        // Mechanema builds interceptor for 2 Materials (normally 3)
+        mechanema.resources.materials = 10;
+        const res = executeAction(game, {
+          type: 'BUILD',
+          playerId: mechanema.id,
+          items: [{ itemType: 'interceptor', sectorId: homeSector.id }],
+        });
+        expect(res.success).toBe(true);
+        expect(res.newState.players[0]?.resources.materials).toBe(8); // 10 - 2 = 8
+      });
+
+      it('verifies Orion Hegemony starts with Cruiser, increased initiative, and preprinted power', () => {
+        const game = createInitialGame(1, ['orion_hegemony']);
+        const orion = game.players[0]!;
+        expect(orion.faction.id).toBe('orion_hegemony');
+        expect(orion.faction.tradeRatio).toBe(4);
+        expect(orion.techTrack.researched.map((t) => t.id).sort()).toEqual(
+          ['gauss_shield', 'neutron_bombs'].sort()
+        );
+
+        // Home sector 232 contains 1 Cruiser (not Interceptor!)
+        const homeSector = game.sectors.find((s) => s.sectorNumber === 232)!;
+        expect(homeSector).toBeDefined();
+        expect(homeSector.ships.length).toBe(1);
+        expect(homeSector.ships[0]?.type).toBe('cruiser');
+
+        // All ships have +1 base initiative compared to Human
+        expect(orion.blueprints.interceptor.baseInitiative).toBe(3); // Human 2 -> Orion 3
+        expect(orion.blueprints.cruiser.baseInitiative).toBe(2); // Human 1 -> Orion 2
+        expect(orion.blueprints.dreadnought.baseInitiative).toBe(1); // Human 0 -> Orion 1
+        expect(orion.blueprints.starbase.baseInitiative).toBe(5); // Human 4 -> Orion 5
+
+        // Preprinted power
+        expect(orion.blueprints.interceptor.preprintedPower).toBe(1);
+        expect(orion.blueprints.cruiser.preprintedPower).toBe(2);
+        expect(orion.blueprints.dreadnought.preprintedPower).toBe(3);
       });
     });
   });

@@ -41,6 +41,8 @@ export interface ShipBlueprint {
   readonly maxSlots: number;
   readonly baseInitiative: number;
   readonly baseBuildCost: number; // Materials
+  readonly preprintedPower?: number; // Pre-printed additional energy (Eridani +1, Planta +2/+5, Orion +1/+2/+3)
+  readonly preprintedComputer?: number; // Pre-printed computer bonus (Planta +1)
   slots: (ShipPart | null)[];
 }
 

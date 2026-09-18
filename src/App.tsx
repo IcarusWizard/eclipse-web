@@ -86,8 +86,8 @@ export const App: React.FC = () => {
     }
   }, []);
 
-  const handleStartNewGame = (playerCount: number) => {
-    const newGame = createInitialGame(playerCount);
+  const handleStartNewGame = (playerCount: number, selectedFactionIds?: string[]) => {
+    const newGame = createInitialGame(playerCount, selectedFactionIds);
     setState(newGame);
     setSelectedViewIndex(0);
     setSelectedSector(null);

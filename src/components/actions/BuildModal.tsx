@@ -77,6 +77,25 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     return Math.max(0, SHIP_LIMITS[type] - deployedShips[type] - stagedInOtherSlots[type]);
   };
 
+  const isMechanema = player.faction.id === 'mechanema';
+
+  const getItemCost = (type: ShipType | 'orbital' | 'monolith') => {
+    switch (type) {
+      case 'interceptor':
+        return isMechanema ? 2 : 3;
+      case 'cruiser':
+        return isMechanema ? 4 : 5;
+      case 'dreadnought':
+        return isMechanema ? 7 : 8;
+      case 'starbase':
+        return isMechanema ? 2 : 3;
+      case 'orbital':
+        return isMechanema ? 3 : 4;
+      case 'monolith':
+        return isMechanema ? 8 : 10;
+    }
+  };
+
   const buildItems: {
     type: ShipType | 'orbital' | 'monolith';
     name: string;
@@ -90,37 +109,37 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     {
       type: 'interceptor',
       name: 'Interceptor',
-      cost: 3,
+      cost: getItemCost('interceptor'),
       limit: SHIP_LIMITS.interceptor,
       supplyLeft: getAvailableSupply('interceptor'),
       unlocked: getAvailableSupply('interceptor') > 0,
       disabledReason: getAvailableSupply('interceptor') <= 0 ? `Max limit of ${SHIP_LIMITS.interceptor} reached` : undefined,
-      description: 'Fast, agile light fighter with high base initiative (Limit 8).',
+      description: `Fast, agile light fighter with high base initiative (Limit 8, Cost ${getItemCost('interceptor')} Mats).`,
     },
     {
       type: 'cruiser',
       name: 'Cruiser',
-      cost: 5,
+      cost: getItemCost('cruiser'),
       limit: SHIP_LIMITS.cruiser,
       supplyLeft: getAvailableSupply('cruiser'),
       unlocked: getAvailableSupply('cruiser') > 0,
       disabledReason: getAvailableSupply('cruiser') <= 0 ? `Max limit of ${SHIP_LIMITS.cruiser} reached` : undefined,
-      description: 'Medium combat warship with balanced shielding and firepower (Limit 4).',
+      description: `Medium combat warship with balanced shielding and firepower (Limit 4, Cost ${getItemCost('cruiser')} Mats).`,
     },
     {
       type: 'dreadnought',
       name: 'Dreadnought',
-      cost: 8,
+      cost: getItemCost('dreadnought'),
       limit: SHIP_LIMITS.dreadnought,
       supplyLeft: getAvailableSupply('dreadnought'),
       unlocked: getAvailableSupply('dreadnought') > 0,
       disabledReason: getAvailableSupply('dreadnought') <= 0 ? `Max limit of ${SHIP_LIMITS.dreadnought} reached` : undefined,
-      description: 'Heavily armored capital flagship capable of carrying superweapons (Limit 2).',
+      description: `Heavily armored capital flagship capable of carrying superweapons (Limit 2, Cost ${getItemCost('dreadnought')} Mats).`,
     },
     {
       type: 'starbase',
       name: 'Starbase',
-      cost: 3,
+      cost: getItemCost('starbase'),
       limit: SHIP_LIMITS.starbase,
       supplyLeft: getAvailableSupply('starbase'),
       unlocked: getAvailableSupply('starbase') > 0 && starbaseAllowedInCurrentSector,
@@ -129,40 +148,25 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         : !starbaseAllowedInCurrentSector
         ? 'Max 1 Starbase per sector'
         : undefined,
-      description: 'Stationary defensive orbital fortress (Limit 4, max 1 per sector).',
+      description: `Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats, max 1 per sector).`,
     },
     {
       type: 'orbital',
       name: 'Orbital Structure',
-      cost: 4,
+      cost: getItemCost('orbital'),
       unlocked: hasOrbitalTech,
       disabledReason: !hasOrbitalTech ? 'Requires Orbital tech' : undefined,
-      description: 'Artificial satellite providing a Money or Science population slot (requires Orbital tech, max 1 per sector).',
+      description: `Artificial satellite providing a Money or Science population slot (Cost ${getItemCost('orbital')} Mats, max 1 per sector).`,
     },
     {
       type: 'monolith',
       name: 'Monolith',
-      cost: 10,
+      cost: getItemCost('monolith'),
       unlocked: hasMonolithTech,
       disabledReason: !hasMonolithTech ? 'Requires Monolith tech' : undefined,
-      description: 'Ancient mega-structure granting 2 Victory Points at game end (requires Monolith tech).',
+      description: `Ancient mega-structure granting 3 Victory Points at game end (Cost ${getItemCost('monolith')} Mats, requires Monolith tech).`,
     },
   ];
-
-  const getItemCost = (type: ShipType | 'orbital' | 'monolith') => {
-    switch (type) {
-      case 'cruiser':
-        return 5;
-      case 'dreadnought':
-        return 8;
-      case 'orbital':
-        return 4;
-      case 'monolith':
-        return 10;
-      default:
-        return 3;
-    }
-  };
 
   const totalCost = slots.reduce((sum, s) => sum + getItemCost(s.itemType), 0);
   const canAfford = player.resources.materials >= totalCost;

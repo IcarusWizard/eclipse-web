@@ -41,12 +41,12 @@ export function getRemainingShipSupply(sectors: SectorTile[], playerId: string):
 }
 
 export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintValidationResult {
-  let totalPowerProduced = 0;
+  let totalPowerProduced = blueprint.preprintedPower ?? 0;
   let totalPowerConsumed = 0;
   let bonusHull = 0;
   let bonusInitiative = 0;
   let totalDriveSpeed = 0;
-  let computerBonus = 0;
+  let computerBonus = blueprint.preprintedComputer ?? 0;
   let shieldBonus = 0;
   const errors: string[] = [];
 
@@ -153,4 +153,316 @@ export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
       ],
     },
   };
+}
+
+export function createFactionBlueprints(factionId: string): Record<string, ShipBlueprint> {
+  switch (factionId) {
+    case 'eridani_empire':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 4,
+          baseInitiative: 2,
+          baseBuildCost: 3,
+          preprintedPower: 1,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.fusion_drive,
+            null,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 6,
+          baseInitiative: 1,
+          baseBuildCost: 5,
+          preprintedPower: 1,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.fusion_drive,
+            null,
+          ],
+        },
+        dreadnought: {
+          type: 'dreadnought',
+          maxSlots: 8,
+          baseInitiative: 0,
+          baseBuildCost: 8,
+          preprintedPower: 1,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.fusion_drive,
+            null,
+          ],
+        },
+        starbase: {
+          type: 'starbase',
+          maxSlots: 5,
+          baseInitiative: 4,
+          baseBuildCost: 3,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            null,
+          ],
+        },
+      };
+
+    case 'planta':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 3,
+          baseInitiative: 1,
+          baseBuildCost: 3,
+          preprintedComputer: 1,
+          preprintedPower: 2,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 5,
+          baseInitiative: 0,
+          baseBuildCost: 5,
+          preprintedComputer: 1,
+          preprintedPower: 2,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        dreadnought: {
+          type: 'dreadnought',
+          maxSlots: 7,
+          baseInitiative: -1,
+          baseBuildCost: 8,
+          preprintedComputer: 1,
+          preprintedPower: 2,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        starbase: {
+          type: 'starbase',
+          maxSlots: 4,
+          baseInitiative: 3,
+          baseBuildCost: 3,
+          preprintedComputer: 1,
+          preprintedPower: 5,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.hull,
+            null,
+            null,
+          ],
+        },
+      };
+
+    case 'descendants_of_draco':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 4,
+          baseInitiative: 2,
+          baseBuildCost: 3,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.fusion_drive,
+            null,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 6,
+          baseInitiative: 1,
+          baseBuildCost: 5,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.fusion_drive,
+            null,
+          ],
+        },
+        dreadnought: {
+          type: 'dreadnought',
+          maxSlots: 8,
+          baseInitiative: 0,
+          baseBuildCost: 8,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.fusion_drive,
+            null,
+          ],
+        },
+        starbase: {
+          type: 'starbase',
+          maxSlots: 5,
+          baseInitiative: 4,
+          baseBuildCost: 3,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            null,
+          ],
+        },
+      };
+
+    case 'mechanema':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 4,
+          baseInitiative: 2,
+          baseBuildCost: 2, // 2 materials
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 6,
+          baseInitiative: 1,
+          baseBuildCost: 4, // 4 materials
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.positron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        dreadnought: {
+          type: 'dreadnought',
+          maxSlots: 8,
+          baseInitiative: 0,
+          baseBuildCost: 7, // 7 materials
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.positron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        starbase: {
+          type: 'starbase',
+          maxSlots: 5,
+          baseInitiative: 4,
+          baseBuildCost: 2, // 2 materials
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.positron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            null,
+          ],
+        },
+      };
+
+    case 'orion_hegemony':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 4,
+          baseInitiative: 3, // +1 increased initiative
+          baseBuildCost: 3,
+          preprintedPower: 1, // +1 preprinted power
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.gauss_shield,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 6,
+          baseInitiative: 2, // +1 increased initiative
+          baseBuildCost: 5,
+          preprintedPower: 2, // +2 preprinted power
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.gauss_shield,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        dreadnought: {
+          type: 'dreadnought',
+          maxSlots: 8,
+          baseInitiative: 1, // +1 increased initiative
+          baseBuildCost: 8,
+          preprintedPower: 3, // +3 preprinted power
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.gauss_shield,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        starbase: {
+          type: 'starbase',
+          maxSlots: 5,
+          baseInitiative: 5, // +1 increased initiative
+          baseBuildCost: 3,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            null,
+          ],
+        },
+      };
+
+    default:
+      return createDefaultHumanBlueprints();
+  }
 }

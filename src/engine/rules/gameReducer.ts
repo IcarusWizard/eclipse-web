@@ -312,12 +312,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
         }
 
-        let cost = 3;
-        if (item.itemType === 'cruiser') cost = 5;
-        else if (item.itemType === 'dreadnought') cost = 8;
-        else if (item.itemType === 'starbase') cost = 3;
-        else if (item.itemType === 'orbital') cost = 4;
-        else if (item.itemType === 'monolith') cost = 10;
+        const isMechanema = player.faction.id === 'mechanema';
+        let cost = isMechanema ? 2 : 3;
+        if (item.itemType === 'cruiser') cost = isMechanema ? 4 : 5;
+        else if (item.itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
+        else if (item.itemType === 'starbase') cost = isMechanema ? 2 : 3;
+        else if (item.itemType === 'orbital') cost = isMechanema ? 3 : 4;
+        else if (item.itemType === 'monolith') cost = isMechanema ? 8 : 10;
 
         totalMaterialsCost += cost;
       }
@@ -454,11 +455,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           // Advance ship's simulated location
           shipInfo.currentSectorId = step.toSectorId;
 
-          // Check if destination has hostiles -> pinned!
+          // Check if destination has hostiles -> pinned! (Draco ships are not pinned by Ancients)
+          const isDraco = player.faction.id === 'descendants_of_draco';
           const hasHostiles =
-            toSec.ancientsCount > 0 ||
+            (!isDraco && toSec.ancientsCount > 0) ||
             toSec.hasGCDS ||
-            toSec.ships.some((s) => s.ownerId !== action.playerId);
+            toSec.ships.some(
+              (s) => s.ownerId !== action.playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+            );
           if (hasHostiles) {
             pinnedShips.add(act.shipId);
           }
@@ -500,7 +504,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (sec.discOwner) {
           return { valid: false, error: `Sector ${sec.sectorNumber} is already controlled by another player.` };
         }
-        if (sec.ancientsCount > 0 || sec.hasGCDS || sec.ships.some((s) => s.ownerId !== player.id)) {
+        const isDraco = player.faction.id === 'descendants_of_draco';
+        const hasHostiles =
+          (!isDraco && sec.ancientsCount > 0) ||
+          sec.hasGCDS ||
+          sec.ships.some(
+            (s) => s.ownerId !== player.id && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+          );
+        if (hasHostiles) {
           return { valid: false, error: `Cannot claim Sector ${sec.sectorNumber} while hostile forces are present.` };
         }
         // Rulebook page 14: Uncontrolled sector where only you have a ship OR no opponent ships and wormhole connection exists to friendly sector
@@ -733,8 +744,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       const isConnected = sourceSector ? areSectorsConnected(sourceSector, drawnTile, hasWormholeGen) : true;
 
       if (!action.discard && isConnected) {
-        // Place on map
-        if (drawnTile.ancientsCount === 0 && action.claimInfluence && player.influenceTrack.discsOnTrack > 0) {
+        // Place on map (Draco can place influence discs in sectors with Ancients)
+        const isDraco = player.faction.id === 'descendants_of_draco';
+        if ((drawnTile.ancientsCount === 0 || isDraco) && action.claimInfluence && player.influenceTrack.discsOnTrack > 0) {
           drawnTile.discOwner = player.id;
           player.influenceTrack.discsOnTrack -= 1;
           addLog(`${player.name} explored Sector ${drawnTile.sectorNumber} at (${action.targetCoord.q}, ${action.targetCoord.r}) and placed an Influence Disc!`);
@@ -861,12 +873,13 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
       for (const item of action.items) {
         const sector = newState.sectors.find((s) => s.id === item.sectorId)!;
-        let cost = 3;
-        if (item.itemType === 'cruiser') cost = 5;
-        else if (item.itemType === 'dreadnought') cost = 8;
-        else if (item.itemType === 'starbase') cost = 3;
-        else if (item.itemType === 'orbital') cost = 4;
-        else if (item.itemType === 'monolith') cost = 10;
+        const isMechanema = player.faction.id === 'mechanema';
+        let cost = isMechanema ? 2 : 3;
+        if (item.itemType === 'cruiser') cost = isMechanema ? 4 : 5;
+        else if (item.itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
+        else if (item.itemType === 'starbase') cost = isMechanema ? 2 : 3;
+        else if (item.itemType === 'orbital') cost = isMechanema ? 3 : 4;
+        else if (item.itemType === 'monolith') cost = isMechanema ? 8 : 10;
 
         player.resources.materials -= cost;
 
@@ -1524,12 +1537,14 @@ export function resolveAttackingPopulationAndConquest(
         }
       }
 
-      // Destroy population cubes up to totalDamage points
+      // Destroy population cubes up to totalDamage points (Planta cubes are automatically destroyed by opponent ships)
       let destroyedCount = 0;
       for (const p of sector.planets) {
-        if (destroyedCount >= totalDamage) break;
         if (p.colonizedBy && p.colonizedBy !== winnerId) {
           const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
+          const isPlanta = defPlayer?.faction.id === 'planta';
+          if (!isPlanta && destroyedCount >= totalDamage) break;
+
           if (defPlayer) {
             const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
             if (res === 'money' || res === 'science' || res === 'material') {
@@ -1623,6 +1638,14 @@ export function checkAndTriggerCombat(state: GameState): void {
     .filter((sec) => {
       if (state.resolvedCombatSectorIds!.includes(sec.id)) return false;
       const owners = Array.from(new Set(sec.ships.map((s) => s.ownerId)));
+      // Draco does not battle Ancients
+      if (owners.length === 2 && owners.includes('ancient')) {
+        const otherOwner = owners.find((o) => o !== 'ancient');
+        const otherPlayer = state.players.find((p) => p.id === otherOwner);
+        if (otherPlayer?.faction.id === 'descendants_of_draco') {
+          return false;
+        }
+      }
       return owners.length > 1;
     })
     .sort((a, b) => b.sectorNumber - a.sectorNumber);
@@ -1826,7 +1849,21 @@ export function calculateFinalScores(state: GameState): void {
     // 7. Warp Portal VP (2 VP if controlled at end of game)
     const warpPortalVP = controlledSectors.filter((s) => s.hasWarpPortal).length * 2;
 
-    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP;
+    // 8. Species Bonus VP
+    let speciesBonus = 0;
+    if (p.faction.id === 'planta') {
+      // Planta scores +1 extra VP for each Controlled Sector at game end
+      speciesBonus += controlledSectors.length * 1;
+    } else if (p.faction.id === 'descendants_of_draco') {
+      // Draco scores 1 VP per Ancient on the game board at game end
+      const totalAncientsOnBoard = state.sectors.reduce((sum, s) => {
+        const shipsCount = s.ships.filter((ship) => ship.ownerId === 'ancient' || ship.type === 'ancient').length;
+        return sum + Math.max(s.ancientsCount, shipsCount);
+      }, 0);
+      speciesBonus += totalAncientsOnBoard;
+    }
+
+    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP + speciesBonus;
 
     scores[p.id] = {
       sectors: sectorVP,
@@ -1835,7 +1872,7 @@ export function calculateFinalScores(state: GameState): void {
       techs: techVP,
       ambassadors: ambassadorVP,
       discoveries: discoveryVP + warpPortalVP,
-      speciesBonus: 0,
+      speciesBonus,
       total,
     };
 
