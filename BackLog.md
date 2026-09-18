@@ -164,4 +164,13 @@
     - Species Traits (+1 VP per controlled sector for Planta, +1 VP per Ancient ship on board for Draco)
   - Created `LiveScoreboardModal.tsx` showing the complete itemized table, player rankings, crown badges, and scoring rules.
   - Added a `🏆 Standings` button and individual live `★ X VP` score indicators on every commander button in `Header.tsx`.
-
+- [ ] bankcrupt is not done yet, if one player cannot pay for the maintainance cost, it should first go to tactical bankcrupt to remove influence from the map, if that still doesn't work, the player is remove from the game immidiately.
+- [ ] monolince should worth 3 points each not 2.
+- [ ] artifact key is wrong, when buy for each artifact you have, you can get 5 resouce of your choice, currently I think it is set as material by default.
+- [ ] I believe the home system is still wrong. If I am not mistaken, all the home system has an X shape wormhole layout, which allows two entry to ring 3, 1 to ring 2, and 1 to ring 1.
+- [ ] The number on the sector is also not clear, please make it better.
+- [ ] I think it is the time to implement a local hot seat, each player can join a table with a link of the table plus their player token. Make sure each player can only act on their own turn, and can not see the reputation tiles the other player have. 
+- [ ] Speaking of reputation tiles, different faction have different numbers of slots for them, please check if you implement it correctly.
+- [ ] I would like some options to trigger a dashline layout for the map, so the player can easily see how many tiles it is between one and the other when they are not explored yet.
+- [ ] You should implement the gaduriance in a game where we don't have full 6 players (their position should be replaced by the gadience)
+- [ ] In think the GCDS is wrongly implemented with the weapons, it should be 4 yellow dices.
