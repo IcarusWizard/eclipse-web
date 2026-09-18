@@ -8,6 +8,7 @@ import {
   hasWormholeOnEdge,
   findLegalExploreRotation,
   findNextLegalExploreRotation,
+  getEdgeTowardCenter,
 } from '../rules/hexMath';
 import {
   calculateBlueprintStats,
@@ -25,7 +26,20 @@ import {
   executeCombatStep,
 } from '../rules/combatEngine';
 import { createInitialGame, ALIEN_FACTIONS } from '../rules/setup';
-import { executeAction, validateAction, checkAndTriggerCombat, calculateFinalScores } from '../rules/gameReducer';
+import {
+  executeAction,
+  validateAction,
+  checkAndTriggerCombat,
+  calculateFinalScores,
+  computeCurrentScores,
+} from '../rules/gameReducer';
+import {
+  saveGameState,
+  loadActiveGameState,
+  loadTableByNumber,
+  listSavedTables,
+  getTableNumber,
+} from '../rules/persistence';
 import type { SectorTile } from '../types/sector';
 import type { CombatState } from '../types/state';
 import {
@@ -3246,6 +3260,300 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(orion.blueprints.cruiser.preprintedPower).toBe(2);
         expect(orion.blueprints.dreadnought.preprintedPower).toBe(3);
       });
+
+      it('13a. Home system orientation: ensures wormhole always points toward Galactic Center', () => {
+        for (const count of [2, 3, 4, 5, 6]) {
+          const game = createInitialGame(count);
+          for (const p of game.players) {
+            const home = game.sectors.find((s) => s.id === `home_sector_${p.id}`)!;
+            expect(home).toBeDefined();
+            const edgeTowardCenter = getEdgeTowardCenter(home.coord);
+            // Must have a wormhole on the edge facing Galactic Center (0, 0)
+            const hasWormhole = hasWormholeOnEdge(home, edgeTowardCenter);
+            expect(hasWormhole).toBe(true);
+          }
+        }
+      });
+
+      it('13b. Planta 2 Explore Activations & FINISH_EXPLORE flow', () => {
+        const game = createInitialGame(2, ['planta', 'terran_federation']);
+        const planta = game.players[0]!;
+        expect(planta.faction.id).toBe('planta');
+        expect(planta.faction.exploreActivations).toBe(2);
+
+        const initialDiscs = planta.influenceTrack.discsOnTrack;
+        const homeSector = game.sectors.find((s) => s.id === `home_sector_${planta.id}`)!;
+        const targetCoord1 = { q: homeSector.coord.q, r: homeSector.coord.r - 1 };
+
+        // 1st Explore: Costs 1 action disc, leaves 1 pending activation, does NOT advance turn
+        const res1 = executeAction(game, {
+          type: 'EXPLORE',
+          playerId: planta.id,
+          fromCoord: homeSector.coord,
+          targetCoord: targetCoord1,
+          rotation: 0,
+          claimInfluence: false,
+        });
+
+        expect(res1.success).toBe(true);
+        expect(res1.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 1);
+        expect(res1.newState.pendingExploreActivations).toBe(1);
+        // Turn stays with Planta!
+        expect(res1.newState.activePlayerIndex).toBe(0);
+
+        // Option A: Test FINISH_EXPLORE clears pending activation and advances turn
+        const finishRes = executeAction(res1.newState, {
+          type: 'FINISH_EXPLORE',
+          playerId: planta.id,
+        });
+        expect(finishRes.success).toBe(true);
+        expect(finishRes.newState.pendingExploreActivations).toBe(0);
+        expect(finishRes.newState.activePlayerIndex).toBe(1); // Turn advanced to Terran!
+
+        // Option B: 2nd Explore without spending an action disc
+        const targetCoord2 = { q: homeSector.coord.q + 1, r: homeSector.coord.r - 1 };
+        const res2 = executeAction(res1.newState, {
+          type: 'EXPLORE',
+          playerId: planta.id,
+          fromCoord: homeSector.coord,
+          targetCoord: targetCoord2,
+          rotation: 0,
+          claimInfluence: false,
+          isSecondActivation: true,
+        });
+
+        expect(res2.success).toBe(true);
+        // Does NOT deduct an extra disc!
+        expect(res2.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 1);
+        expect(res2.newState.pendingExploreActivations).toBe(0);
+        // Turn advances to Terran!
+        expect(res2.newState.activePlayerIndex).toBe(1);
+      });
+
+      it('13c. Draco Explore: reveals 2 tiles, places chosen tile, and unchosen goes to bottom of deck', () => {
+        const game = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+        const draco = game.players[0]!;
+        expect(draco.faction.id).toBe('descendants_of_draco');
+
+        const homeSector = game.sectors.find((s) => s.id === `home_sector_${draco.id}`)!;
+        // Edge 0 ({ q + 1, r }) has an open wormhole on Draco's rotated home sector (in Ring 2)
+        const targetCoord = { q: homeSector.coord.q + 1, r: homeSector.coord.r };
+
+        const deck = game.sectorDecks.ring2;
+        expect(deck.length).toBeGreaterThanOrEqual(2);
+
+        const topTile = deck[deck.length - 1]!;
+        const secondTile = deck[deck.length - 2]!;
+        const rot = findLegalExploreRotation(homeSector, secondTile, targetCoord);
+
+        // Draco chooses second tile (index 1)
+        const res = executeAction(game, {
+          type: 'EXPLORE',
+          playerId: draco.id,
+          fromCoord: homeSector.coord,
+          targetCoord,
+          rotation: rot,
+          claimInfluence: false,
+          chosenTileIndex: 1,
+        });
+
+        expect(res.success).toBe(true);
+        // Chosen tile (secondTile) was placed on map
+        const placedSector = res.newState.sectors.find(
+          (s) => s.coord.q === targetCoord.q && s.coord.r === targetCoord.r
+        );
+        expect(placedSector).toBeDefined();
+        expect(placedSector!.sectorNumber).toBe(secondTile.sectorNumber);
+
+        // Unchosen tile (topTile) was unshifted to bottom of deck
+        expect(res.newState.sectorDecks.ring2[0]!.sectorNumber).toBe(topTile.sectorNumber);
+      });
+
+      it('13d. Draco claiming sectors containing Ancients in both Explore and Influence actions', () => {
+        // 1. Explore: Draco places disc in a sector with Ancients
+        const game = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+        const draco = game.players[0]!;
+        const terran = game.players[1]!;
+
+        const homeSector = game.sectors.find((s) => s.id === `home_sector_${draco.id}`)!;
+        const targetCoord = { q: homeSector.coord.q + 1, r: homeSector.coord.r };
+
+        // Force top tile of ring 2 deck to have an Ancient
+        const deck = game.sectorDecks.ring2;
+        const ancientTile = deck[deck.length - 1]!;
+        ancientTile.ancientsCount = 1;
+        ancientTile.ships = [{ id: 'anc_1', ownerId: 'ancient', type: 'ancient', damage: 0 }];
+        const rot = findLegalExploreRotation(homeSector, ancientTile, targetCoord);
+
+        const exploreRes = executeAction(game, {
+          type: 'EXPLORE',
+          playerId: draco.id,
+          fromCoord: homeSector.coord,
+          targetCoord,
+          rotation: rot,
+          claimInfluence: true,
+          chosenTileIndex: 0,
+        });
+
+        expect(exploreRes.success).toBe(true);
+        const placedTile = exploreRes.newState.sectors.find(
+          (s) => s.coord.q === targetCoord.q && s.coord.r === targetCoord.r
+        )!;
+        expect(placedTile).toBeDefined();
+        expect(placedTile.discOwner).toBe(draco.id); // Draco controls sector despite Ancient present!
+        expect(placedTile.ancientsCount).toBe(1);
+
+        // 2. Influence: Draco can claim uncontrolled sector containing Ancients
+        placedTile.discOwner = undefined; // make uncontrolled
+        exploreRes.newState.activePlayerIndex = 0; // Draco's turn
+        const dracoInfluenceRes = executeAction(exploreRes.newState, {
+          type: 'INFLUENCE',
+          playerId: draco.id,
+          claimSectors: [placedTile.id],
+        });
+        expect(dracoInfluenceRes.success).toBe(true);
+
+        // 3. Influence: Non-Draco (Terran) player CANNOT claim sector with Ancients
+        exploreRes.newState.activePlayerIndex = 1; // Terran's turn
+        const terranInfluenceRes = executeAction(exploreRes.newState, {
+          type: 'INFLUENCE',
+          playerId: terran.id,
+          claimSectors: [placedTile.id],
+        });
+        expect(terranInfluenceRes.valid === false || terranInfluenceRes.success === false).toBe(true);
+      });
+
+      it('13e. Game Persistence & Table Sessions', () => {
+        const game = createInitialGame(3);
+        const tableNum = getTableNumber(game);
+        expect(tableNum).toBeGreaterThanOrEqual(100);
+        expect(tableNum).toBeLessThan(1000);
+
+        saveGameState(game);
+
+        const loaded = loadActiveGameState();
+        expect(loaded).toBeDefined();
+        expect(loaded!.id).toBe(game.id);
+        expect(loaded!.players.length).toBe(3);
+
+        const loadedByNum = loadTableByNumber(tableNum);
+        expect(loadedByNum).toBeDefined();
+        expect(loadedByNum!.id).toBe(game.id);
+
+        const tables = listSavedTables();
+        expect(tables.some((t) => t.tableNumber === tableNum)).toBe(true);
+      });
+
+      it('13f. Hydran double research with progressive discounts', () => {
+        const game = createInitialGame(2, ['hydran_progress', 'terran_federation']);
+        const hydran = game.players[0]!;
+        expect(hydran.faction.id).toBe('hydran_progress');
+        expect(hydran.faction.researchActivations).toBe(2);
+
+        // Supply setup: Ensure 2 military techs in supply
+        game.techSupply = [
+          { id: 'plasma_cannon', name: 'Plasma Cannon', category: 'military', cost: 4, minCost: 2, baseCost: 4 },
+          { id: 'tachyon_drive', name: 'Tachyon Drive', category: 'military', cost: 6, minCost: 3, baseCost: 6 },
+        ];
+        hydran.resources.science = 20;
+        const initialDiscs = hydran.influenceTrack.discsOnTrack;
+
+        // Hydran researches both technologies in a single action
+        const res = executeAction(game, {
+          type: 'RESEARCH',
+          playerId: hydran.id,
+          researches: [
+            { techId: 'plasma_cannon' },
+            { techId: 'tachyon_drive' },
+          ],
+        });
+
+        expect(res.success).toBe(true);
+        // Only 1 action disc deducted
+        expect(res.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 1);
+        expect(res.newState.players[0]!.techTrack.militaryCount).toBe(2);
+
+        // 1st tech (plasma_cannon): count was 0 -> discount 0 -> cost 4
+        // 2nd tech (tachyon_drive): count was 1 -> discount 1 -> cost 6 - 1 = 5
+        // Total cost = 4 + 5 = 9 science. 20 - 9 = 11 science remaining
+        expect(res.newState.players[0]!.resources.science).toBe(11);
+
+        // Non-Hydran player attempting 2 researches is rejected
+        const terranGame = createInitialGame(2, ['terran_federation', 'hydran_progress']);
+        const terran = terranGame.players[0]!;
+        terranGame.techSupply = [
+          { id: 'plasma_cannon', name: 'Plasma Cannon', category: 'military', cost: 4, minCost: 2, baseCost: 4 },
+          { id: 'tachyon_drive', name: 'Tachyon Drive', category: 'military', cost: 6, minCost: 3, baseCost: 6 },
+        ];
+        terran.resources.science = 20;
+
+        const invalidRes = executeAction(terranGame, {
+          type: 'RESEARCH',
+          playerId: terran.id,
+          researches: [
+            { techId: 'plasma_cannon' },
+            { techId: 'tachyon_drive' },
+          ],
+        });
+        expect(invalidRes.success).toBe(false);
+        expect(invalidRes.error).toContain('Cannot research more than 1 technologies');
+      });
+
+      it('13g. Live scoring computation with species bonuses', () => {
+        const game = createInitialGame(2, ['planta', 'descendants_of_draco']);
+        const planta = game.players[0]!;
+        const draco = game.players[1]!;
+
+        // Setup test scoring state
+        // 1. Monolith (3 VP)
+        const homePlanta = game.sectors.find((s) => s.id === `home_sector_${planta.id}`)!;
+        homePlanta.structures = { monolith: true };
+
+        // 2. Reputation tiles (3 + 2 = 5 VP)
+        planta.reputationTiles = [3, 2];
+
+        // 3. Tech with VP (Advanced Labs +1 VP)
+        planta.techTrack.researched.push({
+          id: 'advanced_labs',
+          name: 'Advanced Labs',
+          category: 'nano',
+          cost: 12,
+          minCost: 6,
+          baseCost: 12,
+          victoryPoints: 1,
+        });
+
+        // 4. Kept Discovery tile (2 VP)
+        planta.keptDiscoveryTiles = ['warp_portal_disc'];
+
+        // 5. Ancients on board for Draco bonus
+        const ancientSector = game.sectors.find((s) => s.ring === 2 && s.id !== homePlanta.id)!;
+        ancientSector.ancientsCount = 3;
+        ancientSector.ships = [
+          { id: 'a1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          { id: 'a2', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          { id: 'a3', ownerId: 'ancient', type: 'ancient', damage: 0 },
+        ];
+
+        const { scores, leaderPlayerId } = computeCurrentScores(game);
+        expect(scores[planta.id]).toBeDefined();
+        const pScores = scores[planta.id]!;
+
+        expect(pScores.sectors).toBe(homePlanta.victoryPoints); // 3 VP
+        expect(pScores.monoliths).toBe(3); // 1 monolith = 3 VP
+        expect(pScores.reputation).toBe(5); // 3 + 2 = 5 VP
+        expect(pScores.techs).toBe(1); // Advanced Labs = 1 VP
+        expect(pScores.discoveries).toBe(2); // 1 kept tile = 2 VP
+        expect(pScores.speciesBonus).toBe(1); // Planta controls 1 sector = +1 VP bonus
+
+        const expectedPlantaTotal = homePlanta.victoryPoints + 3 + 5 + 1 + 2 + 1;
+        expect(pScores.total).toBe(expectedPlantaTotal);
+
+        // Draco gets 1 VP per ancient on board
+        const dScores = scores[draco.id]!;
+        expect(dScores.speciesBonus).toBe(3); // 3 ancients on board
+      });
     });
   });
 });
+

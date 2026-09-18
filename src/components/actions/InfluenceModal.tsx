@@ -34,14 +34,22 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
 
   const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
 
+  const isDraco = player.faction.id === 'descendants_of_draco';
+
   // Sectors eligible to claim:
   // - Not controlled by anyone
-  // - No hostile forces (ancients, gcds, enemy ships)
+  // - No hostile forces (ancients, gcds, enemy ships) - Draco coexists peacefully with Ancients!
   // - Stationed friendly ship OR connected by wormhole to friendly-controlled sector
   const eligibleToClaim = useMemo(() => {
     return sectors.filter((sec) => {
       if (sec.discOwner) return false;
-      if (sec.ancientsCount > 0 || sec.hasGCDS || sec.ships.some((s) => s.ownerId !== player.id)) {
+      const hasHostiles =
+        (!isDraco && sec.ancientsCount > 0) ||
+        sec.hasGCDS ||
+        sec.ships.some(
+          (s) => s.ownerId !== player.id && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+        );
+      if (hasHostiles) {
         return false;
       }
       const hasFriendlyShip = sec.ships.some((s) => s.ownerId === player.id);
@@ -53,7 +61,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
       });
       return hasFriendlyShip || hasConnectedFriendly;
     });
-  }, [sectors, player.id, hasWormholeGen]);
+  }, [sectors, player.id, hasWormholeGen, isDraco]);
 
   // Sectors currently controlled by this player (eligible to abandon)
   const controlledSectors = useMemo(() => {

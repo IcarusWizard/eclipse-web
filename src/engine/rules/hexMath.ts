@@ -57,6 +57,24 @@ export function getEdgeBetween(from: HexCoord, to: HexCoord): HexEdge | null {
 }
 
 /**
+ * Returns the edge index (0..5) on `coord` whose neighbor is closest to the Galactic Center (0, 0).
+ * In Eclipse setup, starting sector tiles are placed with their wormhole arrow pointing towards the Galactic Center.
+ */
+export function getEdgeTowardCenter(coord: HexCoord): HexEdge {
+  let bestEdge: HexEdge = 0;
+  let minDistance = Infinity;
+  for (let edge = 0; edge < 6; edge++) {
+    const neighbor = getNeighborCoord(coord, edge as HexEdge);
+    const dist = getHexDistance(neighbor, { q: 0, r: 0 });
+    if (dist < minDistance) {
+      minDistance = dist;
+      bestEdge = edge as HexEdge;
+    }
+  }
+  return bestEdge;
+}
+
+/**
  * Checks if a tile has a wormhole on edge `e` taking into account its rotation.
  * In a clockwise rotation of `rot` steps, edge `e` corresponds to base edge `(e - rot + 6) % 6`.
  */

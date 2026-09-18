@@ -26,11 +26,12 @@ interface ExploreModalProps {
   fromCoord: HexCoord;
   targetCoord: HexCoord;
   candidateTile: SectorTile;
+  candidateTiles?: SectorTile[];
   sourceSector: SectorTile;
   rotation: number;
   onRotate: (newRotation: number | ((prev: number) => number)) => void;
-  onConfirmPlacement: (rotation: number, claimInfluence: boolean) => void;
-  onDiscard: () => void;
+  onConfirmPlacement: (rotation: number, claimInfluence: boolean, chosenTileIndex?: number) => void;
+  onDiscard: (chosenTileIndex?: number) => void;
   onClose: () => void;
 }
 
@@ -38,6 +39,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   player,
   targetCoord,
   candidateTile,
+  candidateTiles,
   sourceSector,
   rotation,
   onRotate,
@@ -45,13 +47,19 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   onDiscard,
   onClose,
 }) => {
+  const isDraco = player.faction.id === 'descendants_of_draco';
+  const hasDracoChoice = isDraco && candidateTiles && candidateTiles.length >= 2;
+  const [selectedDracoIndex, setSelectedDracoIndex] = useState<number>(0);
+
+  const activeTile = hasDracoChoice ? candidateTiles![selectedDracoIndex]! : candidateTile;
+
   const [claimInfluence, setClaimInfluence] = useState<boolean>(true);
   const [hoveredPlanet, setHoveredPlanet] = useState<number | null>(null);
   const [hoveredFeature, setHoveredFeature] = useState<'ancient' | 'discovery' | 'artifact' | null>(null);
 
   // Simulated rotated tile to test connection
   const simulatedTile: SectorTile = {
-    ...candidateTile,
+    ...activeTile,
     rotation,
     coord: targetCoord,
   };
@@ -117,7 +125,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   };
 
   const canClaimDisc =
-    candidateTile.ancientsCount === 0 &&
+    (activeTile.ancientsCount === 0 || isDraco) &&
     player.influenceTrack.discsOnTrack > 0 &&
     claimInfluence;
 
@@ -126,7 +134,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     if (!isConnected) {
       const legal = findLegalExploreRotation(
         sourceSector,
-        candidateTile,
+        activeTile,
         targetCoord,
         hasWormholeGen
       );
@@ -134,7 +142,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
         onRotate(legal);
       }
     }
-  }, [candidateTile.id, targetCoord.q, targetCoord.r]);
+  }, [activeTile.id, targetCoord.q, targetCoord.r]);
 
   // Keyboard shortcut support: R to rotate, Enter to confirm, Esc to cancel
   useEffect(() => {
@@ -174,6 +182,38 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   return (
     <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4 pointer-events-none">
       <div className="bg-slate-900/95 backdrop-blur-md border border-slate-700/80 rounded-2xl shadow-2xl overflow-visible text-slate-100 p-3.5 pointer-events-auto flex flex-col gap-2.5 transition-all">
+        {/* Draco 2-Tile Pick Ability Banner */}
+        {hasDracoChoice && (
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-950/50 border border-amber-500/50 text-xs">
+            <div className="flex items-center gap-1.5 text-amber-300 font-bold">
+              <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+              <span>Draco Ability: Choose 1 of 2 revealed tiles:</span>
+            </div>
+            <div className="flex items-center gap-2 shrink-0">
+              {candidateTiles!.map((tile, idx) => (
+                <button
+                  key={tile.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDracoIndex(idx);
+                    const legal = findLegalExploreRotation(sourceSector, tile, targetCoord, hasWormholeGen);
+                    onRotate(legal);
+                  }}
+                  className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${
+                    selectedDracoIndex === idx
+                      ? 'bg-amber-400 text-slate-950 shadow-md shadow-amber-400/30 ring-2 ring-amber-300 font-black'
+                      : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
+                  }`}
+                >
+                  <span>Tile {idx + 1}:</span>
+                  <span className="font-mono">SEC {tile.sectorNumber}</span>
+                  <span className="text-[10px] opacity-80">({tile.victoryPoints} VP)</span>
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Top Header Bar */}
         <div className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-2">
           <div className="flex items-center gap-2">
@@ -184,10 +224,10 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
               EXPLORING RING {ring}
             </span>
             <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-bold">
-              SEC {candidateTile.sectorNumber}
+              SEC {activeTile.sectorNumber}
             </span>
             <span className="text-[11px] font-bold text-cyan-400">
-              {candidateTile.victoryPoints} VP
+              {activeTile.victoryPoints} VP
             </span>
           </div>
 
@@ -199,7 +239,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 if (!isConnected) {
                   const nextLegal = findNextLegalExploreRotation(
                     sourceSector,
-                    candidateTile,
+                    activeTile,
                     targetCoord,
                     rotation,
                     hasWormholeGen
@@ -260,11 +300,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
             {/* Habitats Group */}
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-semibold text-slate-400">Habitats:</span>
-              {candidateTile.planets.length === 0 ? (
+              {activeTile.planets.length === 0 ? (
                 <span className="text-[11px] text-slate-500 italic">None (Deep Space)</span>
               ) : (
                 <div className="flex items-center gap-1.5">
-                  {candidateTile.planets.map((planet, pIdx) => {
+                  {activeTile.planets.map((planet, pIdx) => {
                     const meta = getPlanetMeta(planet.resource);
                     return (
                       <div
@@ -318,27 +358,18 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                                   <div className="mt-1">
                                     {meta.hasTech ? (
                                       <span className="text-emerald-400 font-bold flex items-center gap-1">
-                                        <Check className="w-3 h-3 text-emerald-400" /> Researched (Ready to Colonize)
+                                        <Check className="w-3.5 h-3.5" /> Researched (Ready to Colonize)
                                       </span>
                                     ) : (
-                                      <span className="text-rose-400 font-bold flex items-center gap-1">
-                                        <Lock className="w-3 h-3 text-rose-400" /> Need {meta.techName}
+                                      <span className="text-rose-400 font-medium flex items-center gap-1">
+                                        <AlertTriangle className="w-3.5 h-3.5" /> Need {meta.techName}
                                       </span>
                                     )}
                                   </div>
                                 </div>
                               ) : (
-                                <div>
-                                  <div className="text-slate-400">Standard population square</div>
-                                  <div className="mt-1">
-                                    {player.colonyShips.ready > 0 ? (
-                                      <span className="text-emerald-400 font-bold flex items-center gap-1">
-                                        <Check className="w-3 h-3 text-emerald-400" /> {player.colonyShips.ready} Colony Ship(s) Ready
-                                      </span>
-                                    ) : (
-                                      <span className="text-amber-400 font-medium">No Colony Ships Ready</span>
-                                    )}
-                                  </div>
+                                <div className="text-slate-400">
+                                  Standard colony square. Can be settled immediately with any ready Colony Ship!
                                 </div>
                               )}
                             </div>
@@ -352,11 +383,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
             </div>
 
             {/* Features & Defenses (Ancients, Discovery, Artifact) */}
-            {(candidateTile.ancientsCount > 0 ||
-              candidateTile.hasDiscovery ||
-              candidateTile.hasArtifact) && (
+            {(activeTile.ancientsCount > 0 ||
+              activeTile.hasDiscovery ||
+              activeTile.hasArtifact) && (
               <div className="flex items-center gap-2 border-l border-slate-800 pl-3">
-                {candidateTile.ancientsCount > 0 && (
+                {activeTile.ancientsCount > 0 && (
                   <div
                     className="relative"
                     onMouseEnter={() => setHoveredFeature('ancient')}
@@ -364,23 +395,25 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                   >
                     <div className="px-2 py-0.5 rounded-lg bg-rose-950/70 border border-rose-800/80 text-rose-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer hover:bg-rose-900/60 transition-colors">
                       <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                      {candidateTile.ancientsCount} Ancient{candidateTile.ancientsCount > 1 ? 's' : ''}
+                      {activeTile.ancientsCount} Ancient{activeTile.ancientsCount > 1 ? 's' : ''}
                     </div>
                     {hoveredFeature === 'ancient' && (
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 w-64 p-2.5 rounded-xl bg-slate-950 border border-rose-800 shadow-2xl text-left z-50 pointer-events-none">
                         <div className="text-xs font-bold text-rose-300 mb-1 flex items-center gap-1">
                           <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                          Guarded by {candidateTile.ancientsCount} Ancient Ship{candidateTile.ancientsCount > 1 ? 's' : ''}
+                          Guarded by {activeTile.ancientsCount} Ancient Ship{activeTile.ancientsCount > 1 ? 's' : ''}
                         </div>
                         <p className="text-[11px] text-slate-300 leading-snug">
-                          Sector is hostile. You cannot place an Influence Disc or colonize planets until Ancient ships are defeated in the Combat Phase.
+                          {isDraco
+                            ? 'Descendants of Draco coexist peacefully with Ancients and may place an Influence Disc immediately!'
+                            : 'Sector is hostile. You cannot place an Influence Disc or colonize planets until Ancient ships are defeated in the Combat Phase.'}
                         </p>
                       </div>
                     )}
                   </div>
                 )}
 
-                {candidateTile.hasDiscovery && (
+                {activeTile.hasDiscovery && (
                   <div
                     className="relative"
                     onMouseEnter={() => setHoveredFeature('discovery')}
@@ -404,7 +437,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                   </div>
                 )}
 
-                {candidateTile.hasArtifact && (
+                {activeTile.hasArtifact && (
                   <div
                     className="relative"
                     onMouseEnter={() => setHoveredFeature('artifact')}
@@ -432,7 +465,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
           </div>
 
           {/* Compact Influence Disc Option */}
-          {candidateTile.ancientsCount === 0 ? (
+          {activeTile.ancientsCount === 0 || isDraco ? (
             <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer shrink-0 select-none bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors">
               <input
                 type="checkbox"
@@ -442,6 +475,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 className="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
               />
               <span>Place Influence Disc</span>
+              {isDraco && activeTile.ancientsCount > 0 && (
+                <span className="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/80">
+                  🐉 Ancient Coexistence
+                </span>
+              )}
               <span className="text-[10px] font-mono text-cyan-400 font-bold">
                 ({player.influenceTrack.discsOnTrack} avail)
               </span>
@@ -463,14 +501,14 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
 
           <div className="flex items-center gap-2">
             <button
-              onClick={onDiscard}
+              onClick={() => onDiscard(hasDracoChoice ? selectedDracoIndex : undefined)}
               className="px-3.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/50 hover:text-rose-300 text-slate-400 hover:border-rose-800 text-xs font-semibold border border-slate-700 transition-colors"
             >
               Discard Tile (0 Credits)
             </button>
             <button
               disabled={!isConnected}
-              onClick={() => onConfirmPlacement(rotation, canClaimDisc)}
+              onClick={() => onConfirmPlacement(rotation, canClaimDisc, hasDracoChoice ? selectedDracoIndex : undefined)}
               className="px-5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all flex items-center gap-1.5"
             >
               <Check className="w-3.5 h-3.5" /> Confirm Placement

@@ -736,6 +736,17 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         stroke="#ffffff"
                         strokeWidth="1.5"
                       />
+                      {/* Setup Arrow pointing toward Galactic Center on Home Sectors */}
+                      {sector.sectorNumber >= 221 && sector.sectorNumber <= 232 && ((edge - sector.rotation) % 6 + 6) % 6 === 0 && (
+                        <path
+                          d="M -18 -4 L -13 0 L -18 4"
+                          fill="none"
+                          stroke="#f59e0b"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        />
+                      )}
                     </g>
                   );
                 })}

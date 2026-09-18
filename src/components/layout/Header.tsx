@@ -1,5 +1,7 @@
 import React from 'react';
 import { GameState } from '../../engine/types/state';
+import { computeCurrentScores } from '../../engine/rules/gameReducer';
+import { getTableNumber } from '../../engine/rules/persistence';
 import { Shield, Users, RefreshCw, Trophy, Radio, Cpu, LayoutDashboard } from 'lucide-react';
 
 interface HeaderProps {
@@ -9,6 +11,8 @@ interface HeaderProps {
   onNewGame: () => void;
   onOpenTechTray?: () => void;
   onOpenPlayerBoard?: () => void;
+  onOpenScoreboard?: () => void;
+  onOpenTableSession?: () => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -18,9 +22,13 @@ export const Header: React.FC<HeaderProps> = ({
   onNewGame,
   onOpenTechTray,
   onOpenPlayerBoard,
+  onOpenScoreboard,
+  onOpenTableSession,
 }) => {
   const activePlayer = state.players[state.activePlayerIndex];
   const viewedPlayer = state.players[selectedViewIndex];
+  const { scores } = computeCurrentScores(state);
+  const tableNum = getTableNumber(state);
 
   return (
     <header className="h-16 bg-slate-950/95 border-b border-slate-800 px-6 flex items-center justify-between text-slate-100 z-30 select-none">
@@ -50,10 +58,33 @@ export const Header: React.FC<HeaderProps> = ({
         <div className="text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-900 border border-slate-700 text-slate-300">
           {state.phase.replace('_', ' ')}
         </div>
+
+        {/* Table Session Badge */}
+        {onOpenTableSession && (
+          <button
+            onClick={onOpenTableSession}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-700/60 text-cyan-300 font-mono text-xs font-bold transition-all shadow"
+            title="Manage Table Sessions & Rejoin by Table Number"
+          >
+            <Radio className="w-3.5 h-3.5 text-cyan-400" />
+            <span>Table #{tableNum}</span>
+          </button>
+        )}
       </div>
 
       {/* Hotseat Table Commanders */}
       <div className="flex items-center gap-3">
+        {onOpenScoreboard && (
+          <button
+            onClick={onOpenScoreboard}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-950/40 hover:bg-amber-900/60 border border-amber-600/60 text-amber-300 hover:text-amber-200 text-xs font-bold transition-all shadow"
+            title="View Live Galactic Standings & Score Breakdown"
+          >
+            <Trophy className="w-3.5 h-3.5 text-amber-400" />
+            <span>Standings</span>
+          </button>
+        )}
+
         <span className="text-[11px] text-slate-400 font-semibold flex items-center gap-1">
           <Users className="w-3.5 h-3.5" /> Hotseat View:
         </span>
@@ -61,6 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
           {state.players.map((p, idx) => {
             const isTurn = state.activePlayerIndex === idx;
             const isViewed = selectedViewIndex === idx;
+            const vp = scores[p.id]?.total ?? 0;
 
             return (
               <button
@@ -73,10 +105,13 @@ export const Header: React.FC<HeaderProps> = ({
                 }`}
               >
                 <div
-                  className="w-2.5 h-2.5 rounded-full"
+                  className="w-2.5 h-2.5 rounded-full shrink-0"
                   style={{ backgroundColor: p.color }}
                 />
                 <span>{p.name.split(' ')[1] || p.name}</span>
+                <span className="text-[10px] text-amber-400 font-mono font-bold">
+                  {vp}★
+                </span>
                 {isTurn && (
                   <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
                 )}
@@ -88,7 +123,7 @@ export const Header: React.FC<HeaderProps> = ({
         {onOpenPlayerBoard && (
           <button
             onClick={onOpenPlayerBoard}
-            className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 text-xs font-bold transition-all shadow"
+            className="ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 text-xs font-bold transition-all shadow"
             title="Inspect Physical Player Board (Key: P)"
           >
             <LayoutDashboard className="w-3.5 h-3.5 text-cyan-400" />
@@ -99,7 +134,7 @@ export const Header: React.FC<HeaderProps> = ({
         {onOpenTechTray && (
           <button
             onClick={onOpenTechTray}
-            className="ml-2 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-pink-400 hover:text-pink-300 text-xs font-bold transition-all shadow"
+            className="ml-1 flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-pink-400 hover:text-pink-300 text-xs font-bold transition-all shadow"
             title="Inspect Physical Tech Tray"
           >
             <Cpu className="w-3.5 h-3.5 text-pink-400" />
@@ -112,7 +147,7 @@ export const Header: React.FC<HeaderProps> = ({
 
         <button
           onClick={onNewGame}
-          className="ml-2 p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
+          className="ml-1 p-2 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-slate-400 hover:text-slate-200 transition-colors"
           title="Start New Game"
         >
           <RefreshCw className="w-4 h-4" />

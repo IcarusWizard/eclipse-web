@@ -6,6 +6,7 @@ import { HexCoord, ShipType, PlanetResourceType } from './galaxy';
 
 export type ActionType =
   | 'EXPLORE'
+  | 'FINISH_EXPLORE'
   | 'RESEARCH'
   | 'UPGRADE'
   | 'BUILD'
@@ -30,12 +31,22 @@ export interface ExploreAction extends BaseAction {
   rotation: number; // 0 to 5
   discard?: boolean;
   claimInfluence?: boolean;
+  chosenTileIndex?: number; // for Draco (0: top, 1: second from top)
+  isSecondActivation?: boolean;
+}
+
+export interface FinishExploreAction extends BaseAction {
+  type: 'FINISH_EXPLORE';
 }
 
 export interface ResearchAction extends BaseAction {
   type: 'RESEARCH';
-  techId: string;
+  techId?: string;
   targetTrack?: 'military' | 'grid' | 'nano';
+  researches?: {
+    techId: string;
+    targetTrack?: 'military' | 'grid' | 'nano';
+  }[];
 }
 
 export interface UpgradeAction extends BaseAction {
@@ -121,6 +132,7 @@ export interface ClaimReputationTileAction extends BaseAction {
 
 export type GameAction =
   | ExploreAction
+  | FinishExploreAction
   | ResearchAction
   | UpgradeAction
   | BuildAction

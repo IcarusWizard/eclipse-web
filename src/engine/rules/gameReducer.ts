@@ -129,53 +129,87 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Target coordinate already contains an explored sector.' };
       }
 
-      // 3. Must have available disc to take action
-      if (player.influenceTrack.discsOnTrack <= 0) {
+      // 3. Must have available disc to take action (unless it is a free second activation, e.g. Planta)
+      const isSecondActivation = action.isSecondActivation || (state.pendingExploreActivations && state.pendingExploreActivations > 0);
+      if (!isSecondActivation && player.influenceTrack.discsOnTrack <= 0) {
         return { valid: false, error: 'No influence discs remaining on track to activate Explore.' };
       }
       return { valid: true };
     }
 
+    case 'FINISH_EXPLORE': {
+      if (!state.pendingExploreActivations || state.pendingExploreActivations <= 0) {
+        return { valid: false, error: 'No pending explore activations to finish.' };
+      }
+      return { valid: true };
+    }
+
     case 'RESEARCH': {
-      const tech = state.techSupply.find((t) => t.id === action.techId);
-      if (!tech) {
-        return { valid: false, error: 'Technology is not available in the tech supply.' };
-      }
-      if (player.techTrack.researched.some((t) => t.id === tech.id)) {
-        return { valid: false, error: 'Player has already researched this technology.' };
+      const researches = action.researches ?? (action.techId ? [{ techId: action.techId, targetTrack: action.targetTrack }] : []);
+      if (researches.length === 0) {
+        return { valid: false, error: 'Must specify at least one technology to research.' };
       }
 
-      let count = 0;
-      if (tech.category === 'military') {
-        count = player.techTrack.militaryCount;
-      } else if (tech.category === 'grid') {
-        count = player.techTrack.gridCount;
-      } else if (tech.category === 'nano') {
-        count = player.techTrack.nanoCount;
-      } else {
-        // Rare tech: discount based on chosen target track (or track with highest discount)
-        const targetTrack =
-          action.targetTrack ||
-          (player.techTrack.militaryCount >= player.techTrack.gridCount &&
-          player.techTrack.militaryCount >= player.techTrack.nanoCount
-            ? 'military'
-            : player.techTrack.gridCount >= player.techTrack.nanoCount
-            ? 'grid'
-            : 'nano');
-        count =
-          targetTrack === 'military'
-            ? player.techTrack.militaryCount
-            : targetTrack === 'grid'
-            ? player.techTrack.gridCount
-            : player.techTrack.nanoCount;
+      const maxResearch = player.faction.researchActivations ?? 1;
+      if (researches.length > maxResearch) {
+        return { valid: false, error: `Cannot research more than ${maxResearch} technologies in a single Research action.` };
       }
 
-      const cost = calculateTechCost(tech, count);
-      if (player.resources.science < cost) {
-        return { valid: false, error: `Insufficient science. Cost is ${cost}, but player has ${player.resources.science}.` };
-      }
       if (player.influenceTrack.discsOnTrack <= 0) {
         return { valid: false, error: 'No influence discs remaining on track to activate Research.' };
+      }
+
+      // Clone researched list & track counts to accurately compute progressive discounts
+      const simResearched = new Set(player.techTrack.researched.map((t) => t.id));
+      let simMilitary = player.techTrack.militaryCount;
+      let simGrid = player.techTrack.gridCount;
+      let simNano = player.techTrack.nanoCount;
+      let totalScienceCost = 0;
+
+      // Track remaining supply count to prevent researching more copies than available
+      const supplyCopyCount = new Map<string, number>();
+      for (const t of state.techSupply) {
+        supplyCopyCount.set(t.id, (supplyCopyCount.get(t.id) || 0) + 1);
+      }
+
+      for (const item of researches) {
+        const availableCount = supplyCopyCount.get(item.techId) || 0;
+        if (availableCount <= 0) {
+          return { valid: false, error: `Technology ${item.techId} is not available in the tech supply.` };
+        }
+        supplyCopyCount.set(item.techId, availableCount - 1);
+
+        if (simResearched.has(item.techId)) {
+          return { valid: false, error: `Player has already researched ${item.techId}.` };
+        }
+        simResearched.add(item.techId);
+
+        const tech = state.techSupply.find((t) => t.id === item.techId)!;
+        let count = 0;
+        if (tech.category === 'military') count = simMilitary++;
+        else if (tech.category === 'grid') count = simGrid++;
+        else if (tech.category === 'nano') count = simNano++;
+        else {
+          const targetTrack =
+            item.targetTrack ||
+            (simMilitary >= simGrid && simMilitary >= simNano
+              ? 'military'
+              : simGrid >= simNano
+              ? 'grid'
+              : 'nano');
+          if (targetTrack === 'military') count = simMilitary++;
+          else if (targetTrack === 'grid') count = simGrid++;
+          else count = simNano++;
+        }
+
+        totalScienceCost += calculateTechCost(tech, count);
+      }
+
+      if (player.resources.science < totalScienceCost) {
+        return {
+          valid: false,
+          error: `Insufficient science. Total cost is ${totalScienceCost}, but player has ${player.resources.science}.`,
+        };
       }
       return { valid: true };
     }
@@ -722,13 +756,44 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
   switch (action.type) {
     case 'EXPLORE': {
-      // Deduct disc
-      player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
-      player.actionsTakenThisRound += 1;
+      const isSecondActivation = action.isSecondActivation || (newState.pendingExploreActivations && newState.pendingExploreActivations > 0);
+      if (isSecondActivation) {
+        newState.pendingExploreActivations = 0;
+      } else {
+        // Deduct action disc
+        player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+        player.actionsTakenThisRound += 1;
+        const maxExplores = player.faction.exploreActivations ?? 1;
+        if (maxExplores > 1) {
+          newState.pendingExploreActivations = maxExplores - 1;
+        } else {
+          newState.pendingExploreActivations = 0;
+        }
+      }
 
       const ring = getRingFromCoord(action.targetCoord);
       const deck = ring === 1 ? newState.sectorDecks.ring1 : ring === 2 ? newState.sectorDecks.ring2 : newState.sectorDecks.ring3;
-      const drawnTile = deck.pop();
+
+      let drawnTile: SectorTile | undefined;
+      const isDraco = player.faction.id === 'descendants_of_draco';
+
+      // Draco Explore Ability: draw 2 tiles, choose 1, place other at bottom of deck
+      if (isDraco && deck.length >= 2) {
+        const tileTop = deck.pop()!;
+        const tileSecond = deck.pop()!;
+        const pickIndex = action.chosenTileIndex ?? 0;
+        if (pickIndex === 1) {
+          drawnTile = tileSecond;
+          deck.unshift(tileTop);
+          addLog(`${player.name} (Draco) drew 2 tiles, chose Sector ${drawnTile.sectorNumber}, and placed Sector ${tileTop.sectorNumber} at bottom of deck.`);
+        } else {
+          drawnTile = tileTop;
+          deck.unshift(tileSecond);
+          addLog(`${player.name} (Draco) drew 2 tiles, chose Sector ${drawnTile.sectorNumber}, and placed Sector ${tileSecond.sectorNumber} at bottom of deck.`);
+        }
+      } else {
+        drawnTile = deck.pop();
+      }
 
       if (!drawnTile) {
         addLog(`${player.name} tried to explore Ring ${ring}, but the sector deck is exhausted!`, 'system');
@@ -745,7 +810,6 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
       if (!action.discard && isConnected) {
         // Place on map (Draco can place influence discs in sectors with Ancients)
-        const isDraco = player.faction.id === 'descendants_of_draco';
         if ((drawnTile.ancientsCount === 0 || isDraco) && action.claimInfluence && player.influenceTrack.discsOnTrack > 0) {
           drawnTile.discOwner = player.id;
           player.influenceTrack.discsOnTrack -= 1;
@@ -775,9 +839,16 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
         newState.sectors.push(drawnTile);
       } else {
+        deck.unshift(drawnTile);
         addLog(`${player.name} discarded explored sector tile from Ring ${ring} to the bottom of the stack.`);
       }
 
+      break;
+    }
+
+    case 'FINISH_EXPLORE': {
+      newState.pendingExploreActivations = 0;
+      addLog(`${player.name} finished their exploration action.`);
       break;
     }
 
@@ -785,72 +856,76 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       player.actionsTakenThisRound += 1;
 
-      const techIndex = newState.techSupply.findIndex((t) => t.id === action.techId);
-      const tech = newState.techSupply[techIndex]!;
+      const researches = action.researches ?? (action.techId ? [{ techId: action.techId, targetTrack: action.targetTrack }] : []);
 
-      let targetTrack: 'military' | 'grid' | 'nano' = 'nano';
-      if (tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano') {
-        targetTrack = tech.category;
-      } else {
-        if (action.targetTrack) {
-          targetTrack = action.targetTrack;
+      for (const item of researches) {
+        const techIndex = newState.techSupply.findIndex((t) => t.id === item.techId);
+        if (techIndex < 0) continue;
+        const tech = newState.techSupply.splice(techIndex, 1)[0]!;
+
+        let targetTrack: 'military' | 'grid' | 'nano' = 'nano';
+        if (tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano') {
+          targetTrack = tech.category;
         } else {
-          if (
-            player.techTrack.militaryCount >= player.techTrack.gridCount &&
-            player.techTrack.militaryCount >= player.techTrack.nanoCount
-          ) {
-            targetTrack = 'military';
-          } else if (player.techTrack.gridCount >= player.techTrack.nanoCount) {
-            targetTrack = 'grid';
+          if (item.targetTrack) {
+            targetTrack = item.targetTrack;
           } else {
-            targetTrack = 'nano';
+            if (
+              player.techTrack.militaryCount >= player.techTrack.gridCount &&
+              player.techTrack.militaryCount >= player.techTrack.nanoCount
+            ) {
+              targetTrack = 'military';
+            } else if (player.techTrack.gridCount >= player.techTrack.nanoCount) {
+              targetTrack = 'grid';
+            } else {
+              targetTrack = 'nano';
+            }
           }
         }
-      }
 
-      const count =
-        targetTrack === 'military'
-          ? player.techTrack.militaryCount
-          : targetTrack === 'grid'
-          ? player.techTrack.gridCount
-          : player.techTrack.nanoCount;
+        const count =
+          targetTrack === 'military'
+            ? player.techTrack.militaryCount
+            : targetTrack === 'grid'
+            ? player.techTrack.gridCount
+            : player.techTrack.nanoCount;
 
-      const cost = calculateTechCost(tech, count);
-      player.resources.science -= cost;
-      player.techTrack.researched.push({ ...tech, placedTrack: targetTrack });
+        const cost = calculateTechCost(tech, count);
+        player.resources.science -= cost;
+        player.techTrack.researched.push({ ...tech, placedTrack: targetTrack });
 
-      if (targetTrack === 'military') player.techTrack.militaryCount += 1;
-      else if (targetTrack === 'grid') player.techTrack.gridCount += 1;
-      else if (targetTrack === 'nano') player.techTrack.nanoCount += 1;
+        if (targetTrack === 'military') player.techTrack.militaryCount += 1;
+        else if (targetTrack === 'grid') player.techTrack.gridCount += 1;
+        else if (targetTrack === 'nano') player.techTrack.nanoCount += 1;
 
-      // Special instantaneous tech abilities
-      if (tech.id === 'quantum_grid') {
-        player.influenceTrack.totalDiscs += 2;
-        player.influenceTrack.discsOnTrack += 2;
-        addLog(`${player.name} gained 2 bonus Influence Discs from Quantum Grid.`);
-      } else if (tech.id === 'advanced_robotics') {
-        player.influenceTrack.totalDiscs += 1;
-        player.influenceTrack.discsOnTrack += 1;
-        addLog(`${player.name} gained 1 bonus Influence Disc from Advanced Robotics.`);
-      } else if (tech.id === 'ancient_labs') {
-        if (newState.discoveryBag && newState.discoveryBag.length > 0) {
-          const disc = newState.discoveryBag.shift()!;
-          player.keptDiscoveryTiles.push(disc);
-          addLog(`${player.name} claimed Discovery Tile (${disc.name}) from Ancient Labs.`);
+        // Special instantaneous tech abilities
+        if (tech.id === 'quantum_grid') {
+          player.influenceTrack.totalDiscs += 2;
+          player.influenceTrack.discsOnTrack += 2;
+          addLog(`${player.name} gained 2 bonus Influence Discs from Quantum Grid.`);
+        } else if (tech.id === 'advanced_robotics') {
+          player.influenceTrack.totalDiscs += 1;
+          player.influenceTrack.discsOnTrack += 1;
+          addLog(`${player.name} gained 1 bonus Influence Disc from Advanced Robotics.`);
+        } else if (tech.id === 'ancient_labs') {
+          if (newState.discoveryBag && newState.discoveryBag.length > 0) {
+            const disc = newState.discoveryBag.shift()!;
+            player.keptDiscoveryTiles.push(disc);
+            addLog(`${player.name} claimed Discovery Tile (${disc.name}) from Ancient Labs.`);
+          }
+        } else if (tech.id === 'artifact_key') {
+          const controlledArtifacts = newState.sectors.filter(
+            (s) => s.discOwner === player.id && s.hasArtifact
+          ).length;
+          const reward = controlledArtifacts * 5;
+          player.resources.materials += reward;
+          addLog(
+            `${player.name} activated Artifact Key across ${controlledArtifacts} controlled Artifact(s) and received ${reward} Materials!`
+          );
         }
-      } else if (tech.id === 'artifact_key') {
-        const controlledArtifacts = newState.sectors.filter(
-          (s) => s.discOwner === player.id && s.hasArtifact
-        ).length;
-        const reward = controlledArtifacts * 5;
-        player.resources.materials += reward;
-        addLog(
-          `${player.name} activated Artifact Key across ${controlledArtifacts} controlled Artifact(s) and received ${reward} Materials!`
-        );
-      }
 
-      newState.techSupply.splice(techIndex, 1);
-      addLog(`${player.name} researched ${tech.name} for ${cost} Science (${targetTrack.toUpperCase()} track).`);
+        addLog(`${player.name} researched ${tech.name} for ${cost} Science (${targetTrack.toUpperCase()} track).`);
+      }
       break;
     }
 
@@ -1428,6 +1503,10 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
   // Turn management during ACTION_PHASE
   if (newState.phase === 'ACTION_PHASE') {
+    if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
+      // Multiple explore activations (e.g. Planta): do not advance turn yet!
+      return { success: true, newState };
+    }
     const activePlayers = newState.players.filter((p) => !p.isEliminated);
     const allPassed = activePlayers.every((p) => newState.passedPlayerIds.includes(p.id));
     if (allPassed) {
@@ -1820,9 +1899,23 @@ export function transitionToCleanup(state: GameState): void {
   }
 }
 
-export function calculateFinalScores(state: GameState): void {
-  const scores: Record<string, any> = {};
-  let winningId = state.players[0]!.id;
+export interface PlayerScoreBreakdown {
+  sectors: number;
+  monoliths: number;
+  reputation: number;
+  techs: number;
+  ambassadors: number;
+  discoveries: number;
+  speciesBonus: number;
+  total: number;
+}
+
+export function computeCurrentScores(state: GameState): {
+  scores: Record<string, PlayerScoreBreakdown>;
+  leaderPlayerId: string;
+} {
+  const scores: Record<string, PlayerScoreBreakdown> = {};
+  let leaderPlayerId = state.players[0]?.id || '';
   let maxScore = -999;
 
   for (const p of state.players) {
@@ -1878,12 +1971,17 @@ export function calculateFinalScores(state: GameState): void {
 
     if (total > maxScore) {
       maxScore = total;
-      winningId = p.id;
+      leaderPlayerId = p.id;
     }
   }
 
+  return { scores, leaderPlayerId };
+}
+
+export function calculateFinalScores(state: GameState): void {
+  const { scores, leaderPlayerId } = computeCurrentScores(state);
   state.finalScores = scores;
-  state.winnerId = winningId;
+  state.winnerId = leaderPlayerId;
 }
 
 export function getMaxExploreActivations(player: PlayerState): number {

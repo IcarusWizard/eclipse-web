@@ -99,6 +99,7 @@ export interface GameState {
   discoveryBag: DiscoveryTile[];
   activeCombat: CombatState | null;
   pendingExplore: PendingExplore | null;
+  pendingExploreActivations?: number; // for multi-activation explore (e.g. Planta)
   pendingDiscovery: PendingDiscovery | null;
   pendingCombatConquest: PendingCombatConquest | null;
   pendingReputationDraw?: PendingReputationDraw | null;

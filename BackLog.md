@@ -119,10 +119,49 @@
     - Horizontal photovoltaic solar collector wings.
     - Central station core hub.
     - Rotating habitat ring rendered with dashed stroke when unoccupied and solid player color when colonized.
-- [ ] Currently the home system orientation is wrong, in setup the arrow should toward center, meaning there is always a half wholehole to the center.
-- [ ] For planet, the explore action has two activation, currently it is only 1 (although the UI says 2).
-- [ ] Draco's explore is reveal two tiles and choose one to place, there is not implementation of it.
-- [ ] Draco can take control of a tile that has ancient, but the curent interface doesn't allow it.
-- [ ] Is there a save machinisim in the game, everytime I write this back log, then I go back to game the game fresh itself. Maybe I should be able to rejoin a game with some table numbers?
-- [ ] Hydran also have double research, which is also not implemented.
-- [ ] Include a live scoring always showing the total VP when the game ends now, so I can check if your scoring is implemented correctly.
+- [x] **Home System Orientation & Arrow Facing Galactic Center**:
+  - Implemented `getEdgeTowardCenter(coord: HexCoord): HexEdge` in `hexMath.ts` calculating the exact edge whose neighbor is closest to the Galactic Center (0, 0).
+  - Ensured all starting home sector definitions (Terran Union, Eridani, Hydran, Planta, Draco, Mechanema, Orion) in `sectorData.ts` have a printed wormhole on base Edge 0 (`wormholes[0] === true`).
+  - During game initialization (`setup.ts`), set `homeSector.rotation = getEdgeTowardCenter(startCoord)`, guaranteeing an open half-wormhole facing directly toward the Galactic Center across all player setups (1 to 6 players).
+  - In `HexGalaxyMap.tsx`, rendered the authentic physical board arrow chevron indicator pointing outward toward the center on the oriented edge.
+- [x] **Planta 2 Explore Activations**:
+  - Implemented the official Planta 2 Explore activations per action disc:
+    - 1st Explore deducts 1 action disc from the track and sets `pendingExploreActivations = 1`.
+    - Turn advancement is held so Planta immediately retains the active turn.
+    - Added a prominent top banner: `🌿 Planta Exploration: 1 Explore Activation remaining! Select an adjacent hex on the map to explore, or finish exploration.`
+    - 2nd Explore executes without deducting an additional action disc (`isSecondActivation`), clearing `pendingExploreActivations` and advancing the turn.
+    - Added `FINISH_EXPLORE` action allowing Planta to pass or forfeit the 2nd activation at any time.
+- [x] **Descendants of Draco Explore: Reveal 2 Sector Tiles & Pick 1**:
+  - Implemented the official Draco species ability: when exploring, Draco draws 2 sector tiles from the ring deck.
+  - Updated `ExploreModal.tsx` to display an interactive candidate tile picker banner allowing Draco commanders to inspect and toggle between Tile 1 and Tile 2.
+  - The chosen tile is placed (or discarded) on the map, while the unchosen tile is automatically placed face-down at the bottom of the sector stack (`deck.unshift(...)`) per official rules.
+- [x] **Descendants of Draco Claiming Sectors with Ancients**:
+  - Implemented peaceful Ancient coexistence in both Explore and Influence actions:
+    - In `ExploreModal.tsx`, Draco is permitted to place an Influence Disc even when `ancientsCount > 0`, displaying a `🐉 Ancient Coexistence` status badge.
+    - In `InfluenceModal.tsx`, updated `eligibleToClaim` and `gameReducer.ts` action validation so Draco can claim uncontrolled sectors containing Ancients without triggering hostility checks.
+    - Ancients do not pin Draco ships or prevent influence disc placement.
+- [x] **Game Persistence & Table Rejoining by Number**:
+  - Created `persistence.ts` and `TableSessionModal.tsx` providing automatic local storage auto-save on every state transition.
+  - Each game session is assigned a clean 3-digit table code (e.g. `Table #742` or custom query `?table=742`).
+  - Added a `Table #XXX` button in the top `Header.tsx` bar allowing commanders to:
+    - View active table number and copy direct shareable/rejoin links.
+    - Enter any table number to switch or resume a previous game.
+    - Browse and 1-click restore from a list of all saved browser games.
+    - State is completely preserved across browser refreshes, file edits, and Vite HMR reloads.
+- [x] **Hydran Progress Double Research**:
+  - Implemented Hydran's 2 Research activations per action disc:
+    - In `gameReducer.ts`, extended `RESEARCH` action to accept an array of researches (`researches: { techId: string; targetTrack?: ... }[]`) with progressive discount recalculation for 1 action disc.
+    - Updated `TechMarketModal.tsx` with an interactive Hydran Double Research staging panel allowing commanders to select up to 2 technologies, choose tracks for rare technologies, and inspect progressive science discounts in real-time.
+    - Includes single-click "Quick" research for individual techs and a unified "Research Selected (X 🔬, 1 Disc)" confirmation.
+- [x] **Live Galactic Standings & Scoreboard (Always Visible VP Breakdown)**:
+  - Created `computeCurrentScores(state: GameState)` calculating live endgame victory points at any instant:
+    - Sectors (printed VP on controlled hexes)
+    - Monoliths (3 VP each in controlled sectors)
+    - Reputation (sum of placed reputation tiles)
+    - Technologies (victory point crests on researched techs)
+    - Ambassadors (1 VP each)
+    - Discoveries (2 VP per kept tile & Warp Portals)
+    - Species Traits (+1 VP per controlled sector for Planta, +1 VP per Ancient ship on board for Draco)
+  - Created `LiveScoreboardModal.tsx` showing the complete itemized table, player rankings, crown badges, and scoring rules.
+  - Added a `🏆 Standings` button and individual live `★ X VP` score indicators on every commander button in `Header.tsx`.
+

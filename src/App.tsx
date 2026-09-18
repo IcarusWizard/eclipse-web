@@ -28,11 +28,22 @@ import { NewGameModal } from './components/setup/NewGameModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { SectorInspector } from './components/map/SectorInspector';
 import { PhysicalPlayerBoardModal } from './components/dashboard/PhysicalPlayerBoardModal';
+import { LiveScoreboardModal } from './components/dashboard/LiveScoreboardModal';
+import { TableSessionModal } from './components/layout/TableSessionModal';
+import { loadActiveGameState, saveGameState } from './engine/rules/persistence';
 
 export const App: React.FC = () => {
-  const [state, setState] = useState<GameState>(() => createInitialGame(2));
+  const [state, setState] = useState<GameState>(() => {
+    const loaded = loadActiveGameState();
+    return loaded || createInitialGame(2);
+  });
   const [selectedSector, setSelectedSector] = useState<SectorTile | null>(null);
   const [selectedViewIndex, setSelectedViewIndex] = useState<number>(0);
+
+  // Auto-save game state to localStorage on every state change
+  useEffect(() => {
+    saveGameState(state);
+  }, [state]);
 
   // Modal visibility states
   const [isExploreMode, setIsExploreMode] = useState<boolean>(false);
@@ -44,6 +55,8 @@ export const App: React.FC = () => {
   const [isBlueprintOpen, setIsBlueprintOpen] = useState<boolean>(false);
   const [isTechMarketOpen, setIsTechMarketOpen] = useState<boolean>(false);
   const [isPhysicalBoardOpen, setIsPhysicalBoardOpen] = useState<boolean>(false);
+  const [isScoreboardOpen, setIsScoreboardOpen] = useState<boolean>(false);
+  const [isTableSessionOpen, setIsTableSessionOpen] = useState<boolean>(false);
   const [isBuildOpen, setIsBuildOpen] = useState<boolean>(false);
   const [isMoveOpen, setIsMoveOpen] = useState<boolean>(false);
   const [isInfluenceOpen, setIsInfluenceOpen] = useState<boolean>(false);
@@ -118,8 +131,13 @@ export const App: React.FC = () => {
     setIsExploreMode(false);
   };
 
-  const handleConfirmExplorePlacement = (rotation: number, claimInfluence: boolean) => {
+  const handleConfirmExplorePlacement = (
+    rotation: number,
+    claimInfluence: boolean,
+    chosenTileIndex?: number
+  ) => {
     if (!pendingExploreCoords) return;
+    const isSecond = !!(state.pendingExploreActivations && state.pendingExploreActivations > 0);
     const res = executeAction(state, {
       type: 'EXPLORE',
       playerId: activePlayer.id,
@@ -127,20 +145,28 @@ export const App: React.FC = () => {
       targetCoord: pendingExploreCoords.target,
       rotation,
       claimInfluence,
+      chosenTileIndex,
+      isSecondActivation: isSecond,
     });
 
     if (res.success) {
       setState(res.newState);
       setPendingExploreCoords(null);
-      // Synchronize viewed player to new active player if turn passed
-      setSelectedViewIndex(res.newState.activePlayerIndex);
+      if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
+        setIsExploreMode(true);
+        showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
+      } else {
+        // Synchronize viewed player to new active player if turn passed
+        setSelectedViewIndex(res.newState.activePlayerIndex);
+      }
     } else {
       showToast(res.error || 'Exploration failed.');
     }
   };
 
-  const handleDiscardExploreTile = () => {
+  const handleDiscardExploreTile = (chosenTileIndex?: number) => {
     if (!pendingExploreCoords) return;
+    const isSecond = !!(state.pendingExploreActivations && state.pendingExploreActivations > 0);
     const res = executeAction(state, {
       type: 'EXPLORE',
       playerId: activePlayer.id,
@@ -148,21 +174,53 @@ export const App: React.FC = () => {
       targetCoord: pendingExploreCoords.target,
       rotation: 0,
       discard: true,
+      chosenTileIndex,
+      isSecondActivation: isSecond,
     });
     if (res.success) {
       setState(res.newState);
       setPendingExploreCoords(null);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
+      if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
+        setIsExploreMode(true);
+        showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
+      } else {
+        setSelectedViewIndex(res.newState.activePlayerIndex);
+      }
     }
   };
 
-  // Research flow
-  const handleResearchTech = (techId: string, targetTrack?: 'military' | 'grid' | 'nano') => {
+  const handleFinishExplore = () => {
+    const res = executeAction(state, {
+      type: 'FINISH_EXPLORE',
+      playerId: activePlayer.id,
+    });
+    if (res.success) {
+      setState(res.newState);
+      setIsExploreMode(false);
+      setPendingExploreCoords(null);
+      setSelectedViewIndex(res.newState.activePlayerIndex);
+      showToast('Finished exploration action.');
+    } else {
+      showToast(res.error || 'Could not finish exploration.');
+    }
+  };
+
+  // Research flow (supports single tech or array of technologies for Hydran double research)
+  const handleResearchTech = (
+    researchesOrId: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
+    targetTrack?: 'military' | 'grid' | 'nano'
+  ) => {
+    let researches: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[];
+    if (Array.isArray(researchesOrId)) {
+      researches = researchesOrId;
+    } else {
+      researches = [{ techId: researchesOrId, targetTrack }];
+    }
+
     const res = executeAction(state, {
       type: 'RESEARCH',
       playerId: activePlayer.id,
-      techId,
-      targetTrack,
+      researches,
     });
     if (res.success) {
       setState(res.newState);
@@ -696,6 +754,21 @@ export const App: React.FC = () => {
     return deck[deck.length - 1] || null;
   }, [pendingExploreCoords, state.sectorDecks]);
 
+  const candidateTiles = React.useMemo(() => {
+    if (!pendingExploreCoords) return undefined;
+    const ring = getRingFromCoord(pendingExploreCoords.target);
+    const deck =
+      ring === 1
+        ? state.sectorDecks.ring1
+        : ring === 2
+        ? state.sectorDecks.ring2
+        : state.sectorDecks.ring3;
+    if (activePlayer.faction.id === 'descendants_of_draco' && deck.length >= 2) {
+      return [deck[deck.length - 1], deck[deck.length - 2]];
+    }
+    return undefined;
+  }, [pendingExploreCoords, state.sectorDecks, activePlayer.faction.id]);
+
   const sourceSector = React.useMemo(() => {
     if (!pendingExploreCoords) return null;
     return state.sectors.find(
@@ -715,7 +788,26 @@ export const App: React.FC = () => {
         onNewGame={() => setIsNewGameOpen(true)}
         onOpenTechTray={() => setIsTechMarketOpen(true)}
         onOpenPlayerBoard={() => setIsPhysicalBoardOpen(true)}
+        onOpenScoreboard={() => setIsScoreboardOpen(true)}
+        onOpenTableSession={() => setIsTableSessionOpen(true)}
       />
+
+      {/* Planta 2nd Activation Banner */}
+      {state.pendingExploreActivations && state.pendingExploreActivations > 0 && (
+        <div className="bg-emerald-950/90 border-b border-emerald-600 px-6 py-2 flex items-center justify-between z-40 text-xs text-emerald-200">
+          <div className="flex items-center gap-2">
+            <span className="text-base">🌿</span>
+            <span className="font-bold text-white">Planta Exploration:</span>
+            <span>1 Explore Activation remaining! Select an adjacent hex on the map to explore, or finish exploration.</span>
+          </div>
+          <button
+            onClick={handleFinishExplore}
+            className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-emerald-800 text-emerald-300 hover:text-white font-bold border border-emerald-700 transition-colors shadow"
+          >
+            Finish Explore
+          </button>
+        </div>
+      )}
 
       {/* Main Playing Area */}
       <div className="relative flex-1 w-full h-full overflow-hidden">
@@ -839,6 +931,7 @@ export const App: React.FC = () => {
           fromCoord={pendingExploreCoords.from}
           targetCoord={pendingExploreCoords.target}
           candidateTile={candidateTile}
+          candidateTiles={candidateTiles}
           sourceSector={sourceSector}
           rotation={exploreRotation}
           onRotate={setExploreRotation}
@@ -983,6 +1076,29 @@ export const App: React.FC = () => {
             setIsPhysicalBoardOpen(false);
             setIsTechMarketOpen(true);
           }}
+        />
+      )}
+
+      {isScoreboardOpen && (
+        <LiveScoreboardModal
+          state={state}
+          onClose={() => setIsScoreboardOpen(false)}
+          onSelectPlayer={(idx) => {
+            setSelectedViewIndex(idx);
+            setIsScoreboardOpen(false);
+          }}
+        />
+      )}
+
+      {isTableSessionOpen && (
+        <TableSessionModal
+          currentState={state}
+          onJoinTable={(loaded) => {
+            setState(loaded);
+            setSelectedViewIndex(loaded.activePlayerIndex);
+          }}
+          onNewTable={() => setIsNewGameOpen(true)}
+          onClose={() => setIsTableSessionOpen(false)}
         />
       )}
 

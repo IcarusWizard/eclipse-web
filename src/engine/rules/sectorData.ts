@@ -175,7 +175,7 @@ export const HUMAN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     ring: 2,
     victoryPoints: 3,
     hasArtifact: true,
-    wormholes: [false, true, true, false, true, true],
+    wormholes: [true, true, false, true, true, false],
     planets: [
       { id: 'tu_p1', resource: 'money', isAdvanced: false },
       { id: 'tu_p2', resource: 'science', isAdvanced: false },

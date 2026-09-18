@@ -9,6 +9,7 @@ import { SectorTile, HexCoord } from '../types/galaxy';
 import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, generateSectorDecks } from './sectorData';
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
 import { createDefaultHumanBlueprints, createFactionBlueprints } from './shipValidation';
+import { getEdgeTowardCenter } from './hexMath';
 
 export const HUMAN_FACTIONS: FactionInfo[] = [
   {
@@ -371,13 +372,15 @@ export function createInitialGame(
 
     const startShipType = faction.id === 'orion_hegemony' ? 'cruiser' : 'interceptor';
 
+    const centerEdge = getEdgeTowardCenter(startCoord);
+
     const homeSector: SectorTile = {
       id: `home_sector_${playerId}`,
       sectorNumber: homeConfig.sectorNumber || 221,
       name: homeConfig.name || faction.name,
       ring: 2,
       coord: startCoord,
-      rotation: 0,
+      rotation: centerEdge,
       wormholes: homeConfig.wormholes || [true, false, true, false, true, false],
       planets,
       victoryPoints: homeConfig.victoryPoints || 3,
