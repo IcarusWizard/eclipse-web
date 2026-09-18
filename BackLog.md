@@ -174,3 +174,5 @@
 - [ ] I would like some options to trigger a dashline layout for the map, so the player can easily see how many tiles it is between one and the other when they are not explored yet.
 - [ ] You should implement the gaduriance in a game where we don't have full 6 players (their position should be replaced by the gadience)
 - [ ] In think the GCDS is wrongly implemented with the weapons, it should be 4 yellow dices.
+- [ ] When draco choose from the two explore system, the preview on the map doesn't change together when I switch the system, the second system only shows up when I select to place the second system.
+- [ ] There is a maxima number of ring 3 tiles available given different numbers of players. When all the tiles possible to be explore are gone, the player should be prevent to do more explore actions. There should also be a place to hind the player how much ring 3 tiles are left.
