@@ -227,4 +227,7 @@
   - Updated `ShipBlueprintEditor.tsx` to restrict the component supply palette to only items currently unlocked and available to the player (`isStandard || isTechResearched || isAncientUnlocked`).
   - Standard base components (`nuclear_source`, `nuclear_drive`, `electron_computer`, `ion_cannon`, `hull`), researched technologies, and kept Ancient discovery modules are clearly displayed.
   - Added category filter chips (`All`, `Cannons`, `Missiles`, `Shields`, `Computers`, `Drives`, `Power`, `Hulls`) for rapid blueprint customisation without cluttering the UI with locked parts.
-
+- [ ] The discovry tile should be hidden before flip, no one should peak it.
+- [ ] The bankcrapt is also not impleneted correctly, I feel like some resource are automatically converted to feed into the bankcrupt. Also, it is better to let the player to see the map when decide which influence disc to take off.
+- [ ] The combat is also player triggered, only the player that control the ship can demand the attack or retreat of the ship, the nutral ship can be demand by any players.
+- [ ] there should be a confirm button for the player to finalise the actions before actually pass the turn to next player so that if something is done wrong they can revert it. But some action reveal new information cannot be revertted, for example explore action knowing the tile already.
