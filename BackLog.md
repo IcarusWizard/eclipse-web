@@ -119,4 +119,10 @@
     - Horizontal photovoltaic solar collector wings.
     - Central station core hub.
     - Rotating habitat ring rendered with dashed stroke when unoccupied and solid player color when colonized.
-
+- [ ] Currently the home system orientation is wrong, in setup the arrow should toward center, meaning there is always a half wholehole to the center.
+- [ ] For planet, the explore action has two activation, currently it is only 1 (although the UI says 2).
+- [ ] Draco's explore is reveal two tiles and choose one to place, there is not implementation of it.
+- [ ] Draco can take control of a tile that has ancient, but the curent interface doesn't allow it.
+- [ ] Is there a save machinisim in the game, everytime I write this back log, then I go back to game the game fresh itself. Maybe I should be able to rejoin a game with some table numbers?
+- [ ] Hydran also have double research, which is also not implemented.
+- [ ] Include a live scoring always showing the total VP when the game ends now, so I can check if your scoring is implemented correctly.
