@@ -93,4 +93,8 @@
     - 99 regular + 15 rare = 114 tiles total.
   - Added official setup drawing (`drawTechTilesForSetup` per rulebook page 5: 12 regular tiles for 2p, 14 for 3p, 16 for 4p, etc., rare tiles placed on tray bottom row without counting against limit) vs round cleanup drawing (`drawTechTilesForRound` per rulebook page 25: 5 regular tiles for 2p, 7 for 4p, etc.).
   - Corrected ship part attributes for `conifold_field` (3 Hull, 2 power consumed), `soliton_cannon` (blue die dealing 3 damage, 3 power consumed), and `transition_drive` (speed 3, 0 power consumed).
-
+- [ ] I still think the initive may be wrong, my crusier with Soliton Cannon, Gluon Computer, Improved Hull, Tachyon Source, Fusion Drive, Improved Hull, I don't understand how does it get +6 INT. It is also good to mark how much INT each component is providing.
+- [ ] the maintainance cost is wrong, when I place all the disc, the cost should be 30 not 25. 
+- [ ] We get the most things for the game rule, I now want to include all the alien factions. Their specially setup and rules are in the rulebook. Please implement and allow each player to choose the faction one by one before the game starts.
+- [ ] The current map is not clear how much VP each sector offers since sometimes it can be covered by other tiles. I think the name of the tile is not important, maybe move them to the details panel but only shows the important informations on the map?
+- [ ] Currently the orbeitor is implemented with the same icon on the map which is not clear, consider design a different icon for it.
