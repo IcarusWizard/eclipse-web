@@ -17,12 +17,14 @@ import {
 
 interface LiveScoreboardModalProps {
   state: GameState;
+  viewerPlayerId?: string;
   onClose: () => void;
   onSelectPlayer?: (playerIndex: number) => void;
 }
 
 export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
   state,
+  viewerPlayerId,
   onClose,
   onSelectPlayer,
 }) => {
@@ -135,6 +137,10 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
                   };
                   const isLeader = rankIdx === 0;
                   const originalIndex = state.players.findIndex((p) => p.id === player.id);
+                  const isSecretReputation =
+                    state.phase !== 'GAME_OVER' &&
+                    Boolean(viewerPlayerId) &&
+                    player.id !== viewerPlayerId;
 
                   return (
                     <tr
@@ -192,7 +198,18 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
 
                       {/* Reputation */}
                       <td className="py-3.5 px-3 text-center font-mono font-semibold text-slate-200">
-                        {b.reputation > 0 ? (
+                        {isSecretReputation ? (
+                          player.reputationTiles.length > 0 ? (
+                            <span
+                              className="text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 text-[11px]"
+                              title={`${player.reputationTiles.length} secret reputation tile(s)`}
+                            >
+                              ? ({player.reputationTiles.length} {player.reputationTiles.length === 1 ? 'tile' : 'tiles'})
+                            </span>
+                          ) : (
+                            '0'
+                          )
+                        ) : b.reputation > 0 ? (
                           <span className="text-rose-400 font-bold">+{b.reputation}</span>
                         ) : (
                           '0'
@@ -239,9 +256,18 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
 
                       {/* Total VP */}
                       <td className="py-3.5 px-4 text-right">
-                        <span className="font-display font-black text-base text-amber-400 drop-shadow">
-                          {b.total} VP
-                        </span>
+                        {isSecretReputation && player.reputationTiles.length > 0 ? (
+                          <span
+                            className="font-display font-black text-base text-amber-300 drop-shadow"
+                            title="Total known VP plus secret opponent reputation tiles"
+                          >
+                            {b.total - b.reputation} + ? VP
+                          </span>
+                        ) : (
+                          <span className="font-display font-black text-base text-amber-400 drop-shadow">
+                            {b.total} VP
+                          </span>
+                        )}
                       </td>
                     </tr>
                   );

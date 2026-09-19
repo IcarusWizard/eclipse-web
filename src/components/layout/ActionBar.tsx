@@ -13,6 +13,7 @@ import {
   Check,
   Undo2,
   Lock,
+  Sparkles,
 } from 'lucide-react';
 
 import {
@@ -79,6 +80,12 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <span className="text-xs font-semibold text-slate-200 truncate" title={pendingConfirmation.description}>
             {pendingConfirmation.description}
           </span>
+          {pendingConfirmation.actionType === 'EXPLORE' && activePlayer.colonyShips.ready > 0 && (
+            <span className="text-[10px] text-cyan-300 font-medium flex items-center gap-1 mt-0.5">
+              <Sparkles className="w-3 h-3 text-cyan-400" />
+              You may colonize hex planets before confirming!
+            </span>
+          )}
         </div>
 
         {/* Controls */}

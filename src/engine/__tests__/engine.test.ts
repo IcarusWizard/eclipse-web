@@ -33,6 +33,8 @@ import {
   calculateFinalScores,
   computeCurrentScores,
   transitionToUpkeep,
+  transitionToCleanup,
+  resolveAttackingPopulationAndConquest,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -2504,9 +2506,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const updatedSec = stepRes.newState.sectors.find((s) => s.id === combatSec.id)!;
         // Neutron bombs should have auto-annihilated all 2 P2 population cubes
         expect(updatedSec.planets.every((p) => !p.colonizedBy)).toBe(true);
-        // P2 cubes returned to player board
-        expect(stepRes.newState.players[1]!.population.money.cubesOnBoard).toBe(11);
-        expect(stepRes.newState.players[1]!.population.science.cubesOnBoard).toBe(11);
+        // P2 cubes placed in Casualty Slot (income preserved until Cleanup)
+        expect(stepRes.newState.players[1]!.graveyardCubes?.money).toBe(1);
+        expect(stepRes.newState.players[1]!.graveyardCubes?.science).toBe(1);
+        expect(stepRes.newState.players[1]!.population.money.cubesOnBoard).toBe(10);
+        expect(stepRes.newState.players[1]!.population.science.cubesOnBoard).toBe(10);
         // P2 Influence disc was overthrown and returned to track
         expect(updatedSec.discOwner).toBeUndefined();
         expect(stepRes.newState.players[1]!.influenceTrack.discsOnTrack).toBe(11);
@@ -2571,7 +2575,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(updatedSec.planets[0]!.colonizedBy).toBeUndefined(); // Population wiped
         expect(updatedSec.discOwner).toBeUndefined(); // Disc overthrown
         expect(pass2.newState.players[1]!.influenceTrack.discsOnTrack).toBe(11); // Disc returned to P2
-        expect(pass2.newState.players[1]!.population.money.cubesOnBoard).toBe(10); // Cube returned to P2
+        expect(pass2.newState.players[1]!.graveyardCubes?.money).toBe(1); // Held in Casualty Slot until Cleanup
+        expect(pass2.newState.players[1]!.population.money.cubesOnBoard).toBe(9); // Income preserved!
         expect(pass2.newState.pendingCombatConquest?.winnerPlayerId).toBe(p1.id);
         expect(pass2.newState.pendingCombatConquest?.sectorId).toBe(targetSec.id);
       });
@@ -3303,7 +3308,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         const initialDiscs = planta.influenceTrack.discsOnTrack;
         const homeSector = game.sectors.find((s) => s.id === `home_sector_${planta.id}`)!;
-        const targetCoord1 = { q: homeSector.coord.q, r: homeSector.coord.r - 1 };
+        const targetCoord1 = { q: homeSector.coord.q + 1, r: homeSector.coord.r };
+
+        // Position tiles without discovery on top so discovery prompts do not interfere with pure activation testing
+        const noDisc = game.sectorDecks.ring2.filter((t) => !t.hasDiscovery);
+        if (noDisc.length >= 2) {
+          game.sectorDecks.ring2 = game.sectorDecks.ring2.filter((t) => t.hasDiscovery).concat(noDisc);
+        }
 
         // 1st Explore: Costs 1 action disc, leaves 1 pending activation, does NOT advance turn
         const res1 = executeAction(game, {
@@ -3331,7 +3342,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(finishRes.newState.activePlayerIndex).toBe(1); // Turn advanced to Terran!
 
         // Option B: 2nd Explore without spending an action disc
-        const targetCoord2 = { q: homeSector.coord.q + 1, r: homeSector.coord.r - 1 };
+        const targetCoord2 = { q: homeSector.coord.q - 1, r: homeSector.coord.r + 1 };
         const res2 = executeAction(res1.newState, {
           type: 'EXPLORE',
           playerId: planta.id,
@@ -3902,6 +3913,34 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const updatedP1 = tradeRes.newState.players[0]!;
         expect(updatedP1.resources.materials).toBe(matsBeforeTrade - 4);
         expect(updatedP1.resources.money).toBe(p1.resources.money + 2);
+
+        // Any-to-any: Trade Science -> Materials
+        const matsBeforeTrade2 = updatedP1.resources.materials;
+        const sciBeforeTrade2 = updatedP1.resources.science;
+        const tradeRes2 = executeAction(tradeRes.newState, {
+          type: 'TRADE',
+          playerId: p1.id,
+          fromResource: 'science',
+          toResource: 'material',
+          amount: 2, // 2 sci -> +1 mat
+        });
+        expect(tradeRes2.success).toBe(true);
+        const p1AfterTrade2 = tradeRes2.newState.players[0]!;
+        expect(p1AfterTrade2.resources.science).toBe(sciBeforeTrade2 - 2);
+        expect(p1AfterTrade2.resources.materials).toBe(matsBeforeTrade2 + 1);
+
+        // Also test Money -> Science when player has sufficient credits
+        p1AfterTrade2.resources.money = 10;
+        const tradeRes3 = executeAction(tradeRes2.newState, {
+          type: 'TRADE',
+          playerId: p1.id,
+          fromResource: 'money',
+          toResource: 'science',
+          amount: 4, // 4 money -> +2 sci
+        });
+        expect(tradeRes3.success).toBe(true);
+        expect(tradeRes3.newState.players[0]!.resources.money).toBe(6);
+        expect(tradeRes3.newState.players[0]!.resources.science).toBe(p1AfterTrade2.resources.science + 2);
       });
 
       it('25. verifies Player-Controlled Combat Commands: only ship owner commands ship attack/retreat, neutral ships commanded by any player', () => {
@@ -4206,6 +4245,113 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // 5. Empty description throws error
         expect(() => formatBugReportLine({ description: '   ' })).toThrow();
+      });
+
+      it('30. verifies Population Casualty Slot & Upkeep Protection: 1 dmg = 1 cube, held in Casualty Slot until Cleanup', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // Sector with 2 P2 population cubes (1 money, 1 science)
+        const sec: SectorTile = {
+          id: 'test_sec_casualty',
+          sectorNumber: 301,
+          ring: 2,
+          coord: { q: 1, r: -2 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          discOwner: p2.id,
+          planets: [
+            { id: 'p_m', resource: 'money', isAdvanced: false, colonizedBy: p2.id, colonizedResource: 'money' },
+            { id: 'p_s', resource: 'science', isAdvanced: false, colonizedBy: p2.id, colonizedResource: 'science' },
+          ],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: false,
+          discoveryClaimed: false,
+          ancientsCount: 0,
+          ships: [
+            { id: 'p1_cruiser', ownerId: p1.id, type: 'cruiser', damage: 0 },
+          ],
+        };
+        game.sectors.push(sec);
+        p2.influenceTrack.discsOnTrack = 10;
+        p2.population.money.cubesOnBoard = 10;
+        p2.population.science.cubesOnBoard = 10;
+        p2.resources.money = 5;
+
+        // P1 has Neutron Bombs for guaranteed bombardment resolution in test
+        p1.techTrack.researched.push(MILITARY_TECHS.find((t) => t.id === 'neutron_bombs')!);
+
+        // Resolve attack on population
+        resolveAttackingPopulationAndConquest(game, sec, p1.id);
+
+        // 1. Both cubes wiped
+        expect(sec.planets.every((p) => !p.colonizedBy)).toBe(true);
+
+        // 2. Both cubes are in P2's Casualty Slot (graveyardCubes), NOT yet on player board track!
+        expect(p2.graveyardCubes?.money).toBe(1);
+        expect(p2.graveyardCubes?.science).toBe(1);
+        expect(p2.population.money.cubesOnBoard).toBe(10); // Track position unchanged during round!
+        expect(p2.population.science.cubesOnBoard).toBe(10);
+
+        // 3. Upkeep Income calculation uses current cubesOnBoard, so income is NOT prematurely reduced!
+        expect(p2.population.money.cubesOnBoard).toBe(10); // Track position unchanged during round!
+
+        // 4. Transition to Cleanup restores graveyard cubes back to the population track
+        transitionToCleanup(game);
+        expect(p2.graveyardCubes?.money).toBe(0);
+        expect(p2.graveyardCubes?.science).toBe(0);
+        expect(p2.population.money.cubesOnBoard).toBe(11); // Restored during Cleanup!
+        expect(p2.population.science.cubesOnBoard).toBe(11);
+      });
+
+      it('31. verifies Any-to-Any Resource Exchange (Trade) including Money to Science/Materials', () => {
+        const game = createInitialGame(2);
+        const player = game.players[0]!;
+        // Human trade ratio is 2:1
+        expect(player.faction.tradeRatio).toBe(2);
+
+        player.resources = { money: 10, science: 5, materials: 4 };
+
+        // Trade 4 Money for 2 Science
+        const res1 = executeAction(game, {
+          type: 'TRADE',
+          playerId: player.id,
+          fromResource: 'money',
+          toResource: 'science',
+          amount: 4,
+        });
+
+        expect(res1.success).toBe(true);
+        expect(res1.newState.players[0]!.resources.money).toBe(6);
+        expect(res1.newState.players[0]!.resources.science).toBe(7); // +2 Science
+        expect(res1.newState.players[0]!.resources.materials).toBe(4);
+
+        // Trade 2 Science for 1 Material
+        const res2 = executeAction(res1.newState, {
+          type: 'TRADE',
+          playerId: player.id,
+          fromResource: 'science',
+          toResource: 'material',
+          amount: 2,
+        });
+
+        expect(res2.success).toBe(true);
+        expect(res2.newState.players[0]!.resources.science).toBe(5);
+        expect(res2.newState.players[0]!.resources.materials).toBe(5); // +1 Material
+      });
+
+      it('32. verifies Monolith presence awards +3 VP to sector control scoring', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+
+        const secWithMonolith = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+        secWithMonolith.hasMonolith = true;
+
+        const scores = computeCurrentScores(game);
+        // p1 should receive 3 VP in the monoliths breakdown category!
+        expect(scores.scores[p1.id]!.monoliths).toBe(3);
       });
     });
   });

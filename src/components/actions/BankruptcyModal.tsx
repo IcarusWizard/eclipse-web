@@ -14,6 +14,7 @@ import {
   Maximize2,
   RefreshCw,
   Coins,
+  CheckCircle2,
 } from 'lucide-react';
 
 interface BankruptcyModalProps {
@@ -47,27 +48,28 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
   const tradeRatio = player.faction.tradeRatio || 2;
   const canTradeMaterials = player.resources.materials >= tradeRatio;
   const canTradeScience = player.resources.science >= tradeRatio;
+  const liveDeficit = player.resources.money < 0 ? Math.abs(player.resources.money) : 0;
 
   // Minimized Bottom HUD Bar allows full interaction with the Galaxy Map
   if (isMinimized) {
     return (
       <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-50 w-full max-w-4xl px-4 animate-in fade-in slide-in-from-bottom-4 duration-200">
-        <div className="bg-slate-950/95 border-2 border-rose-600 rounded-2xl p-4 shadow-2xl shadow-rose-950/80 backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-slate-100">
+        <div className={`bg-slate-950/95 border-2 ${liveDeficit === 0 ? 'border-emerald-500' : 'border-rose-600'} rounded-2xl p-4 shadow-2xl backdrop-blur-md flex flex-wrap items-center justify-between gap-3 text-slate-100`}>
           <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-rose-600/20 text-rose-400 border border-rose-600/40 shrink-0">
-              <AlertTriangle className="w-5 h-5 animate-pulse" />
+            <div className={`p-2 rounded-xl ${liveDeficit === 0 ? 'bg-emerald-600/20 text-emerald-400 border border-emerald-600/40' : 'bg-rose-600/20 text-rose-400 border border-rose-600/40'} shrink-0`}>
+              {liveDeficit === 0 ? <CheckCircle2 className="w-5 h-5" /> : <AlertTriangle className="w-5 h-5 animate-pulse" />}
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <span className="font-display font-black text-rose-400 text-sm">
-                  TACTICAL BANKRUPTCY
+                <span className={`font-display font-black text-sm ${liveDeficit === 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {liveDeficit === 0 ? 'DEFICIT RESOLVED' : 'TACTICAL BANKRUPTCY'}
                 </span>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 font-mono font-bold">
-                  Deficit: -{deficit} 💰
+                <span className={`text-xs px-2 py-0.5 rounded-full font-mono font-bold ${liveDeficit === 0 ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300' : 'bg-rose-500/20 border border-rose-500/40 text-rose-300'}`}>
+                  Deficit: {liveDeficit === 0 ? '0 (Solvent)' : `-${liveDeficit}`} 💰
                 </span>
               </div>
               <p className="text-[11px] text-slate-300">
-                Inspect map or click sectors to abandon influence. You can also trade resources.
+                {liveDeficit === 0 ? 'Treasury is balanced! Expand to continue the round.' : 'Inspect map or click sectors to abandon influence. You can also trade resources.'}
               </p>
             </div>
           </div>
@@ -125,15 +127,17 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-lg sm:text-xl font-display font-black tracking-wide text-rose-400">
-                  Tactical Bankruptcy Required
+                <h2 className={`text-lg sm:text-xl font-display font-black tracking-wide ${liveDeficit === 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                  {liveDeficit === 0 ? 'Deficit Resolved — Solvency Restored!' : 'Tactical Bankruptcy Required'}
                 </h2>
-                <span className="text-xs px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-300 font-mono font-bold">
-                  Deficit: -{deficit} 💰
+                <span className={`text-xs px-2 py-0.5 rounded-full font-mono font-bold ${liveDeficit === 0 ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-300' : 'bg-rose-500/20 border border-rose-500/40 text-rose-300'}`}>
+                  Deficit: {liveDeficit === 0 ? '0 (Solvent)' : `-${liveDeficit}`} 💰
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Commander <span className="font-semibold text-slate-200">{player.name}</span>, your treasury is depleted. Voluntarily trade resources or abandon controlled sectors to balance upkeep.
+                {liveDeficit === 0
+                  ? `Commander ${player.name}, your budget deficit has been eliminated!`
+                  : `Commander ${player.name}, your treasury is depleted. Voluntarily trade resources or abandon controlled sectors to balance upkeep.`}
               </p>
             </div>
           </div>

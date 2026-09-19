@@ -71,10 +71,30 @@ export interface PendingDiscovery {
   playerId: string;
 }
 
+export interface BombardmentRoll {
+  shipType: string;
+  diceColor: string;
+  roll: number;
+  isHit: boolean;
+  damage: number;
+}
+
+export interface BombardmentSummary {
+  attackerName: string;
+  defenderName: string;
+  totalDamage: number;
+  rolls: BombardmentRoll[];
+  cubesDestroyed: { resource: string; planetIndex: number }[];
+  cubesRemaining: number;
+  hasNeutronBombs?: boolean;
+}
+
 export interface PendingCombatConquest {
   sectorId: string;
   winnerPlayerId: string;
   discoveryToClaim?: DiscoveryTile;
+  bombardmentSummary?: BombardmentSummary;
+  canClaimInfluence?: boolean;
 }
 
 export interface PendingArtifactReward {

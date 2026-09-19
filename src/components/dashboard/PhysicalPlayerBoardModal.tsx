@@ -71,6 +71,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   const moneyForecast = useMemo(() => getIncomeForecast(player.population.money.cubesOnBoard), [player.population.money.cubesOnBoard]);
   const sciForecast = useMemo(() => getIncomeForecast(player.population.science.cubesOnBoard), [player.population.science.cubesOnBoard]);
   const matForecast = useMemo(() => getIncomeForecast(player.population.material.cubesOnBoard), [player.population.material.cubesOnBoard]);
+  const controlledArtifactsCount = useMemo(() => (sectors || []).filter((s) => s.discOwner === player.id && s.hasArtifact).length, [sectors, player.id]);
 
   const isActive = player.id === activePlayerId;
 
@@ -784,6 +785,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               <div className="text-[9px] text-slate-400 font-mono mt-0.5">
                                 Base: {tech.baseCost} sci
                               </div>
+                              {tech.id === 'artifact_key' && (
+                                <div className="text-[9px] text-sky-300 font-bold font-mono">
+                                  {controlledArtifactsCount} Artifacts Held
+                                </div>
+                              )}
                             </div>
                           ) : (
                             <div className="text-center py-1">

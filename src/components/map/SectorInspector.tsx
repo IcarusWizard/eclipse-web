@@ -59,7 +59,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   const hasHostiles =
     shipsByOwner.size > 1 ||
     sector.ancientsCount > 0 ||
-    sector.ships.some((s) => s.ownerId === 'ancient' || s.ownerId === 'gcds');
+    sector.ships.some((s) => s.ownerId === 'ancient' || s.ownerId === 'gcds' || s.ownerId === 'guardian');
 
   const hasFriendlyShips = sector.ships.some((s) => s.ownerId === activePlayer.id);
   const canClaimControl =
@@ -90,7 +90,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
               </span>
             </div>
             <div className="text-[10px] text-slate-400">
-              {isCenter ? 'Galactic Center' : `Ring ${sector.ring} Orbit`} • {sector.victoryPoints} Victory Points
+              {isCenter ? 'Galactic Center' : `Ring ${sector.ring} Orbit`} • {sector.victoryPoints + (sector.structures?.monolith ? 3 : 0)} Victory Points{sector.structures?.monolith ? ` (${sector.victoryPoints} Base + 3 Monolith)` : ''}
             </div>
           </div>
         </div>
@@ -260,6 +260,10 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                               ) : isNpc && type === 'gcds' ? (
                                 <div className="text-[10px] text-rose-300/80 font-mono mt-0.5">
                                   Hull: 7 • Init: 0 • 4 Orange Cannons (+2 Hit)
+                                </div>
+                              ) : isNpc && type === 'guardian' ? (
+                                <div className="text-[10px] text-pink-300/80 font-mono mt-0.5">
+                                  Hull: 3 • Init: 3 • 3 Yellow Cannons (+2 Hit, -1 Shield) • 2 VP
                                 </div>
                               ) : null}
                             </div>
@@ -499,13 +503,37 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
           )}
         </div>
 
-        {/* Discoveries & Artifacts */}
-        {(sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile) && (
+        {/* Special Features & Structures */}
+        {(sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile || sector.structures?.monolith || (sector.guardiansCount && sector.guardiansCount > 0)) && (
           <div className="pt-2 border-t border-slate-800/80 space-y-2">
             <h4 className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              Special Features
+              Special Features & Structures
             </h4>
+
+            {sector.structures?.monolith && (
+              <div className="p-2 rounded-lg bg-indigo-950/40 border border-indigo-700/60 flex items-center justify-between">
+                <span className="text-indigo-300 font-bold flex items-center gap-1.5">
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                  Ancient Monolith
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-200 font-mono font-bold border border-indigo-600">
+                  +3 Victory Points
+                </span>
+              </div>
+            )}
+
+            {Boolean(sector.guardiansCount && sector.guardiansCount > 0) && (
+              <div className="p-2 rounded-lg bg-pink-950/40 border border-pink-700/60 flex items-center justify-between">
+                <span className="text-pink-300 font-bold flex items-center gap-1.5">
+                  <Shield className="w-3.5 h-3.5 text-pink-400" />
+                  Guardian Defender (Sector 212)
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-pink-900/60 text-pink-200 font-mono font-bold border border-pink-600">
+                  3 Hull • 3 Ion Dice • 2 VP
+                </span>
+              </div>
+            )}
 
             {sector.hasArtifact && (
               <div className="p-2 rounded-lg bg-sky-950/30 border border-sky-800/50 flex items-center justify-between">

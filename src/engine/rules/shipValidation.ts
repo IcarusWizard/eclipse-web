@@ -362,7 +362,7 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           baseBuildCost: 4, // 4 materials
           slots: [
             SHIP_PARTS.ion_cannon,
-            SHIP_PARTS.positron_computer,
+            SHIP_PARTS.electron_computer,
             SHIP_PARTS.hull,
             SHIP_PARTS.nuclear_source,
             SHIP_PARTS.nuclear_drive,
@@ -377,7 +377,7 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           slots: [
             SHIP_PARTS.ion_cannon,
             SHIP_PARTS.ion_cannon,
-            SHIP_PARTS.positron_computer,
+            SHIP_PARTS.electron_computer,
             SHIP_PARTS.hull,
             SHIP_PARTS.hull,
             SHIP_PARTS.nuclear_source,
@@ -392,7 +392,7 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           baseBuildCost: 2, // 2 materials
           slots: [
             SHIP_PARTS.ion_cannon,
-            SHIP_PARTS.positron_computer,
+            SHIP_PARTS.electron_computer,
             SHIP_PARTS.hull,
             SHIP_PARTS.nuclear_source,
             null,

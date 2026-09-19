@@ -104,7 +104,8 @@ export interface ColonizeAction extends BaseAction {
 
 export interface TradeAction extends BaseAction {
   type: 'TRADE';
-  fromResource: 'science' | 'material';
+  fromResource: 'money' | 'science' | 'material';
+  toResource?: 'money' | 'science' | 'material';
   amount: number; // Must be multiple of player's trade ratio
 }
 

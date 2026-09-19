@@ -471,12 +471,17 @@ export const App: React.FC = () => {
 
   // --- BUILD FLOW STATE & HANDLERS ---
   const eligibleBuildSectors = useMemo(() => {
+    const isDraco = activePlayer.faction?.id === 'descendants_of_draco';
     return state.sectors.filter((s) => {
       if (s.discOwner !== activePlayer.id) return false;
-      const hasEnemies = s.ships.some((ship) => ship.ownerId !== activePlayer.id);
+      const hasEnemies = s.ships.some(
+        (ship) =>
+          ship.ownerId !== activePlayer.id &&
+          (!isDraco || (ship.ownerId !== 'ancient' && ship.type !== 'ancient'))
+      );
       return !hasEnemies;
     });
-  }, [state.sectors, activePlayer.id]);
+  }, [state.sectors, activePlayer.id, activePlayer.faction?.id]);
 
   const [buildSlots, setBuildSlots] = useState<BuildItemPayload[]>([
     { sectorId: '', itemType: 'interceptor' },
@@ -781,11 +786,16 @@ export const App: React.FC = () => {
   };
 
   // Trade flow
-  const handleTrade = (fromResource: 'science' | 'material', amount: number) => {
+  const handleTrade = (
+    fromResource: 'money' | 'science' | 'material',
+    amount: number,
+    toResource: 'money' | 'science' | 'material' = 'money'
+  ) => {
     const res = executeAction(state, {
       type: 'TRADE',
       playerId: activePlayer.id,
       fromResource,
+      toResource,
       amount,
       requireConfirmation: true,
     });
@@ -903,6 +913,10 @@ export const App: React.FC = () => {
   };
 
   const handleAbandonInfluence = (sectorId: string) => {
+    if (state.pendingBankruptcy && state.pendingBankruptcy.playerId === activePlayer.id) {
+      handleAbandonSectorBankruptcy(sectorId);
+      return;
+    }
     const res = executeAction(state, {
       type: 'INFLUENCE',
       playerId: activePlayer.id,
@@ -1290,6 +1304,8 @@ export const App: React.FC = () => {
         <TechMarketModal
           player={viewedPlayer}
           activePlayer={activePlayer}
+          players={state.players}
+          sectors={state.sectors}
           techSupply={state.techSupply}
           techBagCount={state.techBag.length}
           onResearchTech={handleResearchTech}
@@ -1448,6 +1464,7 @@ export const App: React.FC = () => {
       {isScoreboardOpen && (
         <LiveScoreboardModal
           state={state}
+          viewerPlayerId={typeof currentSeat === 'number' ? state.players[currentSeat]?.id : viewedPlayer.id}
           onClose={() => setIsScoreboardOpen(false)}
           onSelectPlayer={(idx) => {
             setSelectedViewIndex(idx);

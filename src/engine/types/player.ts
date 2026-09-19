@@ -87,5 +87,10 @@ export interface PlayerState {
   isFirstPasser: boolean;
   actionsTakenThisRound: number;
   graveyardShips: { type: string; count: number }[];
+  graveyardCubes?: {
+    money: number;
+    science: number;
+    material: number;
+  };
   isEliminated?: boolean;
 }

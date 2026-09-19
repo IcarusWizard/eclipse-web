@@ -23,9 +23,13 @@ import {
   Award,
 } from 'lucide-react';
 
+import { SectorTile } from '../../engine/types/galaxy';
+
 interface TechMarketModalProps {
   player: PlayerState;
   activePlayer?: PlayerState;
+  players?: PlayerState[];
+  sectors?: SectorTile[];
   techSupply: Technology[];
   techBagCount?: number;
   onResearchTech: (
@@ -40,6 +44,8 @@ type TrayViewMode = 'all' | 'military' | 'grid' | 'nano' | 'rare';
 export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   player,
   activePlayer,
+  players,
+  sectors,
   techSupply,
   techBagCount = 0,
   onResearchTech,
@@ -112,6 +118,12 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   const renderCompartment = (tech: Technology, trackCategory?: 'military' | 'grid' | 'nano') => {
     const stock = supplyCountMap.get(tech.id) || 0;
     const isOwned = commander.techTrack.researched.some((t) => t.id === tech.id);
+    const otherPlayersWithTech = (players || []).filter(
+      (p) => p.id !== commander.id && p.techTrack.researched.some((t) => t.id === tech.id)
+    );
+    const controlledArtifactsCount = (sectors || []).filter(
+      (s) => s.discOwner === commander.id && s.hasArtifact
+    ).length;
 
     let chosenTrack = trackCategory;
     if (tech.category === 'rare') {
@@ -223,9 +235,44 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           </div>
 
           {/* Description / Effect */}
-          <p className="text-[11px] text-slate-300 leading-snug mb-3 line-clamp-3">
+          <p className="text-[11px] text-slate-300 leading-snug mb-2 line-clamp-3">
             {tech.description}
           </p>
+
+          {/* Artifact Key Controlled Artifacts Counter */}
+          {tech.id === 'artifact_key' && (
+            <div className="mb-2 px-2 py-1 rounded bg-sky-950/80 border border-sky-500/50 text-[10px] text-sky-200 flex items-center justify-between font-mono">
+              <span className="text-sky-300 font-semibold flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-sky-400" />
+                Artifacts Held:
+              </span>
+              <span className="font-bold text-sky-100 bg-sky-900/60 px-1.5 py-0.5 rounded border border-sky-600">
+                {controlledArtifactsCount} (Yields {controlledArtifactsCount * 5} Res)
+              </span>
+            </div>
+          )}
+
+          {/* Other Players Researched Badge */}
+          {otherPlayersWithTech.length > 0 && (
+            <div
+              className="mb-2 px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700/60 text-[10px] flex items-center justify-between gap-1"
+              title={`Researched by: ${otherPlayersWithTech.map((p) => p.name).join(', ')}`}
+            >
+              <span className="text-slate-400 font-medium">
+                {otherPlayersWithTech.length} {otherPlayersWithTech.length === 1 ? 'player has:' : 'players have:'}
+              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                {otherPlayersWithTech.map((p) => (
+                  <span
+                    key={p.id}
+                    className="w-2.5 h-2.5 rounded-full ring-1 ring-white/40"
+                    style={{ backgroundColor: p.color }}
+                    title={p.name}
+                  />
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Rare Tech Track Selector */}
           {tech.category === 'rare' && stock > 0 && !isOwned && (

@@ -863,28 +863,70 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   </text>
                 </g>
 
-                {sector.victoryPoints > 0 && (
-                  <g transform={`translate(${x}, ${y - HEX_RADIUS + 32})`} className="pointer-events-none">
-                    <rect
-                      x="-18"
-                      y="-7"
-                      width="36"
-                      height="14"
-                      rx="3.5"
-                      fill="#1e1b4b"
-                      stroke="#f59e0b"
+                {/* Sector VP Badge */}
+                {((sector.victoryPoints || 0) > 0 || sector.structures?.monolith) && (() => {
+                  const baseVP = sector.victoryPoints || 0;
+                  const hasMonolith = !!sector.structures?.monolith;
+                  const totalVP = baseVP + (hasMonolith ? 3 : 0);
+                  const vpText = hasMonolith ? (baseVP > 0 ? `★ ${baseVP}+3 VP` : '★ 3 VP') : `★ ${baseVP} VP`;
+                  const rectWidth = hasMonolith ? (baseVP > 0 ? 52 : 38) : 36;
+                  return (
+                    <g transform={`translate(${x}, ${y - HEX_RADIUS + 32})`} className="pointer-events-none">
+                      <rect
+                        x={-rectWidth / 2}
+                        y="-7"
+                        width={rectWidth}
+                        height="14"
+                        rx="3.5"
+                        fill="#1e1b4b"
+                        stroke={hasMonolith ? '#818cf8' : '#f59e0b'}
+                        strokeWidth="1.2"
+                      />
+                      <text
+                        x="0"
+                        y="3.5"
+                        textAnchor="middle"
+                        fill={hasMonolith ? '#c7d2fe' : '#fbbf24'}
+                        fontSize="9"
+                        fontWeight="900"
+                        letterSpacing="0.3"
+                      >
+                        {vpText}
+                      </text>
+                    </g>
+                  );
+                })()}
+
+                {/* Monolith Structure Icon */}
+                {sector.structures?.monolith && (
+                  <g
+                    transform={`translate(${
+                      sector.ancientsCount > 0
+                        ? x + 24
+                        : sector.hasArtifact || sector.discoveryTile
+                        ? x - 24
+                        : x + 20
+                    }, ${y - 12})`}
+                    className="pointer-events-none"
+                  >
+                    <rect x="-6" y="8" width="12" height="2.5" rx="0.5" fill="#1e1b4b" stroke="#818cf8" strokeWidth="0.8" />
+                    <polygon
+                      points="-4,8 4,8 3,-9 -3,-9"
+                      fill="#0f172a"
+                      stroke="#818cf8"
                       strokeWidth="1.2"
                     />
+                    <line x1="0" y1="-6" x2="0" y2="5" stroke="#a5b4fc" strokeWidth="1" strokeLinecap="round" />
+                    <rect x="-7" y="-18" width="14" height="8" rx="2" fill="#312e81" stroke="#818cf8" strokeWidth="0.8" />
                     <text
                       x="0"
-                      y="3.5"
+                      y="-12"
                       textAnchor="middle"
-                      fill="#fbbf24"
-                      fontSize="9.5"
+                      fill="#e0e7ff"
+                      fontSize="6"
                       fontWeight="900"
-                      letterSpacing="0.4"
                     >
-                      ★ {sector.victoryPoints} VP
+                      +3
                     </text>
                   </g>
                 )}

@@ -93,7 +93,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return { valid: false, error: 'Player not found.' };
   }
 
-  // If an action is pending confirmation, only CONFIRM_TURN_ACTION or REVERT_TURN_ACTION is permitted
+  // If an action is pending confirmation, only CONFIRM_TURN_ACTION, REVERT_TURN_ACTION, or intermediate choices (like COLONIZE) are permitted
   if (state.pendingActionConfirmation) {
     if (
       action.type !== 'CONFIRM_TURN_ACTION' &&
@@ -102,7 +102,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'COMBAT_CONQUEST' &&
       action.type !== 'RESOLVE_COMBAT_STEP' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
-      action.type !== 'ALLOCATE_ARTIFACT_REWARD'
+      action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
+      action.type !== 'COLONIZE'
     ) {
       return {
         valid: false,
@@ -328,8 +329,11 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (sector.discOwner !== action.playerId) {
           return { valid: false, error: `Must control sector ${item.sectorId} with an influence disc to build here.` };
         }
-        // Enemy ships cannot be present to build
-        const hasEnemies = sector.ships.some((s) => s.ownerId !== action.playerId);
+        // Enemy ships cannot be present to build (Draco can build in sectors with friendly Ancients)
+        const isDraco = player.faction.id === 'descendants_of_draco';
+        const hasEnemies = sector.ships.some(
+          (s) => s.ownerId !== action.playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+        );
         if (hasEnemies) {
           return { valid: false, error: `Cannot build in sector ${item.sectorId} while enemy ships are present.` };
         }
@@ -685,10 +689,19 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
     case 'TRADE': {
       const ratio = player.faction.tradeRatio || 2;
+      const toRes = action.toResource || 'money';
+      if (action.fromResource === toRes) {
+        return { valid: false, error: 'Cannot trade a resource for itself.' };
+      }
       if (action.amount <= 0 || action.amount % ratio !== 0) {
         return { valid: false, error: `Trade amount must be a positive multiple of ${ratio}.` };
       }
-      const available = action.fromResource === 'science' ? player.resources.science : player.resources.materials;
+      const available =
+        action.fromResource === 'money'
+          ? player.resources.money
+          : action.fromResource === 'science'
+          ? player.resources.science
+          : player.resources.materials;
       if (available < action.amount) {
         return { valid: false, error: `Not enough ${action.fromResource} to trade.` };
       }
@@ -966,17 +979,15 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           if (disc) {
             drawnTile.discoveryTile = disc;
             drawnTile.discoveryClaimed = false;
-            if (drawnTile.ancientsCount === 0 && drawnTile.discOwner === player.id) {
+            if (drawnTile.ancientsCount === 0) {
               newState.pendingDiscovery = {
                 sectorId: drawnTile.id,
                 discovery: disc,
                 playerId: player.id,
               };
               addLog(`${player.name} discovered an Ancient artifact in Sector ${drawnTile.sectorNumber}! Awaiting commander's decision...`);
-            } else if (drawnTile.ancientsCount > 0) {
-              addLog(`${player.name} revealed Sector ${drawnTile.sectorNumber} containing a Discovery Tile, guarded by ${drawnTile.ancientsCount} Ancient ship(s)!`);
             } else {
-              addLog(`${player.name} revealed Sector ${drawnTile.sectorNumber} containing a Discovery Tile (uncontrolled).`);
+              addLog(`${player.name} revealed Sector ${drawnTile.sectorNumber} containing a Discovery Tile, guarded by ${drawnTile.ancientsCount} Ancient ship(s)!`);
             }
           }
         }
@@ -1204,6 +1215,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           const sec = newState.sectors.find((s) => s.id === secId);
           if (sec && sec.discOwner === player.id) {
             sec.discOwner = undefined;
+            const discsBefore = player.influenceTrack.discsOnTrack;
             player.influenceTrack.discsOnTrack = Math.min(
               player.influenceTrack.totalDiscs,
               player.influenceTrack.discsOnTrack + 1
@@ -1222,7 +1234,23 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 p.colonizedResource = undefined;
               }
             }
-            addLog(`${player.name} removed their Influence Disc and returned population cubes from Sector ${sec.sectorNumber}.`);
+            // If player is resolving bankruptcy, calculate upkeep savings and apply to deficit
+            if (newState.pendingBankruptcy && newState.pendingBankruptcy.playerId === player.id) {
+              const oldUpkeep = UPKEEP_TABLE[discsBefore] ?? 30;
+              const newUpkeep = UPKEEP_TABLE[player.influenceTrack.discsOnTrack] ?? 0;
+              const savedUpkeep = Math.max(0, oldUpkeep - newUpkeep);
+              player.resources.money += savedUpkeep;
+              addLog(`${player.name} abandoned Sector ${sec.sectorNumber} during bankruptcy, saving ${savedUpkeep} upkeep!`, 'economy');
+              if (player.resources.money >= 0) {
+                addLog(`${player.name} restored budget solvency! Deficit cleared.`, 'economy');
+                newState.pendingBankruptcy = null;
+                checkNextBankruptcyOrCleanup(newState);
+              } else {
+                newState.pendingBankruptcy.deficit = Math.abs(player.resources.money);
+              }
+            } else {
+              addLog(`${player.name} removed their Influence Disc and returned population cubes from Sector ${sec.sectorNumber}.`);
+            }
           }
         }
       }
@@ -1272,14 +1300,37 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
     case 'TRADE': {
       const ratio = player.faction.tradeRatio || 2;
-      const creditsGained = action.amount / ratio;
-      if (action.fromResource === 'science') {
+      const toRes = action.toResource || 'money';
+      const gained = action.amount / ratio;
+
+      if (action.fromResource === 'money') {
+        player.resources.money -= action.amount;
+      } else if (action.fromResource === 'science') {
         player.resources.science -= action.amount;
       } else {
         player.resources.materials -= action.amount;
       }
-      player.resources.money += creditsGained;
-      addLog(`${player.name} traded ${action.amount} ${action.fromResource} for ${creditsGained} Credits.`);
+
+      if (toRes === 'money') {
+        player.resources.money += gained;
+      } else if (toRes === 'science') {
+        player.resources.science += gained;
+      } else {
+        player.resources.materials += gained;
+      }
+
+      addLog(`${player.name} traded ${action.amount} ${action.fromResource} for ${gained} ${toRes}.`);
+
+      if (newState.pendingBankruptcy && newState.pendingBankruptcy.playerId === player.id) {
+        if (player.resources.money >= 0) {
+          addLog(`${player.name} restored budget solvency! Deficit cleared.`, 'economy');
+          newState.pendingBankruptcy = null;
+          checkNextBankruptcyOrCleanup(newState);
+        } else {
+          newState.pendingBankruptcy.deficit = Math.abs(player.resources.money);
+        }
+      }
+
       return { success: true, newState };
     }
 
@@ -1331,6 +1382,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         if (disc.immediateReward?.grantStructure === 'monolith' && sector) {
           sector.structures = sector.structures || {};
           sector.structures.monolith = true;
+          sector.hasMonolith = true;
           addLog(`${player.name} placed an Ancient Monolith in Sector ${sector.sectorNumber}!`);
         }
         if (disc.immediateReward?.warpPortal && sector) {
@@ -1903,46 +1955,62 @@ export function resolveAttackingPopulationAndConquest(
     (p) => p.colonizedBy && p.colonizedBy !== winnerId
   );
 
+  let bombardmentSummary: import('../types/state').BombardmentSummary | undefined = undefined;
+
   if (opponentCubes.length > 0) {
     const hasNeutronBombs = attackerPlayer.techTrack.researched.some(
       (t) => t.id === 'neutron_bombs'
     );
+    const rolls: import('../types/state').BombardmentRoll[] = [];
+    const cubesDestroyed: { resource: string; planetIndex: number }[] = [];
+    const firstDefPlayer = state.players.find((pl) => pl.id === opponentCubes[0]?.colonizedBy);
 
     if (hasNeutronBombs) {
       // Neutron Bombs automatically annihilate all population cubes in the sector
       let destroyedCount = 0;
-      for (const p of sector.planets) {
+      sector.planets.forEach((p, pIdx) => {
         if (p.colonizedBy && p.colonizedBy !== winnerId) {
           const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
           const hasAbsorber = defPlayer?.techTrack.researched.some((t) => t.id === 'neutron_absorber');
           if (hasAbsorber) {
             // Absorber shields against neutron bombs
-            continue;
+            return;
           }
           if (defPlayer) {
             const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
             if (res === 'money' || res === 'science' || res === 'material') {
-              defPlayer.population[res].cubesOnBoard = Math.min(
-                11,
-                defPlayer.population[res].cubesOnBoard + 1
-              );
+              if (!defPlayer.graveyardCubes) {
+                defPlayer.graveyardCubes = { money: 0, science: 0, material: 0 };
+              }
+              defPlayer.graveyardCubes[res] = (defPlayer.graveyardCubes[res] || 0) + 1;
             }
           }
+          const resName = p.colonizedResource || p.resource;
+          cubesDestroyed.push({ resource: resName, planetIndex: pIdx });
           p.colonizedBy = undefined;
           p.colonizedResource = undefined;
           destroyedCount++;
         }
-      }
+      });
       if (destroyedCount > 0) {
         state.log.unshift({
           id: `log_${Date.now()}_${Math.random()}`,
           timestamp: Date.now(),
           round: state.round,
           phase: state.phase,
-          message: `${attackerPlayer.name}'s Neutron Bombs annihilated ${destroyedCount} opponent population cube(s) in Sector ${sector.sectorNumber}!`,
+          message: `${attackerPlayer.name}'s Neutron Bombs annihilated ${destroyedCount} opponent population cube(s) in Sector ${sector.sectorNumber}! (Cubes placed in Casualty Slot)`,
           type: 'combat',
         });
       }
+      bombardmentSummary = {
+        attackerName: attackerPlayer.name,
+        defenderName: firstDefPlayer?.name || 'Defender',
+        totalDamage: 99,
+        rolls: [],
+        cubesDestroyed,
+        cubesRemaining: sector.planets.filter((p) => p.colonizedBy && p.colonizedBy !== winnerId).length,
+        hasNeutronBombs: true,
+      };
     } else {
       // Each surviving attacker ship attacks once with non-missile weapons vs 0 shield
       let totalDamage = 0;
@@ -1962,6 +2030,14 @@ export function resolveAttackingPopulationAndConquest(
                 const roll = rollD6();
                 const modified = roll + compBonus;
                 const isHit = roll === 6 || (roll > 1 && modified >= 6);
+                const dmg = isHit ? d.damagePerHit : 0;
+                rolls.push({
+                  shipType: s.type,
+                  diceColor: d.color,
+                  roll,
+                  isHit,
+                  damage: dmg,
+                });
                 if (isHit) {
                   totalDamage += d.damagePerHit;
                 }
@@ -1971,26 +2047,39 @@ export function resolveAttackingPopulationAndConquest(
         }
       }
 
-      // Destroy population cubes up to totalDamage points (Planta cubes are automatically destroyed by opponent ships)
-      let destroyedCount = 0;
-      for (const p of sector.planets) {
-        if (p.colonizedBy && p.colonizedBy !== winnerId) {
-          const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
-          const isPlanta = defPlayer?.faction.id === 'planta';
-          if (!isPlanta && destroyedCount >= totalDamage) break;
+      // Attacker destroys population cubes up to totalDamage points (1 damage per cube).
+      // Planta cubes are automatically destroyed by opponent ships regardless of damage.
+      // Priority targets: Money first, then Materials, then Science
+      let damageRemaining = totalDamage;
+      const targetPlanetsWithIndices = sector.planets
+        .map((p, idx) => ({ p, idx }))
+        .filter(({ p }) => p.colonizedBy && p.colonizedBy !== winnerId)
+        .sort((a, b) => {
+          const resA = a.p.colonizedResource || a.p.resource;
+          const resB = b.p.colonizedResource || b.p.resource;
+          const order = { money: 1, material: 2, science: 3, any: 4 };
+          return ((order as any)[resA] || 5) - ((order as any)[resB] || 5);
+        });
 
-          if (defPlayer) {
-            const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
-            if (res === 'money' || res === 'science' || res === 'material') {
-              defPlayer.population[res].cubesOnBoard = Math.min(
-                11,
-                defPlayer.population[res].cubesOnBoard + 1
-              );
+      for (const { p, idx } of targetPlanetsWithIndices) {
+        const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
+        const isPlanta = defPlayer?.faction.id === 'planta';
+        if (!isPlanta && damageRemaining <= 0) break;
+
+        if (defPlayer) {
+          const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+          if (res === 'money' || res === 'science' || res === 'material') {
+            if (!defPlayer.graveyardCubes) {
+              defPlayer.graveyardCubes = { money: 0, science: 0, material: 0 };
             }
+            defPlayer.graveyardCubes[res] = (defPlayer.graveyardCubes[res] || 0) + 1;
           }
-          p.colonizedBy = undefined;
-          p.colonizedResource = undefined;
-          destroyedCount++;
+        }
+        cubesDestroyed.push({ resource: p.colonizedResource || p.resource, planetIndex: idx });
+        p.colonizedBy = undefined;
+        p.colonizedResource = undefined;
+        if (!isPlanta) {
+          damageRemaining -= 1;
         }
       }
 
@@ -2003,9 +2092,19 @@ export function resolveAttackingPopulationAndConquest(
         timestamp: Date.now(),
         round: state.round,
         phase: state.phase,
-        message: `${attackerPlayer.name} bombarded Sector ${sector.sectorNumber} population: scored ${totalDamage} damage, destroying ${destroyedCount} cube(s) (${remainingOppCubes} remaining).`,
+        message: `${attackerPlayer.name} bombarded Sector ${sector.sectorNumber} population: rolled ${totalDamage} damage, destroying ${cubesDestroyed.length} cube(s) (${remainingOppCubes} remaining). Destroyed cubes placed in Casualty Slot until Cleanup.`,
         type: 'combat',
       });
+
+      bombardmentSummary = {
+        attackerName: attackerPlayer.name,
+        defenderName: firstDefPlayer?.name || 'Defender',
+        totalDamage,
+        rolls,
+        cubesDestroyed,
+        cubesRemaining: remainingOppCubes,
+        hasNeutronBombs: false,
+      };
     }
   }
 
@@ -2043,9 +2142,12 @@ export function resolveAttackingPopulationAndConquest(
         sectorId: sector.id,
         winnerPlayerId: winnerId,
         discoveryToClaim: sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined,
+        bombardmentSummary,
+        canClaimInfluence: true,
       };
     }
   } else {
+    // Some defender cubes survived bombardment: Defender retains control!
     state.log.unshift({
       id: `log_${Date.now()}_${Math.random()}`,
       timestamp: Date.now(),
@@ -2054,6 +2156,17 @@ export function resolveAttackingPopulationAndConquest(
       message: `Defender retains control of Sector ${sector.sectorNumber} because ${remainingOpponentCubes.length} population cube(s) survived bombardment.`,
       type: 'combat',
     });
+
+    const hasAttackerShips = sector.ships.some((s) => s.ownerId === winnerId);
+    if (hasAttackerShips && bombardmentSummary) {
+      state.pendingCombatConquest = {
+        sectorId: sector.id,
+        winnerPlayerId: winnerId,
+        discoveryToClaim: undefined,
+        bombardmentSummary,
+        canClaimInfluence: false,
+      };
+    }
   }
 }
 
@@ -2272,6 +2385,13 @@ export function transitionToCleanup(state: GameState): void {
     player.actionsTakenThisRound = 0;
     // Turn all colony ships face up (refresh) during cleanup phase
     player.colonyShips.ready = player.colonyShips.total;
+    // Return population cubes from the casualty graveyard back to the player board tracks
+    if (player.graveyardCubes) {
+      player.population.money.cubesOnBoard = Math.min(11, player.population.money.cubesOnBoard + (player.graveyardCubes.money || 0));
+      player.population.science.cubesOnBoard = Math.min(11, player.population.science.cubesOnBoard + (player.graveyardCubes.science || 0));
+      player.population.material.cubesOnBoard = Math.min(11, player.population.material.cubesOnBoard + (player.graveyardCubes.material || 0));
+      player.graveyardCubes = { money: 0, science: 0, material: 0 };
+    }
   }
 
   // Official Cleanup: Replenish tech supply from bag
@@ -2325,7 +2445,7 @@ export function computeCurrentScores(state: GameState): {
     const sectorVP = controlledSectors.reduce((sum, s) => sum + s.victoryPoints, 0);
 
     // 2. Monoliths VP (3 per monolith in controlled sectors per official Second Dawn rules)
-    const monolithCount = controlledSectors.filter((s) => s.structures?.monolith).length;
+    const monolithCount = controlledSectors.filter((s) => s.structures?.monolith || s.hasMonolith).length;
     const monolithVP = monolithCount * 3;
 
     // 3. Reputation tiles (sum of tiles)
