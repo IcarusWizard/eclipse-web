@@ -250,3 +250,8 @@
   - Deferred turn confirmation during `EXPLORE` until after the commander resolves their discovery choice (`DISCOVERY_CHOICE`), cleanly presenting the non-reversible confirmation bar or advancing the turn afterward.
   - Ensured Discovery Tiles are only immediately claimed upon exploration if the sector has 0 Ancients AND the player places an Influence Disc (`drawnTile.discOwner === player.id`), leaving the Discovery Tile face-down in the sector if Ancients guard it or if the sector remains uncontrolled.
   - Added support for claiming uncontrolled discovery tiles when later placing an influence disc via the `INFLUENCE` action.
+- [x] **In-Game Bug Reporting Directly to bug_report.md**:
+  - Implemented a floating corner button (`BugReportCornerButton.tsx`) pinned to the bottom-left corner of the interface and a companion button in the top navigation bar (`Header.tsx`) for instant bug logging during any phase or from the lobby.
+  - Created `BugReportModal.tsx` featuring a free text field, auto-focus, game state context preview (Round, Phase, Active Player, Table #), `Ctrl+Enter` quick submit, `Escape` to cancel, and instant toast confirmation.
+  - Added a backend middleware endpoint (`/api/report-bug`) in `vite.config.ts` that flattens multi-line inputs and appends them strictly one line each to `bug_report.md` in BackLog format: `- [ ] <description> (Round X, Phase Y, Player: Name, Table #Z)`.
+

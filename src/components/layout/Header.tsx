@@ -2,7 +2,7 @@ import React from 'react';
 import { GameState } from '../../engine/types/state';
 import { computeCurrentScores } from '../../engine/rules/gameReducer';
 import { getTableNumber } from '../../engine/rules/persistence';
-import { Shield, Users, RefreshCw, Trophy, Radio, Cpu, LayoutDashboard, Home, Share2, Check, User, BookOpen } from 'lucide-react';
+import { Shield, Users, RefreshCw, Trophy, Radio, Cpu, LayoutDashboard, Home, Share2, Check, User, BookOpen, Bug } from 'lucide-react';
 
 interface HeaderProps {
   state: GameState;
@@ -15,6 +15,7 @@ interface HeaderProps {
   onOpenTableSession?: () => void;
   onOpenGallery?: () => void;
   onReturnToLobby?: () => void;
+  onOpenBugReport?: () => void;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
 }
@@ -30,6 +31,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTableSession,
   onOpenGallery,
   onReturnToLobby,
+  onOpenBugReport,
   currentSeat = 'all',
   onChangeSeat,
 }) => {
@@ -171,6 +173,17 @@ export const Header: React.FC<HeaderProps> = ({
           >
             <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
             <span>Gallery</span>
+          </button>
+        )}
+
+        {onOpenBugReport && (
+          <button
+            onClick={onOpenBugReport}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-rose-950/40 hover:bg-rose-900/60 border border-rose-600/50 hover:border-rose-400 text-rose-300 hover:text-rose-100 text-xs font-bold transition-all shadow"
+            title="Report Issue / Bug directly into bug_report.md"
+          >
+            <Bug className="w-3.5 h-3.5 text-rose-400" />
+            <span>Bug</span>
           </button>
         )}
 

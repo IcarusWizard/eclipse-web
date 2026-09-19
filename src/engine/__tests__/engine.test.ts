@@ -42,6 +42,7 @@ import {
   getTableNumber,
   subscribeToGameSync,
 } from '../rules/persistence';
+import { formatBugReportLine } from '../rules/bugReport';
 import type { SectorTile } from '../types/sector';
 import type { CombatState } from '../types/state';
 import {
@@ -4171,6 +4172,40 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(exploreGuarded.newState.pendingDiscovery).toBeFalsy();
         // Since no discovery is pending, confirmation is set immediately
         expect(exploreGuarded.newState.pendingActionConfirmation).not.toBeNull();
+      });
+
+      it('29. verifies In-Game Bug Reporting formats single-line entries similar to BackLog.md', () => {
+        // 1. Basic description
+        const line1 = formatBugReportLine({
+          description: 'Discovery tile choice modal did not close on ESC',
+        });
+        expect(line1).toBe('- [ ] Discovery tile choice modal did not close on ESC');
+
+        // 2. Multi-line description is flattened into a single line
+        const line2 = formatBugReportLine({
+          description: 'First line observation.\nSecond line details.\nThird line expected outcome.',
+        });
+        expect(line2).toBe('- [ ] First line observation. — Second line details. — Third line expected outcome.');
+        expect(line2.includes('\n')).toBe(false);
+
+        // 3. Description with rich game state context
+        const line3 = formatBugReportLine({
+          description: 'Ship blueprint showed negative power during upgrade',
+          round: 2,
+          phase: 'ACTION_PHASE',
+          playerName: 'Terran Federation',
+          tableNumber: 742,
+        });
+        expect(line3).toBe('- [ ] Ship blueprint showed negative power during upgrade (Round 2, ACTION_PHASE, Player: Terran Federation, Table #742)');
+
+        // 4. Description already starting with '- [ ] ' or '- ' does not duplicate markers
+        const line4 = formatBugReportLine({
+          description: '- [ ] Combat stalemate did not trigger upkeep',
+        });
+        expect(line4).toBe('- [ ] Combat stalemate did not trigger upkeep');
+
+        // 5. Empty description throws error
+        expect(() => formatBugReportLine({ description: '   ' })).toThrow();
       });
     });
   });

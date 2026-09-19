@@ -35,11 +35,14 @@ import { ArtifactKeyModal } from './components/actions/ArtifactKeyModal';
 import { BankruptcyModal } from './components/actions/BankruptcyModal';
 import { LobbyView } from './components/lobby/LobbyView';
 import { GalacticGalleryModal } from './components/gallery/GalacticGalleryModal';
+import { BugReportModal } from './components/feedback/BugReportModal';
+import { BugReportCornerButton } from './components/feedback/BugReportCornerButton';
 import {
   loadActiveGameState,
   saveGameState,
   loadTable,
   subscribeToGameSync,
+  getTableNumber,
 } from './engine/rules/persistence';
 
 export const App: React.FC = () => {
@@ -86,10 +89,12 @@ export const App: React.FC = () => {
   const [isInfluenceOpen, setIsInfluenceOpen] = useState<boolean>(false);
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
   const [isNewGameOpen, setIsNewGameOpen] = useState<boolean>(false);
+  const [isBugReportOpen, setIsBugReportOpen] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const activePlayer = state.players[state.activePlayerIndex]!;
   const viewedPlayer = state.players[selectedViewIndex] || activePlayer;
+  const tableNum = getTableNumber(state);
 
   // Global hotkey to toggle Physical Player Board (P)
   useEffect(() => {
@@ -1080,6 +1085,14 @@ export const App: React.FC = () => {
           isOpen={isGalleryOpen}
           onClose={() => setIsGalleryOpen(false)}
         />
+        <BugReportCornerButton onClick={() => setIsBugReportOpen(true)} />
+        <BugReportModal
+          isOpen={isBugReportOpen}
+          onClose={() => setIsBugReportOpen(false)}
+          state={state}
+          tableNumber={tableNum}
+          onSuccess={(msg) => showToast(msg)}
+        />
       </>
     );
   }
@@ -1097,6 +1110,7 @@ export const App: React.FC = () => {
         onOpenScoreboard={() => setIsScoreboardOpen(true)}
         onOpenTableSession={() => setIsTableSessionOpen(true)}
         onOpenGallery={() => setIsGalleryOpen(true)}
+        onOpenBugReport={() => setIsBugReportOpen(true)}
         onReturnToLobby={handleReturnToLobby}
         currentSeat={currentSeat}
         onChangeSeat={handleChangeSeat}
@@ -1230,6 +1244,9 @@ export const App: React.FC = () => {
 
         {/* Game Event Log Drawer (Bottom-Right) */}
         <GameLogDrawer logs={state.log} />
+
+        {/* Bug Report Corner Button (Bottom-Left) */}
+        <BugReportCornerButton onClick={() => setIsBugReportOpen(true)} />
 
         {/* Error Toast Notification */}
         {errorMessage && (
@@ -1461,6 +1478,14 @@ export const App: React.FC = () => {
       <GalacticGalleryModal
         isOpen={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
+      />
+
+      <BugReportModal
+        isOpen={isBugReportOpen}
+        onClose={() => setIsBugReportOpen(false)}
+        state={state}
+        tableNumber={tableNum}
+        onSuccess={(msg) => showToast(msg)}
       />
     </div>
   );
