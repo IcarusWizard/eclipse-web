@@ -114,6 +114,8 @@ export interface PendingActionConfirmation {
   description: string;
   canRevert: boolean;
   snapshot?: string; // Serialized GameState snapshot before action execution
+  exploreTargetCoord?: HexCoord;
+  exploreFromCoord?: HexCoord;
 }
 
 export interface GameState {

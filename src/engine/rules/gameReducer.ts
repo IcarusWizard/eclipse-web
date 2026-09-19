@@ -313,12 +313,6 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         dreadnought: 0,
         starbase: 0,
       };
-      const sectorsWithStarbase = new Set<string>();
-      for (const s of state.sectors) {
-        if (s.ships.some((ship) => ship.ownerId === action.playerId && ship.type === 'starbase')) {
-          sectorsWithStarbase.add(s.id);
-        }
-      }
 
       let totalMaterialsCost = 0;
       for (const item of action.items) {
@@ -348,17 +342,6 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
               error: `Cannot build ${st}: reached maximum limit of ${SHIP_LIMITS[st]} (${currentShips[st]} currently in service).`,
             };
           }
-        }
-
-        // Validate Starbase Limit: At most 1 Starbase per controlled sector
-        if (item.itemType === 'starbase') {
-          if (sectorsWithStarbase.has(item.sectorId)) {
-            return {
-              valid: false,
-              error: `Sector ${sector.sectorNumber} already contains a Starbase. You may only have one Starbase per sector.`,
-            };
-          }
-          sectorsWithStarbase.add(item.sectorId);
         }
 
         if (item.itemType === 'orbital') {
@@ -1874,7 +1857,6 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
     if (action.requireConfirmation) {
       const canRevert =
-        action.type !== 'EXPLORE' &&
         action.type !== 'FINISH_EXPLORE' &&
         action.type !== 'DISCOVERY_CHOICE';
       let description = `${action.type} Action`;
@@ -1904,12 +1886,16 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         description = `Passed turn for this round`;
       }
 
+      const exploreAct = action.type === 'EXPLORE' ? (action as ExploreAction) : undefined;
+
       newState.pendingActionConfirmation = {
         actionType: action.type === 'DISCOVERY_CHOICE' ? 'EXPLORE' : action.type,
         playerId: action.playerId,
         description,
         canRevert,
         snapshot: canRevert ? snapshotJson : undefined,
+        exploreTargetCoord: exploreAct?.targetCoord,
+        exploreFromCoord: exploreAct?.fromCoord,
       };
       return { success: true, newState };
     }
@@ -2266,6 +2252,53 @@ export function checkAndTriggerCombat(state: GameState): void {
     }
   }
 
+  // 3b. Conquest of Uncontrolled Sectors with Ships (Official Rules page 21)
+  // At the end of the Combat Phase, a player may conquer an uncontrolled sector where they have ships and no hostiles
+  const unconqueredSectors = state.sectors
+    .filter((sec) => {
+      if (state.resolvedCombatSectorIds!.includes(sec.id)) return false;
+      if (sec.discOwner) return false; // Already controlled
+      const playerShipOwners = Array.from(new Set(sec.ships.map((s) => s.ownerId))).filter(
+        (id) => id.startsWith('player_')
+      );
+      if (playerShipOwners.length !== 1) return false; // Exactly one player has ships here
+      const solePlayerId = playerShipOwners[0]!;
+      const solePlayer = state.players.find((p) => p.id === solePlayerId);
+      if (!solePlayer || solePlayer.isEliminated) return false;
+
+      // Check if there are any hostile ships
+      const isDraco = solePlayer.faction.id === 'descendants_of_draco';
+      const hasHostiles = sec.ships.some((s) => {
+        if (s.ownerId === solePlayerId) return false;
+        if (isDraco && s.ownerId === 'ancient') return false;
+        return true;
+      });
+      if (hasHostiles) return false;
+
+      // Check if there are any hostile population cubes
+      const hasOpponentCubes = sec.planets.some(
+        (p) => p.colonizedBy && p.colonizedBy !== solePlayerId
+      );
+      if (hasOpponentCubes) return false;
+
+      return true;
+    })
+    .sort((a, b) => b.sectorNumber - a.sectorNumber);
+
+  if (unconqueredSectors.length > 0) {
+    const sector = unconqueredSectors[0]!;
+    state.resolvedCombatSectorIds!.push(sector.id);
+    const winnerId = sector.ships.find((s) => s.ownerId.startsWith('player_'))!.ownerId;
+    state.phase = 'COMBAT_PHASE';
+    state.pendingCombatConquest = {
+      sectorId: sector.id,
+      winnerPlayerId: winnerId,
+      discoveryToClaim: sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined,
+      canClaimInfluence: true,
+    };
+    return;
+  }
+
   // 4. Repair damage on all ships across the galaxy (Rulebook page 21)
   for (const sec of state.sectors) {
     for (const ship of sec.ships) {
@@ -2284,20 +2317,12 @@ export function transitionToUpkeep(state: GameState): void {
     const p = state.players[i]!;
     if (p.isEliminated) continue;
 
-    // 1. Add round production
+    // 1. Add round Money production and deduct Upkeep
     const moneyIncome = getIncomeForTrack(p.population.money.cubesOnBoard);
-    const scienceIncome = getIncomeForTrack(p.population.science.cubesOnBoard);
-    const materialsIncome = getIncomeForTrack(p.population.material.cubesOnBoard);
-
-    p.resources.money += moneyIncome;
-    p.resources.science += scienceIncome;
-    p.resources.materials += materialsIncome;
-
-    // 2. Deduct upkeep
     const upkeep = getUpkeepForDiscs(p.influenceTrack.discsOnTrack);
-    p.resources.money -= upkeep;
+    p.resources.money += moneyIncome - upkeep;
 
-    // 3. Ready colony ships
+    // 2. Ready colony ships
     p.colonyShips = {
       total: p.colonyShips.total,
       ready: p.colonyShips.total,
@@ -2357,6 +2382,17 @@ export function checkNextBankruptcyOrCleanup(state: GameState): void {
   }
 
   state.pendingBankruptcy = null;
+
+  // Official Eclipse Upkeep Sequence: Science and Materials production are collected
+  // AFTER all budget deficits and bankruptcy/sector abandonments are resolved!
+  for (const p of state.players) {
+    if (p.isEliminated) continue;
+    const scienceIncome = getIncomeForTrack(p.population.science.cubesOnBoard);
+    const materialsIncome = getIncomeForTrack(p.population.material.cubesOnBoard);
+    p.resources.science += scienceIncome;
+    p.resources.materials += materialsIncome;
+  }
+
   transitionToCleanup(state);
 }
 

@@ -1533,7 +1533,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
     expect(build5thCru.success).toBe(false);
     expect(build5thCru.error).toContain('reached maximum limit of 4');
 
-    // 6. Test Starbase per-sector limit (max 1 Starbase per sector):
+    // 6. Test Starbases (no per-sector limit, subject to supply limit of 4):
     game.activePlayerIndex = 0;
     const build1stStarbase = executeAction(game, {
       type: 'BUILD',
@@ -1542,7 +1542,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
     });
     expect(build1stStarbase.success).toBe(true);
 
-    // Attempting to build a second starbase in the SAME sector fails
+    // Official rule: starbases are ships, not structures, so building a second starbase in the SAME sector is legal!
     const stateAfter1stSb = build1stStarbase.newState;
     stateAfter1stSb.activePlayerIndex = 0;
     const build2ndStarbaseInSameSector = executeAction(stateAfter1stSb, {
@@ -1550,8 +1550,33 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       playerId: p1.id,
       items: [{ sectorId: homeSec.id, itemType: 'starbase' }],
     });
-    expect(build2ndStarbaseInSameSector.success).toBe(false);
-    expect(build2ndStarbaseInSameSector.error).toContain('already contains a Starbase');
+    expect(build2ndStarbaseInSameSector.success).toBe(true);
+
+    // Build 3rd and 4th starbases to reach limit of 4
+    const stateAfter2ndSb = build2ndStarbaseInSameSector.newState;
+    stateAfter2ndSb.activePlayerIndex = 0;
+    const build3rdAnd4th = executeAction(stateAfter2ndSb, {
+      type: 'BUILD',
+      playerId: p1.id,
+      items: [
+        { sectorId: homeSec.id, itemType: 'starbase' },
+        { sectorId: homeSec.id, itemType: 'starbase' },
+      ],
+    });
+    expect(build3rdAnd4th.success).toBe(true);
+    expect(countPlayerShips(build3rdAnd4th.newState.sectors, p1.id).starbase).toBe(4);
+    expect(getRemainingShipSupply(build3rdAnd4th.newState.sectors, p1.id).starbase).toBe(0);
+
+    // Attempting to build a 5th starbase fails due to supply limit
+    const stateAfter4thSb = build3rdAnd4th.newState;
+    stateAfter4thSb.activePlayerIndex = 0;
+    const build5thSb = executeAction(stateAfter4thSb, {
+      type: 'BUILD',
+      playerId: p1.id,
+      items: [{ sectorId: homeSec.id, itemType: 'starbase' }],
+    });
+    expect(build5thSb.success).toBe(false);
+    expect(build5thSb.error).toContain('reached maximum limit of 4');
 
     // 7. Test ship destruction returns miniature to supply:
     // If one of the cruisers is destroyed in combat (removed from sector):
@@ -3208,7 +3233,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const game = createInitialGame(1, ['descendants_of_draco']);
         const draco = game.players[0]!;
         expect(draco.faction.id).toBe('descendants_of_draco');
-        expect(draco.techTrack.researched.map((t) => t.id)).toEqual(['fusion_drive']);
+        expect(draco.techTrack.researched.map((t) => t.id)).toEqual([]);
 
         // Set up an Ancient sector adjacent to Draco
         const ancientSector: SectorTile = {
@@ -3911,7 +3936,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         });
         expect(tradeRes.success).toBe(true);
         const updatedP1 = tradeRes.newState.players[0]!;
-        expect(updatedP1.resources.materials).toBe(matsBeforeTrade - 4);
+        // With Bug 20, resolving deficit triggers collection of materials (+3) and science (+3) income
+        expect(updatedP1.resources.materials).toBe(matsBeforeTrade - 4 + 3);
         expect(updatedP1.resources.money).toBe(p1.resources.money + 2);
 
         // Any-to-any: Trade Science -> Materials
@@ -4077,31 +4103,44 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Turn successfully passed to Player 2!
         expect(confirmRes.newState.activePlayerIndex).toBe(1);
 
-        // 3. EXPLORE action with requireConfirmation: true is marked non-reversible
+        // 3. EXPLORE action with requireConfirmation: true is reversible (Bug 19)
         const p2 = confirmRes.newState.players[1]!;
         const p2Home = confirmRes.newState.sectors.find((s) => s.discOwner === p2.id)!;
+        const targetCoord = { q: p2Home.coord.q, r: p2Home.coord.r - 1 };
         const exploreRes = executeAction(confirmRes.newState, {
           type: 'EXPLORE',
           playerId: p2.id,
           fromCoord: p2Home.coord,
-          targetCoord: { q: p2Home.coord.q, r: p2Home.coord.r - 1 },
+          targetCoord,
           rotation: 0,
           requireConfirmation: true,
         });
         expect(exploreRes.success).toBe(true);
         expect(exploreRes.newState.pendingActionConfirmation).not.toBeNull();
-        expect(exploreRes.newState.pendingActionConfirmation?.canRevert).toBe(false);
+        expect(exploreRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
+        expect(exploreRes.newState.pendingActionConfirmation?.exploreTargetCoord).toEqual(targetCoord);
 
-        // Attempting to revert EXPLORE must be rejected!
+        // Reverting EXPLORE succeeds and restores state to allow changing decisions on the revealed tile
         const revertExplore = executeAction(exploreRes.newState, {
           type: 'REVERT_TURN_ACTION',
           playerId: p2.id,
         });
-        expect(revertExplore.success).toBe(false);
-        expect(revertExplore.error).toContain('hidden information');
+        expect(revertExplore.success).toBe(true);
+        expect(revertExplore.newState.pendingActionConfirmation).toBeNull();
+        expect(revertExplore.newState.activePlayerIndex).toBe(1);
 
-        // Confirming EXPLORE cleanly finalizes action and advances turn
-        const confirmExplore = executeAction(exploreRes.newState, {
+        // Re-executing and confirming EXPLORE cleanly finalizes action and advances turn
+        const reExplore = executeAction(revertExplore.newState, {
+          type: 'EXPLORE',
+          playerId: p2.id,
+          fromCoord: p2Home.coord,
+          targetCoord,
+          rotation: 0,
+          claimInfluence: true,
+          requireConfirmation: true,
+        });
+        expect(reExplore.success).toBe(true);
+        const confirmExplore = executeAction(reExplore.newState, {
           type: 'CONFIRM_TURN_ACTION',
           playerId: p2.id,
         });
@@ -4352,6 +4391,192 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const scores = computeCurrentScores(game);
         // p1 should receive 3 VP in the monoliths breakdown category!
         expect(scores.scores[p1.id]!.monoliths).toBe(3);
+      });
+
+      it('33. verifies Upkeep Phase sequence: Money income & Upkeep deficit handled first, then Science and Materials (Bug 20)', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+
+        // Give p1 an extra controlled sector with a science cube and a money cube
+        const extraSec: SectorTile = {
+          id: 'sec_extra_income',
+          sectorNumber: 299,
+          coord: { q: 1, r: -2 },
+          ring: 2,
+          victoryPoints: 1,
+          wormholes: [true, true, true, true, true, true],
+          discOwner: p1.id,
+          planets: [
+            { resource: 'science', isAdvanced: false, colonizedBy: p1.id, colonizedResource: 'science' },
+            { resource: 'money', isAdvanced: false, colonizedBy: p1.id, colonizedResource: 'money' },
+          ],
+          ancientsCount: 0,
+          ships: [],
+        };
+        game.sectors.push(extraSec);
+        p1.population.science.cubesOnBoard -= 1; // 1 cube on board
+        p1.population.money.cubesOnBoard -= 1;
+
+        // Force p1 into deficit: 2 money, 6 discs left on track (upkeep 7)
+        // Income is 4, net money is 2 + 4 - 7 = -1 (deficit 1)
+        p1.resources.money = 2;
+        p1.resources.science = 10;
+        p1.resources.materials = 10;
+        p1.influenceTrack.discsOnTrack = 6;
+
+        // Call transitionToUpkeep
+        transitionToUpkeep(game);
+
+        // 1. Player is in tactical bankruptcy
+        expect(game.phase).toBe('UPKEEP_PHASE');
+        expect(game.pendingBankruptcy).not.toBeNull();
+        expect(game.pendingBankruptcy?.playerId).toBe(p1.id);
+
+        // 2. Crucially, Science and Materials income have NOT been collected yet while in deficit!
+        expect(p1.resources.science).toBe(10);
+        expect(p1.resources.materials).toBe(10);
+
+        // 3. Abandon the extra sector to resolve deficit
+        const abandonRes = executeAction(game, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: p1.id,
+          sectorId: extraSec.id,
+        });
+        expect(abandonRes.success).toBe(true);
+
+        // 4. Sector abandoned: science and money cubes returned to track
+        expect(abandonRes.newState.sectors.find((s) => s.id === extraSec.id)?.discOwner).toBeUndefined();
+        expect(abandonRes.newState.players[0]!.population.science.cubesOnBoard).toBe(10);
+
+        // 5. Deficit is now resolved: Science and Materials income are now collected!
+        expect(abandonRes.newState.pendingBankruptcy).toBeNull();
+        // Since the science cube returned to track, income was calculated on the updated track
+        expect(abandonRes.newState.players[0]!.resources.science).toBeGreaterThan(10);
+        expect(abandonRes.newState.players[0]!.resources.materials).toBeGreaterThan(10);
+      });
+
+      it('34. verifies unoccupied empty sector with ships prompts conquest at end of combat phase (Bug 21)', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+
+        // Create an uncontrolled empty sector with p1's interceptor and no hostiles
+        const emptySec: SectorTile = {
+          id: 'sec_uncontrolled_empty',
+          sectorNumber: 301,
+          coord: { q: 2, r: 0 },
+          ring: 2,
+          victoryPoints: 2,
+          wormholes: [true, true, true, true, true, true],
+          planets: [{ resource: 'money', isAdvanced: false }],
+          ancientsCount: 0,
+          ships: [{ id: 'p1_ship_lone', ownerId: p1.id, type: 'interceptor', damage: 0 }],
+        };
+        game.sectors.push(emptySec);
+
+        game.phase = 'COMBAT_PHASE';
+        game.resolvedCombatSectorIds = [];
+        checkAndTriggerCombat(game);
+
+        // Player is prompted with pendingCombatConquest to occupy the sector!
+        expect(game.pendingCombatConquest).not.toBeNull();
+        expect(game.pendingCombatConquest?.sectorId).toBe(emptySec.id);
+        expect(game.pendingCombatConquest?.winnerPlayerId).toBe(p1.id);
+        expect(game.pendingCombatConquest?.canClaimInfluence).toBe(true);
+
+        // Player chooses to place influence disc
+        const conquestRes = executeAction(game, {
+          type: 'COMBAT_CONQUEST',
+          playerId: p1.id,
+          sectorId: emptySec.id,
+          claimInfluence: true,
+        });
+        expect(conquestRes.success).toBe(true);
+        expect(conquestRes.newState.sectors.find((s) => s.id === emptySec.id)?.discOwner).toBe(p1.id);
+      });
+
+      it('35. verifies opponents secret reputation tiles are masked and not leaked (Bug 22)', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // P2 has a hidden 3-point reputation tile
+        p2.reputationTiles = [3];
+
+        const { scores } = computeCurrentScores(game);
+        const p2Breakdown = scores[p2.id]!;
+        expect(p2Breakdown.reputation).toBe(3);
+
+        // For P1 viewing the board, known VP excludes P2's secret reputation
+        const p2KnownVP = p2Breakdown.total - p2Breakdown.reputation;
+        expect(p2KnownVP).toBeLessThan(p2Breakdown.total);
+      });
+
+      it('36. verifies GameOver and Live scores include species trait bonuses, discoveries, and ambassadors (Bug 25)', () => {
+        const game = createInitialGame(2, ['planta', 'descendants_of_draco']);
+        const planta = game.players[0]!;
+        const draco = game.players[1]!;
+
+        // Add an extra sector controlled by Planta
+        const plantaSec: SectorTile = {
+          id: 'sec_planta_bonus',
+          sectorNumber: 227,
+          coord: { q: -2, r: 0 },
+          ring: 2,
+          victoryPoints: 2,
+          wormholes: [true, true, true, true, true, true],
+          discOwner: planta.id,
+          planets: [],
+          ancientsCount: 0,
+          ships: [],
+        };
+        game.sectors.push(plantaSec);
+
+        // Add 2 Ancient ships on board for Draco bonus
+        const ancientSec: SectorTile = {
+          id: 'sec_ancients_bonus',
+          sectorNumber: 105,
+          coord: { q: 1, r: -1 },
+          ring: 1,
+          victoryPoints: 2,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ancientsCount: 2,
+          ships: [
+            { id: 'anc_b1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+            { id: 'anc_b2', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          ],
+        };
+        game.sectors.push(ancientSec);
+
+        calculateFinalScores(game);
+
+        const plantaScore = game.finalScores?.[planta.id]!;
+        expect(plantaScore).toBeDefined();
+        // Planta controls 2 sectors: Home (226) + extra (227) -> +2 species bonus!
+        expect(plantaScore.speciesBonus).toBe(2);
+        expect(plantaScore.total).toBe(
+          plantaScore.sectors +
+          plantaScore.monoliths +
+          plantaScore.reputation +
+          plantaScore.techs +
+          plantaScore.ambassadors +
+          plantaScore.discoveries +
+          plantaScore.speciesBonus
+        );
+
+        const dracoScore = game.finalScores?.[draco.id]!;
+        expect(dracoScore).toBeDefined();
+        // Draco gets +2 species bonus from 2 Ancients on board!
+        expect(dracoScore.speciesBonus).toBe(2);
+        expect(dracoScore.total).toBe(
+          dracoScore.sectors +
+          dracoScore.monoliths +
+          dracoScore.reputation +
+          dracoScore.techs +
+          dracoScore.ambassadors +
+          dracoScore.discoveries +
+          dracoScore.speciesBonus
+        );
       });
     });
   });

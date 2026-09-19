@@ -239,7 +239,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     startingResources: { money: 2, science: 4, materials: 3 },
     startingDiscs: 13,
     startingColonyShips: 3,
-    startingTechIds: ['fusion_drive'],
+    startingTechIds: [],
     traitDescription: 'Peaceful coexistence with Ancients, dual explore sector picks, and +1 VP per Ancient at game end.',
     tradeRatio: 3,
     exploreActivations: 1,

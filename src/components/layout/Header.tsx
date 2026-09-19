@@ -110,7 +110,21 @@ export const Header: React.FC<HeaderProps> = ({
             {state.players.map((p, idx) => {
               const isTurn = state.activePlayerIndex === idx;
               const isViewed = selectedViewIndex === idx;
-              const vp = scores[p.id]?.total ?? 0;
+              const b = scores[p.id];
+              const viewerPlayerId =
+                typeof currentSeat === 'number'
+                  ? state.players[currentSeat]?.id
+                  : state.players[selectedViewIndex]?.id;
+              const isSecretRep =
+                state.phase !== 'GAME_OVER' &&
+                Boolean(viewerPlayerId) &&
+                p.id !== viewerPlayerId &&
+                p.reputationTiles.length > 0;
+              const knownVP = (b?.total ?? 0) - (b?.reputation ?? 0);
+              const displayVP = isSecretRep ? `${knownVP}★+?` : `${b?.total ?? 0}★`;
+              const titleText = isSecretRep
+                ? `${p.name} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))`
+                : `${p.name} (${b?.total ?? 0} VP)`;
 
               return (
                 <button
@@ -121,7 +135,7 @@ export const Header: React.FC<HeaderProps> = ({
                       ? 'bg-slate-800 text-white shadow ring-1 ring-slate-700'
                       : 'text-slate-400 hover:text-slate-200'
                   }`}
-                  title={`${p.name} (${vp} VP)`}
+                  title={titleText}
                 >
                   <div
                     className="w-2.5 h-2.5 rounded-full shrink-0"
@@ -129,7 +143,7 @@ export const Header: React.FC<HeaderProps> = ({
                   />
                   <span className="hidden sm:inline">{p.name.split(' ')[1] || p.name}</span>
                   <span className="text-[10px] text-amber-400 font-mono font-bold">
-                    {vp}★
+                    {displayVP}
                   </span>
                   {isTurn && (
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />

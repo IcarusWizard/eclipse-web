@@ -1019,6 +1019,36 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               </div>
                             );
                           })}
+
+                          {/* Integrated / Preprinted Slot */}
+                          {bp && (bp.preprintedPower || bp.preprintedComputer) && (
+                            <div className="min-h-[50px] rounded-lg border border-dashed border-emerald-600/70 bg-emerald-950/20 p-1.5 flex flex-col justify-between">
+                              <div className="text-[8.5px] font-mono font-bold text-emerald-400 flex items-center justify-between">
+                                <span className="flex items-center gap-1">
+                                  <Lock className="w-2.5 h-2.5" />
+                                  Fixed
+                                </span>
+                                <span className="text-[7.5px] px-1 rounded bg-emerald-900/60 text-emerald-300 font-bold">
+                                  CHASSIS
+                                </span>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold text-emerald-300 leading-tight line-clamp-1">
+                                  {player.faction.id === 'planta'
+                                    ? sc.type === 'starbase'
+                                      ? 'Planta Defense Core'
+                                      : 'Planta Bio-Computer'
+                                    : player.faction.id === 'orion_hegemony'
+                                    ? 'Orion Martial Reactor'
+                                    : 'Integrated Power'}
+                                </div>
+                                <div className="text-[8px] text-slate-300 font-mono mt-0.5">
+                                  {bp.preprintedPower && `+${bp.preprintedPower} PWR`}
+                                  {bp.preprintedComputer && ` | +${bp.preprintedComputer} Aim`}
+                                </div>
+                              </div>
+                            </div>
+                          )}
                         </div>
                       </div>
                     </div>

@@ -840,14 +840,20 @@ export const App: React.FC = () => {
 
   const handleRevertTurnAction = () => {
     if (!state.pendingActionConfirmation) return;
+    const conf = state.pendingActionConfirmation;
     const res = executeAction(state, {
       type: 'REVERT_TURN_ACTION',
-      playerId: state.pendingActionConfirmation.playerId,
+      playerId: conf.playerId,
     });
     if (res.success) {
       setState(res.newState);
       setSelectedViewIndex(res.newState.activePlayerIndex);
-      showToast('Action reverted.');
+      if (conf.actionType === 'EXPLORE' && conf.exploreTargetCoord && conf.exploreFromCoord) {
+        setPendingExploreCoords({ from: conf.exploreFromCoord, target: conf.exploreTargetCoord });
+        showToast('Exploration reverted to tile decision.');
+      } else {
+        showToast('Action reverted.');
+      }
     } else {
       showToast(res.error || 'Failed to revert action.');
     }

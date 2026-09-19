@@ -64,15 +64,6 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const currentSlot = slots[activeSlotIndex] || slots[0];
   const currentSector = sectors.find((s) => s.id === currentSlot?.sectorId);
 
-  // Starbase restrictions for current sector
-  const currentSectorHasStarbase = !!currentSector?.ships.some(
-    (s) => s.ownerId === player.id && s.type === 'starbase'
-  );
-  const anotherSlotBuildingStarbaseHere = slots.some(
-    (s, idx) => idx !== activeSlotIndex && s.sectorId === currentSlot?.sectorId && s.itemType === 'starbase'
-  );
-  const starbaseAllowedInCurrentSector = !currentSectorHasStarbase && !anotherSlotBuildingStarbaseHere;
-
   const getAvailableSupply = (type: ShipType): number => {
     return Math.max(0, SHIP_LIMITS[type] - deployedShips[type] - stagedInOtherSlots[type]);
   };
@@ -142,13 +133,11 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       cost: getItemCost('starbase'),
       limit: SHIP_LIMITS.starbase,
       supplyLeft: getAvailableSupply('starbase'),
-      unlocked: getAvailableSupply('starbase') > 0 && starbaseAllowedInCurrentSector,
+      unlocked: getAvailableSupply('starbase') > 0,
       disabledReason: getAvailableSupply('starbase') <= 0
         ? `Max limit of ${SHIP_LIMITS.starbase} reached`
-        : !starbaseAllowedInCurrentSector
-        ? 'Max 1 Starbase per sector'
         : undefined,
-      description: `Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats, max 1 per sector).`,
+      description: `Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats).`,
     },
     {
       type: 'orbital',
@@ -186,22 +175,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     dreadnought: 0,
     starbase: 0,
   };
-  const starbaseSectorSet = new Set<string>();
-  let hasStarbaseConflict = false;
 
   for (const s of slots) {
     if (s.itemType in overallQueuedShips) {
       overallQueuedShips[s.itemType as ShipType]++;
-    }
-    if (s.itemType === 'starbase') {
-      const targetSec = sectors.find((sec) => sec.id === s.sectorId);
-      if (targetSec?.ships.some((ship) => ship.ownerId === player.id && ship.type === 'starbase')) {
-        hasStarbaseConflict = true;
-      }
-      if (starbaseSectorSet.has(s.sectorId)) {
-        hasStarbaseConflict = true;
-      }
-      starbaseSectorSet.add(s.sectorId);
     }
   }
 
@@ -213,8 +190,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     canAfford &&
     allSlotsValid &&
     eligibleSectors.length > 0 &&
-    !exceedsShipLimits &&
-    !hasStarbaseConflict;
+    !exceedsShipLimits;
 
   const handleAddSlot = () => {
     if (slots.length < maxBuild) {

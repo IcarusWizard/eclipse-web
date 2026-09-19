@@ -123,7 +123,8 @@ export function abandonSectorForUpkeep(
   savedUpkeep: number;
 } {
   const updatedPlayer: PlayerState = JSON.parse(JSON.stringify(player));
-  const oldUpkeep = getUpkeepForDiscs(updatedPlayer.influenceTrack.discsOnTrack);
+  const oldMoneyIncome = getIncomeForTrack(player.population.money.cubesOnBoard);
+  const oldUpkeep = getUpkeepForDiscs(player.influenceTrack.discsOnTrack);
 
   // Abandon this sector
   sector.discOwner = undefined;
@@ -147,11 +148,15 @@ export function abandonSectorForUpkeep(
     }
   }
 
+  const newMoneyIncome = getIncomeForTrack(updatedPlayer.population.money.cubesOnBoard);
+  const lostMoneyIncome = oldMoneyIncome - newMoneyIncome;
+
   const newUpkeep = getUpkeepForDiscs(updatedPlayer.influenceTrack.discsOnTrack);
   const savedUpkeep = oldUpkeep - newUpkeep;
-  updatedPlayer.resources.money += savedUpkeep;
+  const netDelta = savedUpkeep - lostMoneyIncome;
+  updatedPlayer.resources.money += netDelta;
 
-  return { updatedPlayer, savedUpkeep };
+  return { updatedPlayer, savedUpkeep: netDelta };
 }
 
 export function applyUpkeepPhase(
@@ -164,18 +169,10 @@ export function applyUpkeepPhase(
   let eliminated = false;
   let bankrupt = false;
 
-  // Add round production
+  // Step 1: Add round Money production and deduct Upkeep
   const moneyIncome = getIncomeForTrack(updatedPlayer.population.money.cubesOnBoard);
-  const scienceIncome = getIncomeForTrack(updatedPlayer.population.science.cubesOnBoard);
-  const materialsIncome = getIncomeForTrack(updatedPlayer.population.material.cubesOnBoard);
-
-  updatedPlayer.resources.money += moneyIncome;
-  updatedPlayer.resources.science += scienceIncome;
-  updatedPlayer.resources.materials += materialsIncome;
-
-  // Deduct upkeep
   let upkeep = getUpkeepForDiscs(updatedPlayer.influenceTrack.discsOnTrack);
-  updatedPlayer.resources.money -= upkeep;
+  updatedPlayer.resources.money += moneyIncome - upkeep;
 
   if (updatedPlayer.resources.money < 0) {
     bankrupt = true;
@@ -262,8 +259,15 @@ export function applyUpkeepPhase(
     }
   }
 
-  // Refresh colony ships in Upkeep phase (unless eliminated)
+  // Step 5: Collect Science and Materials production (only if not eliminated)
+  // Per official Eclipse rules, collected after resolving any bankruptcy and sector abandonment!
   if (!eliminated) {
+    const scienceIncome = getIncomeForTrack(updatedPlayer.population.science.cubesOnBoard);
+    const materialsIncome = getIncomeForTrack(updatedPlayer.population.material.cubesOnBoard);
+    updatedPlayer.resources.science += scienceIncome;
+    updatedPlayer.resources.materials += materialsIncome;
+
+    // Refresh colony ships in Upkeep phase
     updatedPlayer.colonyShips = {
       total: updatedPlayer.colonyShips.total,
       ready: updatedPlayer.colonyShips.total,

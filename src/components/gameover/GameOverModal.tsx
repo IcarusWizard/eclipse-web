@@ -13,7 +13,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-amber-500/60 rounded-2xl w-full max-w-2xl shadow-2xl p-6 text-slate-100 flex flex-col items-center text-center">
+      <div className="bg-slate-900 border border-amber-500/60 rounded-2xl w-full max-w-4xl shadow-2xl p-6 text-slate-100 flex flex-col items-center text-center">
         <Trophy className="w-16 h-16 text-amber-400 mb-3 animate-bounce" />
         <h2 className="text-2xl font-extrabold text-amber-300 font-display">
           GALACTIC SUPREMACY ACHIEVED!
@@ -37,8 +37,8 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame }
         )}
 
         {/* Scores Table */}
-        <div className="w-full bg-slate-950 rounded-xl border border-slate-800 overflow-hidden mb-6">
-          <table className="w-full text-left text-xs">
+        <div className="w-full bg-slate-950 rounded-xl border border-slate-800 overflow-x-auto mb-6">
+          <table className="w-full text-left text-xs min-w-[650px]">
             <thead className="bg-slate-900/80 text-slate-400 border-b border-slate-800 uppercase font-mono text-[10px]">
               <tr>
                 <th className="p-3">Commander</th>
@@ -46,6 +46,9 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame }
                 <th className="p-3 text-center">Monoliths</th>
                 <th className="p-3 text-center">Reputation</th>
                 <th className="p-3 text-center">Tech</th>
+                <th className="p-3 text-center">Ambassadors</th>
+                <th className="p-3 text-center">Discoveries</th>
+                <th className="p-3 text-center" title="Planta controlled sector bonus, Draco ancient bonus">Species Trait</th>
                 <th className="p-3 text-right font-bold text-amber-400">Total VP</th>
               </tr>
             </thead>
@@ -58,12 +61,24 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame }
                   <tr key={p.id} className={isWinner ? 'bg-amber-950/20 font-bold' : ''}>
                     <td className="p-3 flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
-                      <span className="text-slate-200">{p.name}</span>
+                      <div>
+                        <div className="text-slate-200">{p.name}</div>
+                        <div className="text-[10px] text-slate-400 font-normal">{p.faction.name}</div>
+                      </div>
                     </td>
                     <td className="p-3 text-center text-slate-400">{s?.sectors || 0}</td>
                     <td className="p-3 text-center text-slate-400">{s?.monoliths || 0}</td>
                     <td className="p-3 text-center text-slate-400">{s?.reputation || 0}</td>
                     <td className="p-3 text-center text-slate-400">{s?.techs || 0}</td>
+                    <td className="p-3 text-center text-slate-400">{s?.ambassadors || 0}</td>
+                    <td className="p-3 text-center text-slate-400">{s?.discoveries || 0}</td>
+                    <td className="p-3 text-center font-mono">
+                      {(s?.speciesBonus || 0) > 0 ? (
+                        <span className="text-emerald-400 font-bold">+{s?.speciesBonus}</span>
+                      ) : (
+                        <span className="text-slate-500">—</span>
+                      )}
+                    </td>
                     <td className="p-3 text-right font-bold text-amber-300 text-sm">
                       {s?.total || 0}
                     </td>

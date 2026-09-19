@@ -326,7 +326,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                  Modular Component Slots ({currentSlots.length} Slots)
+                  Modular Component Slots ({currentSlots.length} Modular{(baseBp.preprintedPower || baseBp.preprintedComputer) ? ' + 1 Integrated' : ''})
                 </h3>
                 <span className="text-[11px] text-slate-400 font-mono">
                   {remainingActivations > 0
@@ -446,6 +446,49 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                     </div>
                   );
                 })}
+
+                {/* Integrated / Non-replaceable Species Component Slot */}
+                {(baseBp.preprintedPower || baseBp.preprintedComputer) && (
+                  <div
+                    className="relative min-h-[100px] rounded-lg border-2 border-dashed border-emerald-600/70 bg-emerald-950/20 p-2.5 flex flex-col justify-between select-none shadow-sm"
+                    title="Inherent species component pre-printed on the hull chassis. Cannot be removed or replaced."
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
+                        <Lock className="w-3 h-3 text-emerald-400" />
+                        Integrated
+                      </span>
+                      <span className="text-[9px] font-mono bg-emerald-900/60 border border-emerald-700/60 text-emerald-300 px-1 py-0.2 rounded font-bold uppercase">
+                        Fixed
+                      </span>
+                    </div>
+
+                    <div className="mt-1">
+                      <div className="font-bold text-xs text-emerald-300 leading-tight">
+                        {player.faction.id === 'planta'
+                          ? activeShipType === 'starbase'
+                            ? 'Planta Defense Core'
+                            : 'Planta Bio-Computer'
+                          : player.faction.id === 'orion_hegemony'
+                          ? 'Orion Martial Reactor'
+                          : player.faction.id === 'eridani_empire'
+                          ? 'Eridani Dynastic Power'
+                          : 'Integrated Chassis System'}
+                      </div>
+                      <div className="text-[10px] text-slate-300 mt-1 flex flex-wrap gap-1">
+                        {baseBp.preprintedPower !== undefined && baseBp.preprintedPower > 0 && (
+                          <span className="text-emerald-400 font-semibold">+{baseBp.preprintedPower} Pwr</span>
+                        )}
+                        {baseBp.preprintedComputer !== undefined && baseBp.preprintedComputer > 0 && (
+                          <span className="text-indigo-400 font-semibold">+{baseBp.preprintedComputer} Hit</span>
+                        )}
+                      </div>
+                      <div className="text-[9px] text-slate-400 mt-1 italic">
+                        Inherent species chassis bonus
+                      </div>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
