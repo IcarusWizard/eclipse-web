@@ -793,6 +793,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!sector) {
         return { valid: false, error: 'Combat sector not found.' };
       }
+      if (state.activeCombat.stage === 'resolved' || (action as any).concludeCombat) {
+        return { valid: true };
+      }
       const units = buildCombatUnitsForSector(sector, state.players);
       const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector);
       const aliveUnits = sortUnitsByInitiative(
@@ -1094,12 +1097,22 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       player.actionsTakenThisRound += 1;
 
+      const upgradeDetails: string[] = [];
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType]!;
+        const oldPart = bp.slots[up.slotIndex];
         const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
         bp.slots[up.slotIndex] = part;
+        if (part && oldPart) {
+          upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (replaced ${oldPart.name})`);
+        } else if (part) {
+          upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (Slot ${up.slotIndex + 1})`);
+        } else if (oldPart) {
+          upgradeDetails.push(`removed ${oldPart.name} from ${up.shipType.toUpperCase()}`);
+        }
       }
-      addLog(`${player.name} upgraded ship blueprints.`);
+      const detailsMsg = upgradeDetails.length > 0 ? `: ${upgradeDetails.join(', ')}` : '';
+      addLog(`🛠️ ${player.name} upgraded ship blueprints${detailsMsg}.`, 'action');
       break;
     }
 
@@ -1122,7 +1135,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         if (item.itemType === 'monolith') {
           sector.structures = sector.structures || {};
           sector.structures.monolith = true;
-          addLog(`${player.name} built a Monolith in Sector ${sector.sectorNumber}.`);
+          addLog(`🏗️ ${player.name} built a Monolith in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
         } else if (item.itemType === 'orbital') {
           sector.structures = sector.structures || {};
           sector.structures.orbital = true;
@@ -1132,7 +1145,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             isAdvanced: false,
             isOrbital: true,
           });
-          addLog(`${player.name} built an Orbital in Sector ${sector.sectorNumber}.`);
+          addLog(`🛰️ ${player.name} built an Orbital in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
         } else {
           sector.ships.push({
             id: `ship_${player.id}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -1140,7 +1153,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             type: item.itemType as ShipType,
             damage: 0,
           });
-          addLog(`${player.name} constructed a ${item.itemType.toUpperCase()} in Sector ${sector.sectorNumber}.`);
+          addLog(`🚀 ${player.name} constructed a ${item.itemType.toUpperCase()} in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
         }
       }
       break;
@@ -1517,8 +1530,82 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       if (newState.activeCombat) {
         const sector = newState.sectors.find((s) => s.id === newState.activeCombat!.sectorId);
         if (sector) {
+          // If combat is already in 'resolved' stage or explicitly flagged to conclude:
+          if (newState.activeCombat.stage === 'resolved' || action.concludeCombat) {
+            for (const ship of sector.ships) {
+              ship.damage = 0;
+            }
+
+            const winnerId = (newState.activeCombat as any).winnerOwnerId || getSectorDefenderOwnerId(sector);
+            addLog(`Combat in Sector ${sector.sectorNumber} has concluded! Winner: ${winnerId || 'None'}.`, 'combat');
+
+            if (!newState.resolvedCombatSectorIds) {
+              newState.resolvedCombatSectorIds = [];
+            }
+            newState.resolvedCombatSectorIds.push(sector.id);
+
+            // --- ATTACKING POPULATION & INFLUENCE CONQUEST ---
+            resolveAttackingPopulationAndConquest(newState, sector, winnerId);
+
+            // Compute reputation tiles for participating players
+            const units = buildCombatUnitsForSector(sector, newState.players);
+            const participants = Array.from(
+              new Set(units.map((u) => u.ownerId))
+            ).filter((id) => id.startsWith('player_'));
+
+            const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string }[] = [];
+
+            for (const pId of participants) {
+              const allRetreated = newState.activeCombat.retreatAttemptedPlayerIds?.includes(pId);
+              let tilesCount = allRetreated ? 0 : 1; // 1 tile for participating unless all remaining ships retreated
+
+              // Kills tiles
+              for (const casualty of newState.activeCombat.destroyedShips || []) {
+                if (casualty.killerId === pId && casualty.ownerId !== pId) {
+                  if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient') {
+                    tilesCount += 1;
+                  } else if (casualty.type === 'cruiser' || casualty.type === 'guardian') {
+                    tilesCount += 2;
+                  } else if (casualty.type === 'dreadnought' || casualty.type === 'gcds') {
+                    tilesCount += 3;
+                  }
+                }
+              }
+
+              tilesCount = Math.min(5, tilesCount); // Maximum 5 tiles drawn per battle
+
+              if (tilesCount > 0 && newState.reputationBag.length > 0) {
+                const drawn: number[] = [];
+                for (let k = 0; k < tilesCount && newState.reputationBag.length > 0; k++) {
+                  drawn.push(newState.reputationBag.pop()!);
+                }
+                if (drawn.length > 0) {
+                  repDrawQueue.push({
+                    playerId: pId,
+                    drawnTiles: drawn,
+                    sectorId: sector.id,
+                  });
+                }
+              }
+            }
+
+            newState.activeCombat = null;
+
+            // Enqueue reputation draws
+            if (repDrawQueue.length > 0) {
+              newState.pendingReputationDraw = repDrawQueue[0];
+              newState.pendingReputationDrawQueue = repDrawQueue.slice(1);
+            } else if (!newState.pendingCombatConquest) {
+              checkAndTriggerCombat(newState);
+            }
+
+            return { success: true, newState };
+          }
+
           const units = buildCombatUnitsForSector(sector, newState.players);
           const defenderId = newState.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector);
+          const destroyedBeforeCount = newState.activeCombat.destroyedShips?.length || 0;
+
           const combatRes = executeCombatStep(
             units,
             newState.activeCombat,
@@ -1572,7 +1659,44 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           newState.activeCombat.lastRolls = combatRes.rolls;
           newState.activeCombat.currentTurnIndex += 1;
 
+          // Detailed Salvo Logs
+          if (combatRes.rolls.length > 0) {
+            const firingOwner = combatRes.rolls[0]?.shipOwner;
+            const firingPlayer = newState.players.find((p) => p.id === firingOwner);
+            const firingLabel = firingPlayer ? firingPlayer.name : firingOwner?.toUpperCase() || 'Vessel';
+            const hits = combatRes.rolls.filter((r) => r.isHit).length;
+            const totalDmg = combatRes.rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0);
+            const diceSummary = combatRes.rolls.map((r) => `${r.roll}${r.isHit ? '✓' : '✗'}`).join(' ');
+            addLog(
+              `⚔️ Sector ${sector.sectorNumber}: ${firingLabel} salvo [${diceSummary}] ➔ ${hits} hit(s), ${totalDmg} dmg.`,
+              'combat'
+            );
+          }
+
+          // Log any newly destroyed ships
+          const newlyDestroyed = (newState.activeCombat.destroyedShips || []).slice(destroyedBeforeCount);
+          for (const des of newlyDestroyed) {
+            const victimOwner = newState.players.find((p) => p.id === des.ownerId);
+            const victimLabel = victimOwner ? victimOwner.name : des.ownerId.toUpperCase();
+            addLog(
+              `💥 ${victimLabel} ${des.type.toUpperCase()} was destroyed in Sector ${sector.sectorNumber}!`,
+              'combat'
+            );
+          }
+
           if (combatRes.isCombatOver) {
+            (newState.activeCombat as any).winnerOwnerId = combatRes.winnerOwnerId;
+
+            // If lethal rolls were rolled and concludeCombat was not requested, pause in 'resolved' stage so players see the final roll!
+            if (combatRes.rolls.length > 0 && !action.concludeCombat) {
+              newState.activeCombat.stage = 'resolved';
+              addLog(
+                `🏁 Engagement resolved in Sector ${sector.sectorNumber}! Victor: ${combatRes.winnerOwnerId || 'None'}. Review salvo and conclude to continue.`,
+                'combat'
+              );
+              return { success: true, newState };
+            }
+
             // Repair damage on surviving ships at the end of engagement
             for (const ship of sector.ships) {
               ship.damage = 0;
@@ -2321,6 +2445,15 @@ export function transitionToUpkeep(state: GameState): void {
     const moneyIncome = getIncomeForTrack(p.population.money.cubesOnBoard);
     const upkeep = getUpkeepForDiscs(p.influenceTrack.discsOnTrack);
     p.resources.money += moneyIncome - upkeep;
+    state.log.unshift({
+      id: `log_${Date.now()}_upkeep_${p.id}`,
+      timestamp: Date.now(),
+      round: state.round,
+      phase: 'UPKEEP_PHASE',
+      playerId: p.id,
+      message: `💰 UPKEEP: ${p.name} earned ${moneyIncome} Credits income, paid ${upkeep} Upkeep (Net: ${moneyIncome - upkeep >= 0 ? '+' : ''}${moneyIncome - upkeep}, Treasury: ${p.resources.money}).`,
+      type: 'economy',
+    });
 
     // 2. Ready colony ships
     p.colonyShips = {
@@ -2391,6 +2524,15 @@ export function checkNextBankruptcyOrCleanup(state: GameState): void {
     const materialsIncome = getIncomeForTrack(p.population.material.cubesOnBoard);
     p.resources.science += scienceIncome;
     p.resources.materials += materialsIncome;
+    state.log.unshift({
+      id: `log_${Date.now()}_prod_${p.id}`,
+      timestamp: Date.now(),
+      round: state.round,
+      phase: 'UPKEEP_PHASE',
+      playerId: p.id,
+      message: `🔬 PRODUCTION: ${p.name} collected +${scienceIncome} Science (Total: ${p.resources.science}) and +${materialsIncome} Materials (Total: ${p.resources.materials}).`,
+      type: 'economy',
+    });
   }
 
   transitionToCleanup(state);
@@ -2410,6 +2552,14 @@ export function transitionToCleanup(state: GameState): void {
   state.phase = 'ACTION_PHASE';
   state.passedPlayerIds = [];
   state.resolvedCombatSectorIds = [];
+  state.log.unshift({
+    id: `log_${Date.now()}_round_${state.round}`,
+    timestamp: Date.now(),
+    round: state.round,
+    phase: 'ACTION_PHASE',
+    message: `🚀 ROUND ${state.round} has begun! Action Phase is now active. Influence discs refreshed.`,
+    type: 'system',
+  });
 
   // Reset players action discs and passing status
   for (const player of state.players) {

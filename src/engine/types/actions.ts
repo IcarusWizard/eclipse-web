@@ -126,6 +126,7 @@ export interface ResolveCombatStepAction extends BaseAction {
   sectorId: string;
   retreatShipIds?: string[];
   retreatDestinationSectorId?: string;
+  concludeCombat?: boolean;
 }
 
 export interface CombatConquestAction extends BaseAction {

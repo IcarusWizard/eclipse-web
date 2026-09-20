@@ -43,6 +43,7 @@ import {
   loadTable,
   subscribeToGameSync,
   getTableNumber,
+  fetchTableFromServer,
 } from './engine/rules/persistence';
 
 export const App: React.FC = () => {
@@ -158,11 +159,38 @@ export const App: React.FC = () => {
     viewedPlayer.id !== state.players[currentSeat]?.id &&
     state.phase !== 'GAME_OVER';
 
-  // Real-time Cross-Tab / Multiplayer Status Sync
+  // Load table from server if URL query param ?table=XXX is specified and not loaded locally
   useEffect(() => {
-    if (!inGame || !state.id) return;
+    if (typeof window === 'undefined') return;
+    const params = new URLSearchParams(window.location.search);
+    const tableParam = params.get('table');
+    if (!tableParam) return;
 
-    const unsubscribe = subscribeToGameSync(state.id, (remoteState) => {
+    const matchesCurrent =
+      state.id === tableParam ||
+      (state as any).tableNumber === parseInt(tableParam, 10);
+
+    if (!matchesCurrent) {
+      fetchTableFromServer(tableParam).then((remote) => {
+        if (remote) {
+          isRemoteSyncRef.current = true;
+          lastStateJsonRef.current = JSON.stringify(remote);
+          saveGameState(remote, true);
+          setState(remote);
+          setInGame(true);
+        }
+      });
+    }
+  }, []);
+
+  // Real-time Cross-Tab / Multiplayer Status Sync (Local Broadcast + Server Polling)
+  useEffect(() => {
+    if (!inGame) return;
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const tableTarget = params?.get('table') || state.id;
+    if (!tableTarget) return;
+
+    const unsubscribe = subscribeToGameSync(tableTarget, (remoteState) => {
       const remoteJson = JSON.stringify(remoteState);
       if (remoteJson !== lastStateJsonRef.current) {
         lastStateJsonRef.current = remoteJson;
@@ -937,7 +965,7 @@ export const App: React.FC = () => {
   };
 
   // Step Combat
-  const handleStepCombat = (retreatShipIds?: string[], retreatDestinationSectorId?: string) => {
+  const handleStepCombat = (retreatShipIds?: string[], retreatDestinationSectorId?: string, concludeCombat?: boolean) => {
     if (!state.activeCombat) return;
 
     // Determine commanding player ID
@@ -945,7 +973,7 @@ export const App: React.FC = () => {
       ? state.players[currentSeat].id
       : undefined;
 
-    if (!commandingPlayerId) {
+    if (!commandingPlayerId && !concludeCombat && state.activeCombat.stage !== 'resolved') {
       // In 'all' mode: automatically use the active ship's owner (or activePlayer if neutral)
       const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
       if (sec) {
@@ -976,6 +1004,7 @@ export const App: React.FC = () => {
       sectorId: state.activeCombat.sectorId,
       retreatShipIds,
       retreatDestinationSectorId,
+      concludeCombat,
     });
     if (res.success) {
       setState(res.newState);
@@ -1010,10 +1039,12 @@ export const App: React.FC = () => {
     let iterations = 0;
     while (currentState.activeCombat && iterations < 100) {
       iterations++;
+      const isResolved = currentState.activeCombat.stage === 'resolved';
       const res = executeAction(currentState, {
         type: 'RESOLVE_COMBAT_STEP',
         playerId: activePlayer.id,
         sectorId: currentState.activeCombat.sectorId,
+        concludeCombat: isResolved,
       });
       if (!res.success) break;
       currentState = res.newState;

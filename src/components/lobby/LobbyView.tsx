@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { listSavedTables, deleteSavedTable, SavedTableSummary } from '../../engine/rules/persistence';
+import React, { useState, useEffect } from 'react';
+import { listSavedTables, deleteSavedTable, fetchSavedTablesFromServer, SavedTableSummary } from '../../engine/rules/persistence';
 import { ALL_FACTIONS } from '../../engine/rules/setup';
 import { FactionInfo } from '../../engine/types/player';
 import {
@@ -30,6 +30,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   onOpenGallery,
 }) => {
   const [savedTables, setSavedTables] = useState<SavedTableSummary[]>(() => listSavedTables());
+
+  useEffect(() => {
+    fetchSavedTablesFromServer().then((remoteTables) => {
+      if (remoteTables && remoteTables.length > 0) {
+        setSavedTables((prev) => {
+          const map = new Map<string, SavedTableSummary>();
+          for (const t of prev) map.set(t.id, t);
+          for (const t of remoteTables) map.set(t.id, t);
+          return Array.from(map.values()).sort((a, b) => b.savedAt - a.savedAt);
+        });
+      }
+    });
+  }, []);
 
   // Create Table State
   const [playerCount, setPlayerCount] = useState<number>(2);

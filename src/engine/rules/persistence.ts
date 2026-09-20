@@ -130,8 +130,17 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     if (!skipBroadcast) {
       broadcastGameState(state, stateJson);
     }
+
+    // Persist to server API for cross-IP multi-device gameplay
+    if (typeof fetch !== 'undefined') {
+      fetch(`/api/tables/${state.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: stateJson,
+      }).catch(() => {});
+    }
   } catch (err) {
-    console.error('Failed to save game state to localStorage:', err);
+    console.error('Failed to save game state:', err);
   }
 }
 
@@ -220,7 +229,39 @@ export function listSavedTables(): SavedTableSummary[] {
 }
 
 /**
- * Removes a table from localStorage.
+ * Fetches a table from the server storage API by ID or tableNumber.
+ */
+export async function fetchTableFromServer(tableIdentifier: string | number): Promise<GameState | null> {
+  try {
+    if (typeof fetch === 'undefined') return null;
+    const res = await fetch(`/api/tables/${encodeURIComponent(String(tableIdentifier))}`);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data && data.success && data.table) {
+      return data.table as GameState;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Fetches all saved table summaries from the server storage API.
+ */
+export async function fetchSavedTablesFromServer(): Promise<SavedTableSummary[]> {
+  try {
+    if (typeof fetch === 'undefined') return [];
+    const res = await fetch('/api/tables');
+    if (!res.ok) return [];
+    const data = await res.json();
+    if (data && data.success && Array.isArray(data.tables)) {
+      return data.tables as SavedTableSummary[];
+    }
+  } catch {}
+  return [];
+}
+
+/**
+ * Removes a table from localStorage and server storage.
  */
 export function deleteSavedTable(tableId: string): void {
   try {
@@ -230,14 +271,18 @@ export function deleteSavedTable(tableId: string): void {
     const tables: Record<string, SavedTableSummary> = JSON.parse(raw);
     delete tables[tableId];
     storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+
+    if (typeof fetch !== 'undefined') {
+      fetch(`/api/tables/${encodeURIComponent(tableId)}`, { method: 'DELETE' }).catch(() => {});
+    }
   } catch (err) {
     console.error('Failed to delete saved table:', err);
   }
 }
 
 /**
- * Subscribes to real-time game state synchronization across tabs/windows.
- * Combines BroadcastChannel (instant in-memory broadcast) with StorageEvent and interval polling fallback.
+ * Subscribes to real-time game state synchronization across tabs/windows and different IP addresses.
+ * Combines BroadcastChannel (instant in-memory broadcast) with StorageEvent and server polling for multi-IP support.
  */
 export function subscribeToGameSync(
   tableIdentifier: string | number,
@@ -253,7 +298,21 @@ export function subscribeToGameSync(
     lastKnownJson = JSON.stringify(initial);
   }
 
-  // 1. BroadcastChannel message listener (0ms instant cross-tab sync)
+  // 1. Check server storage immediately on subscribe for fast multi-device join
+  fetchTableFromServer(targetIdStr)
+    .then((remote) => {
+      if (remote) {
+        const json = JSON.stringify(remote);
+        if (json !== lastKnownJson) {
+          lastKnownJson = json;
+          saveGameState(remote, true);
+          callback(remote);
+        }
+      }
+    })
+    .catch(() => {});
+
+  // 2. BroadcastChannel message listener (0ms instant cross-tab sync)
   const channel = getSyncChannel();
   const handleChannelMessage = (event: MessageEvent) => {
     try {
@@ -303,15 +362,28 @@ export function subscribeToGameSync(
     window.addEventListener('storage', handleStorageEvent);
   }
 
-  // 3. Periodic fallback poll check (every 1s)
-  const pollInterval = setInterval(() => {
+  // 3. Periodic fallback poll check (local storage + server-side polling for cross-IP multiplayer)
+  const pollInterval = setInterval(async () => {
     try {
-      const latest = loadTable(targetIdStr);
-      if (latest) {
-        const json = JSON.stringify(latest);
+      // Check local storage first
+      const local = loadTable(targetIdStr);
+      if (local) {
+        const json = JSON.stringify(local);
         if (json !== lastKnownJson) {
           lastKnownJson = json;
-          callback(latest);
+          callback(local);
+          return;
+        }
+      }
+
+      // Check server storage for updates from other IP addresses
+      const remote = await fetchTableFromServer(targetIdStr);
+      if (remote) {
+        const json = JSON.stringify(remote);
+        if (json !== lastKnownJson) {
+          lastKnownJson = json;
+          saveGameState(remote, true);
+          callback(remote);
         }
       }
     } catch {}

@@ -43,6 +43,8 @@ import {
   listSavedTables,
   getTableNumber,
   subscribeToGameSync,
+  fetchTableFromServer,
+  fetchSavedTablesFromServer,
 } from '../rules/persistence';
 import { formatBugReportLine } from '../rules/bugReport';
 import type { SectorTile } from '../types/sector';
@@ -4666,6 +4668,151 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(sixGame.players[3]!.faction.reputationSlots).toBe(4); // Eridani
         expect(sixGame.players[4]!.faction.reputationSlots).toBe(4); // Mechanema
         expect(sixGame.players[5]!.faction.reputationSlots).toBe(5); // Orion
+      });
+
+      it('39. verifies Server-Side Table Persistence, Final Combat Hit Resolution, and Detailed Event Logs (Bugs 32-34)', async () => {
+        // --- Bug 32: Server-Side Persistence & Multi-IP Join ---
+        const game = createInitialGame(2);
+        const tableNum = getTableNumber(game);
+        expect(tableNum).toBeGreaterThanOrEqual(100);
+        expect(tableNum).toBeLessThanOrEqual(999);
+
+        saveGameState(game);
+        const activeLoaded = loadActiveGameState();
+        expect(activeLoaded).not.toBeNull();
+        expect(activeLoaded?.id).toBe(game.id);
+
+        // Server API fetch returns null gracefully when target doesn't exist
+        const nonExistent = await fetchTableFromServer('non_existent_id');
+        expect(nonExistent).toBeNull();
+        const serverTables = await fetchSavedTablesFromServer();
+        expect(Array.isArray(serverTables)).toBe(true);
+
+        // Real-time synchronization subscription returns an unsubscriber
+        const unsub = subscribeToGameSync(game.id, () => {});
+        expect(typeof unsub).toBe('function');
+        unsub();
+
+        // --- Bug 33: Final Hit of Combat Preserves Dice Results Before Ending ---
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+        const combatSector = game.sectors[1]!;
+
+        // Equip P1 Cruiser with guaranteed hit (Electron Computer +2, Plasma Cannon 2 damage)
+        p1.blueprints.cruiser.slots = [
+          SHIP_PARTS.plasma_cannon, // 2 dmg, 1 die
+          SHIP_PARTS.electron_computer, // +2 comp
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_drive,
+          null,
+          null,
+        ];
+
+        // Enemy has an Ancient ship with 1 damage taken out of 2 maxHull (1 HP remaining)
+        combatSector.ships = [
+          { id: 'p1_cruiser_alpha', ownerId: p1.id, type: 'cruiser', damage: 0 },
+          { id: 'ancient_defender', ownerId: 'ancient', type: 'ancient', damage: 1 },
+        ];
+
+        game.activeCombat = {
+          sectorId: combatSector.id,
+          defenderOwnerId: 'ancient',
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [
+            { shipId: 'p1_cruiser_alpha', ownerId: p1.id, initiative: 3 },
+            { shipId: 'ancient_defender', ownerId: 'ancient', initiative: 2 },
+          ],
+          currentTurnIndex: 0, // p1_cruiser_alpha is active attacker
+          lastRolls: [],
+          retreatDeclared: {},
+        };
+
+        // Execute combat step until lethal blow is struck
+        let combatStepState = game;
+        let lethalFired = false;
+        for (let iter = 0; iter < 10; iter++) {
+          const stepRes = executeAction(combatStepState, {
+            type: 'RESOLVE_COMBAT_STEP',
+            playerId: p1.id,
+            sectorId: combatSector.id,
+          });
+          expect(stepRes.success).toBe(true);
+          combatStepState = stepRes.newState;
+
+          if (combatStepState.activeCombat?.stage === 'resolved') {
+            lethalFired = true;
+            // Combat must NOT be null yet! Final dice roll results must remain visible
+            expect(combatStepState.activeCombat).not.toBeNull();
+            expect(combatStepState.activeCombat.lastRolls.length).toBeGreaterThan(0);
+            expect(combatStepState.activeCombat.stage).toBe('resolved');
+            break;
+          }
+          if (!combatStepState.activeCombat) break;
+        }
+
+        expect(lethalFired).toBe(true);
+
+        // Conclude the resolved engagement
+        const concludeRes = executeAction(combatStepState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+          sectorId: combatSector.id,
+          concludeCombat: true,
+        });
+        expect(concludeRes.success).toBe(true);
+        expect(concludeRes.newState.activeCombat).toBeNull();
+
+        // --- Bug 34: Detailed Event Logs ---
+        // 1. Upgrade blueprint logging
+        const testUpgradeGame = createInitialGame(2);
+        const upP1 = testUpgradeGame.players[0]!;
+        upP1.resources.materials = 20;
+
+        const upgradeRes = executeAction(testUpgradeGame, {
+          type: 'UPGRADE',
+          playerId: upP1.id,
+          upgrades: [
+            { shipType: 'cruiser', slotIndex: 0, partId: 'plasma_cannon' },
+          ],
+        });
+        expect(upgradeRes.success).toBe(true);
+        const upgradeLog = upgradeRes.newState.log.find((l) => l.message.includes('upgraded ship blueprints'));
+        expect(upgradeLog).toBeDefined();
+        expect(upgradeLog?.message).toContain('CRUISER');
+        expect(upgradeLog?.message).toContain('Plasma Cannon');
+
+        // 2. Build logging
+        const buildSectorId = testUpgradeGame.sectors[1]!.id;
+        testUpgradeGame.sectors[1]!.discOwner = upP1.id;
+        const buildRes = executeAction(testUpgradeGame, {
+          type: 'BUILD',
+          playerId: upP1.id,
+          items: [
+            { itemType: 'cruiser', sectorId: buildSectorId },
+          ],
+        });
+        expect(buildRes.success).toBe(true);
+        const buildLog = buildRes.newState.log.find((l) => l.message.includes('constructed a CRUISER'));
+        expect(buildLog).toBeDefined();
+        expect(buildLog?.message).toContain('Materials');
+
+        // 3. Upkeep and Production detailed logging
+        const ecoGame = createInitialGame(2);
+        transitionToUpkeep(ecoGame);
+        const upkeepLog = ecoGame.log.find((l) => l.type === 'economy' && l.message.includes('UPKEEP:'));
+        expect(upkeepLog).toBeDefined();
+        expect(upkeepLog?.message).toContain('Credits income');
+        expect(upkeepLog?.message).toContain('Upkeep');
+
+        const prodLog = ecoGame.log.find((l) => l.type === 'economy' && l.message.includes('PRODUCTION:'));
+        expect(prodLog).toBeDefined();
+        expect(prodLog?.message).toContain('Science');
+        expect(prodLog?.message).toContain('Materials');
+
+        // 4. Round transition logging
+        const roundLog = ecoGame.log.find((l) => l.type === 'system' && l.message.includes('ROUND 2 has begun'));
+        expect(roundLog).toBeDefined();
       });
     });
   });

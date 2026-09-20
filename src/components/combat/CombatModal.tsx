@@ -7,7 +7,7 @@ import { areSectorsConnected } from '../../engine/rules/hexMath';
 interface CombatModalProps {
   state: GameState;
   combat: CombatState;
-  onStepCombat: (retreatShipIds?: string[], retreatDestinationSectorId?: string) => void;
+  onStepCombat: (retreatShipIds?: string[], retreatDestinationSectorId?: string, concludeCombat?: boolean) => void;
   onAutoResolve?: () => void;
   currentSeat?: number | 'all' | 'spectator';
 }
@@ -29,6 +29,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     defenderOwnerId
   );
 
+  const isResolved = combat.stage === 'resolved';
   const isMissileStage = combat.stage === 'missile';
   const pendingMissileUnits = isMissileStage
     ? aliveUnits.filter(
@@ -42,18 +43,18 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const activeAttackerId = activeAttacker?.id || null;
 
   const attackerOwner = activeAttacker ? state.players.find((p) => p.id === activeAttacker.ownerId) : null;
-  const isPlayerShip = !!(activeAttacker && attackerOwner && activeAttacker.ownerId.startsWith('player_'));
-  const isNpcShip = !isPlayerShip;
+  const isPlayerShip = !isResolved && !!(activeAttacker && attackerOwner && activeAttacker.ownerId.startsWith('player_'));
+  const isNpcShip = !isResolved && !isPlayerShip;
   const isSeatedPlayer = typeof currentSeat === 'number';
   const myPlayer = isSeatedPlayer ? state.players[currentSeat] : null;
   const isMyShip = isPlayerShip && myPlayer ? activeAttacker?.ownerId === myPlayer.id : false;
   // Neutral NPC ships (Ancients, Guardians, GCDS) can be triggered by any player; player ships require owner authority
-  const canCommandActiveShip = currentSeat === 'all' || isNpcShip || isMyShip;
+  const canCommandActiveShip = isResolved || currentSeat === 'all' || isNpcShip || isMyShip;
   const hasWormholeGen = attackerOwner?.techTrack.researched.some((t) => t.id === 'wormhole_generator') || false;
 
   // Determine eligible retreat destination sectors:
   // Must be adjacent, connected by wormhole (or wormhole generator), controlled by this player, with no enemy ships
-  const eligibleRetreatDestinations = !isMissileStage && isPlayerShip && activeAttacker.type !== 'starbase'
+  const eligibleRetreatDestinations = !isResolved && !isMissileStage && isPlayerShip && activeAttacker?.type !== 'starbase'
     ? state.sectors.filter((s) => {
         if (s.id === sector.id) return false;
         if (s.discOwner !== attackerOwner.id) return false;
@@ -96,7 +97,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 FLEET ENGAGEMENT: SECTOR {sector.sectorNumber}
               </h2>
               <p className="text-xs text-slate-400">
-                {isMissileStage
+                {isResolved
+                  ? 'Engagement resolved! Review the final salvo dice results below.'
+                  : isMissileStage
                   ? 'Missile Stage: Ships armed with missiles launch one salvo in initiative order before regular combat.'
                   : `Hostile forces have clashed in Ring ${sector.ring}. Tactical cannon engagement in progress.`}
               </p>
@@ -104,12 +107,14 @@ export const CombatModal: React.FC<CombatModalProps> = ({
           </div>
           <span
             className={`text-xs font-bold px-2.5 py-1 rounded border uppercase ${
-              isMissileStage
+              isResolved
+                ? 'bg-emerald-950 border-emerald-500 text-emerald-300'
+                : isMissileStage
                 ? 'bg-amber-950 border-amber-500 text-amber-300'
                 : 'bg-rose-950 border-rose-800 text-rose-300'
             }`}
           >
-            {isMissileStage ? '🚀 MISSILE STAGE' : `Round ${combat.roundNumber}`}
+            {isResolved ? '🏆 RESOLVED' : isMissileStage ? '🚀 MISSILE STAGE' : `Round ${combat.roundNumber}`}
           </span>
         </div>
 
@@ -242,11 +247,48 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             </div>
           </div>
 
+          {/* Resolved Engagement Banner */}
+          {isResolved && (
+            <div className="p-4 rounded-xl bg-emerald-950/40 border border-emerald-500/60 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
+                <div>
+                  <h3 className="text-sm font-bold text-emerald-300 font-display">
+                    ENGAGEMENT CONCLUDED
+                  </h3>
+                  <p className="text-xs text-slate-300">
+                    Final salvo delivered. Victor:{' '}
+                    <strong className="text-emerald-300">
+                      {state.players.find((p) => p.id === (combat as any).winnerOwnerId)?.name ||
+                        ((combat as any).winnerOwnerId ? (combat as any).winnerOwnerId.toUpperCase() : 'Surviving Fleet')}
+                    </strong>
+                    . Review the lethal dice results below and conclude engagement to continue.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => onStepCombat(undefined, undefined, true)}
+                className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer shrink-0"
+              >
+                <span>Conclude Engagement</span>
+                <ArrowRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
           {/* Dice Rolls Log */}
           {combat.lastRolls && combat.lastRolls.length > 0 && (
-            <div className="bg-slate-950 p-4 rounded-lg border border-slate-800">
+            <div
+              className={`p-4 rounded-lg border transition-all ${
+                isResolved
+                  ? 'bg-slate-950 border-emerald-600/60 ring-1 ring-emerald-500/30'
+                  : 'bg-slate-950 border-slate-800'
+              }`}
+            >
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
-                <Dices className="w-4 h-4 text-cyan-400" /> Recent Salvo Dice Results
+                <Dices className={`w-4 h-4 ${isResolved ? 'text-emerald-400' : 'text-cyan-400'}`} />{' '}
+                {isResolved ? 'Final Salvo Lethal Dice Results' : 'Recent Salvo Dice Results'}
               </h3>
               <div className="flex flex-wrap gap-2">
                 {combat.lastRolls.map((roll, idx) => (
@@ -272,7 +314,16 @@ export const CombatModal: React.FC<CombatModalProps> = ({
         {/* Action Controls */}
         <div className="p-4 border-t border-slate-800 bg-slate-950 flex flex-col sm:flex-row items-center justify-between gap-3">
           <div className="text-xs text-slate-400 text-center sm:text-left">
-            {activeAttacker && (
+            {isResolved ? (
+              <span className="text-emerald-300 font-bold flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                Engagement completed • Victor:{' '}
+                <strong className="text-slate-100">
+                  {state.players.find((p) => p.id === (combat as any).winnerOwnerId)?.name ||
+                    ((combat as any).winnerOwnerId ? (combat as any).winnerOwnerId.toUpperCase() : 'Surviving Fleet')}
+                </strong>
+              </span>
+            ) : activeAttacker ? (
               <span>
                 {isMissileStage ? 'Missile Salvo' : 'Salvo'}{' '}
                 <strong className="text-slate-200">#{combat.currentTurnIndex + 1}</strong> • Active Initiative:{' '}
@@ -286,85 +337,97 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   </span>
                 )}
               </span>
-            )}
+            ) : null}
           </div>
 
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
-            {/* Auto-Resolve Option - only in 'all' / sandbox mode to prevent skipping human decisions */}
-            {onAutoResolve && currentSeat === 'all' && !isAlreadyRetreating && (
+            {isResolved ? (
               <button
                 type="button"
-                onClick={onAutoResolve}
-                className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition shadow cursor-pointer"
+                onClick={() => onStepCombat(undefined, undefined, true)}
+                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl transition cursor-pointer"
               >
-                <Zap className="w-3.5 h-3.5 text-amber-400" /> Auto-Resolve
+                <CheckCircle2 className="w-4 h-4" /> Conclude Engagement & Continue
               </button>
-            )}
-
-            {!canCommandActiveShip ? (
-              <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
-                <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                <span>
-                  Waiting for Commander <strong className="text-amber-300">{attackerOwner?.name || 'opponent'}</strong> to command their {activeAttacker?.type.toUpperCase()}...
-                </span>
-              </div>
             ) : (
               <>
-                {/* Declare Retreat Option (If active unit is mobile player ship and has eligible retreat destination) */}
-                {!isAlreadyRetreating && isPlayerShip && eligibleRetreatDestinations.length > 0 && (
-                  <div className="flex items-center gap-1.5 bg-slate-900/90 border border-amber-600/50 rounded-lg p-1">
-                    <select
-                      value={selectedRetreatSectorId || eligibleRetreatDestinations[0]?.id}
-                      onChange={(e) => setSelectedRetreatSectorId(e.target.value)}
-                      className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:outline-none"
-                    >
-                      {eligibleRetreatDestinations.map((dest) => (
-                        <option key={dest.id} value={dest.id}>
-                          Sector {dest.sectorNumber}
-                        </option>
-                      ))}
-                    </select>
-                    <button
-                      type="button"
-                      onClick={handleDeclareRetreat}
-                      className="flex items-center gap-1 px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs uppercase shadow transition cursor-pointer"
-                      title="Retreat all ships of this type to selected sector"
-                    >
-                      <Navigation className="w-3.5 h-3.5" /> Retreat
-                    </button>
-                  </div>
+                {/* Auto-Resolve Option - only in 'all' / sandbox mode to prevent skipping human decisions */}
+                {onAutoResolve && currentSeat === 'all' && !isAlreadyRetreating && (
+                  <button
+                    type="button"
+                    onClick={onAutoResolve}
+                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition shadow cursor-pointer"
+                  >
+                    <Zap className="w-3.5 h-3.5 text-amber-400" /> Auto-Resolve
+                  </button>
                 )}
 
-                {/* Complete Retreat or Fire Salvo */}
-                {isAlreadyRetreating ? (
-                  <button
-                    type="button"
-                    onClick={() => onStepCombat()}
-                    className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-lg shadow-amber-950 transition cursor-pointer"
-                  >
-                    <Navigation className="w-4 h-4" /> Complete Retreat
-                  </button>
-                ) : isNpcShip ? (
-                  <button
-                    type="button"
-                    onClick={() => onStepCombat()}
-                    className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-bold text-xs tracking-wider uppercase shadow-lg bg-purple-600 hover:bg-purple-500 text-white shadow-purple-950 transition cursor-pointer"
-                    title="Neutral ship attack can be triggered by any commander"
-                  >
-                    <Dices className="w-4 h-4" /> Roll Neutral Salvo ({activeAttacker?.type.toUpperCase()})
-                  </button>
+                {!canCommandActiveShip ? (
+                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
+                    <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                    <span>
+                      Waiting for Commander <strong className="text-amber-300">{attackerOwner?.name || 'opponent'}</strong> to command their {activeAttacker?.type.toUpperCase()}...
+                    </span>
+                  </div>
                 ) : (
-                  <button
-                    type="button"
-                    onClick={() => onStepCombat()}
-                    className={`flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-bold text-xs tracking-wider uppercase shadow-lg transition cursor-pointer ${
-                      isMissileStage
-                        ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-950'
-                        : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950'
-                    }`}
-                  >
-                    <Dices className="w-4 h-4" /> {isMissileStage ? 'Launch Missiles' : 'Fire Salvo'}
-                  </button>
+                  <>
+                    {/* Declare Retreat Option (If active unit is mobile player ship and has eligible retreat destination) */}
+                    {!isAlreadyRetreating && isPlayerShip && eligibleRetreatDestinations.length > 0 && (
+                      <div className="flex items-center gap-1.5 bg-slate-900/90 border border-amber-600/50 rounded-lg p-1">
+                        <select
+                          value={selectedRetreatSectorId || eligibleRetreatDestinations[0]?.id}
+                          onChange={(e) => setSelectedRetreatSectorId(e.target.value)}
+                          className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:outline-none"
+                        >
+                          {eligibleRetreatDestinations.map((dest) => (
+                            <option key={dest.id} value={dest.id}>
+                              Sector {dest.sectorNumber}
+                            </option>
+                          ))}
+                        </select>
+                        <button
+                          type="button"
+                          onClick={handleDeclareRetreat}
+                          className="flex items-center gap-1 px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs uppercase shadow transition cursor-pointer"
+                          title="Retreat all ships of this type to selected sector"
+                        >
+                          <Navigation className="w-3.5 h-3.5" /> Retreat
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Complete Retreat or Fire Salvo */}
+                    {isAlreadyRetreating ? (
+                      <button
+                        type="button"
+                        onClick={() => onStepCombat()}
+                        className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-lg shadow-amber-950 transition cursor-pointer"
+                      >
+                        <Navigation className="w-4 h-4" /> Complete Retreat
+                      </button>
+                    ) : isNpcShip ? (
+                      <button
+                        type="button"
+                        onClick={() => onStepCombat()}
+                        className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-bold text-xs tracking-wider uppercase shadow-lg bg-purple-600 hover:bg-purple-500 text-white shadow-purple-950 transition cursor-pointer"
+                        title="Neutral ship attack can be triggered by any commander"
+                      >
+                        <Dices className="w-4 h-4" /> Roll Neutral Salvo ({activeAttacker?.type.toUpperCase()})
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => onStepCombat()}
+                        className={`flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-bold text-xs tracking-wider uppercase shadow-lg transition cursor-pointer ${
+                          isMissileStage
+                            ? 'bg-amber-500 hover:bg-amber-400 text-slate-950 shadow-amber-950'
+                            : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950'
+                        }`}
+                      >
+                        <Dices className="w-4 h-4" /> {isMissileStage ? 'Launch Missiles' : 'Fire Salvo'}
+                      </button>
+                    )}
+                  </>
                 )}
               </>
             )}
