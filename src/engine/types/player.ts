@@ -42,7 +42,7 @@ export interface FactionInfo {
   readonly buildActivations?: number; // Base build activations per Build action disc (standard 2)
   readonly moveActivations?: number; // Base move activations per Move action disc (Humans 3, Aliens 2)
   readonly influenceActivations?: number; // Base influence activations per Influence action disc (standard 2)
-  readonly reputationSlots?: number; // Capacity of reputation track (4 for Eridani, Planta, Mechanema; 5 for others)
+  readonly reputationSlots?: number; // Capacity of reputation track (4 for Eridani, Planta, Mechanema, Hydran, Draco; 5 for Orion and Terrans)
 }
 
 export interface PlayerResources {

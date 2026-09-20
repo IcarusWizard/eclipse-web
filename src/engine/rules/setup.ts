@@ -208,7 +208,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 2,
     influenceActivations: 2,
-    reputationSlots: 5,
+    reputationSlots: 4,
   },
   {
     id: 'planta',
@@ -239,8 +239,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     startingResources: { money: 2, science: 4, materials: 3 },
     startingDiscs: 13,
     startingColonyShips: 3,
-    startingTechIds: [],
-    traitDescription: 'Peaceful coexistence with Ancients, dual explore sector picks, and +1 VP per Ancient at game end.',
+    startingTechIds: ['fusion_drive'],
+    traitDescription: 'Peaceful coexistence with Ancients, dual explore sector picks, starts with Fusion Drive, and +1 VP per Ancient at game end.',
     tradeRatio: 3,
     exploreActivations: 1,
     researchActivations: 1,
@@ -248,7 +248,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 2,
     influenceActivations: 2,
-    reputationSlots: 5,
+    reputationSlots: 4,
   },
   {
     id: 'mechanema',

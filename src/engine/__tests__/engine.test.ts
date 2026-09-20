@@ -3007,8 +3007,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const p2 = game.players[1]!;
         const battleSector = game.sectors[1]!;
 
-        // Equip P1 Cruiser with Soliton Missile (2 blue dice, 3 dmg each, isMissile: true, +2 initiative)
-        // Soliton Missile gives initiative 2 + Cruiser base 1 + nuclear drive 1 = 4 initiative
+        // Equip P1 Cruiser with Soliton Missile (1 blue die, 3 dmg each, isMissile: true, +1 initiative, 0 energy)
+        // Soliton Missile gives initiative 1 + Cruiser base 1 + nuclear drive 1 = 3 initiative
         p1.blueprints.cruiser.slots[0] = SHIP_PARTS.soliton_missile;
         p1.blueprints.cruiser.slots[1] = SHIP_PARTS.ion_cannon; // 1 yellow die (1 dmg)
 
@@ -3174,6 +3174,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(eridani.blueprints.interceptor.preprintedPower).toBe(1);
         expect(eridani.blueprints.cruiser.preprintedPower).toBe(1);
         expect(eridani.blueprints.dreadnought.preprintedPower).toBe(1);
+        // Eridani ships start with Nuclear Drive, while Fusion Drive is researched in tech track
+        expect(eridani.blueprints.interceptor.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(eridani.blueprints.interceptor.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
+        expect(eridani.blueprints.cruiser.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(eridani.blueprints.cruiser.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
+        expect(eridani.blueprints.dreadnought.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(eridani.blueprints.dreadnought.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
         // Home sector 222 exists and contains 1 Interceptor
         const homeSector = game.sectors.find((s) => s.sectorNumber === 222);
         expect(homeSector).toBeDefined();
@@ -3233,7 +3240,9 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const game = createInitialGame(1, ['descendants_of_draco']);
         const draco = game.players[0]!;
         expect(draco.faction.id).toBe('descendants_of_draco');
-        expect(draco.techTrack.researched.map((t) => t.id)).toEqual([]);
+        expect(draco.techTrack.researched.map((t) => t.id)).toEqual(['fusion_drive']);
+        expect(draco.blueprints.interceptor.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(draco.blueprints.interceptor.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
 
         // Set up an Ancient sector adjacent to Draco
         const ancientSector: SectorTile = {
@@ -3731,8 +3740,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(game.players[0]!.faction.reputationSlots).toBe(4); // Eridani
         expect(game.players[1]!.faction.reputationSlots).toBe(4); // Planta
         expect(game.players[2]!.faction.reputationSlots).toBe(4); // Mechanema
-        expect(game.players[3]!.faction.reputationSlots).toBe(5); // Hydran
-        expect(game.players[4]!.faction.reputationSlots).toBe(5); // Draco
+        expect(game.players[3]!.faction.reputationSlots).toBe(4); // Hydran
+        expect(game.players[4]!.faction.reputationSlots).toBe(4); // Draco
         expect(game.players[5]!.faction.reputationSlots).toBe(5); // Orion
       });
 
@@ -4577,6 +4586,86 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           dracoScore.discoveries +
           dracoScore.speciesBonus
         );
+      });
+
+      it('37. verifies PhysicalPlayerBoardModal renders without error for all factions including Eridani Empire', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+        const { ALL_FACTIONS } = await import('../rules/setup');
+
+        for (const f of ALL_FACTIONS) {
+          const game = createInitialGame(1, [f.id]);
+          const p = game.players[0]!;
+          const html = renderToString(
+            React.createElement(PhysicalPlayerBoardModal, {
+              player: p,
+              players: game.players,
+              activePlayerId: p.id,
+              sectors: game.sectors,
+              onClose: () => {},
+              onSelectPlayer: () => {},
+              onOpenBlueprintEditor: () => {},
+              onOpenTechMarket: () => {},
+            })
+          );
+          expect(html).toBeDefined();
+          expect(html.length).toBeGreaterThan(0);
+          if (f.id === 'eridani_empire') {
+            expect(html).toContain('Eridani Dynastic Power');
+          } else if (f.id === 'planta') {
+            expect(html).toContain('Planta Bio-Computer');
+          }
+        }
+      });
+
+      it('38. verifies Draco/Eridani initial tech vs blueprints, Soliton Missile stats, and official reputation slots (Bugs 28-31)', () => {
+        // Bug 28: Draco starts with Fusion Drive in initial tech, but Nuclear Drive on ship blueprints
+        const dracoGame = createInitialGame(1, ['descendants_of_draco']);
+        const draco = dracoGame.players[0]!;
+        expect(draco.techTrack.researched.some((t) => t.id === 'fusion_drive')).toBe(true);
+        expect(draco.techTrack.nanoCount).toBe(1);
+        expect(draco.blueprints.interceptor.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(draco.blueprints.interceptor.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
+        expect(draco.blueprints.cruiser.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(draco.blueprints.cruiser.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
+        expect(draco.blueprints.dreadnought.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(draco.blueprints.dreadnought.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
+
+        // Bug 29: Eridani starts with Fusion Drive in initial tech, but Nuclear Drive on ship blueprints
+        const eridaniGame = createInitialGame(1, ['eridani_empire']);
+        const eridani = eridaniGame.players[0]!;
+        expect(eridani.techTrack.researched.some((t) => t.id === 'fusion_drive')).toBe(true);
+        expect(eridani.blueprints.interceptor.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(eridani.blueprints.interceptor.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
+        expect(eridani.blueprints.cruiser.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(eridani.blueprints.cruiser.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
+        expect(eridani.blueprints.dreadnought.slots.some((s) => s?.id === 'nuclear_drive')).toBe(true);
+        expect(eridani.blueprints.dreadnought.slots.some((s) => s?.id === 'fusion_drive')).toBe(false);
+
+        // Bug 30: Discovery tile Soliton Missile stats: 1 blue die, 1 initiative, 0 energy cost
+        const soliton = SHIP_PARTS.soliton_missile;
+        expect(soliton).toBeDefined();
+        expect(soliton.powerConsumed).toBe(0);
+        expect(soliton.initiativeBonus).toBe(1);
+        expect(soliton.dice).toEqual([{ color: 'blue', count: 1, damagePerHit: 3, isMissile: true }]);
+
+        // Bug 31: Official Reputation Track Slot counts:
+        // Hydran: 4, Draco: 4, Planta: 4, Eridani: 4, Mechanema: 4, Orion: 5, Humans: 5
+        const sixGame = createInitialGame(6, [
+          'hydran_progress',
+          'descendants_of_draco',
+          'planta',
+          'eridani_empire',
+          'mechanema',
+          'orion_hegemony',
+        ]);
+        expect(sixGame.players[0]!.faction.reputationSlots).toBe(4); // Hydran
+        expect(sixGame.players[1]!.faction.reputationSlots).toBe(4); // Draco
+        expect(sixGame.players[2]!.faction.reputationSlots).toBe(4); // Planta
+        expect(sixGame.players[3]!.faction.reputationSlots).toBe(4); // Eridani
+        expect(sixGame.players[4]!.faction.reputationSlots).toBe(4); // Mechanema
+        expect(sixGame.players[5]!.faction.reputationSlots).toBe(5); // Orion
       });
     });
   });

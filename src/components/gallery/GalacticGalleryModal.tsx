@@ -894,13 +894,13 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                       <strong className="text-slate-200">Terran Federation & Variants:</strong> 5 Reputation Slots
                     </li>
                     <li>
-                      <strong className="text-slate-200">Hydran Progress:</strong> 5 Reputation Slots
+                      <strong className="text-slate-200">Hydran Progress:</strong> 4 Reputation Slots
                     </li>
                     <li>
-                      <strong className="text-slate-200">Descendants of Draco:</strong> 5 Reputation Slots
+                      <strong className="text-slate-200">Descendants of Draco:</strong> 4 Reputation Slots
                     </li>
                     <li>
-                      <strong className="text-slate-200">Orion Hegemony:</strong> 5 Reputation Slots
+                      <strong className="text-slate-200">Orion Hegemony:</strong> 5 Reputation Slots (Militaristic bonus slot)
                     </li>
                     <li>
                       <strong className="text-slate-200">Planta:</strong> 4 Reputation Slots (Offset by +1 VP per controlled sector trait)

@@ -381,12 +381,12 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     name: 'Soliton Missile',
     category: 'missile',
     powerProduced: 0,
-    powerConsumed: 1,
-    initiativeBonus: 2,
+    powerConsumed: 0,
+    initiativeBonus: 1,
     computerBonus: 0,
     shieldBonus: 0,
     hullBonus: 0,
-    dice: [{ color: 'blue', count: 2, damagePerHit: 3, isMissile: true }],
+    dice: [{ color: 'blue', count: 1, damagePerHit: 3, isMissile: true }],
   },
 
 

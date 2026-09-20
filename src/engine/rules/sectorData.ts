@@ -493,7 +493,7 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
   {
     id: 'disc_soliton_missile',
     name: 'Soliton Missile',
-    description: 'Ancient missile weapon: 2 blue missiles (3 dmg each), +2 Initiative, 1 power consumed.',
+    description: 'Ancient missile weapon: 1 blue missile (3 dmg), +1 Initiative, 0 power consumed.',
     shipPartId: 'soliton_missile',
   },
 ];

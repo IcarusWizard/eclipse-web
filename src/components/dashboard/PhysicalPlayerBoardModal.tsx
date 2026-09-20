@@ -36,6 +36,7 @@ import {
   Wrench,
   ChevronRight,
   Info,
+  Lock,
 } from 'lucide-react';
 
 interface PhysicalPlayerBoardModalProps {
@@ -1040,6 +1041,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                       : 'Planta Bio-Computer'
                                     : player.faction.id === 'orion_hegemony'
                                     ? 'Orion Martial Reactor'
+                                    : player.faction.id === 'eridani_empire'
+                                    ? 'Eridani Dynastic Power'
                                     : 'Integrated Power'}
                                 </div>
                                 <div className="text-[8px] text-slate-300 font-mono mt-0.5">

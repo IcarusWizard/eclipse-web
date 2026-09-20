@@ -19,6 +19,7 @@ import {
   Coins,
   FlaskConical,
   Hammer,
+  AlertTriangle,
 } from 'lucide-react';
 
 interface ExploreModalProps {
