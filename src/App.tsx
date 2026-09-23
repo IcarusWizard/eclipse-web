@@ -1162,7 +1162,7 @@ export const App: React.FC = () => {
       />
 
       {/* Planta 2nd Activation Banner */}
-      {state.pendingExploreActivations && state.pendingExploreActivations > 0 && (
+      {Boolean(state.pendingExploreActivations && state.pendingExploreActivations > 0) && (
         <div className="bg-emerald-950/90 border-b border-emerald-600 px-6 py-2 flex items-center justify-between z-40 text-xs text-emerald-200">
           <div className="flex items-center gap-2">
             <span className="text-base">🌿</span>

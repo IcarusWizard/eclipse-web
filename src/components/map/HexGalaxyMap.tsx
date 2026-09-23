@@ -1093,13 +1093,15 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                           </g>
                         ) : (
                           <>
-                            <circle
-                              cx="0"
-                              cy="0"
-                              r={planet.isAdvanced ? '8.5' : '7.5'}
+                            <rect
+                              x={planet.isAdvanced ? '-7' : '-6.5'}
+                              y={planet.isAdvanced ? '-7' : '-6.5'}
+                              width={planet.isAdvanced ? '14' : '13'}
+                              height={planet.isAdvanced ? '14' : '13'}
+                              rx="2"
                               fill="rgba(15, 23, 42, 0.95)"
                               stroke={planet.isAdvanced ? '#ffffff' : planetColor}
-                              strokeWidth={planet.isAdvanced ? '2' : '1.8'}
+                              strokeWidth={planet.isAdvanced ? '1.8' : '1.6'}
                             />
                             {planet.colonizedBy ? (
                               <rect
@@ -1113,7 +1115,14 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                                 strokeWidth="1.2"
                               />
                             ) : (
-                              <circle cx="0" cy="0" r="3.2" fill={planetColor} />
+                              <rect
+                                x="-3"
+                                y="-3"
+                                width="6"
+                                height="6"
+                                rx="1.2"
+                                fill={planetColor}
+                              />
                             )}
                           </>
                         )}

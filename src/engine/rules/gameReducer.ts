@@ -7,7 +7,7 @@ import { GameAction, BuildAction, UpgradeAction, MoveAction, ResearchAction } fr
 import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge } from './hexMath';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
-import { SHIP_PARTS } from './partData';
+import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs } from './economyEngine';
 import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, sortUnitsByInitiative } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip } from '../types/galaxy';
@@ -1145,6 +1145,12 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         const oldPart = bp.slots[up.slotIndex];
         const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
         bp.slots[up.slotIndex] = part;
+
+        // When installing an Ancient part from storage, remove it so it cannot be placed again
+        if (up.partId && player.unlockedAncientParts && player.unlockedAncientParts.includes(up.partId)) {
+          player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== up.partId);
+        }
+
         if (part && oldPart) {
           upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (replaced ${oldPart.name})`);
         } else if (part) {
@@ -1480,18 +1486,21 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         }
         if (disc.shipPartId) {
           player.unlockedAncientParts = player.unlockedAncientParts || [];
-          if (!player.unlockedAncientParts.includes(disc.shipPartId)) {
-            player.unlockedAncientParts.push(disc.shipPartId);
-          }
 
           if (action.equipShipType && action.equipSlotIndex !== undefined) {
             const bp = player.blueprints[action.equipShipType];
             const part = SHIP_PARTS[disc.shipPartId];
             if (bp && part && action.equipSlotIndex >= 0 && action.equipSlotIndex < bp.maxSlots) {
               bp.slots[action.equipSlotIndex] = part;
+              // Placed immediately when taken: ensure it is NOT stored in player.unlockedAncientParts
+              player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== disc.shipPartId);
               addLog(`${player.name} equipped Ancient Tech "${part.name}" directly to their ${action.equipShipType.toUpperCase()} blueprint (Slot ${action.equipSlotIndex + 1})!`);
             }
           } else {
+            // Stored without immediately placing: add to unlockedAncientParts for future upgrades
+            if (!player.unlockedAncientParts.includes(disc.shipPartId)) {
+              player.unlockedAncientParts.push(disc.shipPartId);
+            }
             addLog(`${player.name} claimed Ancient Tech module "${disc.name}" for future ship upgrades!`);
           }
         }

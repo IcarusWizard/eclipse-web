@@ -3,7 +3,7 @@ import { PlayerState } from '../../engine/types/player';
 import { ShipType } from '../../engine/types/galaxy';
 import { ShipPart } from '../../engine/types/blueprints';
 import { calculateBlueprintStats, SHIP_LIMITS } from '../../engine/rules/shipValidation';
-import { SHIP_PARTS } from '../../engine/rules/partData';
+import { SHIP_PARTS, ANCIENT_PART_IDS } from '../../engine/rules/partData';
 import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
 import {
   Zap,
@@ -52,16 +52,46 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     []
   );
 
+  // Find all ancient parts that are installed on any ship blueprint in draftBlueprints or player.blueprints
+  const installedAncientPartIds = useMemo(() => {
+    const installed = new Set<string>();
+    for (const bp of Object.values(draftBlueprints)) {
+      if (!bp) continue;
+      for (const slot of bp.slots) {
+        if (slot && ANCIENT_PART_IDS.has(slot.id)) {
+          installed.add(slot.id);
+        }
+      }
+    }
+    for (const bp of Object.values(player.blueprints)) {
+      if (!bp) continue;
+      for (const slot of bp.slots) {
+        if (slot && ANCIENT_PART_IDS.has(slot.id)) {
+          installed.add(slot.id);
+        }
+      }
+    }
+    return installed;
+  }, [draftBlueprints, player.blueprints]);
+
   const availableParts = useMemo(() => {
     return Object.values(SHIP_PARTS).filter((part) => {
       const isStandard = STANDARD_PART_IDS.includes(part.id);
-      const isAncientUnlocked = (player.unlockedAncientParts || []).includes(part.id);
+      const isAncient = ANCIENT_PART_IDS.has(part.id);
+      if (isAncient) {
+        // Ancient parts can NEVER be moved to another ship once installed;
+        // only show them when they are stored without having been placed when taken.
+        return (
+          (player.unlockedAncientParts || []).includes(part.id) &&
+          !installedAncientPartIds.has(part.id)
+        );
+      }
       const isTechResearched = (player.techTrack.researched || []).some(
         (t) => t.unlocksPartId === part.id || t.id === part.id
       );
-      return isStandard || isTechResearched || isAncientUnlocked;
+      return isStandard || isTechResearched;
     });
-  }, [player.unlockedAncientParts, player.techTrack.researched, STANDARD_PART_IDS]);
+  }, [player.unlockedAncientParts, player.techTrack.researched, STANDARD_PART_IDS, installedAncientPartIds]);
 
   const displayedParts = useMemo(() => {
     if (selectedCategory === 'all') return availableParts;
@@ -560,7 +590,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 </div>
               ) : (
                 displayedParts.map((part) => {
-                  const isAncientUnlocked = (player.unlockedAncientParts || []).includes(part.id);
+                  const isAncientUnlocked = ANCIENT_PART_IDS.has(part.id);
                   const isSelectedSlotModified =
                     selectedSlotIndex !== null &&
                     modifiedSlots.some(

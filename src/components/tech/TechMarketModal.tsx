@@ -448,19 +448,19 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             {/* Military Track Status */}
             <div className="flex items-center gap-1.5 text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-900/60">
               <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>Military: {commander.techTrack.militaryCount}/8 Researched</span>
+              <span>Military: {commander.techTrack.militaryCount}/7 Researched</span>
             </div>
 
             {/* Grid Track Status */}
             <div className="flex items-center gap-1.5 text-emerald-300 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-900/60">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>Grid: {commander.techTrack.gridCount}/8 Researched</span>
+              <span>Grid: {commander.techTrack.gridCount}/7 Researched</span>
             </div>
 
             {/* Nano Track Status */}
             <div className="flex items-center gap-1.5 text-sky-300 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-900/60">
               <span className="w-2 h-2 rounded-full bg-sky-500" />
-              <span>Nano: {commander.techTrack.nanoCount}/8 Researched</span>
+              <span>Nano: {commander.techTrack.nanoCount}/7 Researched</span>
             </div>
           </div>
         </div>

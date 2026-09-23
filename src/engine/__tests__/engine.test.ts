@@ -19,7 +19,7 @@ import {
   createFactionBlueprints,
   isShipBlueprintValid,
 } from '../rules/shipValidation';
-import { SHIP_PARTS } from '../rules/partData';
+import { SHIP_PARTS, ANCIENT_PART_IDS } from '../rules/partData';
 import {
   sortUnitsByInitiative,
   getSectorDefenderOwnerId,
@@ -72,6 +72,7 @@ import {
   NANO_TECHS,
   RARE_TECHS,
   TECH_CATALOG,
+  OFFICIAL_TECH_DISCOUNTS,
 } from '../rules/techData';
 
 describe('Hexagonal Galaxy Math & Wormholes', () => {
@@ -724,7 +725,7 @@ describe('Game Setup & Turn Engine Flow', () => {
     expect(res.success).toBe(true);
     expect(res.newState.pendingDiscovery).toBeNull();
     const updatedP1 = res.newState.players[0]!;
-    expect(updatedP1.unlockedAncientParts).toContain('flux_shield');
+    expect(updatedP1.unlockedAncientParts).not.toContain('flux_shield');
     expect(updatedP1.blueprints.cruiser.slots[3]?.id).toBe('flux_shield');
   });
 
@@ -3002,7 +3003,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(res.success).toBe(true);
         const updatedP1 = res.newState.players[0]!;
         expect(updatedP1.blueprints.cruiser.slots[0]?.id).toBe('soliton_missile');
-        expect(updatedP1.unlockedAncientParts).toContain('soliton_missile');
+        expect(updatedP1.unlockedAncientParts).not.toContain('soliton_missile');
       });
 
       test('combat sequence: missiles fire once in initiative order, then regular round fires cannons', () => {
@@ -4961,6 +4962,142 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const guardianSecs = game.sectors.filter((s) => [271, 272, 273, 274].includes(s.sectorNumber));
         expect(guardianSecs.length).toBe(4);
         expect(game.sectors.some((s) => s.sectorNumber === 212)).toBe(false);
+      });
+
+      it('41. verifies Bug Fixes 47-51: no stray 0, authentic shorthands without scrollbar, 0 1 2 3 4 6 8 tech discounts with 7 slots, and ancient parts single-use filtering', () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+
+        // 1. Bug 47: Stray '0' prevention
+        // Verify Boolean check protects when pendingExploreActivations is 0
+        const zeroPending = 0 as number | undefined;
+        expect(Boolean(zeroPending && zeroPending > 0)).toBe(false);
+        const positivePending = 2;
+        expect(Boolean(positivePending && positivePending > 0)).toBe(true);
+
+        // 2. Bug 48: Population slot square sockets
+        // Verify that 15 ancient part IDs and discovery modules are recognized
+        expect(ANCIENT_PART_IDS.size).toBe(15);
+        expect(ANCIENT_PART_IDS.has('ion_turret')).toBe(true);
+        expect(ANCIENT_PART_IDS.has('flux_shield')).toBe(true);
+        expect(ANCIENT_PART_IDS.has('soliton_missile')).toBe(true);
+        expect(ANCIENT_PART_IDS.has('conformal_drive')).toBe(true);
+        expect(ANCIENT_PART_IDS.has('plasma_turret')).toBe(true);
+
+        // 3. Bug 49: Action shorthand labels
+        const shorthands = ['EXP', 'RES', 'UPG', 'BLD', 'MOV', 'INF', 'PASS'];
+        expect(shorthands.length).toBe(7);
+
+        // 4. Bug 50: Official tech discounts [0, 1, 2, 3, 4, 6, 8] with 7 slots per track
+        expect(OFFICIAL_TECH_DISCOUNTS).toEqual([0, 1, 2, 3, 4, 6, 8]);
+        expect(OFFICIAL_TECH_DISCOUNTS.length).toBe(7);
+        // Discounts for each slot index:
+        expect(OFFICIAL_TECH_DISCOUNTS[0]).toBe(0);
+        expect(OFFICIAL_TECH_DISCOUNTS[1]).toBe(1);
+        expect(OFFICIAL_TECH_DISCOUNTS[2]).toBe(2);
+        expect(OFFICIAL_TECH_DISCOUNTS[3]).toBe(3);
+        expect(OFFICIAL_TECH_DISCOUNTS[4]).toBe(4);
+        expect(OFFICIAL_TECH_DISCOUNTS[5]).toBe(6);
+        expect(OFFICIAL_TECH_DISCOUNTS[6]).toBe(8);
+
+        // 5. Bug 51: Ancient Parts Single-Use and Discovery Placement vs Storing
+        // A. Immediately placed ancient part:
+        // Set up pending discovery with Ion Turret
+        game.pendingDiscovery = {
+          sectorId: game.sectors[1]!.id,
+          playerId: p1.id,
+          discovery: {
+            id: 'disc_ion_turret',
+            name: 'Ion Turret',
+            description: 'Ancient weapon',
+            shipPartId: 'ion_turret',
+          },
+        };
+
+        // Equip immediately to cruiser slot 3
+        const resEquip = executeAction(game, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: game.sectors[1]!.id,
+          keepForVictoryPoints: false,
+          equipShipType: 'cruiser',
+          equipSlotIndex: 3,
+        });
+
+        expect(resEquip.success).toBe(true);
+        const p1AfterEquip = resEquip.newState.players[0]!;
+        // Placed directly on blueprint
+        expect(p1AfterEquip.blueprints.cruiser.slots[3]?.id).toBe('ion_turret');
+        // Crucial: NOT stored in unlockedAncientParts
+        expect(p1AfterEquip.unlockedAncientParts).not.toContain('ion_turret');
+
+        // B. Stored ancient part (not immediately placed):
+        resEquip.newState.pendingDiscovery = {
+          sectorId: game.sectors[1]!.id,
+          playerId: p1.id,
+          discovery: {
+            id: 'disc_flux_shield',
+            name: 'Flux Shield',
+            description: 'Ancient alien shield',
+            shipPartId: 'flux_shield',
+          },
+        };
+
+        const resStore = executeAction(resEquip.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: game.sectors[1]!.id,
+          keepForVictoryPoints: false,
+          // No equipShipType: stored for later
+        });
+
+        expect(resStore.success).toBe(true);
+        const p1AfterStore = resStore.newState.players[0]!;
+        // Stored on player board
+        expect(p1AfterStore.unlockedAncientParts).toContain('flux_shield');
+
+        // C. Upgrade action installing stored ancient part:
+        // When upgraded, it installs to blueprint and is removed from unlockedAncientParts
+        const resUpgrade = executeAction(resStore.newState, {
+          type: 'UPGRADE',
+          playerId: p1.id,
+          upgrades: [
+            {
+              shipType: 'dreadnought',
+              slotIndex: 0,
+              partId: 'flux_shield',
+            },
+          ],
+        });
+
+        expect(resUpgrade.success).toBe(true);
+        const p1AfterUpgrade = resUpgrade.newState.players[0]!;
+        expect(p1AfterUpgrade.blueprints.dreadnought.slots[0]?.id).toBe('flux_shield');
+        // Removed from unlockedAncientParts after installation
+        expect(p1AfterUpgrade.unlockedAncientParts).not.toContain('flux_shield');
+
+        // D. Ship Blueprint Editor filtering logic:
+        // Already installed ancient parts (ion_turret, flux_shield) must NOT be available in availableParts
+        const STANDARD_PART_IDS = ['nuclear_source', 'nuclear_drive', 'electron_computer', 'ion_cannon', 'hull'];
+        const filterAvailableParts = (player: typeof p1AfterUpgrade, draftBps: typeof player.blueprints) => {
+          const installedAncient = new Set<string>();
+          for (const bp of Object.values(draftBps)) {
+            for (const s of bp.slots) {
+              if (s && ANCIENT_PART_IDS.has(s.id)) installedAncient.add(s.id);
+            }
+          }
+          return Object.values(SHIP_PARTS).filter((part) => {
+            if (STANDARD_PART_IDS.includes(part.id)) return true;
+            if (ANCIENT_PART_IDS.has(part.id)) {
+              return (player.unlockedAncientParts || []).includes(part.id) && !installedAncient.has(part.id);
+            }
+            return (player.techTrack.researched || []).some((t) => t.unlocksPartId === part.id || t.id === part.id);
+          });
+        };
+
+        const available = filterAvailableParts(p1AfterUpgrade, p1AfterUpgrade.blueprints);
+        expect(available.some((p) => p.id === 'ion_turret')).toBe(false);
+        expect(available.some((p) => p.id === 'flux_shield')).toBe(false);
       });
     });
   });

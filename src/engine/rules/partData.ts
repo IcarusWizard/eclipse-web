@@ -473,3 +473,25 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
   },
 };
 
+/**
+ * 15 Ancient Ship Parts obtained from Discovery Tiles in Eclipse: Second Dawn
+ * Once placed onto a ship blueprint, an Ancient part cannot be moved to another ship.
+ */
+export const ANCIENT_PART_IDS = new Set<string>([
+  'ion_disruptor',
+  'ion_turret',
+  'plasma_turret',
+  'soliton_charger',
+  'ion_missile',
+  'axion_computer',
+  'antimatter_missile',
+  'muon_source',
+  'flux_shield',
+  'conformal_drive',
+  'nonlinear_drive',
+  'shard_hull',
+  'hypergrid_source',
+  'inversion_shield',
+  'soliton_missile',
+]);
+

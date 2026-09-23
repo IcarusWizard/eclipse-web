@@ -324,18 +324,18 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                         onMouseLeave={() => setHoveredPlanet(null)}
                       >
                         <div
-                          className={`w-6 h-6 rounded-full flex items-center justify-center cursor-pointer transition-transform hover:scale-110 border ${
+                          className={`w-6 h-6 rounded-md flex items-center justify-center cursor-pointer transition-transform hover:scale-110 border ${
                             planet.isAdvanced
                               ? 'border-white ring-1 ring-white/50 bg-slate-950 shadow-sm'
                               : `${meta.borderClass} bg-slate-950`
                           }`}
                         >
                           <div
-                            className="w-2.5 h-2.5 rounded-full"
+                            className="w-2.5 h-2.5 rounded-sm"
                             style={{ backgroundColor: meta.color }}
                           />
                           {planet.isAdvanced && (
-                            <span className="absolute -top-1 -right-1 text-[8px] font-black text-white bg-slate-900 rounded-full px-0.5 border border-white/60 leading-tight">
+                            <span className="absolute -top-1 -right-1 text-[8px] font-black text-white bg-slate-900 rounded-sm px-0.5 border border-white/60 leading-tight">
                               ★
                             </span>
                           )}

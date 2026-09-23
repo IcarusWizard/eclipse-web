@@ -13,6 +13,8 @@ import {
   POPULATION_TRACK_SPACES,
 } from '../../engine/rules/economyEngine';
 import { calculateBlueprintStats, countPlayerShips, SHIP_LIMITS } from '../../engine/rules/shipValidation';
+import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
+import { ANCIENT_PART_IDS } from '../../engine/rules/partData';
 import {
   X,
   Zap,
@@ -622,7 +624,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
                     {Array.from({ length: TECH_ROW_SLOT_COUNT }).map((_, sIdx) => {
                       const tech = techRows.military.techs[sIdx];
-                      const discount = Math.min(6, sIdx);
+                      const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
 
                       return (
@@ -689,7 +691,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
                     {Array.from({ length: TECH_ROW_SLOT_COUNT }).map((_, sIdx) => {
                       const tech = techRows.grid.techs[sIdx];
-                      const discount = Math.min(6, sIdx);
+                      const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
 
                       return (
@@ -756,7 +758,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
                     {Array.from({ length: TECH_ROW_SLOT_COUNT }).map((_, sIdx) => {
                       const tech = techRows.nano.techs[sIdx];
-                      const discount = Math.min(6, sIdx);
+                      const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
 
                       return (
@@ -970,7 +972,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                 key={`slot_${sc.type}_${slotIdx}`}
                                 className={`min-h-[50px] rounded-lg border p-1.5 flex flex-col justify-between transition-all ${
                                   part
-                                    ? part.id.startsWith('ancient_') || part.id === 'ion_turret' || part.id === 'shard_hull' || part.id === 'flux_shield'
+                                    ? ANCIENT_PART_IDS.has(part.id) || part.id.startsWith('ancient_')
                                       ? 'bg-amber-950/40 border-amber-500/70 text-amber-200 shadow ring-1 ring-amber-500/30'
                                       : part.category === 'reactor'
                                       ? 'bg-amber-950/30 border-amber-700/60 text-amber-300'

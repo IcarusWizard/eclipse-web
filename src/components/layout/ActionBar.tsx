@@ -59,7 +59,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   if (pendingConfirmation) {
     const isMyAction = !isTurnGated;
     return (
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-slate-950/95 backdrop-blur-md px-5 py-3 rounded-2xl border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200 max-w-[calc(100vw-24px)] overflow-x-auto scrollbar-thin">
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-slate-950/95 backdrop-blur-md px-5 py-3 rounded-2xl border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200 max-w-fit">
         {/* Active Commander Indicator */}
         <div className="flex items-center gap-2 pr-3 border-r border-slate-800 text-xs">
           <div
@@ -140,29 +140,29 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   const maxInfluence = getMaxInfluenceActivations(activePlayer);
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md p-2 rounded-2xl border border-slate-800 shadow-2xl max-w-[calc(100vw-24px)] overflow-x-auto scrollbar-thin">
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-1.5 sm:gap-2 bg-slate-950/90 backdrop-blur-md p-1.5 sm:p-2 rounded-2xl border border-slate-800 shadow-2xl max-w-fit">
       {/* Active Commander Indicator */}
-      <div className="px-3 py-1 flex items-center gap-2 border-r border-slate-800 text-xs shrink-0">
+      <div className="px-2.5 sm:px-3 py-1 flex items-center gap-2 border-r border-slate-800 text-xs shrink-0">
         <div
           className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20"
           style={{ backgroundColor: activePlayer.color }}
         />
         <div className="flex flex-col text-left">
-          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">
+          <span className="text-[8.5px] sm:text-[9px] text-slate-400 uppercase tracking-widest font-semibold">
             {hasPassed ? 'Reaction Turn' : 'Active Turn'}
           </span>
-          <span className="font-bold text-slate-100 leading-none">{activePlayer.name}</span>
+          <span className="font-bold text-slate-100 text-xs leading-none">{activePlayer.name}</span>
         </div>
       </div>
 
       {/* Disc Cost Indicator */}
-      <div className="px-3 py-1.5 flex items-center gap-1.5 border-r border-slate-800 text-xs font-bold text-slate-400 shrink-0">
-        <CircleDot className="w-4 h-4 text-cyan-400" />
+      <div className="px-2.5 sm:px-3 py-1.5 flex items-center gap-1.5 border-r border-slate-800 text-xs font-bold text-slate-400 shrink-0">
+        <CircleDot className="w-3.5 h-3.5 text-cyan-400" />
         <span>{activePlayer.influenceTrack.discsOnTrack} Discs</span>
       </div>
 
       {isTurnGated && (
-        <div className="px-3 py-1 flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs font-bold shrink-0">
+        <div className="px-2.5 sm:px-3 py-1 flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs font-bold shrink-0">
           <span>⏳ Opponent's Turn</span>
         </div>
       )}
@@ -171,7 +171,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       <button
         disabled={!canActNormal}
         onClick={onToggleExplore}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+        title={isExploreMode ? 'Cancel Explore Target' : `Explore (EXP) - Discover new sectors (${maxExplore} activation)`}
+        className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
           isExploreMode
             ? 'bg-cyan-500 text-slate-950 ring-2 ring-cyan-300'
             : canActNormal
@@ -180,93 +181,99 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         }`}
       >
         <Compass className="w-4 h-4" />
-        <span>{isExploreMode ? 'Select Target...' : `Explore (${maxExplore})`}</span>
+        <span>{isExploreMode ? 'EXP (Cancel)' : `EXP (${maxExplore})`}</span>
       </button>
 
       {/* Research */}
       <button
         disabled={!canActNormal}
         onClick={onOpenResearch}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+        title={`Research (RES) - Acquire technologies (${maxResearch} activation)`}
+        className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
           canActNormal
             ? 'bg-slate-900 hover:bg-slate-800 text-pink-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <Cpu className="w-4 h-4" />
-        <span>Research ({maxResearch})</span>
+        <span>RES ({maxResearch})</span>
       </button>
 
       {/* Upgrade */}
       <button
         disabled={!canActNormal && !canActReaction}
         onClick={onOpenUpgrade}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+        title={hasPassed ? 'Reaction Upgrade (UPG) - 1 ship component' : `Upgrade (UPG) - Up to ${maxUpgrade} ship component upgrades`}
+        className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
           canActNormal || canActReaction
             ? 'bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <Wrench className="w-4 h-4" />
-        <span>{hasPassed ? 'Reaction Upgrade (1)' : `Upgrade (${maxUpgrade})`}</span>
+        <span>UPG ({maxUpgrade})</span>
       </button>
 
       {/* Build */}
       <button
         disabled={!canActNormal && !canActReaction}
         onClick={onOpenBuild}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+        title={hasPassed ? 'Reaction Build (BLD) - 1 ship or structure' : `Build (BLD) - Up to ${maxBuild} ships or structures`}
+        className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
           canActNormal || canActReaction
             ? 'bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <Hammer className="w-4 h-4" />
-        <span>{hasPassed ? 'Reaction Build (1)' : `Build (${maxBuild})`}</span>
+        <span>BLD ({maxBuild})</span>
       </button>
 
       {/* Move */}
       <button
         disabled={!canActNormal && !canActReaction}
         onClick={onOpenMove}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+        title={hasPassed ? 'Reaction Move (MOV) - 1 ship movement' : `Move (MOV) - Up to ${maxMoves} ship movements`}
+        className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
           canActNormal || canActReaction
             ? 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <Rocket className="w-4 h-4" />
-        <span>{hasPassed ? 'Reaction Move (1)' : `Move (${maxMoves})`}</span>
+        <span>MOV ({maxMoves})</span>
       </button>
 
       {/* Influence */}
       <button
         disabled={!canActNormal}
         onClick={onOpenInfluence}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+        title={`Influence (INF) - Up to ${maxInfluence} disc actions`}
+        className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
           canActNormal
             ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <CircleDot className="w-4 h-4 text-cyan-400" />
-        <span>Influence ({maxInfluence})</span>
+        <span>INF ({maxInfluence})</span>
       </button>
 
-      <div className="h-6 w-[1px] bg-slate-800 mx-1 shrink-0" />
+      <div className="h-6 w-[1px] bg-slate-800 mx-0.5 sm:mx-1 shrink-0" />
 
       {/* Pass */}
       <button
         disabled={!canPass}
         onClick={onPass}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+        title={hasPassed ? 'Pass reaction turn' : 'Pass turn (receive 2 Credits for 1st pass)'}
+        className={`flex items-center gap-1.5 sm:gap-2 px-3 sm:px-3.5 py-2 sm:py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
           canPass
             ? 'bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-300 border border-slate-700'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <CircleOff className="w-4 h-4" />
-        <span>{hasPassed ? 'Pass' : 'Pass Turn'}</span>
+        <span>PASS</span>
       </button>
     </div>
   );
