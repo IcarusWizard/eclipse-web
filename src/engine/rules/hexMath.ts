@@ -91,8 +91,17 @@ export function areSectorsConnected(
   tileB: SectorTile,
   hasWormholeGenerator: boolean = false
 ): boolean {
-  // Warp Portal connects to all other Warp Portal sectors
-  if (tileA.hasWarpPortal && tileB.hasWarpPortal) {
+  // Warp Portal connects to all other Warp Portal sectors (Sectors 281, 381, 382 and discovery/structure portals)
+  const isWarpA =
+    tileA.hasWarpPortal ||
+    ['281', '381', '382'].includes(String(tileA.sectorNumber)) ||
+    !!tileA.structures?.warpPortal;
+  const isWarpB =
+    tileB.hasWarpPortal ||
+    ['281', '381', '382'].includes(String(tileB.sectorNumber)) ||
+    !!tileB.structures?.warpPortal;
+
+  if (isWarpA && isWarpB) {
     return true;
   }
 

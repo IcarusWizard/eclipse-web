@@ -17,10 +17,36 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
   const sector = state.sectors.find((s) => s.id === pendingDraw.sectorId);
   if (!player) return null;
 
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(
-    pendingDraw.drawnTiles.length > 0 ? 0 : null
-  );
-  const [replaceIndex, setReplaceIndex] = useState<number | null>(0);
+  // Default selection to the drawn tile with the highest VP
+  const defaultSelectedIdx = React.useMemo(() => {
+    if (!pendingDraw.drawnTiles.length) return null;
+    let bestIdx = 0;
+    let maxVp = pendingDraw.drawnTiles[0].vp;
+    for (let i = 1; i < pendingDraw.drawnTiles.length; i++) {
+      if (pendingDraw.drawnTiles[i].vp > maxVp) {
+        maxVp = pendingDraw.drawnTiles[i].vp;
+        bestIdx = i;
+      }
+    }
+    return bestIdx;
+  }, [pendingDraw.drawnTiles]);
+
+  // Default replacement to the tile on player's track with the lowest VP
+  const defaultReplaceIdx = React.useMemo(() => {
+    if (!player.reputationTiles.length) return 0;
+    let worstIdx = 0;
+    let minVp = player.reputationTiles[0].vp;
+    for (let i = 1; i < player.reputationTiles.length; i++) {
+      if (player.reputationTiles[i].vp < minVp) {
+        minVp = player.reputationTiles[i].vp;
+        worstIdx = i;
+      }
+    }
+    return worstIdx;
+  }, [player.reputationTiles]);
+
+  const [selectedIndex, setSelectedIndex] = useState<number | null>(defaultSelectedIdx);
+  const [replaceIndex, setReplaceIndex] = useState<number | null>(defaultReplaceIdx);
 
   const maxTrackCapacity = player.faction.reputationSlots ?? 5;
   const isTrackFull = player.reputationTiles.length >= maxTrackCapacity;

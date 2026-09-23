@@ -6,6 +6,8 @@ import {
   loadTableByNumber,
   deleteSavedTable,
   SavedTableSummary,
+  fetchTableFromServer,
+  saveGameState,
 } from '../../engine/rules/persistence';
 import {
   Radio,
@@ -50,7 +52,7 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const handleJoinByInput = (e: React.FormEvent) => {
+  const handleJoinByInput = async (e: React.FormEvent) => {
     e.preventDefault();
     setJoinError(null);
     const num = parseInt(inputTableNum.trim(), 10);
@@ -58,11 +60,15 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
       setJoinError('Please enter a valid numeric table number.');
       return;
     }
-    const loaded = loadTableByNumber(num);
+    let loaded = loadTableByNumber(num);
     if (!loaded) {
-      setJoinError(`Table #${num} was not found in saved browser sessions.`);
+      loaded = await fetchTableFromServer(String(num));
+    }
+    if (!loaded) {
+      setJoinError(`Table #${num} does not exist.`);
       return;
     }
+    saveGameState(loaded, true);
     onJoinTable(loaded);
     onClose();
   };

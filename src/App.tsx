@@ -44,6 +44,7 @@ import {
   subscribeToGameSync,
   getTableNumber,
   fetchTableFromServer,
+  getStateFingerprint,
 } from './engine/rules/persistence';
 
 export const App: React.FC = () => {
@@ -55,18 +56,18 @@ export const App: React.FC = () => {
   const [selectedViewIndex, setSelectedViewIndex] = useState<number>(0);
 
   const isRemoteSyncRef = React.useRef<boolean>(false);
-  const lastStateJsonRef = React.useRef<string>(JSON.stringify(state));
+  const lastStateFingerprintRef = React.useRef<string>(getStateFingerprint(state));
 
   // Auto-save game state to localStorage on local state changes
   useEffect(() => {
-    const currentJson = JSON.stringify(state);
+    const currentFp = getStateFingerprint(state);
     if (isRemoteSyncRef.current) {
       isRemoteSyncRef.current = false;
-      lastStateJsonRef.current = currentJson;
+      lastStateFingerprintRef.current = currentFp;
       return;
     }
-    if (currentJson !== lastStateJsonRef.current) {
-      lastStateJsonRef.current = currentJson;
+    if (currentFp !== lastStateFingerprintRef.current) {
+      lastStateFingerprintRef.current = currentFp;
       saveGameState(state);
     }
   }, [state]);
@@ -174,7 +175,7 @@ export const App: React.FC = () => {
       fetchTableFromServer(tableParam).then((remote) => {
         if (remote) {
           isRemoteSyncRef.current = true;
-          lastStateJsonRef.current = JSON.stringify(remote);
+          lastStateFingerprintRef.current = getStateFingerprint(remote);
           saveGameState(remote, true);
           setState(remote);
           setInGame(true);
@@ -191,9 +192,9 @@ export const App: React.FC = () => {
     if (!tableTarget) return;
 
     const unsubscribe = subscribeToGameSync(tableTarget, (remoteState) => {
-      const remoteJson = JSON.stringify(remoteState);
-      if (remoteJson !== lastStateJsonRef.current) {
-        lastStateJsonRef.current = remoteJson;
+      const remoteFp = getStateFingerprint(remoteState);
+      if (remoteFp !== lastStateFingerprintRef.current) {
+        lastStateFingerprintRef.current = remoteFp;
         isRemoteSyncRef.current = true;
         setState(remoteState);
       }
@@ -226,19 +227,21 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleJoinTableFromLobby = (
+  const handleJoinTableFromLobby = async (
     tableId: string,
     seat: number | 'all' | 'spectator'
   ) => {
     let loaded = loadTable(tableId);
     if (!loaded) {
-      loaded = createInitialGame(2);
-      const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
-      (loaded as any).tableNumber = num;
-      loaded.id = tableId;
-      saveGameState(loaded);
+      loaded = await fetchTableFromServer(tableId);
     }
+    if (!loaded) {
+      alert(`Table "${tableId}" does not exist.`);
+      return;
+    }
+    saveGameState(loaded, true);
     setState(loaded);
+    lastStateFingerprintRef.current = getStateFingerprint(loaded);
     setCurrentSeat(seat);
     if (typeof seat === 'number' && loaded.players[seat]) {
       setSelectedViewIndex(seat);
@@ -396,9 +399,6 @@ export const App: React.FC = () => {
       if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
         setIsExploreMode(true);
         showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
-      } else {
-        // Synchronize viewed player to new active player if turn passed
-        setSelectedViewIndex(res.newState.activePlayerIndex);
       }
     } else {
       showToast(res.error || 'Exploration failed.');
@@ -425,8 +425,6 @@ export const App: React.FC = () => {
       if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
         setIsExploreMode(true);
         showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
-      } else {
-        setSelectedViewIndex(res.newState.activePlayerIndex);
       }
     } else {
       showToast(res.error || 'Exploration failed.');
@@ -443,7 +441,6 @@ export const App: React.FC = () => {
       setState(res.newState);
       setIsExploreMode(false);
       setPendingExploreCoords(null);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
       showToast('Finished exploration action.');
     } else {
       showToast(res.error || 'Could not finish exploration.');
@@ -471,7 +468,6 @@ export const App: React.FC = () => {
     if (res.success) {
       setState(res.newState);
       setIsTechMarketOpen(false);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Failed to research technology.');
     }
@@ -491,7 +487,6 @@ export const App: React.FC = () => {
     if (res.success) {
       setState(res.newState);
       setIsBlueprintOpen(false);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Failed to save blueprint.');
     }
@@ -516,15 +511,17 @@ export const App: React.FC = () => {
   ]);
   const [activeBuildSlotIndex, setActiveBuildSlotIndex] = useState<number>(0);
 
-  // Initialize build slots when build opens
+  // Initialize build slots only on modal opening transition
+  const prevBuildOpenRef = React.useRef<boolean>(false);
   useEffect(() => {
-    if (isBuildOpen) {
+    if (isBuildOpen && !prevBuildOpenRef.current) {
       setBuildSlots([
         { sectorId: eligibleBuildSectors[0]?.id || '', itemType: 'interceptor' },
       ]);
       setActiveBuildSlotIndex(0);
     }
-  }, [isBuildOpen, eligibleBuildSectors]);
+    prevBuildOpenRef.current = isBuildOpen;
+  }, [isBuildOpen]);
 
   const handleSelectBuildSector = (sectorId: string) => {
     setBuildSlots((prev) => {
@@ -560,13 +557,16 @@ export const App: React.FC = () => {
   const [selectedMoveShipId, setSelectedMoveShipId] = useState<string>('');
   const [activeActivationIndex, setActiveActivationIndex] = useState<number>(0);
 
+  // Initialize planned moves only on modal opening transition
+  const prevMoveOpenRef = React.useRef<boolean>(false);
   useEffect(() => {
-    if (isMoveOpen) {
+    if (isMoveOpen && !prevMoveOpenRef.current) {
       setPlannedMoves([]);
       setActiveActivationIndex(0);
       setSelectedMoveShipId(movableShips[0]?.ship.id || playerShips[0]?.ship.id || '');
     }
-  }, [isMoveOpen, movableShips, playerShips]);
+    prevMoveOpenRef.current = isMoveOpen;
+  }, [isMoveOpen]);
 
   // Compute simulated sector for each ship based on plannedMoves
   const simulatedShipSector = useMemo(() => {
@@ -770,7 +770,6 @@ export const App: React.FC = () => {
     if (res.success) {
       setState(res.newState);
       setIsBuildOpen(false);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Construction failed.');
     }
@@ -787,7 +786,6 @@ export const App: React.FC = () => {
     if (res.success) {
       setState(res.newState);
       setIsMoveOpen(false);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Movement maneuver failed.');
     }
@@ -844,7 +842,6 @@ export const App: React.FC = () => {
     });
     if (res.success) {
       setState(res.newState);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Failed to pass turn.');
     }
@@ -859,7 +856,6 @@ export const App: React.FC = () => {
     });
     if (res.success) {
       setState(res.newState);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
       showToast('Action confirmed and turn passed.');
     } else {
       showToast(res.error || 'Failed to confirm action.');
@@ -875,7 +871,6 @@ export const App: React.FC = () => {
     });
     if (res.success) {
       setState(res.newState);
-      setSelectedViewIndex(res.newState.activePlayerIndex);
       if (conf.actionType === 'EXPLORE' && conf.exploreTargetCoord && conf.exploreFromCoord) {
         setPendingExploreCoords({ from: conf.exploreFromCoord, target: conf.exploreTargetCoord });
         showToast('Exploration reverted to tile decision.');
@@ -908,7 +903,6 @@ export const App: React.FC = () => {
       if (equipShipType && equipSlotIndex !== undefined) {
         showToast(`Ancient tech installed on ${equipShipType.toUpperCase()}!`);
       }
-      setSelectedViewIndex(res.newState.activePlayerIndex);
     } else {
       showToast(res.error || 'Failed to claim discovery.');
     }
@@ -1246,7 +1240,7 @@ export const App: React.FC = () => {
         />
 
         {/* Floating Player Dashboard (Bottom-Left) */}
-        <div className="absolute top-4 left-4 z-20 w-80 max-w-[calc(100vw-32px)] pointer-events-auto">
+        <div className="absolute top-4 left-4 z-20 w-80 max-w-[calc(100vw-32px)] max-h-[calc(100vh-140px)] overflow-y-auto scrollbar-thin pointer-events-auto">
           <PlayerBoard
             player={viewedPlayer}
             isActive={viewedPlayer.id === activePlayer.id}
@@ -1261,7 +1255,7 @@ export const App: React.FC = () => {
 
         {/* Floating Sector Detail & Fleet Inspector (Top-Right) */}
         {selectedSector && (
-          <div className="absolute top-4 right-4 z-20 pointer-events-auto">
+          <div className="absolute top-4 right-4 z-20 max-h-[calc(100vh-140px)] overflow-y-auto scrollbar-thin pointer-events-auto">
             <SectorInspector
               sector={state.sectors.find((s) => s.id === selectedSector.id) || selectedSector}
               players={state.players}

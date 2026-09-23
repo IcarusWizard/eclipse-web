@@ -17,6 +17,7 @@ import {
   countPlayerShips,
   getRemainingShipSupply,
   createFactionBlueprints,
+  isShipBlueprintValid,
 } from '../rules/shipValidation';
 import { SHIP_PARTS } from '../rules/partData';
 import {
@@ -45,6 +46,7 @@ import {
   subscribeToGameSync,
   fetchTableFromServer,
   fetchSavedTablesFromServer,
+  getStateFingerprint,
 } from '../rules/persistence';
 import { formatBugReportLine } from '../rules/bugReport';
 import type { SectorTile } from '../types/sector';
@@ -305,9 +307,9 @@ describe('Game Setup & Turn Engine Flow', () => {
     const game = createInitialGame(2);
     expect(game.players.length).toBe(2);
     expect(game.round).toBe(1);
-    // Center 001 + 2 Home Sectors + 4 Guardian Sectors (Sector 212 at unused starting hexes)
+    // Center 001 + 2 Home Sectors + 4 Guardian Sectors (Sectors 271-274 at unused starting hexes)
     expect(game.sectors.length).toBe(7);
-    expect(game.sectors.filter((s) => s.sectorNumber === 212).length).toBe(4);
+    expect(game.sectors.filter((s) => [271, 272, 273, 274].includes(s.sectorNumber)).length).toBe(4);
     expect(game.sectors.filter((s) => s.ships.some((ship) => ship.type === 'guardian')).length).toBe(4);
     expect(game.players[0]!.influenceTrack.totalDiscs).toBe(13);
     expect(game.players[0]!.influenceTrack.discsOnTrack).toBe(12); // 1 disc placed on home
@@ -2863,7 +2865,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // Verify setup initializes 36 discovery tiles: 4 on Guardian Sectors, 32 in bag
         const game = createInitialGame(2);
-        const tilesOnGuardians = game.sectors.filter((s) => s.sectorNumber === 212 && s.discoveryTile).length;
+        const tilesOnGuardians = game.sectors.filter((s) => [271, 272, 273, 274].includes(s.sectorNumber) && s.discoveryTile).length;
         expect(game.discoveryBag.length + tilesOnGuardians).toBe(36);
         expect(game.discoveryBag.length).toBe(32);
         expect(tilesOnGuardians).toBe(4);
@@ -3317,7 +3319,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(orion.blueprints.starbase.baseInitiative).toBe(5); // Human 4 -> Orion 5
 
         // Preprinted power
-        expect(orion.blueprints.interceptor.preprintedPower).toBe(1);
+        expect(orion.blueprints.interceptor.preprintedPower).toBe(2);
         expect(orion.blueprints.cruiser.preprintedPower).toBe(2);
         expect(orion.blueprints.dreadnought.preprintedPower).toBe(3);
       });
@@ -3637,7 +3639,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(gcdsUnit?.weapons).toEqual([{ color: 'yellow', damage: 1, count: 4 }]);
 
         // Guardian sector
-        const guardianSec = game.sectors.find((s) => s.sectorNumber === 212)!;
+        const guardianSec = game.sectors.find((s) => [271, 272, 273, 274].includes(s.sectorNumber))!;
         const gUnits = buildCombatUnitsForSector(guardianSec, game.players);
         const guardianUnit = gUnits.find((u) => u.type === 'guardian');
         expect(guardianUnit).toBeDefined();
@@ -3649,9 +3651,9 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       });
 
       it('15. verifies Guardian sectors in games with fewer than 6 players', () => {
-        // In a 2-player game, 4 starting coordinates are replaced with Sector 212 Guardian sectors
+        // In a 2-player game, 4 starting coordinates are replaced with authentic Guardian sectors (271-274)
         const game2 = createInitialGame(2);
-        const guardianSectors = game2.sectors.filter((s) => s.sectorNumber === 212);
+        const guardianSectors = game2.sectors.filter((s) => [271, 272, 273, 274].includes(s.sectorNumber));
         expect(guardianSectors.length).toBe(4);
         for (const gSec of guardianSectors) {
           expect(gSec.ring).toBe(2);
@@ -3663,7 +3665,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // In a 6-player game, 0 starting coordinates are replaced with Guardian sectors
         const game6 = createInitialGame(6);
-        const guardianSectors6 = game6.sectors.filter((s) => s.sectorNumber === 212);
+        const guardianSectors6 = game6.sectors.filter((s) => [271, 272, 273, 274].includes(s.sectorNumber));
         expect(guardianSectors6.length).toBe(0);
       });
 
@@ -4813,6 +4815,152 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // 4. Round transition logging
         const roundLog = ecoGame.log.find((l) => l.type === 'system' && l.message.includes('ROUND 2 has begun'));
         expect(roundLog).toBeDefined();
+      });
+
+      it('40. verifies Orion Hegemony blueprints, reaction actions, consecutive passes, and warp portal connectivity (Bugs 35-46)', () => {
+        // --- 1. Bug 35: Orion Hegemony Blueprints ---
+        const orionGame = createInitialGame(1, ['orion_hegemony']);
+        const orion = orionGame.players[0]!;
+        for (const shipType of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as const) {
+          const bp = orion.blueprints[shipType];
+          expect(bp.slots.every((s) => s !== null)).toBe(true);
+          expect(bp.slots.some((s) => s?.id === 'gauss_shield')).toBe(true);
+          expect(bp.slots.some((s) => s?.id === 'electron_computer')).toBe(true);
+          expect(isShipBlueprintValid(bp)).toBe(true);
+        }
+
+        // --- 2. Bug 38: Reaction actions and consecutive passes ---
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // P1 passes turn 1
+        const pass1 = executeAction(game, { type: 'PASS', playerId: p1.id });
+        expect(pass1.success).toBe(true);
+        expect(pass1.newState.players[0]!.hasPassed).toBe(true);
+        expect(pass1.newState.consecutivePasses).toBe(1);
+        expect(pass1.newState.activePlayerIndex).toBe(1); // Now P2's turn
+
+        // P2 takes a regular action (Upgrade 1 part)
+        const p2Upgrade = executeAction(pass1.newState, {
+          type: 'UPGRADE',
+          playerId: p2.id,
+          upgrades: [{ shipType: 'cruiser', slotIndex: 1, partId: 'hull' }],
+        });
+        expect(p2Upgrade.success).toBe(true);
+        expect(p2Upgrade.newState.consecutivePasses).toBe(0); // Non-pass action resets consecutive passes
+        expect(p2Upgrade.newState.activePlayerIndex).toBe(0); // Rotates back to P1 for reaction
+
+        // P1 is passed, tries to do EXPLORE -> Should be disallowed as reaction
+        const illegalExplore = validateAction(p2Upgrade.newState, {
+          type: 'EXPLORE',
+          playerId: p1.id,
+          fromCoord: { q: 0, r: 0 },
+          targetCoord: { q: 1, r: -1 },
+        });
+        expect(illegalExplore.valid).toBe(false);
+        expect(illegalExplore.error).toContain('Reaction');
+
+        // P1 tries to build 2 items as reaction -> Should be disallowed (max 1 item)
+        const p1Home = p2Upgrade.newState.sectors.find((s) => s.discOwner === p1.id)!;
+        const illegalMultiBuild = validateAction(p2Upgrade.newState, {
+          type: 'BUILD',
+          playerId: p1.id,
+          items: [
+            { sectorId: p1Home.id, itemType: 'interceptor' },
+            { sectorId: p1Home.id, itemType: 'interceptor' },
+          ],
+        });
+        expect(illegalMultiBuild.valid).toBe(false);
+        expect(illegalMultiBuild.error).toContain('Reaction Build allows building at most 1 item');
+
+        // P1 executes legal Reaction Build (1 item)
+        const legalReactionBuild = executeAction(p2Upgrade.newState, {
+          type: 'BUILD',
+          playerId: p1.id,
+          items: [{ sectorId: p1Home.id, itemType: 'interceptor' }],
+        });
+        expect(legalReactionBuild.success).toBe(true);
+        expect(legalReactionBuild.newState.consecutivePasses).toBe(0);
+        expect(legalReactionBuild.newState.activePlayerIndex).toBe(1); // Rotates to P2
+
+        // P2 passes
+        const pass2 = executeAction(legalReactionBuild.newState, { type: 'PASS', playerId: p2.id });
+        expect(pass2.success).toBe(true);
+        expect(pass2.newState.consecutivePasses).toBe(1);
+        expect(pass2.newState.phase).toBe('ACTION_PHASE');
+        expect(pass2.newState.activePlayerIndex).toBe(0); // Rotates to P1
+
+        // P1 passes (both players have now passed consecutively -> action phase ends!)
+        const pass3 = executeAction(pass2.newState, { type: 'PASS', playerId: p1.id });
+        expect(pass3.success).toBe(true);
+        // Phase should transition out of ACTION_PHASE, ending the round actions
+        expect(pass3.newState.round > game.round || pass3.newState.phase !== 'ACTION_PHASE').toBe(true);
+
+        // --- 3. Bug 42: Warp portal sectors (281, 381, 382) connectivity ---
+        const sec281: SectorTile = {
+          id: 'sec_281',
+          sectorNumber: 281,
+          ring: 2,
+          coord: { q: 1, r: -2 },
+          rotation: 0,
+          wormholes: [false, false, false, false, false, false],
+          planets: [],
+          ships: [],
+          hasWarpPortal: true,
+        };
+        const sec381: SectorTile = {
+          id: 'sec_381',
+          sectorNumber: 381,
+          ring: 3,
+          coord: { q: -3, r: 1 },
+          rotation: 0,
+          wormholes: [false, false, false, false, false, false],
+          planets: [],
+          ships: [],
+          hasWarpPortal: true,
+        };
+        const sec382: SectorTile = {
+          id: 'sec_382',
+          sectorNumber: 382,
+          ring: 3,
+          coord: { q: 0, r: 3 },
+          rotation: 0,
+          wormholes: [false, false, false, false, false, false],
+          planets: [],
+          ships: [],
+          hasWarpPortal: true,
+        };
+        const regularSec: SectorTile = {
+          id: 'sec_regular',
+          sectorNumber: 101,
+          ring: 1,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [false, false, false, false, false, false],
+          planets: [],
+          ships: [],
+        };
+
+        // Warp sectors connect to each other regardless of coordinates
+        expect(areSectorsConnected(sec281, sec381)).toBe(true);
+        expect(areSectorsConnected(sec381, sec382)).toBe(true);
+        expect(areSectorsConnected(sec281, sec382)).toBe(true);
+        // Non-warp sector does not connect to warp sector without adjacent wormholes
+        expect(areSectorsConnected(regularSec, sec281)).toBe(false);
+
+        // --- 4. Bug 36, 39, 40: State Fingerprint consistency ---
+        const testState = createInitialGame(2);
+        const fp1 = getStateFingerprint(testState);
+        const testStateClone = JSON.parse(JSON.stringify(testState));
+        testStateClone.savedAt = 999999999; // Transient metadata
+        const fp2 = getStateFingerprint(testStateClone);
+        expect(fp1).toBe(fp2);
+
+        // --- 5. Bug 44: Guardian Sectors (271-274) ---
+        const guardianSecs = game.sectors.filter((s) => [271, 272, 273, 274].includes(s.sectorNumber));
+        expect(guardianSecs.length).toBe(4);
+        expect(game.sectors.some((s) => s.sectorNumber === 212)).toBe(false);
       });
     });
   });

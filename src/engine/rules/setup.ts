@@ -6,7 +6,7 @@
 import { GameState } from '../types/state';
 import { FactionInfo, PlayerState } from '../types/player';
 import { SectorTile, HexCoord } from '../types/galaxy';
-import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, generateSectorDecks } from './sectorData';
+import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
 import { createDefaultHumanBlueprints, createFactionBlueprints } from './shipValidation';
 import { getEdgeTowardCenter } from './hexMath';
@@ -490,30 +490,37 @@ export function createInitialGame(
     return bag;
   })();
 
-  // Fill unused starting positions in Ring 2 with Guardian Sectors (Sector 212)
+  // Fill unused starting positions in Ring 2 with authentic Guardian Sectors (Sectors 271 to 274)
   const canonicalStartingCoords = STARTING_COORDS_BY_COUNT[6]!;
   const usedCoords = startingCoords.slice(0, players.length);
   const unusedStartingCoords = canonicalStartingCoords.filter(
     (c) => !usedCoords.some((u) => u.q === c.q && u.r === c.r)
   );
 
+  const guardianSectorNumbers = [271, 272, 273, 274];
   unusedStartingCoords.forEach((coord, gIdx) => {
+    const secNum = guardianSectorNumbers[gIdx % guardianSectorNumbers.length]!;
+    const template = GUARDIAN_SECTORS[secNum];
     const centerEdge = getEdgeTowardCenter(coord);
     const discTile = discoveryBag.length > 0 ? discoveryBag.pop() : undefined;
     const guardianSector: SectorTile = {
-      id: `guardian_sector_${gIdx + 1}`,
-      sectorNumber: 212,
-      name: 'Guardian System',
+      id: `guardian_sector_${secNum}_${gIdx + 1}`,
+      sectorNumber: secNum,
+      name: template?.name || `Sector ${secNum}`,
       ring: 2,
       coord,
       rotation: centerEdge,
-      wormholes: [true, false, true, true, false, true],
-      planets: [
-        { id: `g212_${gIdx}_p1`, resource: 'science', isAdvanced: true },
-        { id: `g212_${gIdx}_p2`, resource: 'material', isAdvanced: true },
+      wormholes: template?.wormholes || [true, false, true, true, false, true],
+      planets: template?.planets?.map((p, pIdx) => ({
+        id: `g${secNum}_${gIdx}_p${pIdx + 1}`,
+        resource: p.resource,
+        isAdvanced: p.isAdvanced,
+      })) || [
+        { id: `g${secNum}_${gIdx}_p1`, resource: 'science', isAdvanced: true },
+        { id: `g${secNum}_${gIdx}_p2`, resource: 'material', isAdvanced: true },
       ],
-      victoryPoints: 2,
-      hasArtifact: false,
+      victoryPoints: template?.victoryPoints || 2,
+      hasArtifact: template?.hasArtifact ?? true,
       hasDiscovery: true,
       discoveryTile: discTile,
       discoveryClaimed: false,
@@ -521,7 +528,7 @@ export function createInitialGame(
       guardiansCount: 1,
       ships: [
         {
-          id: `guardian_ship_${gIdx + 1}`,
+          id: `guardian_ship_${secNum}_${gIdx + 1}`,
           ownerId: 'guardian',
           type: 'guardian',
           damage: 0,
@@ -548,6 +555,7 @@ export function createInitialGame(
     firstPlayerIndex: 0,
     turnOrder,
     passedPlayerIds: [],
+    consecutivePasses: 0,
     players,
     sectors,
     sectorDecks: decks,

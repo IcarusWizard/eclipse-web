@@ -132,6 +132,22 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
   }
 
+  // Reaction constraints for passed players: can only take Reaction actions (Build 1, Move 1, Upgrade 1) or Pass
+  const isPassedPlayer = player.hasPassed || state.passedPlayerIds.includes(player.id);
+  if (isPassedPlayer) {
+    if (
+      action.type === 'EXPLORE' ||
+      action.type === 'RESEARCH' ||
+      action.type === 'INFLUENCE' ||
+      action.type === 'FINISH_EXPLORE'
+    ) {
+      return {
+        valid: false,
+        error: 'Passed players can only take Reaction actions (Build 1, Move 1, or Upgrade 1) or Pass.',
+      };
+    }
+  }
+
   switch (action.type) {
     case 'EXPLORE': {
       // 1. Check if source coord exists and is controlled or contains player's ship
@@ -279,11 +295,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'No component modifications were made to blueprints.' };
       }
 
-      const maxUpgrade = getMaxUpgradeActivations(player);
+      const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
+      const maxUpgrade = isPassed ? 1 : getMaxUpgradeActivations(player);
       if (modifiedCount > maxUpgrade) {
         return {
           valid: false,
-          error: `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action. (Attempted ${modifiedCount})`,
+          error: isPassed
+            ? 'Reaction Upgrade allows at most 1 component upgrade.'
+            : `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action. (Attempted ${modifiedCount})`,
         };
       }
       return { valid: true };
@@ -297,11 +316,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Must specify at least one item to build.' };
       }
 
-      const maxBuild = getMaxBuildActivations(player);
+      const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
+      const maxBuild = isPassed ? 1 : getMaxBuildActivations(player);
       if (action.items.length > maxBuild) {
         return {
           valid: false,
-          error: `Cannot build more than ${maxBuild} items in a single Build action.`,
+          error: isPassed
+            ? 'Reaction Build allows building at most 1 item.'
+            : `Cannot build more than ${maxBuild} items in a single Build action.`,
         };
       }
 
@@ -396,7 +418,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Must specify at least one ship movement.' };
       }
 
-      const maxMoveActivations = getMaxMoveActivations(player);
+      const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
+      const maxMoveActivations = isPassed ? 1 : getMaxMoveActivations(player);
       const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
 
       // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed
@@ -460,7 +483,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (activations.length > maxMoveActivations) {
         return {
           valid: false,
-          error: `Cannot make more than ${maxMoveActivations} ship movements (move activations) in a single Move action (attempted ${activations.length}).`,
+          error: isPassed
+            ? 'Reaction Move allows moving at most 1 ship.'
+            : `Cannot make more than ${maxMoveActivations} ship movements (move activations) in a single Move action (attempted ${activations.length}).`,
         };
       }
 
@@ -878,6 +903,23 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
   const newState: GameState = JSON.parse(JSON.stringify(state));
   const playerIndex = newState.players.findIndex((p) => p.id === action.playerId);
   const player = newState.players[playerIndex]!;
+
+  // Taking any non-PASS action breaks the consecutive pass streak
+  if (
+    action.type !== 'PASS' &&
+    action.type !== 'CONFIRM_TURN_ACTION' &&
+    action.type !== 'REVERT_TURN_ACTION' &&
+    action.type !== 'COLONIZE' &&
+    action.type !== 'TRADE' &&
+    action.type !== 'DISCOVERY_CHOICE' &&
+    action.type !== 'CLAIM_REPUTATION_TILE' &&
+    action.type !== 'RESOLVE_COMBAT_STEP' &&
+    action.type !== 'COMBAT_CONQUEST' &&
+    action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
+    action.type !== 'ABANDON_SECTOR_BANKRUPTCY'
+  ) {
+    newState.consecutivePasses = 0;
+  }
 
   const addLog = (message: string, type: GameLogEntry['type'] = 'action') => {
     newState.log.unshift({
@@ -1331,6 +1373,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     case 'PASS': {
+      newState.consecutivePasses = (newState.consecutivePasses || 0) + 1;
       if (!newState.passedPlayerIds.includes(player.id)) {
         newState.passedPlayerIds.push(player.id);
         player.hasPassed = true;
@@ -1342,6 +1385,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         } else {
           addLog(`${player.name} passed for the round.`);
         }
+      } else {
+        addLog(`${player.name} passed.`);
       }
       break;
     }
@@ -1920,22 +1965,18 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         `${actingPlayer ? actingPlayer.name : 'Commander'} confirmed action (${conf.description}) and passed turn.`,
         'action'
       );
-      // Advance turn or proceed to combat phase if all passed
+      // Advance turn or proceed to combat phase if all passed consecutively
       const activePlayers = newState.players.filter((p) => !p.isEliminated);
-      const allPassed = activePlayers.every((p) => newState.passedPlayerIds.includes(p.id));
-      if (allPassed) {
-        addLog(`All commanders have passed! Proceeding to Combat Phase.`, 'system');
+      const allPassedConsecutively = (newState.consecutivePasses || 0) >= activePlayers.length;
+      if (allPassedConsecutively) {
+        addLog(`All commanders have passed consecutively! Proceeding to Combat Phase.`, 'system');
         newState.phase = 'COMBAT_PHASE';
         newState.resolvedCombatSectorIds = [];
         checkAndTriggerCombat(newState);
       } else {
         let nextIdx = (newState.activePlayerIndex + 1) % newState.players.length;
         let loops = 0;
-        while (
-          (newState.passedPlayerIds.includes(newState.players[nextIdx]!.id) ||
-            newState.players[nextIdx]!.isEliminated) &&
-          loops < newState.players.length
-        ) {
+        while (newState.players[nextIdx]!.isEliminated && loops < newState.players.length) {
           nextIdx = (nextIdx + 1) % newState.players.length;
           loops++;
         }
@@ -2025,20 +2066,16 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     const activePlayers = newState.players.filter((p) => !p.isEliminated);
-    const allPassed = activePlayers.every((p) => newState.passedPlayerIds.includes(p.id));
-    if (allPassed) {
-      addLog(`All commanders have passed! Proceeding to Combat Phase.`, 'system');
+    const allPassedConsecutively = (newState.consecutivePasses || 0) >= activePlayers.length;
+    if (allPassedConsecutively) {
+      addLog(`All commanders have passed consecutively! Proceeding to Combat Phase.`, 'system');
       newState.phase = 'COMBAT_PHASE';
       newState.resolvedCombatSectorIds = [];
       checkAndTriggerCombat(newState);
     } else {
       let nextIdx = (newState.activePlayerIndex + 1) % newState.players.length;
       let loops = 0;
-      while (
-        (newState.passedPlayerIds.includes(newState.players[nextIdx]!.id) ||
-          newState.players[nextIdx]!.isEliminated) &&
-        loops < newState.players.length
-      ) {
+      while (newState.players[nextIdx]!.isEliminated && loops < newState.players.length) {
         nextIdx = (nextIdx + 1) % newState.players.length;
         loops++;
       }
@@ -2551,6 +2588,7 @@ export function transitionToCleanup(state: GameState): void {
   state.round += 1;
   state.phase = 'ACTION_PHASE';
   state.passedPlayerIds = [];
+  state.consecutivePasses = 0;
   state.resolvedCombatSectorIds = [];
   state.log.unshift({
     id: `log_${Date.now()}_round_${state.round}`,

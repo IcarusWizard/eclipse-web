@@ -74,7 +74,7 @@ export const Header: React.FC<HeaderProps> = ({
 
   return (
     <>
-      <header className="h-16 bg-slate-950/95 border-b border-slate-800 px-4 md:px-6 flex items-center justify-between text-slate-100 z-30 select-none">
+      <header className="h-16 bg-slate-950/95 border-b border-slate-800 px-4 md:px-6 flex items-center justify-between text-slate-100 z-30 select-none overflow-x-auto scrollbar-thin">
         {/* Title, Round and Phase */}
         <div className="flex items-center gap-3 sm:gap-5">
           <div className="flex items-center gap-2">

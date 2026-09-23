@@ -804,6 +804,7 @@ export const RING_2_CONFIGS = [
       vp: 2,
       artifact: false,
       discovery: true,
+      hasWarpPortal: true,
       wh: [true, true, false, true, true, false],
     },
 ];
@@ -1040,6 +1041,7 @@ export const RING_3_CONFIGS = [
       vp: 1,
       artifact: false,
       discovery: true,
+      hasWarpPortal: true,
       wh: [true, false, true, false, true, false],
     },
     {
@@ -1053,6 +1055,7 @@ export const RING_3_CONFIGS = [
       vp: 1,
       artifact: false,
       discovery: true,
+      hasWarpPortal: true,
       wh: [false, true, true, false, false, true],
     },
 ];
@@ -1095,6 +1098,7 @@ export function generateSectorDecks(playerCount?: number): {
     coord: { q: 999, r: 999 },
     rotation: 0,
     wormholes: cfg.wh,
+    hasWarpPortal: cfg.sectorNum === 281 || !!(cfg as any).hasWarpPortal,
     planets: cfg.planets.map((p, pIdx) => ({
       id: `p_${cfg.sectorNum}_${pIdx + 1}`,
       resource: p.resource,
@@ -1120,6 +1124,7 @@ export function generateSectorDecks(playerCount?: number): {
     coord: { q: 999, r: 999 },
     rotation: 0,
     wormholes: cfg.wh,
+    hasWarpPortal: cfg.sectorNum === 381 || cfg.sectorNum === 382 || !!(cfg as any).hasWarpPortal,
     planets: cfg.planets.map((p, pIdx) => ({
       id: `p_${cfg.sectorNum}_${pIdx + 1}`,
       resource: p.resource,

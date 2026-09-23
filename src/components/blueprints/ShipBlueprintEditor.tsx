@@ -44,7 +44,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     starbase: [...player.blueprints.starbase.slots],
   }));
 
-  const maxUpgrades = getMaxUpgradeActivations(player);
+  const maxUpgrades = player.hasPassed ? 1 : getMaxUpgradeActivations(player);
 
   // Available ship parts unlocked for the player (standard base, researched techs, and ancient discoveries)
   const STANDARD_PART_IDS = useMemo(

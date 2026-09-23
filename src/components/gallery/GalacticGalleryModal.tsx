@@ -590,7 +590,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                           )}
                           {sec.guardianCount && sec.guardianCount > 0 && (
                             <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950/50 border border-amber-700/60 text-amber-300 font-mono font-bold">
-                              1 Guardian Ship (Sector 212)
+                              1 Guardian Ship (Sector {sec.sectorNumber})
                             </span>
                           )}
                           {sec.hasGCDS && (

@@ -281,6 +281,15 @@ export function deleteSavedTable(tableId: string): void {
 }
 
 /**
+ * Returns a stable state fingerprint by stripping transient timestamps and metadata.
+ */
+export function getStateFingerprint(state: any): string {
+  if (!state) return '';
+  const { savedAt, ...rest } = state;
+  return JSON.stringify(rest);
+}
+
+/**
  * Subscribes to real-time game state synchronization across tabs/windows and different IP addresses.
  * Combines BroadcastChannel (instant in-memory broadcast) with StorageEvent and server polling for multi-IP support.
  */
@@ -290,21 +299,21 @@ export function subscribeToGameSync(
 ): () => void {
   const targetIdStr = String(tableIdentifier);
   const targetNum = parseInt(targetIdStr, 10);
-  let lastKnownJson: string | null = null;
+  let lastKnownFingerprint: string | null = null;
 
   // Initialize with currently saved state if present
   const initial = loadTable(tableIdentifier);
   if (initial) {
-    lastKnownJson = JSON.stringify(initial);
+    lastKnownFingerprint = getStateFingerprint(initial);
   }
 
   // 1. Check server storage immediately on subscribe for fast multi-device join
   fetchTableFromServer(targetIdStr)
     .then((remote) => {
       if (remote) {
-        const json = JSON.stringify(remote);
-        if (json !== lastKnownJson) {
-          lastKnownJson = json;
+        const fp = getStateFingerprint(remote);
+        if (fp !== lastKnownFingerprint) {
+          lastKnownFingerprint = fp;
           saveGameState(remote, true);
           callback(remote);
         }
@@ -321,10 +330,13 @@ export function subscribeToGameSync(
       const matches =
         data.tableId === targetIdStr ||
         (!isNaN(targetNum) && data.tableNumber === targetNum);
-      if (matches && data.stateJson && data.stateJson !== lastKnownJson) {
-        lastKnownJson = data.stateJson;
+      if (matches && data.stateJson) {
         const parsed: GameState = JSON.parse(data.stateJson);
-        callback(parsed);
+        const fp = getStateFingerprint(parsed);
+        if (fp !== lastKnownFingerprint) {
+          lastKnownFingerprint = fp;
+          callback(parsed);
+        }
       }
     } catch (err) {
       console.error('Error handling sync message:', err);
@@ -345,9 +357,9 @@ export function subscribeToGameSync(
             latest.id === targetIdStr ||
             (!isNaN(targetNum) && (latest as any).tableNumber === targetNum);
           if (currentMatches) {
-            const json = JSON.stringify(latest);
-            if (json !== lastKnownJson) {
-              lastKnownJson = json;
+            const fp = getStateFingerprint(latest);
+            if (fp !== lastKnownFingerprint) {
+              lastKnownFingerprint = fp;
               callback(latest);
             }
           }
@@ -368,9 +380,9 @@ export function subscribeToGameSync(
       // Check local storage first
       const local = loadTable(targetIdStr);
       if (local) {
-        const json = JSON.stringify(local);
-        if (json !== lastKnownJson) {
-          lastKnownJson = json;
+        const fp = getStateFingerprint(local);
+        if (fp !== lastKnownFingerprint) {
+          lastKnownFingerprint = fp;
           callback(local);
           return;
         }
@@ -379,9 +391,9 @@ export function subscribeToGameSync(
       // Check server storage for updates from other IP addresses
       const remote = await fetchTableFromServer(targetIdStr);
       if (remote) {
-        const json = JSON.stringify(remote);
-        if (json !== lastKnownJson) {
-          lastKnownJson = json;
+        const fp = getStateFingerprint(remote);
+        if (fp !== lastKnownFingerprint) {
+          lastKnownFingerprint = fp;
           saveGameState(remote, true);
           callback(remote);
         }

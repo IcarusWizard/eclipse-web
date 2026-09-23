@@ -73,7 +73,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   onMove,
   onClose,
 }) => {
-  const maxMoves = getMaxMoveActivations(player);
+  const maxMoves = player.hasPassed ? 1 : getMaxMoveActivations(player);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
 
   const currentShipObj = playerShips.find((p) => p.ship.id === selectedShipId)?.ship;
@@ -123,7 +123,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 
   return (
     <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-3xl px-4 pointer-events-none font-sans">
-      <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-700/80 rounded-2xl shadow-2xl overflow-visible text-slate-100 p-4 pointer-events-auto flex flex-col gap-3 transition-all">
+      <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-700/80 rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto text-slate-100 p-4 pointer-events-auto flex flex-col gap-3 transition-all scrollbar-thin">
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-2.5">
           <div className="flex items-center gap-2.5">

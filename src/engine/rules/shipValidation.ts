@@ -95,6 +95,10 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
   };
 }
 
+export function isShipBlueprintValid(blueprint: ShipBlueprint): boolean {
+  return calculateBlueprintStats(blueprint).isValid;
+}
+
 export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
   return {
     interceptor: {
@@ -407,12 +411,12 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           maxSlots: 4,
           baseInitiative: 3, // +1 increased initiative
           baseBuildCost: 3,
-          preprintedPower: 1, // +1 preprinted power
+          preprintedPower: 2, // 2 preprinted power balances Ion Cannon (1) + Nuclear Drive (1)
           slots: [
             SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
             SHIP_PARTS.gauss_shield,
             SHIP_PARTS.nuclear_drive,
-            null,
           ],
         },
         cruiser: {
@@ -423,11 +427,11 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           preprintedPower: 2, // +2 preprinted power
           slots: [
             SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
             SHIP_PARTS.gauss_shield,
             SHIP_PARTS.hull,
             SHIP_PARTS.nuclear_source,
             SHIP_PARTS.nuclear_drive,
-            null,
           ],
         },
         dreadnought: {
@@ -439,12 +443,12 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           slots: [
             SHIP_PARTS.ion_cannon,
             SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
             SHIP_PARTS.gauss_shield,
             SHIP_PARTS.hull,
             SHIP_PARTS.hull,
             SHIP_PARTS.nuclear_source,
             SHIP_PARTS.nuclear_drive,
-            null,
           ],
         },
         starbase: {
@@ -455,9 +459,9 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           slots: [
             SHIP_PARTS.ion_cannon,
             SHIP_PARTS.electron_computer,
+            SHIP_PARTS.gauss_shield,
             SHIP_PARTS.hull,
             SHIP_PARTS.nuclear_source,
-            null,
           ],
         },
       };

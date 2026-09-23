@@ -527,7 +527,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
               <div className="p-2 rounded-lg bg-pink-950/40 border border-pink-700/60 flex items-center justify-between">
                 <span className="text-pink-300 font-bold flex items-center gap-1.5">
                   <Shield className="w-3.5 h-3.5 text-pink-400" />
-                  Guardian Defender (Sector 212)
+                  Guardian Defender (Sector {sector.sectorNumber})
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-pink-900/60 text-pink-200 font-mono font-bold border border-pink-600">
                   3 Hull • 3 Ion Dice • 2 VP

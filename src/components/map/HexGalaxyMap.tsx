@@ -1060,23 +1060,36 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                             <line x1="-11" y1="0" x2="11" y2="0" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" />
                             <line x1="-10" y1="-3" x2="-10" y2="3" stroke="#38bdf8" strokeWidth="1.2" />
                             <line x1="10" y1="-3" x2="10" y2="3" stroke="#38bdf8" strokeWidth="1.2" />
-                            {/* Rotating habitat ring */}
+                            {/* Habitat ring */}
                             <circle
                               cx="0"
                               cy="0"
                               r="7"
-                              fill={planet.colonizedBy ? colonizer?.color : '#0f172a'}
+                              fill="#0f172a"
                               stroke="#38bdf8"
                               strokeWidth="1.8"
                               strokeDasharray={planet.colonizedBy ? 'none' : '3 1.5'}
                             />
-                            {/* Station hub core */}
-                            <circle
-                              cx="0"
-                              cy="0"
-                              r="2.8"
-                              fill={planet.colonizedBy ? '#ffffff' : '#38bdf8'}
-                            />
+                            {/* Station hub core or square population cube */}
+                            {planet.colonizedBy ? (
+                              <rect
+                                x="-4"
+                                y="-4"
+                                width="8"
+                                height="8"
+                                rx="1.5"
+                                fill={colonizer?.color || '#38bdf8'}
+                                stroke="#ffffff"
+                                strokeWidth="1.2"
+                              />
+                            ) : (
+                              <circle
+                                cx="0"
+                                cy="0"
+                                r="2.8"
+                                fill="#38bdf8"
+                              />
+                            )}
                           </g>
                         ) : (
                           <>
@@ -1084,11 +1097,22 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                               cx="0"
                               cy="0"
                               r={planet.isAdvanced ? '8.5' : '7.5'}
-                              fill={planet.colonizedBy ? colonizer?.color : 'rgba(15, 23, 42, 0.95)'}
+                              fill="rgba(15, 23, 42, 0.95)"
                               stroke={planet.isAdvanced ? '#ffffff' : planetColor}
                               strokeWidth={planet.isAdvanced ? '2' : '1.8'}
                             />
-                            {!planet.colonizedBy && (
+                            {planet.colonizedBy ? (
+                              <rect
+                                x="-4.5"
+                                y="-4.5"
+                                width="9"
+                                height="9"
+                                rx="1.5"
+                                fill={colonizer?.color || '#38bdf8'}
+                                stroke="#ffffff"
+                                strokeWidth="1.2"
+                              />
+                            ) : (
                               <circle cx="0" cy="0" r="3.2" fill={planetColor} />
                             )}
                           </>

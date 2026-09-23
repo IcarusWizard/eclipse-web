@@ -59,7 +59,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   if (pendingConfirmation) {
     const isMyAction = !isTurnGated;
     return (
-      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-slate-950/95 backdrop-blur-md px-5 py-3 rounded-2xl border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200">
+      <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 bg-slate-950/95 backdrop-blur-md px-5 py-3 rounded-2xl border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200 max-w-[calc(100vw-24px)] overflow-x-auto scrollbar-thin">
         {/* Active Commander Indicator */}
         <div className="flex items-center gap-2 pr-3 border-r border-slate-800 text-xs">
           <div
@@ -128,48 +128,53 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   }
   const hasDiscs = activePlayer.influenceTrack.discsOnTrack > 0;
   const hasPassed = activePlayer.hasPassed;
-  const canAct = !isTurnGated && hasDiscs && !hasPassed;
+  const canActNormal = !isTurnGated && hasDiscs && !hasPassed;
+  const canActReaction = !isTurnGated && hasDiscs && hasPassed;
+  const canPass = !isTurnGated;
+
   const maxExplore = getMaxExploreActivations(activePlayer);
   const maxResearch = getMaxResearchActivations(activePlayer);
-  const maxUpgrade = getMaxUpgradeActivations(activePlayer);
-  const maxBuild = getMaxBuildActivations(activePlayer);
-  const maxMoves = getMaxMoveActivations(activePlayer);
+  const maxUpgrade = hasPassed ? 1 : getMaxUpgradeActivations(activePlayer);
+  const maxBuild = hasPassed ? 1 : getMaxBuildActivations(activePlayer);
+  const maxMoves = hasPassed ? 1 : getMaxMoveActivations(activePlayer);
   const maxInfluence = getMaxInfluenceActivations(activePlayer);
 
   return (
-    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md p-2 rounded-2xl border border-slate-800 shadow-2xl">
+    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 bg-slate-950/90 backdrop-blur-md p-2 rounded-2xl border border-slate-800 shadow-2xl max-w-[calc(100vw-24px)] overflow-x-auto scrollbar-thin">
       {/* Active Commander Indicator */}
-      <div className="px-3 py-1 flex items-center gap-2 border-r border-slate-800 text-xs">
+      <div className="px-3 py-1 flex items-center gap-2 border-r border-slate-800 text-xs shrink-0">
         <div
           className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20"
           style={{ backgroundColor: activePlayer.color }}
         />
         <div className="flex flex-col text-left">
-          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">Active Turn</span>
+          <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">
+            {hasPassed ? 'Reaction Turn' : 'Active Turn'}
+          </span>
           <span className="font-bold text-slate-100 leading-none">{activePlayer.name}</span>
         </div>
       </div>
 
       {/* Disc Cost Indicator */}
-      <div className="px-3 py-1.5 flex items-center gap-1.5 border-r border-slate-800 text-xs font-bold text-slate-400">
+      <div className="px-3 py-1.5 flex items-center gap-1.5 border-r border-slate-800 text-xs font-bold text-slate-400 shrink-0">
         <CircleDot className="w-4 h-4 text-cyan-400" />
         <span>{activePlayer.influenceTrack.discsOnTrack} Discs</span>
       </div>
 
       {isTurnGated && (
-        <div className="px-3 py-1 flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs font-bold">
+        <div className="px-3 py-1 flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-300 text-xs font-bold shrink-0">
           <span>⏳ Opponent's Turn</span>
         </div>
       )}
 
       {/* Explore */}
       <button
-        disabled={!canAct}
+        disabled={!canActNormal}
         onClick={onToggleExplore}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
           isExploreMode
             ? 'bg-cyan-500 text-slate-950 ring-2 ring-cyan-300'
-            : canAct
+            : canActNormal
             ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -180,10 +185,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {/* Research */}
       <button
-        disabled={!canAct}
+        disabled={!canActNormal}
         onClick={onOpenResearch}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          canAct
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+          canActNormal
             ? 'bg-slate-900 hover:bg-slate-800 text-pink-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -194,52 +199,52 @@ export const ActionBar: React.FC<ActionBarProps> = ({
 
       {/* Upgrade */}
       <button
-        disabled={!canAct}
+        disabled={!canActNormal && !canActReaction}
         onClick={onOpenUpgrade}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          canAct
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+          canActNormal || canActReaction
             ? 'bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <Wrench className="w-4 h-4" />
-        <span>Upgrade ({maxUpgrade})</span>
+        <span>{hasPassed ? 'Reaction Upgrade (1)' : `Upgrade (${maxUpgrade})`}</span>
       </button>
 
       {/* Build */}
       <button
-        disabled={!canAct}
+        disabled={!canActNormal && !canActReaction}
         onClick={onOpenBuild}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          canAct
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+          canActNormal || canActReaction
             ? 'bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <Hammer className="w-4 h-4" />
-        <span>Build ({maxBuild})</span>
+        <span>{hasPassed ? 'Reaction Build (1)' : `Build (${maxBuild})`}</span>
       </button>
 
       {/* Move */}
       <button
-        disabled={!canAct}
+        disabled={!canActNormal && !canActReaction}
         onClick={onOpenMove}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          canAct
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+          canActNormal || canActReaction
             ? 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <Rocket className="w-4 h-4" />
-        <span>Move ({maxMoves})</span>
+        <span>{hasPassed ? 'Reaction Move (1)' : `Move (${maxMoves})`}</span>
       </button>
 
       {/* Influence */}
       <button
-        disabled={!canAct}
+        disabled={!canActNormal}
         onClick={onOpenInfluence}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          canAct
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+          canActNormal
             ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
@@ -248,20 +253,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <span>Influence ({maxInfluence})</span>
       </button>
 
-      <div className="h-6 w-[1px] bg-slate-800 mx-1" />
+      <div className="h-6 w-[1px] bg-slate-800 mx-1 shrink-0" />
 
       {/* Pass */}
       <button
-        disabled={isTurnGated || hasPassed}
+        disabled={!canPass}
         onClick={onPass}
-        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow ${
-          !isTurnGated && !hasPassed
+        className={`flex items-center gap-2 px-4 py-2.5 rounded-xl font-bold text-xs tracking-wider uppercase transition-all shadow shrink-0 ${
+          canPass
             ? 'bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-300 border border-slate-700'
             : 'bg-slate-900/40 text-slate-600 border border-slate-900 cursor-not-allowed'
         }`}
       >
         <CircleOff className="w-4 h-4" />
-        <span>{hasPassed ? 'Passed' : 'Pass Turn'}</span>
+        <span>{hasPassed ? 'Pass' : 'Pass Turn'}</span>
       </button>
     </div>
   );

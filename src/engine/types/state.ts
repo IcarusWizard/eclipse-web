@@ -127,6 +127,7 @@ export interface GameState {
   firstPlayerIndex: number;
   turnOrder: string[]; // Player IDs in current round turn order
   passedPlayerIds: string[];
+  consecutivePasses?: number;
   players: PlayerState[];
   sectors: SectorTile[];
   sectorDecks: {
