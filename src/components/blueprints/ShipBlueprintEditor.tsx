@@ -55,16 +55,18 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   // Find all ancient parts that are installed on any ship blueprint in draftBlueprints or player.blueprints
   const installedAncientPartIds = useMemo(() => {
     const installed = new Set<string>();
-    for (const bp of Object.values(draftBlueprints)) {
-      if (!bp) continue;
-      for (const slot of bp.slots) {
+    // draftBlueprints is Record<ShipType, (ShipPart | null)[]>
+    for (const slots of Object.values(draftBlueprints)) {
+      if (!Array.isArray(slots)) continue;
+      for (const slot of slots) {
         if (slot && ANCIENT_PART_IDS.has(slot.id)) {
           installed.add(slot.id);
         }
       }
     }
+    // player.blueprints is Record<ShipType, ShipBlueprint>
     for (const bp of Object.values(player.blueprints)) {
-      if (!bp) continue;
+      if (!bp || !Array.isArray(bp.slots)) continue;
       for (const slot of bp.slots) {
         if (slot && ANCIENT_PART_IDS.has(slot.id)) {
           installed.add(slot.id);

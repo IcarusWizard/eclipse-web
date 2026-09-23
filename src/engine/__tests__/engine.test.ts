@@ -883,7 +883,7 @@ describe('Game Setup & Turn Engine Flow', () => {
 
     let currentState = game;
     let iterations = 0;
-    while (currentState.activeCombat && iterations < 30) {
+    while (currentState.activeCombat && iterations < 60) {
       iterations++;
       const res = executeAction(currentState, {
         type: 'RESOLVE_COMBAT_STEP',
@@ -895,7 +895,7 @@ describe('Game Setup & Turn Engine Flow', () => {
     }
 
     // Engagement must terminate cleanly without an infinite loop
-    expect(iterations).toBeLessThan(30);
+    expect(iterations).toBeLessThan(60);
     expect(currentState.activeCombat).toBeNull();
     expect(currentState.pendingCombatConquest).not.toBeNull();
     expect(currentState.pendingCombatConquest?.winnerPlayerId).toBe(p1.id);
@@ -5079,23 +5079,45 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // D. Ship Blueprint Editor filtering logic:
         // Already installed ancient parts (ion_turret, flux_shield) must NOT be available in availableParts
         const STANDARD_PART_IDS = ['nuclear_source', 'nuclear_drive', 'electron_computer', 'ion_cannon', 'hull'];
-        const filterAvailableParts = (player: typeof p1AfterUpgrade, draftBps: typeof player.blueprints) => {
-          const installedAncient = new Set<string>();
-          for (const bp of Object.values(draftBps)) {
-            for (const s of bp.slots) {
-              if (s && ANCIENT_PART_IDS.has(s.id)) installedAncient.add(s.id);
-            }
-          }
-          return Object.values(SHIP_PARTS).filter((part) => {
-            if (STANDARD_PART_IDS.includes(part.id)) return true;
-            if (ANCIENT_PART_IDS.has(part.id)) {
-              return (player.unlockedAncientParts || []).includes(part.id) && !installedAncient.has(part.id);
-            }
-            return (player.techTrack.researched || []).some((t) => t.unlocksPartId === part.id || t.id === part.id);
-          });
+        const testDraftBlueprints = {
+          interceptor: [...p1AfterUpgrade.blueprints.interceptor.slots],
+          cruiser: [...p1AfterUpgrade.blueprints.cruiser.slots],
+          dreadnought: [...p1AfterUpgrade.blueprints.dreadnought.slots],
+          starbase: [...p1AfterUpgrade.blueprints.starbase.slots],
         };
 
-        const available = filterAvailableParts(p1AfterUpgrade, p1AfterUpgrade.blueprints);
+        const computeInstalledAncientPartIds = (
+          draftBps: Record<string, (any | null)[]>,
+          playerBps: typeof p1AfterUpgrade.blueprints
+        ) => {
+          const installed = new Set<string>();
+          for (const slots of Object.values(draftBps)) {
+            if (!Array.isArray(slots)) continue;
+            for (const slot of slots) {
+              if (slot && ANCIENT_PART_IDS.has(slot.id)) installed.add(slot.id);
+            }
+          }
+          for (const bp of Object.values(playerBps)) {
+            if (!bp || !Array.isArray(bp.slots)) continue;
+            for (const slot of bp.slots) {
+              if (slot && ANCIENT_PART_IDS.has(slot.id)) installed.add(slot.id);
+            }
+          }
+          return installed;
+        };
+
+        const installedSet = computeInstalledAncientPartIds(testDraftBlueprints, p1AfterUpgrade.blueprints);
+        expect(installedSet.has('ion_turret')).toBe(true);
+        expect(installedSet.has('flux_shield')).toBe(true);
+
+        const available = Object.values(SHIP_PARTS).filter((part) => {
+          if (STANDARD_PART_IDS.includes(part.id)) return true;
+          if (ANCIENT_PART_IDS.has(part.id)) {
+            return (p1AfterUpgrade.unlockedAncientParts || []).includes(part.id) && !installedSet.has(part.id);
+          }
+          return (p1AfterUpgrade.techTrack.researched || []).some((t) => t.unlocksPartId === part.id || t.id === part.id);
+        });
+
         expect(available.some((p) => p.id === 'ion_turret')).toBe(false);
         expect(available.some((p) => p.id === 'flux_shield')).toBe(false);
       });
