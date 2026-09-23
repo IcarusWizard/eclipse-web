@@ -44,3 +44,8 @@
 - [x] There is a bug in the gaduiance sector, currectly it all shows sector 212 which doesn't even exist in the physical game, you have the correct sector in the galary, use them (Round 4, ACTION_PHASE, Player: Orion Hegemony, Table #781)
 - [x] when selecting the reputation chip, it should by default select the highest one. (Round 5, ACTION_PHASE, Player: Planta, Table #781)
 - [x] I shouldn't be able to use the join function to join a table that doesn't exist. report to the use table not exist in this case (Round 1, ACTION_PHASE, Player: Terran Federation, Table #782)
+- [ ] There is a 0 on the up left corner for some reason (Round 5, ACTION_PHASE, Player: Orion Hegemony, Table #781)
+- [ ] for the popultation, it is indeed cubes currently, but can you make the spot that hold them also a square? (Round 5, ACTION_PHASE, Player: Orion Hegemony, Table #781)
+- [ ] the action selection shouldn't have a slide bar, I think we should also use the shorthand for these actions as for the physical copy, like EXP for exploration (Round 5, ACTION_PHASE, Player: Planta, Table #781)
+- [ ] the discount on the tech should be 0 1 2 3 4 6 8 not 0 1 2 3 4 5 6, also it is only 7 slots for each tech, I don't know why the tech tray view shows ?/8 researched (Round 6, ACTION_PHASE, Player: Orion Hegemony, Table #781)
+- [ ] the already installed acient parts from the discovery tile shouldn't be shown on the upgrade page since they cannot be move to another ship. Only show them when they are stroed without immediately placed when taken. (Round 6, ACTION_PHASE, Player: Planta, Table #781)
