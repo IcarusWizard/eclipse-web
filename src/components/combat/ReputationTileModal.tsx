@@ -21,10 +21,11 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
   const defaultSelectedIdx = React.useMemo(() => {
     if (!pendingDraw.drawnTiles.length) return null;
     let bestIdx = 0;
-    let maxVp = pendingDraw.drawnTiles[0].vp;
+    let maxVp = pendingDraw.drawnTiles[0] ?? 0;
     for (let i = 1; i < pendingDraw.drawnTiles.length; i++) {
-      if (pendingDraw.drawnTiles[i].vp > maxVp) {
-        maxVp = pendingDraw.drawnTiles[i].vp;
+      const val = pendingDraw.drawnTiles[i] ?? 0;
+      if (val > maxVp) {
+        maxVp = val;
         bestIdx = i;
       }
     }
@@ -35,10 +36,11 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
   const defaultReplaceIdx = React.useMemo(() => {
     if (!player.reputationTiles.length) return 0;
     let worstIdx = 0;
-    let minVp = player.reputationTiles[0].vp;
+    let minVp = player.reputationTiles[0] ?? 0;
     for (let i = 1; i < player.reputationTiles.length; i++) {
-      if (player.reputationTiles[i].vp < minVp) {
-        minVp = player.reputationTiles[i].vp;
+      const val = player.reputationTiles[i] ?? 0;
+      if (val < minVp) {
+        minVp = val;
         worstIdx = i;
       }
     }

@@ -260,7 +260,7 @@ export function executeCombatStep(
           const damageDealt = isHit ? weapon.damage : 0;
           target.currentDamage += damageDealt;
 
-          if (target.currentDamage >= target.maxHull) {
+          if (isHit && target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
             activeCombat.destroyedShips.push({
               shipId: target.id,
               type: target.type,
@@ -452,7 +452,7 @@ export function executeCombatStep(
       const damageDealt = isHit ? weapon.damage : 0;
       target.currentDamage += damageDealt;
 
-      if (target.currentDamage >= target.maxHull) {
+      if (isHit && target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
         activeCombat.destroyedShips.push({
           shipId: target.id,
           type: target.type,

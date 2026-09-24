@@ -83,6 +83,88 @@ export function canColonizePlanetSlot(
   return { canColonize: true };
 }
 
+export function canExchangeAmbassadors(
+  state: { phase?: string; traitorPlayerId?: string | null; players: PlayerState[]; sectors: SectorTile[] },
+  p1Id: string,
+  p2Id: string
+): { canExchange: boolean; reason?: string } {
+  if (state.phase && state.phase !== 'ACTION_PHASE') {
+    return { canExchange: false, reason: 'Diplomacy is only available in Action Phase.' };
+  }
+  const p1 = state.players.find((p) => p.id === p1Id);
+  const p2 = state.players.find((p) => p.id === p2Id);
+  if (!p1 || !p2) {
+    return { canExchange: false, reason: 'Player not found.' };
+  }
+  if (p1.id === p2.id) {
+    return { canExchange: false, reason: 'Cannot exchange ambassadors with yourself.' };
+  }
+  if (p1.ambassadorTiles?.includes(p2.id)) {
+    return { canExchange: false, reason: 'Already allied (+1 VP).' };
+  }
+  if (state.traitorPlayerId === p1.id) {
+    return { canExchange: false, reason: `${p1.name} holds the Traitor Tile (-2 VP).` };
+  }
+  if (state.traitorPlayerId === p2.id) {
+    return { canExchange: false, reason: `${p2.name} holds the Traitor Tile.` };
+  }
+
+  const p1AmbSlots = p1.faction.ambassadorSlots ?? 3;
+  const p1RepSlots = p1.faction.reputationSlots ?? 5;
+  if (p1AmbSlots <= 0) {
+    return { canExchange: false, reason: `${p1.name} cannot exchange ambassadors (${p1.faction.name} has 0 ambassador slots).` };
+  }
+  if ((p1.ambassadorTiles?.length || 0) >= p1AmbSlots) {
+    return { canExchange: false, reason: `${p1.name} has no available ambassador slots.` };
+  }
+  if ((p1.ambassadorTiles?.length || 0) + p1.reputationTiles.length >= p1RepSlots) {
+    return { canExchange: false, reason: `${p1.name}'s reputation track is full.` };
+  }
+
+  const p2AmbSlots = p2.faction.ambassadorSlots ?? 3;
+  const p2RepSlots = p2.faction.reputationSlots ?? 5;
+  if (p2AmbSlots <= 0) {
+    return { canExchange: false, reason: `${p2.name} cannot exchange ambassadors (${p2.faction.name} has 0 ambassador slots).` };
+  }
+  if ((p2.ambassadorTiles?.length || 0) >= p2AmbSlots) {
+    return { canExchange: false, reason: `${p2.name} has no available ambassador slots.` };
+  }
+  if ((p2.ambassadorTiles?.length || 0) + p2.reputationTiles.length >= p2RepSlots) {
+    return { canExchange: false, reason: `${p2.name}'s reputation track is full.` };
+  }
+
+  const p1HasCube =
+    p1.population.money.cubesOnBoard > 0 ||
+    p1.population.science.cubesOnBoard > 0 ||
+    p1.population.material.cubesOnBoard > 0;
+  if (!p1HasCube) {
+    return { canExchange: false, reason: `${p1.name} has no population cubes available on their tracks.` };
+  }
+
+  const p2HasCube =
+    p2.population.money.cubesOnBoard > 0 ||
+    p2.population.science.cubesOnBoard > 0 ||
+    p2.population.material.cubesOnBoard > 0;
+  if (!p2HasCube) {
+    return { canExchange: false, reason: `${p2.name} has no population cubes available on their tracks.` };
+  }
+
+  const p1Sectors = state.sectors.filter((s) => s.discOwner === p1.id || s.ships.some((shp) => shp.ownerId === p1.id));
+  const p2Sectors = state.sectors.filter((s) => s.discOwner === p2.id || s.ships.some((shp) => shp.ownerId === p2.id));
+  const hasWormholeGen =
+    p1.techTrack.researched.some((t) => t.id === 'wormhole_generator') ||
+    p2.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+
+  const areConnected = p1Sectors.some((s1) =>
+    p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen))
+  );
+  if (!areConnected) {
+    return { canExchange: false, reason: 'Players must control adjacent or connected sectors via wormholes/warp portals to establish diplomacy.' };
+  }
+
+  return { canExchange: true };
+}
+
 export function validateAction(state: GameState, action: GameAction): { valid: boolean; error?: string } {
   if (state.phase === 'GAME_OVER') {
     return { valid: false, error: 'The game has ended.' };
@@ -808,62 +890,16 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
 
     case 'DIPLOMACY_EXCHANGE': {
-      if (state.phase !== 'ACTION_PHASE') {
-        return { valid: false, error: 'Diplomatic relations can only be established during the Action Phase.' };
+      const check = canExchangeAmbassadors(state, action.playerId, action.targetPlayerId);
+      if (!check.canExchange) {
+        return { valid: false, error: check.reason || 'Cannot exchange ambassadors.' };
       }
-      const targetPlayer = state.players.find((p) => p.id === action.targetPlayerId);
-      if (!targetPlayer) {
-        return { valid: false, error: 'Target player not found.' };
+      if (action.initiatorCube && player.population[action.initiatorCube].cubesOnBoard <= 0) {
+        return { valid: false, error: `${player.name} has no available population cubes on the ${action.initiatorCube} track.` };
       }
-      if (player.id === targetPlayer.id) {
-        return { valid: false, error: 'Cannot exchange ambassadors with yourself.' };
-      }
-      if (player.ambassadorTiles.includes(targetPlayer.id)) {
-        return { valid: false, error: 'Players already have an active diplomatic relation.' };
-      }
-      if (state.traitorPlayerId === player.id) {
-        return { valid: false, error: `${player.name} holds the Traitor Tile and cannot establish diplomatic relations.` };
-      }
-      if (state.traitorPlayerId === targetPlayer.id) {
-        return { valid: false, error: `${targetPlayer.name} holds the Traitor Tile and cannot establish diplomatic relations.` };
-      }
-
-      const p1AmbSlots = player.faction.ambassadorSlots ?? 3;
-      const p1RepSlots = player.faction.reputationSlots ?? 5;
-      if (p1AmbSlots <= 0) {
-        return { valid: false, error: `${player.name} cannot establish diplomatic relations (${player.faction.name} has 0 ambassador slots).` };
-      }
-      if (player.ambassadorTiles.length >= p1AmbSlots) {
-        return { valid: false, error: `${player.name} has no available ambassador slots.` };
-      }
-      if (player.ambassadorTiles.length + player.reputationTiles.length >= p1RepSlots) {
-        return { valid: false, error: `${player.name}'s reputation track is full.` };
-      }
-
-      const p2AmbSlots = targetPlayer.faction.ambassadorSlots ?? 3;
-      const p2RepSlots = targetPlayer.faction.reputationSlots ?? 5;
-      if (p2AmbSlots <= 0) {
-        return { valid: false, error: `${targetPlayer.name} cannot establish diplomatic relations (${targetPlayer.faction.name} has 0 ambassador slots).` };
-      }
-      if (targetPlayer.ambassadorTiles.length >= p2AmbSlots) {
-        return { valid: false, error: `${targetPlayer.name} has no available ambassador slots.` };
-      }
-      if (targetPlayer.ambassadorTiles.length + targetPlayer.reputationTiles.length >= p2RepSlots) {
-        return { valid: false, error: `${targetPlayer.name}'s reputation track is full.` };
-      }
-
-      // Check connectivity: do they have connected controlled sectors or ships?
-      const p1Sectors = state.sectors.filter((s) => s.discOwner === player.id || s.ships.some((shp) => shp.ownerId === player.id));
-      const p2Sectors = state.sectors.filter((s) => s.discOwner === targetPlayer.id || s.ships.some((shp) => shp.ownerId === targetPlayer.id));
-      const hasWormholeGen =
-        player.techTrack.researched.some((t) => t.id === 'wormhole_generator') ||
-        targetPlayer.techTrack.researched.some((t) => t.id === 'wormhole_generator');
-
-      const areConnected = p1Sectors.some((s1) =>
-        p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen))
-      );
-      if (!areConnected) {
-        return { valid: false, error: 'Players must control adjacent or connected sectors via wormholes/warp portals to establish diplomacy.' };
+      const targetPlayer = state.players.find((p) => p.id === action.targetPlayerId)!;
+      if (action.targetCube && targetPlayer.population[action.targetCube].cubesOnBoard <= 0) {
+        return { valid: false, error: `${targetPlayer.name} has no available population cubes on the ${action.targetCube} track.` };
       }
 
       return { valid: true };
@@ -1435,9 +1471,19 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
               if (alliedPresent) {
                 const allyPlayer = newState.players.find((p) => p.id === alliedPresent);
-                player.ambassadorTiles = player.ambassadorTiles.filter((id) => id !== alliedPresent);
+                player.ambassadorTiles = (player.ambassadorTiles || []).filter((id) => id !== alliedPresent);
+                if (player.ambassadorCubes?.[alliedPresent]) {
+                  const pRes = player.ambassadorCubes[alliedPresent];
+                  player.population[pRes].cubesOnBoard = Math.min(11, player.population[pRes].cubesOnBoard + 1);
+                  delete player.ambassadorCubes[alliedPresent];
+                }
                 if (allyPlayer) {
-                  allyPlayer.ambassadorTiles = allyPlayer.ambassadorTiles.filter((id) => id !== player.id);
+                  allyPlayer.ambassadorTiles = (allyPlayer.ambassadorTiles || []).filter((id) => id !== player.id);
+                  if (allyPlayer.ambassadorCubes?.[player.id]) {
+                    const allyRes = allyPlayer.ambassadorCubes[player.id];
+                    allyPlayer.population[allyRes].cubesOnBoard = Math.min(11, allyPlayer.population[allyRes].cubesOnBoard + 1);
+                    delete allyPlayer.ambassadorCubes[player.id];
+                  }
                 }
                 newState.traitorPlayerId = player.id;
                 addLog(`⚔️ ${player.name} moved into allied space of ${allyPlayer?.name || alliedPresent}, breaking the alliance and claiming the Traitor Tile (-2 VP)!`, 'combat');
@@ -1456,9 +1502,40 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     case 'DIPLOMACY_EXCHANGE': {
       const targetPlayer = newState.players.find((p) => p.id === action.targetPlayerId);
       if (targetPlayer) {
+        player.ambassadorTiles = player.ambassadorTiles || [];
+        targetPlayer.ambassadorTiles = targetPlayer.ambassadorTiles || [];
         player.ambassadorTiles.push(targetPlayer.id);
         targetPlayer.ambassadorTiles.push(player.id);
-        addLog(`🤝 ${player.name} and ${targetPlayer.name} established Diplomatic Relations and exchanged Ambassadors (+1 VP each)!`, 'action');
+
+        player.ambassadorCubes = player.ambassadorCubes || {};
+        targetPlayer.ambassadorCubes = targetPlayer.ambassadorCubes || {};
+
+        const initCube =
+          action.initiatorCube ||
+          (player.population.money.cubesOnBoard > 0
+            ? 'money'
+            : player.population.science.cubesOnBoard > 0
+            ? 'science'
+            : 'material');
+        const tgtCube =
+          action.targetCube ||
+          (targetPlayer.population.money.cubesOnBoard > 0
+            ? 'money'
+            : targetPlayer.population.science.cubesOnBoard > 0
+            ? 'science'
+            : 'material');
+
+        player.population[initCube].cubesOnBoard = Math.max(0, player.population[initCube].cubesOnBoard - 1);
+        targetPlayer.population[tgtCube].cubesOnBoard = Math.max(0, targetPlayer.population[tgtCube].cubesOnBoard - 1);
+
+        player.ambassadorCubes[targetPlayer.id] = initCube;
+        targetPlayer.ambassadorCubes[player.id] = tgtCube;
+
+        const cubeIcon = (c: string) => (c === 'money' ? '💰' : c === 'science' ? '🔬' : '🔨');
+        addLog(
+          `🤝 ${player.name} (${cubeIcon(initCube)}) and ${targetPlayer.name} (${cubeIcon(tgtCube)}) established Diplomatic Relations and exchanged Ambassadors (+1 VP each)!`,
+          'action'
+        );
       }
       break;
     }
@@ -1828,11 +1905,20 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               const attemptedRetreat = newState.activeCombat?.retreatAttemptedPlayerIds?.includes(pId);
               const survivingShipsInSec = sector.ships.filter((s) => s.ownerId === pId).length;
               const allRetreated = attemptedRetreat && survivingShipsInSec === 0 && !newState.activeCombat?.destroyedShips?.some((d) => d.ownerId === pId);
+              
+              const isLoser = Boolean(winnerId && pId !== winnerId);
+              const playerKills = (newState.activeCombat?.destroyedShips || []).filter(
+                (casualty) => casualty.killerId === pId && casualty.ownerId !== pId
+              );
+
               let tilesCount = allRetreated ? 0 : 1; // 1 tile for participating unless all retreated without losses
 
-              // Kills tiles
-              for (const casualty of newState.activeCombat?.destroyedShips || []) {
-                if (casualty.killerId === pId && casualty.ownerId !== pId) {
+              if (isLoser && playerKills.length === 0) {
+                // Bug 70: loser of the battle should only draw 1 rep tile if he doesn't destroy anything
+                tilesCount = allRetreated ? 0 : 1;
+              } else {
+                // Kills tiles
+                for (const casualty of playerKills) {
                   if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient') {
                     tilesCount += 1;
                   } else if (casualty.type === 'cruiser' || casualty.type === 'guardian') {

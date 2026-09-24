@@ -20,7 +20,9 @@ import {
   Trophy,
   ChevronDown,
   ChevronUp,
+  Handshake,
 } from 'lucide-react';
+import { canExchangeAmbassadors } from '../../engine/rules/gameReducer';
 
 interface PlayerBoardProps {
   player: PlayerState;
@@ -31,6 +33,10 @@ interface PlayerBoardProps {
   onOpenTrade: () => void;
   onOpenPhysicalBoard?: () => void;
   hideOpponentReputation?: boolean;
+  allPlayers?: PlayerState[];
+  traitorPlayerId?: string | null;
+  gamePhase?: string;
+  onInitiateDiplomacy?: (targetPlayerId: string) => void;
 }
 
 export const PlayerBoard: React.FC<PlayerBoardProps> = ({
@@ -42,6 +48,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   onOpenTrade,
   onOpenPhysicalBoard,
   hideOpponentReputation = false,
+  allPlayers = [],
+  traitorPlayerId = null,
+  gamePhase = 'ACTION_PHASE',
+  onInitiateDiplomacy,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
   const [showFleet, setShowFleet] = useState<boolean>(false);
@@ -98,7 +108,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             <button
               onClick={onOpenTrade}
               className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-400 transition-colors"
-              title="Trade 2:1"
+              title={`Trade (${player.faction.tradeRatio ?? 2}:1)`}
             >
               <ArrowRightLeft className="w-3.5 h-3.5" />
             </button>
@@ -116,6 +126,42 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             >
               <Settings className="w-3.5 h-3.5" />
             </button>
+            {allPlayers && allPlayers.length > 1 && (
+              <button
+                onClick={() => {
+                  const firstEligible = allPlayers.find(
+                    (o) =>
+                      o.id !== player.id &&
+                      canExchangeAmbassadors(
+                        { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
+                        player.id,
+                        o.id
+                      ).canExchange
+                  );
+                  if (firstEligible && onInitiateDiplomacy) {
+                    onInitiateDiplomacy(firstEligible.id);
+                  } else {
+                    setIsCollapsed(false);
+                  }
+                }}
+                className={`p-1 hover:bg-slate-800 rounded transition-colors ${
+                  allPlayers.some(
+                    (o) =>
+                      o.id !== player.id &&
+                      canExchangeAmbassadors(
+                        { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
+                        player.id,
+                        o.id
+                      ).canExchange
+                  )
+                    ? 'text-indigo-400 hover:text-indigo-300 ring-1 ring-indigo-500/50 animate-pulse'
+                    : 'text-slate-400 hover:text-indigo-400'
+                }`}
+                title="Diplomacy / Ambassadors"
+              >
+                <Handshake className="w-3.5 h-3.5" />
+              </button>
+            )}
             <button
               onClick={() => setIsCollapsed(false)}
               className="p-1 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded transition-colors ml-0.5"
@@ -175,6 +221,21 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             <Ship className="w-3 h-3 text-indigo-400" />
             <span>{player.colonyShips.ready}</span>
           </div>
+
+          {/* Ambassadors */}
+          {allPlayers && allPlayers.length > 1 && (
+            <div
+              className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${
+                (player.ambassadorTiles?.length || 0) > 0
+                  ? 'bg-indigo-950/40 border-indigo-700/60 text-indigo-300'
+                  : 'bg-slate-950 border-slate-800 text-slate-400'
+              }`}
+              title={`Ambassadors: ${player.ambassadorTiles?.length || 0} / ${player.faction.ambassadorSlots ?? 3}`}
+            >
+              <Handshake className="w-3 h-3 text-indigo-400" />
+              <span>{player.ambassadorTiles?.length || 0}/{player.faction.ambassadorSlots ?? 3}</span>
+            </div>
+          )}
 
           {/* Reputation */}
           <div
@@ -236,7 +297,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           <button
             onClick={onOpenTrade}
             className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-400 transition-colors"
-            title="Trade 2:1 for Credits"
+            title={`Trade (${player.faction.tradeRatio ?? 2}:1 for Credits)`}
           >
             <ArrowRightLeft className="w-4 h-4" />
           </button>
@@ -254,6 +315,42 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           >
             <Settings className="w-4 h-4" />
           </button>
+          {allPlayers && allPlayers.length > 1 && (
+            <button
+              onClick={() => {
+                const firstEligible = allPlayers.find(
+                  (o) =>
+                    o.id !== player.id &&
+                    canExchangeAmbassadors(
+                      { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
+                      player.id,
+                      o.id
+                    ).canExchange
+                );
+                if (firstEligible && onInitiateDiplomacy) {
+                  onInitiateDiplomacy(firstEligible.id);
+                } else if (onOpenPhysicalBoard) {
+                  onOpenPhysicalBoard();
+                }
+              }}
+              className={`p-1.5 hover:bg-slate-800 rounded transition-colors ${
+                allPlayers.some(
+                  (o) =>
+                    o.id !== player.id &&
+                    canExchangeAmbassadors(
+                      { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
+                      player.id,
+                      o.id
+                    ).canExchange
+                )
+                  ? 'text-indigo-400 hover:text-indigo-300 ring-1 ring-indigo-500/50 animate-pulse'
+                  : 'text-slate-400 hover:text-indigo-400'
+              }`}
+              title="Diplomatic Relations & Ambassadors"
+            >
+              <Handshake className="w-4 h-4" />
+            </button>
+          )}
           <button
             onClick={() => setIsCollapsed(true)}
             className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors"
@@ -381,6 +478,103 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Ambassadors & Diplomatic Relations */}
+      {allPlayers && allPlayers.length > 1 && (
+        <div className="bg-slate-950/60 rounded-lg border border-slate-800/80 p-2 mb-2">
+          <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1.5">
+            <span className="flex items-center gap-1 text-indigo-400">
+              <Handshake className="w-3.5 h-3.5 text-indigo-400" /> Ambassadors
+            </span>
+            <span className="font-mono text-[9px] text-slate-400">
+              {player.ambassadorTiles?.length || 0} / {player.faction.ambassadorSlots ?? 3} Slots
+            </span>
+          </div>
+
+          <div className="space-y-1">
+            {allPlayers
+              .filter((other) => other.id !== player.id)
+              .map((other) => {
+                const isAllied = player.ambassadorTiles?.includes(other.id);
+                const check = canExchangeAmbassadors(
+                  { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
+                  player.id,
+                  other.id
+                );
+                const isEligible = check.canExchange && isActive && gamePhase === 'ACTION_PHASE';
+                const cubeType = player.ambassadorCubes?.[other.id];
+                const cubeIcon =
+                  cubeType === 'money' ? '💰' : cubeType === 'science' ? '🔬' : cubeType === 'material' ? '🔨' : '★';
+
+                if (isAllied) {
+                  return (
+                    <div
+                      key={other.id}
+                      className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/90 border border-slate-900 text-slate-500 text-[10.5px] transition-colors"
+                      title={`Allied with ${other.name} (${other.faction.name}) • +1 VP`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0 opacity-40 shadow-sm"
+                          style={{ backgroundColor: other.color }}
+                        />
+                        <span className="font-medium text-slate-400 truncate">{other.name}</span>
+                        <span className="text-[9px] text-slate-600 truncate">({other.faction.name})</span>
+                      </div>
+                      <span className="font-mono text-[9.5px] text-slate-500 flex items-center gap-1 shrink-0">
+                        <Handshake className="w-3 h-3 text-slate-600" /> Allied {cubeIcon} (+1★)
+                      </span>
+                    </div>
+                  );
+                }
+
+                if (isEligible) {
+                  return (
+                    <button
+                      key={other.id}
+                      type="button"
+                      onClick={() => onInitiateDiplomacy?.(other.id)}
+                      className="w-full flex items-center justify-between px-2 py-1 rounded bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/70 text-indigo-200 hover:text-white text-[10.5px] font-medium transition cursor-pointer shadow-sm shadow-indigo-950/50 group"
+                      title={`Click to exchange Ambassadors with ${other.name} (${other.faction.name}) • +1 VP each`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                          style={{ backgroundColor: other.color }}
+                        />
+                        <span className="font-bold text-slate-100 truncate">{other.name}</span>
+                        <span className="text-[9px] text-indigo-300/80 truncate">({other.faction.name})</span>
+                      </div>
+                      <span className="px-1.5 py-0.5 rounded bg-indigo-600 group-hover:bg-indigo-500 text-white font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 shrink-0 transition-colors">
+                        <Handshake className="w-2.5 h-2.5" /> Exchange
+                      </span>
+                    </button>
+                  );
+                }
+
+                return (
+                  <div
+                    key={other.id}
+                    className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/40 border border-slate-900/60 text-slate-600 text-[10.5px] cursor-not-allowed opacity-60"
+                    title={check.reason || 'Not eligible for diplomacy'}
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0 opacity-30"
+                        style={{ backgroundColor: other.color }}
+                      />
+                      <span className="truncate">{other.name}</span>
+                      <span className="text-[9px] text-slate-700 truncate">({other.faction.name})</span>
+                    </div>
+                    <span className="text-[9px] text-slate-600 truncate max-w-[130px] font-mono">
+                      {check.reason ? (check.reason.length > 22 ? `${check.reason.slice(0, 20)}…` : check.reason) : 'Ineligible'}
+                    </span>
+                  </div>
+                );
+              })}
+          </div>
+        </div>
+      )}
 
       {/* Action Upkeep Forecast Strip */}
       <div

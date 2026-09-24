@@ -37,6 +37,7 @@ import {
   transitionToCleanup,
   resolveAttackingPopulationAndConquest,
   computePinningState,
+  canExchangeAmbassadors,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -61,6 +62,7 @@ import {
   getIncomeForecast,
   applyUpkeepPhase,
   POPULATION_TRACK_SPACES,
+  abandonSectorForUpkeep,
 } from '../rules/economyEngine';
 import { CENTER_SECTOR, generateSectorDecks, DISCOVERY_TILES, getAllSectorsCatalog } from '../rules/sectorData';
 import {
@@ -5515,6 +5517,170 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(multiCombatGame.activeCombat!.participatingPlayerIds).toContain(mcP3.id);
         expect(multiCombatGame.activeCombat!.participatingPlayerIds).toContain(mcP2.id);
         expect(multiCombatGame.activeCombat!.participatingPlayerIds).not.toContain(mcP1.id);
+      });
+
+      test('43. verifies Bug Fixes 67-70: Tactical Bankruptcy reset, Diplomacy Ambassador exchange with population cubes, Tech tray minCost, and Loser reputation draw of 1 tile', () => {
+        // --- Bug 67: Tactical Bankruptcy Reset Decision Capability ---
+        const bkrGame = createInitialGame(2, ['mechanema', 'terran_directorate']);
+        const mech = bkrGame.players[0]!;
+        mech.resources.money = 0;
+        mech.influenceTrack.discsOnTrack = 8; // high upkeep
+        const sec1 = bkrGame.sectors[0]!;
+        sec1.discOwner = mech.id;
+        sec1.planets = [{ id: 'p1', resource: 'money', isAdvanced: false, colonizedBy: mech.id, colonizedResource: 'money' }];
+        mech.population.money.cubesOnBoard = 10;
+
+        // Simulate staged sector abandonment
+        const initialSimPlayer = JSON.parse(JSON.stringify(mech));
+        const simRes = abandonSectorForUpkeep(mech, JSON.parse(JSON.stringify(sec1)));
+        expect(simRes.updatedPlayer.influenceTrack.discsOnTrack).toBe(mech.influenceTrack.discsOnTrack + 1);
+        expect(simRes.updatedPlayer.population.money.cubesOnBoard).toBe(mech.population.money.cubesOnBoard + 1);
+
+        // Reset restores initial state
+        const resetPlayer = JSON.parse(JSON.stringify(initialSimPlayer));
+        expect(resetPlayer.influenceTrack.discsOnTrack).toBe(mech.influenceTrack.discsOnTrack);
+        expect(resetPlayer.population.money.cubesOnBoard).toBe(mech.population.money.cubesOnBoard);
+
+        // --- Bug 68: Diplomacy Ambassador Exchange with Population Cube Selection ---
+        const diplo3Game = createInitialGame(3, ['terran_directorate', 'planta', 'orion_hegemony']);
+        const pTerran = diplo3Game.players[0]!;
+        const pPlanta = diplo3Game.players[1]!;
+        const pOrion = diplo3Game.players[2]!;
+
+        // Place sectors and ships so Terran and Planta are connected
+        const s0 = diplo3Game.sectors[0]!;
+        const s1 = diplo3Game.sectors[1]!;
+        s0.hasGCDS = false;
+        s0.ships = [];
+        s0.ancientsCount = 0;
+        s0.discOwner = pTerran.id;
+        s0.wormholes = [0, 1, 2, 3, 4, 5];
+        s1.coord = { q: 0, r: 1 };
+        s1.wormholes = [0, 1, 2, 3, 4, 5];
+        s1.ships = [];
+        s1.discOwner = pPlanta.id;
+
+        // 1. Orion Hegemony has 0 ambassador slots -> cannot exchange
+        const orionDiploCheck = canExchangeAmbassadors(diplo3Game, pTerran.id, pOrion.id);
+        expect(orionDiploCheck.canExchange).toBe(false);
+        expect(orionDiploCheck.reason).toContain('0 ambassador slots');
+
+        // 2. Terran and Planta can exchange
+        const terranPlantaCheck = canExchangeAmbassadors(diplo3Game, pTerran.id, pPlanta.id);
+        expect(terranPlantaCheck.canExchange).toBe(true);
+
+        const terranSciBefore = pTerran.population.science.cubesOnBoard;
+        const plantaMoneyBefore = pPlanta.population.money.cubesOnBoard;
+
+        // Execute exchange: Terran gives Science cube, Planta gives Money cube
+        const exchangeRes = executeAction(diplo3Game, {
+          type: 'DIPLOMACY_EXCHANGE',
+          playerId: pTerran.id,
+          targetPlayerId: pPlanta.id,
+          initiatorCube: 'science',
+          targetCube: 'money',
+        });
+        expect(exchangeRes.success).toBe(true);
+        const postTerran = exchangeRes.newState.players[0]!;
+        const postPlanta = exchangeRes.newState.players[1]!;
+
+        // Both players have each other in ambassadorTiles
+        expect(postTerran.ambassadorTiles).toContain(pPlanta.id);
+        expect(postPlanta.ambassadorTiles).toContain(pTerran.id);
+
+        // Cubes are deducted from tracks
+        expect(postTerran.population.science.cubesOnBoard).toBe(terranSciBefore - 1);
+        expect(postPlanta.population.money.cubesOnBoard).toBe(plantaMoneyBefore - 1);
+
+        // Cubes recorded in ambassadorCubes
+        expect(postTerran.ambassadorCubes?.[pPlanta.id]).toBe('science');
+        expect(postPlanta.ambassadorCubes?.[pTerran.id]).toBe('money');
+
+        // Once allied, canExchangeAmbassadors returns false (already allied)
+        const alreadyAlliedCheck = canExchangeAmbassadors(exchangeRes.newState, pTerran.id, pPlanta.id);
+        expect(alreadyAlliedCheck.canExchange).toBe(false);
+        expect(alreadyAlliedCheck.reason).toContain('Already allied');
+
+        // 3. Breaking alliance returns cubes to respective tracks
+        exchangeRes.newState.activePlayerIndex = 0;
+        exchangeRes.newState.sectors[0]!.ships = [
+          { id: 'terran_cruiser_alpha', ownerId: pTerran.id, type: 'cruiser', damage: 0 },
+        ];
+        const breakDiploRes = executeAction(exchangeRes.newState, {
+          type: 'MOVE',
+          playerId: pTerran.id,
+          moves: [
+            {
+              shipId: 'terran_cruiser_alpha',
+              fromSectorId: exchangeRes.newState.sectors[0]!.id,
+              toSectorId: exchangeRes.newState.sectors[1]!.id,
+            },
+          ],
+        });
+        expect(breakDiploRes.success).toBe(true);
+        const brokenTerran = breakDiploRes.newState.players[0]!;
+        const brokenPlanta = breakDiploRes.newState.players[1]!;
+
+        // Cubes restored to tracks!
+        expect(brokenTerran.population.science.cubesOnBoard).toBe(terranSciBefore);
+        expect(brokenPlanta.population.money.cubesOnBoard).toBe(plantaMoneyBefore);
+        expect(brokenTerran.ambassadorTiles).not.toContain(pPlanta.id);
+        expect(brokenPlanta.ambassadorTiles).not.toContain(pTerran.id);
+        expect(breakDiploRes.newState.traitorPlayerId).toBe(pTerran.id);
+
+        // --- Bug 69: Tech minimal cost on tech tray ---
+        const techGame = createInitialGame(2);
+        for (const tech of techGame.techSupply) {
+          expect(tech.minCost).toBeDefined();
+          expect(tech.minCost).toBeLessThanOrEqual(tech.baseCost);
+          expect(tech.minCost).toBeGreaterThanOrEqual(1);
+        }
+
+        // --- Bug 70: Battle loser draws 1 reputation tile if they destroy nothing ---
+        const combatGame = createInitialGame(2, ['planta', 'terran_directorate']);
+        const plantaP = combatGame.players[0]!;
+        const terranP = combatGame.players[1]!;
+        const cSector = combatGame.sectors[1]!;
+        cSector.discOwner = terranP.id;
+        cSector.ships = [
+          { id: 'terran_dread', ownerId: terranP.id, type: 'dreadnought', damage: 0 },
+          { id: 'planta_int', ownerId: plantaP.id, type: 'interceptor', damage: 0 },
+        ];
+        combatGame.reputationTileSupply = [4, 3, 2, 2, 1, 1];
+        combatGame.phase = 'COMBAT_PHASE';
+
+        checkAndTriggerCombat(combatGame);
+        expect(combatGame.activeCombat).not.toBeNull();
+
+        // Terran destroys Planta interceptor, Planta destroys nothing
+        combatGame.activeCombat!.stage = 'resolved';
+        combatGame.activeCombat!.destroyedShips = [
+          { shipId: 'planta_int', ownerId: plantaP.id, shipType: 'interceptor', destroyedBy: terranP.id },
+        ];
+        cSector.ships = [{ id: 'terran_dread', ownerId: terranP.id, type: 'dreadnought', damage: 0 }];
+
+        // Conclude engagement
+        const combatRes = executeAction(combatGame, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: terranP.id,
+          sectorId: cSector.id,
+          concludeCombat: true,
+        });
+        expect(combatRes.success).toBe(true);
+
+        // Planta is loser who destroyed 0 ships -> must draw exactly 1 tile!
+        const allRepDraws = [
+          combatRes.newState.pendingReputationDraw,
+          ...(combatRes.newState.pendingReputationDrawQueue || []),
+        ].filter(Boolean);
+        const plantaDraw = allRepDraws.find((d) => d?.playerId === plantaP.id);
+        expect(plantaDraw).toBeDefined();
+        expect(plantaDraw!.drawnTiles.length).toBe(1);
+
+        // Terran is winner who destroyed 1 ship -> draws 1 tile (kills = 1)
+        const terranDraw = allRepDraws.find((d) => d?.playerId === terranP.id);
+        expect(terranDraw).toBeDefined();
+        expect(terranDraw!.drawnTiles.length).toBe(1);
       });
     });
   });

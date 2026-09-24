@@ -209,7 +209,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         <div>
           <div className="flex items-center justify-between gap-1 mb-1.5 text-[10px] font-mono">
             <span className="text-slate-400 font-bold uppercase tracking-wider">
-              {tech.tier ? `Slot ${tech.tier}` : 'Rare'} • Base {tech.baseCost}🔬
+              {tech.tier ? `Slot ${tech.tier}` : 'Rare'} • Base {tech.baseCost}🔬 • Min {tech.minCost}🔬
             </span>
 
             {/* Stock in Tray badge */}
@@ -346,7 +346,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         {/* Footer: Price & Action */}
         <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-1">
           <div className="flex flex-col">
-            <span className="text-[9px] text-slate-400 font-semibold uppercase">Cost</span>
+            <div className="flex items-center gap-1 text-[9px] text-slate-400 font-semibold uppercase">
+              <span>Cost</span>
+              <span className="text-slate-500 font-mono font-normal">(Min {tech.minCost}🔬)</span>
+            </div>
             <div className="flex items-center gap-1.5">
               <span className="font-extrabold text-sm text-pink-400 font-mono">
                 {discountedCost}🔬

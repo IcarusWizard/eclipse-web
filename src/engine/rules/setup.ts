@@ -481,6 +481,7 @@ export function createInitialGame(
       },
       reputationTiles: startingRepTiles,
       ambassadorTiles: [],
+      ambassadorCubes: {},
       keptDiscoveryTiles: [],
       unlockedAncientParts: [],
       hasPassed: false,

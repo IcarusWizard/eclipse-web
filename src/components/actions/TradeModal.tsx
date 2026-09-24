@@ -19,11 +19,10 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   onTrade,
   onClose,
 }) => {
+  const ratio = player.faction.tradeRatio || 2;
   const [fromResource, setFromResource] = useState<ResourceType>('material');
   const [toResource, setToResource] = useState<ResourceType>('money');
-  const [amount, setAmount] = useState<number>(2);
-
-  const ratio = player.faction.tradeRatio || 2;
+  const [amount, setAmount] = useState<number>(ratio);
   const available =
     fromResource === 'money'
       ? player.resources.money

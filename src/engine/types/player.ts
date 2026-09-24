@@ -82,6 +82,7 @@ export interface PlayerState {
   };
   reputationTiles: number[]; // Array of victory points drawn from bag (e.g. 1, 2, 3, 4)
   ambassadorTiles: string[]; // Player IDs of alliances
+  ambassadorCubes?: Record<string, 'money' | 'science' | 'material'>; // Population cube assigned to each alliance
   keptDiscoveryTiles: DiscoveryTile[]; // 2 VP each at game end
   unlockedAncientParts: string[]; // Ancient ship parts unlocked from discoveries
   hasPassed: boolean;

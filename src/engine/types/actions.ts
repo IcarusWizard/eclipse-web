@@ -126,6 +126,8 @@ export interface DiscoveryChoiceAction extends BaseAction {
 export interface DiplomacyExchangeAction extends BaseAction {
   type: 'DIPLOMACY_EXCHANGE';
   targetPlayerId: string;
+  initiatorCube?: 'money' | 'science' | 'material';
+  targetCube?: 'money' | 'science' | 'material';
 }
 
 export interface ResolveCombatStepAction extends BaseAction {

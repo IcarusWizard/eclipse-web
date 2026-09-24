@@ -37,6 +37,7 @@ import { LobbyView } from './components/lobby/LobbyView';
 import { GalacticGalleryModal } from './components/gallery/GalacticGalleryModal';
 import { BugReportModal } from './components/feedback/BugReportModal';
 import { BugReportCornerButton } from './components/feedback/BugReportCornerButton';
+import { DiplomacyModal, PopulationResourceType } from './components/diplomacy/DiplomacyModal';
 import {
   loadActiveGameState,
   saveGameState,
@@ -92,6 +93,7 @@ export const App: React.FC = () => {
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
   const [isNewGameOpen, setIsNewGameOpen] = useState<boolean>(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState<boolean>(false);
+  const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const activePlayer = state.players[state.activePlayerIndex]!;
@@ -335,6 +337,58 @@ export const App: React.FC = () => {
     } else {
       setErrorMessage(result.error || 'Failed to abandon sector');
     }
+  };
+
+  const handleConfirmBankruptcyPlan = (plan: {
+    trades: { materials: number; science: number };
+    abandonedSectorIds: string[];
+  }) => {
+    if (!state.pendingBankruptcy) return;
+    const playerId = state.pendingBankruptcy.playerId;
+    let currentState = state;
+
+    for (let i = 0; i < plan.trades.materials; i++) {
+      const player = currentState.players.find((p) => p.id === playerId);
+      const ratio = player?.faction.tradeRatio || 2;
+      const res = executeAction(currentState, {
+        type: 'TRADE_RESOURCE',
+        playerId,
+        from: 'materials',
+        to: 'money',
+        amount: ratio,
+      });
+      if (res.success) currentState = res.newState;
+    }
+
+    for (let i = 0; i < plan.trades.science; i++) {
+      const player = currentState.players.find((p) => p.id === playerId);
+      const ratio = player?.faction.tradeRatio || 2;
+      const res = executeAction(currentState, {
+        type: 'TRADE_RESOURCE',
+        playerId,
+        from: 'science',
+        to: 'money',
+        amount: ratio,
+      });
+      if (res.success) currentState = res.newState;
+    }
+
+    for (const secId of plan.abandonedSectorIds) {
+      const res = executeAction(currentState, {
+        type: 'ABANDON_SECTOR_BANKRUPTCY',
+        playerId,
+        sectorId: secId,
+      });
+      if (res.success) currentState = res.newState;
+    }
+
+    const updatedPlayer = currentState.players.find((p) => p.id === playerId);
+    if (updatedPlayer && updatedPlayer.resources.money >= 0) {
+      currentState.pendingBankruptcy = null;
+      showToast('Treasury balanced! Bankruptcy averted.');
+    }
+
+    setState(currentState);
   };
 
   const handleStartNewGame = (playerCount: number, selectedFactionIds?: string[]) => {
@@ -829,18 +883,32 @@ export const App: React.FC = () => {
 
   // Ambassador exchange
   const handleExchangeAmbassador = (targetPlayerId: string) => {
+    setDiplomacyTargetPlayerId(targetPlayerId);
+  };
+
+  const handleConfirmDiplomacyExchange = (
+    initiatorCube: PopulationResourceType,
+    targetCube: PopulationResourceType
+  ) => {
+    if (!diplomacyTargetPlayerId) return;
+    const targetPlayer = state.players.find((p) => p.id === diplomacyTargetPlayerId);
     const res = executeAction(state, {
       type: 'DIPLOMACY_EXCHANGE',
       playerId: activePlayer.id,
-      targetPlayerId,
+      targetPlayerId: diplomacyTargetPlayerId,
+      initiatorCube,
+      targetCube,
       requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
-      showToast('Diplomatic relations established! Ambassadors exchanged (+1 VP).');
+      showToast(
+        `Diplomatic relations established with ${targetPlayer?.name || 'ally'}! Ambassadors exchanged (+1 VP each).`
+      );
     } else {
       showToast(res.error || 'Failed to exchange ambassadors.');
     }
+    setDiplomacyTargetPlayerId(null);
   };
 
   // Turn action confirm and revert handlers
@@ -1248,6 +1316,10 @@ export const App: React.FC = () => {
             onOpenTrade={() => setIsTradeOpen(true)}
             onOpenPhysicalBoard={() => setIsPhysicalBoardOpen(true)}
             hideOpponentReputation={hideOpponentReputation}
+            allPlayers={state.players}
+            traitorPlayerId={state.traitorPlayerId}
+            gamePhase={state.phase}
+            onInitiateDiplomacy={handleExchangeAmbassador}
           />
         </div>
 
@@ -1458,6 +1530,7 @@ export const App: React.FC = () => {
           onEmergencyTrade={handleEmergencyTradeBankruptcy}
           onSelectSector={(s) => setSelectedSector(s)}
           selectedSectorId={selectedSector?.id || null}
+          onConfirmPlan={handleConfirmBankruptcyPlan}
         />
       )}
 
@@ -1536,6 +1609,16 @@ export const App: React.FC = () => {
         tableNumber={tableNum}
         onSuccess={(msg) => showToast(msg)}
       />
+
+      {diplomacyTargetPlayerId && (
+        <DiplomacyModal
+          isOpen={true}
+          initiator={activePlayer}
+          target={state.players.find((p) => p.id === diplomacyTargetPlayerId) || viewedPlayer}
+          onClose={() => setDiplomacyTargetPlayerId(null)}
+          onConfirm={handleConfirmDiplomacyExchange}
+        />
+      )}
     </div>
   );
 };
