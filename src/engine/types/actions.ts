@@ -52,6 +52,7 @@ export interface ResearchAction extends BaseAction {
     techId: string;
     targetTrack?: 'military' | 'grid' | 'nano';
   }[];
+  warpPortalSectorId?: string; // Target controlled sector when researching Warp Portal rare tech
   artifactRewardResources?: {
     money?: number;
     science?: number;
@@ -119,6 +120,12 @@ export interface DiscoveryChoiceAction extends BaseAction {
   keepForVictoryPoints: boolean; // Keep for 2 VP or take immediate reward/ship part
   equipShipType?: ShipType;
   equipSlotIndex?: number;
+  chosenTechId?: string; // For Ancient Tech discovery when multiple lowest-cost regular techs available
+}
+
+export interface DiplomacyExchangeAction extends BaseAction {
+  type: 'DIPLOMACY_EXCHANGE';
+  targetPlayerId: string;
 }
 
 export interface ResolveCombatStepAction extends BaseAction {
@@ -176,6 +183,7 @@ export type GameAction =
   | TradeAction
   | PassAction
   | DiscoveryChoiceAction
+  | DiplomacyExchangeAction
   | ResolveCombatStepAction
   | CombatConquestAction
   | ClaimReputationTileAction

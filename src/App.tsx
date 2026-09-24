@@ -3,7 +3,7 @@ import { GameState } from './engine/types/state';
 import { SectorTile, HexCoord, ShipType, SectorShip } from './engine/types/galaxy';
 import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
-import { executeAction, getMaxMoveActivations } from './engine/rules/gameReducer';
+import { executeAction, getMaxMoveActivations, computePinningState } from './engine/rules/gameReducer';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative } from './engine/rules/combatEngine';
@@ -450,7 +450,8 @@ export const App: React.FC = () => {
   // Research flow (supports single tech or array of technologies for Hydran double research)
   const handleResearchTech = (
     researchesOrId: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
-    targetTrack?: 'military' | 'grid' | 'nano'
+    targetTrack?: 'military' | 'grid' | 'nano',
+    warpPortalSectorId?: string
   ) => {
     let researches: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[];
     if (Array.isArray(researchesOrId)) {
@@ -463,6 +464,7 @@ export const App: React.FC = () => {
       type: 'RESEARCH',
       playerId: activePlayer.id,
       researches,
+      warpPortalSectorId,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -583,22 +585,13 @@ export const App: React.FC = () => {
     return map;
   }, [playerShips, plannedMoves, state.sectors]);
 
-  // Check if a ship was pinned by hostile forces in an earlier move step
+  // Compute 1:1 pinning state taking into account hostiles, Draco ancient immunity, and step progression (Bugs 58, 62, 63)
+  const pinningState = useMemo(() => {
+    return computePinningState(state, activePlayer.id, plannedMoves);
+  }, [state, activePlayer.id, plannedMoves]);
+
   const isShipPinned = (shipId: string): boolean => {
-    for (const m of plannedMoves) {
-      if (m.shipId === shipId) {
-        const destSec = state.sectors.find((s) => s.id === m.toSectorId);
-        if (
-          destSec &&
-          (destSec.ancientsCount > 0 ||
-            destSec.hasGCDS ||
-            destSec.ships.some((sh) => sh.ownerId !== activePlayer.id))
-        ) {
-          return true;
-        }
-      }
-    }
-    return false;
+    return pinningState.isShipPinned(shipId);
   };
 
   const maxMoves = getMaxMoveActivations(activePlayer);
@@ -621,7 +614,7 @@ export const App: React.FC = () => {
     if (!currentMoveShip || !currentSimSector) return [];
     if (activeActivationIndex >= maxMoves) return [];
     if (currentShipDriveSpeed <= 0) return [];
-    if (isShipPinned(currentMoveShip.id)) return [];
+    if (pinningState.isShipPinned(currentMoveShip.id)) return [];
 
     // If this activation already started with another ship:
     if (currentActivationMoves.length > 0 && currentActivationMoves[0].shipId !== currentMoveShip.id) {
@@ -630,18 +623,6 @@ export const App: React.FC = () => {
 
     // If current activation has already used all drive speed steps:
     if (currentActivationMoves.length >= currentShipDriveSpeed) {
-      return [];
-    }
-
-    // Hostile presence pins the ship immediately
-    const hasEnemies =
-      currentSimSector.ancientsCount > 0 ||
-      currentSimSector.hasGCDS ||
-      currentSimSector.ships.some((sh) => sh.ownerId !== activePlayer.id);
-    const hasMovedHere = plannedMoves.some(
-      (m) => m.shipId === selectedMoveShipId && m.toSectorId === currentSimSector.id
-    );
-    if (hasMovedHere && hasEnemies) {
       return [];
     }
 
@@ -656,8 +637,7 @@ export const App: React.FC = () => {
     currentShipDriveSpeed,
     currentActivationMoves,
     plannedMoves,
-    selectedMoveShipId,
-    activePlayer.id,
+    pinningState,
     state.sectors,
     hasWormholeGen,
   ]);
@@ -847,6 +827,22 @@ export const App: React.FC = () => {
     }
   };
 
+  // Ambassador exchange
+  const handleExchangeAmbassador = (targetPlayerId: string) => {
+    const res = executeAction(state, {
+      type: 'DIPLOMACY_EXCHANGE',
+      playerId: activePlayer.id,
+      targetPlayerId,
+      requireConfirmation: true,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast('Diplomatic relations established! Ambassadors exchanged (+1 VP).');
+    } else {
+      showToast(res.error || 'Failed to exchange ambassadors.');
+    }
+  };
+
   // Turn action confirm and revert handlers
   const handleConfirmTurnAction = () => {
     if (!state.pendingActionConfirmation) return;
@@ -886,7 +882,8 @@ export const App: React.FC = () => {
   const handleDiscoveryChoice = (
     keepForVictoryPoints: boolean,
     equipShipType?: ShipType,
-    equipSlotIndex?: number
+    equipSlotIndex?: number,
+    chosenTechId?: string
   ) => {
     if (!state.pendingDiscovery) return;
     const res = executeAction(state, {
@@ -896,6 +893,7 @@ export const App: React.FC = () => {
       keepForVictoryPoints,
       equipShipType,
       equipSlotIndex,
+      chosenTechId,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -971,7 +969,7 @@ export const App: React.FC = () => {
       // In 'all' mode: automatically use the active ship's owner (or activePlayer if neutral)
       const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
       if (sec) {
-        const units = buildCombatUnitsForSector(sec, state.players);
+        const units = buildCombatUnitsForSector(sec, state.players, state.activeCombat.participatingPlayerIds);
         const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec);
         const aliveUnits = sortUnitsByInitiative(
           units.filter((u) => u.currentDamage < u.maxHull),
@@ -1431,6 +1429,7 @@ export const App: React.FC = () => {
             state.players.find((p) => p.id === state.pendingDiscovery!.playerId) ||
             activePlayer
           }
+          techSupply={state.techSupply}
           onChoice={handleDiscoveryChoice}
         />
       )}
@@ -1489,6 +1488,8 @@ export const App: React.FC = () => {
             setIsTechMarketOpen(true);
           }}
           hideOpponentReputation={hideOpponentReputation}
+          traitorPlayerId={state.traitorPlayerId}
+          onExchangeAmbassador={handleExchangeAmbassador}
         />
       )}
 

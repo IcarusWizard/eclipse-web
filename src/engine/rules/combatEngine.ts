@@ -26,11 +26,15 @@ export interface CombatUnit {
 
 export function buildCombatUnitsForSector(
   sector: SectorTile,
-  players: PlayerState[]
+  players: PlayerState[],
+  filterOwnerIds?: string[]
 ): CombatUnit[] {
   const units: CombatUnit[] = [];
 
   for (const ship of sector.ships) {
+    if (filterOwnerIds && !filterOwnerIds.includes(ship.ownerId)) {
+      continue;
+    }
     if (ship.type === 'ancient') {
       units.push({
         id: ship.id,

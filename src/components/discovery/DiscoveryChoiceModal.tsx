@@ -1,24 +1,29 @@
 import React from 'react';
-import { Rocket, Wrench, Archive, Trophy, Zap, Cpu } from 'lucide-react';
+import { Rocket, Wrench, Archive, Trophy, Zap, Cpu, AlertTriangle } from 'lucide-react';
 import { DiscoveryTile, ShipType } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
+import { Technology } from '../../engine/types/tech';
 import { SHIP_PARTS } from '../../engine/rules/partData';
+import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 
 interface DiscoveryChoiceModalProps {
   discovery: DiscoveryTile;
   player: PlayerState;
-  onChoice: (keepForVictoryPoints: boolean, equipShipType?: ShipType, equipSlotIndex?: number) => void;
+  techSupply?: Technology[];
+  onChoice: (keepForVictoryPoints: boolean, equipShipType?: ShipType, equipSlotIndex?: number, chosenTechId?: string) => void;
 }
 
 export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   discovery,
   player,
+  techSupply,
   onChoice,
 }) => {
   const part = discovery.shipPartId ? SHIP_PARTS[discovery.shipPartId] : null;
 
   const [selectedShipType, setSelectedShipType] = React.useState<ShipType>('cruiser');
   const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number>(0);
+  const [selectedTechId, setSelectedTechId] = React.useState<string>('');
 
   const currentBlueprint = player.blueprints[selectedShipType];
 
@@ -29,6 +34,39 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
       setSelectedSlotIndex(emptyIdx !== -1 ? emptyIdx : 0);
     }
   }, [selectedShipType, currentBlueprint]);
+
+  // Bug 53: Validate power for immediate installation
+  const testBp = React.useMemo(() => {
+    if (!currentBlueprint || !part || selectedSlotIndex < 0 || selectedSlotIndex >= currentBlueprint.maxSlots) {
+      return null;
+    }
+    const cloned = { ...currentBlueprint, slots: [...currentBlueprint.slots] };
+    cloned.slots[selectedSlotIndex] = part;
+    return cloned;
+  }, [currentBlueprint, part, selectedSlotIndex]);
+
+  const testStats = testBp ? calculateBlueprintStats(testBp) : null;
+  const isPowerDeficit = testStats ? testStats.totalPowerConsumed > testStats.totalPowerProduced : false;
+
+  // Bug 56: Ancient Technology discovery tile eligible regular techs
+  const eligibleTechs = React.useMemo(() => {
+    if (!discovery.immediateReward?.ancientTech || !techSupply) return [];
+    const owned = new Set(player.techTrack.researched.map((t) => t.id));
+    return techSupply
+      .filter((t) => ['military', 'grid', 'nano'].includes(t.category) && !owned.has(t.id))
+      .sort((a, b) => a.baseCost - b.baseCost);
+  }, [discovery, techSupply, player.techTrack.researched]);
+
+  const minTechCost = eligibleTechs.length > 0 ? eligibleTechs[0].baseCost : 0;
+  const tiedTechs = React.useMemo(() => {
+    return eligibleTechs.filter((t) => t.baseCost === minTechCost);
+  }, [eligibleTechs, minTechCost]);
+
+  React.useEffect(() => {
+    if (tiedTechs.length > 0 && !selectedTechId) {
+      setSelectedTechId(tiedTechs[0].id);
+    }
+  }, [tiedTechs, selectedTechId]);
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
@@ -123,10 +161,46 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                 </span>
               )}
               {discovery.immediateReward.ancientTech && (
-                <span className="px-2.5 py-1 bg-cyan-500/20 border border-cyan-500/40 text-cyan-300 rounded-md text-xs font-bold flex items-center gap-1.5">
-                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                  +1 Free Regular Technology (Lowest Printed Cost)
-                </span>
+                <div className="w-full mt-2 p-2.5 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-left">
+                  <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5 mb-1.5">
+                    <Cpu className="w-4 h-4 text-cyan-400" />
+                    +1 Free Regular Technology (Lowest Printed Cost: {minTechCost}🔬)
+                  </div>
+                  {tiedTechs.length === 0 ? (
+                    <div className="text-xs text-slate-400 italic">No eligible technologies in supply</div>
+                  ) : tiedTechs.length === 1 ? (
+                    <div className="text-xs text-emerald-300 font-semibold flex items-center gap-1">
+                      <span>Awarded:</span>
+                      <strong className="text-cyan-200">{tiedTechs[0].name}</strong>
+                      <span className="text-[10px] text-slate-400">({tiedTechs[0].category.toUpperCase()} • Cost {tiedTechs[0].baseCost}🔬)</span>
+                    </div>
+                  ) : (
+                    <div className="space-y-1.5">
+                      <div className="text-[11px] text-slate-300 font-medium">
+                        Multiple lowest-cost technologies available ({minTechCost}🔬). Choose which to receive:
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                        {tiedTechs.map((t) => (
+                          <button
+                            key={t.id}
+                            type="button"
+                            onClick={() => setSelectedTechId(t.id)}
+                            className={`p-2 rounded-lg border text-left transition flex items-center justify-between text-xs ${
+                              selectedTechId === t.id
+                                ? 'bg-cyan-600/30 border-cyan-400 text-white font-bold shadow'
+                                : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
+                            }`}
+                          >
+                            <span className="truncate">{t.name}</span>
+                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-950 text-cyan-400 border border-slate-800">
+                              {t.category[0].toUpperCase()}
+                            </span>
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
               {discovery.immediateReward.grantStructure === 'orbital' && (
                 <span className="px-2.5 py-1 bg-blue-500/20 border border-blue-500/40 text-blue-300 rounded-md text-xs font-bold flex items-center gap-1.5">
@@ -209,13 +283,24 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           </div>
         )}
 
+        {/* Bug 53: Power Deficit Alert */}
+        {part && isPowerDeficit && (
+          <div className="w-full mb-3 p-2.5 rounded-xl bg-rose-950/60 border border-rose-600/70 text-rose-300 text-xs flex items-center gap-2 text-left">
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>
+              <strong>Cannot Equip Immediately:</strong> Power consumed ({testStats?.powerConsumed}⚡) exceeds power produced ({testStats?.powerProduced}⚡) on {selectedShipType.toUpperCase()}. Store in reserve or keep for VP.
+            </span>
+          </div>
+        )}
+
         {/* Action Buttons */}
         {part ? (
           <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               type="button"
+              disabled={isPowerDeficit}
               onClick={() => onChoice(false, selectedShipType, selectedSlotIndex)}
-              className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 transition group cursor-pointer"
+              className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 disabled:opacity-30 disabled:cursor-not-allowed transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
                 <Wrench className="w-3.5 h-3.5" /> Equip Immediately
@@ -268,7 +353,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
             <button
               type="button"
-              onClick={() => onChoice(false)}
+              onClick={() => onChoice(false, undefined, undefined, selectedTechId || tiedTechs[0]?.id)}
               className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25 transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-cyan-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
@@ -277,6 +362,8 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               <span className="text-xs text-slate-400">
                 {discovery.immediateReward?.grantShipType
                   ? `Deploy free ${discovery.immediateReward.grantShipType} to sector`
+                  : discovery.immediateReward?.ancientTech
+                  ? `Claim ${(selectedTechId && tiedTechs.find((t) => t.id === selectedTechId)?.name) || tiedTechs[0]?.name || 'Tech'}`
                   : 'Collect resources immediately'}
               </span>
             </button>

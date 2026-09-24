@@ -34,7 +34,8 @@ interface TechMarketModalProps {
   techBagCount?: number;
   onResearchTech: (
     researches: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
-    targetTrack?: 'military' | 'grid' | 'nano'
+    targetTrack?: 'military' | 'grid' | 'nano',
+    warpPortalSectorId?: string
   ) => void;
   onClose: () => void;
 }
@@ -53,6 +54,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 }) => {
   const [viewMode, setViewMode] = useState<TrayViewMode>('all');
   const [selectedRareTrack, setSelectedRareTrack] = useState<Record<string, 'military' | 'grid' | 'nano'>>({});
+  const [warpPortalSectorId, setWarpPortalSectorId] = useState<string>('');
 
   // Acting player is activePlayer if provided, else viewed player
   const commander = activePlayer || player;
@@ -130,9 +132,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
       chosenTrack = getRareBestTrack(tech);
     }
     const trackCount = chosenTrack ? getTrackCount(chosenTrack) : 0;
+    const isTrackFull = trackCount >= 7;
     const discountedCost = calculateTechCost(tech, trackCount);
     const canAfford = commander.resources.science >= discountedCost;
-    const canResearch = isCommanderTurn && !hasPassed && hasActionDiscs && stock > 0 && !isOwned && canAfford;
+    const canResearch = isCommanderTurn && !hasPassed && hasActionDiscs && stock > 0 && !isOwned && canAfford && !isTrackFull;
 
     const categoryTheme =
       tech.category === 'military'
@@ -175,6 +178,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         setSelectedForResearch((prev) => prev.filter((s) => s.techId !== tech.id));
       } else {
         if (selectedForResearch.length >= maxResearch) return;
+        if (isTrackFull) return;
         const tr = chosenTrack || 'nano';
         setSelectedForResearch((prev) => [...prev, { techId: tech.id, targetTrack: tr }]);
       }
@@ -281,11 +285,13 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               <div className="grid grid-cols-3 gap-1">
                 {(['military', 'grid', 'nano'] as const).map((tr) => {
                   const trCount = getTrackCount(tr);
+                  const isTrFull = trCount >= 7;
                   const costOnTr = calculateTechCost(tech, trCount);
                   const isSelectedTr = chosenTrack === tr;
                   return (
                     <button
                       key={tr}
+                      disabled={isTrFull}
                       onClick={() => {
                         setSelectedRareTrack((prev) => ({ ...prev, [tech.id]: tr }));
                         if (isSelected) {
@@ -297,15 +303,42 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                       className={`px-1 py-1 rounded text-center font-bold transition-all border ${
                         isSelectedTr
                           ? 'bg-purple-600 border-purple-400 text-white shadow'
+                          : isTrFull
+                          ? 'bg-slate-950 border-slate-900 text-slate-600 opacity-40 cursor-not-allowed'
                           : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <div className="uppercase text-[9px]">{tr[0]}</div>
+                      <div className="uppercase text-[9px]">{tr[0]} {isTrFull ? '(Full)' : `(${trCount}/7)`}</div>
                       <div className="text-[10px]">{costOnTr}🔬</div>
                     </button>
                   );
                 })}
               </div>
+            </div>
+          )}
+
+          {/* Warp Portal Rare Tech Controlled Sector Placement Selector (Bug 61) */}
+          {tech.id === 'warp_portal' && stock > 0 && !isOwned && (
+            <div className="mb-2.5 p-1.5 rounded-lg bg-slate-950/60 border border-purple-900/40 text-[10px]">
+              <div className="text-purple-300 mb-1 font-semibold flex items-center justify-between">
+                <span>Place Portal on Sector:</span>
+                <span className="text-[9px] text-purple-400 font-bold">+1 VP</span>
+              </div>
+              {controlledSectors.length === 0 ? (
+                <div className="text-rose-400 italic text-[10px]">Must control a sector to place portal</div>
+              ) : (
+                <select
+                  value={warpPortalSectorId || controlledSectors[0]?.id}
+                  onChange={(e) => setWarpPortalSectorId(e.target.value)}
+                  className="w-full bg-slate-900 border border-purple-700/60 rounded px-1.5 py-1 text-slate-200 text-[10px] font-mono"
+                >
+                  {controlledSectors.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      Sector {s.sectorNumber} (Ring {s.ring})
+                    </option>
+                  ))}
+                </select>
+              )}
             </div>
           )}
         </div>
@@ -354,7 +387,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                     Select
                   </button>
                   <button
-                    onClick={() => onResearchTech([{ techId: tech.id, targetTrack: chosenTrack }])}
+                    onClick={() => onResearchTech([{ techId: tech.id, targetTrack: chosenTrack }], undefined, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined)}
                     className="px-2 py-1.5 rounded-lg text-[10px] font-semibold bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white transition-all font-sans"
                     title="Research only this single technology immediately"
                   >
@@ -363,12 +396,16 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 </div>
               ) : (
                 <button
-                  onClick={() => onResearchTech(tech.id, chosenTrack)}
+                  onClick={() => onResearchTech(tech.id, chosenTrack, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined)}
                   className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-lg shadow-pink-950/50 transition-all font-sans"
                 >
                   Research
                 </button>
               )
+            ) : isTrackFull ? (
+              <span className="text-[10px] text-amber-400 font-bold px-2 py-1 bg-amber-950/40 rounded border border-amber-900/60">
+                Track Full (7/7)
+              </span>
             ) : !canAfford ? (
               <span className="text-[10px] text-rose-400 font-bold px-2 py-1 bg-rose-950/40 rounded border border-rose-900/60">
                 Need {discountedCost - commander.resources.science}🔬
@@ -635,7 +672,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   hasPassed ||
                   !isCommanderTurn
                 }
-                onClick={() => onResearchTech(selectedForResearch)}
+                onClick={() => {
+                  const hasWarp = selectedForResearch.some((s) => s.techId === 'warp_portal');
+                  const targetSecId = hasWarp ? (warpPortalSectorId || (sectors || []).find((s) => s.discOwner === commander.id)?.id) : undefined;
+                  onResearchTech(selectedForResearch, undefined, targetSecId);
+                }}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg shadow-cyan-950/50 transition-all flex items-center gap-1.5 font-sans"
               >
                 <Check className="w-4 h-4 stroke-[3]" />

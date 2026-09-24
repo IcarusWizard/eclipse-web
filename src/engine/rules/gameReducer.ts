@@ -238,20 +238,63 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
         const tech = state.techSupply.find((t) => t.id === item.techId)!;
         let count = 0;
-        if (tech.category === 'military') count = simMilitary++;
-        else if (tech.category === 'grid') count = simGrid++;
-        else if (tech.category === 'nano') count = simNano++;
-        else {
-          const targetTrack =
-            item.targetTrack ||
-            (simMilitary >= simGrid && simMilitary >= simNano
-              ? 'military'
-              : simGrid >= simNano
-              ? 'grid'
-              : 'nano');
+        if (tech.category === 'military') {
+          if (simMilitary >= 7) {
+            return { valid: false, error: 'Military tech track is full (maximum 7 technologies).' };
+          }
+          count = simMilitary++;
+        } else if (tech.category === 'grid') {
+          if (simGrid >= 7) {
+            return { valid: false, error: 'Grid tech track is full (maximum 7 technologies).' };
+          }
+          count = simGrid++;
+        } else if (tech.category === 'nano') {
+          if (simNano >= 7) {
+            return { valid: false, error: 'Nano tech track is full (maximum 7 technologies).' };
+          }
+          count = simNano++;
+        } else {
+          let targetTrack = item.targetTrack;
+          if (targetTrack) {
+            if (targetTrack === 'military' && simMilitary >= 7) {
+              return { valid: false, error: 'Military tech track is full (maximum 7 technologies).' };
+            }
+            if (targetTrack === 'grid' && simGrid >= 7) {
+              return { valid: false, error: 'Grid tech track is full (maximum 7 technologies).' };
+            }
+            if (targetTrack === 'nano' && simNano >= 7) {
+              return { valid: false, error: 'Nano tech track is full (maximum 7 technologies).' };
+            }
+          } else {
+            const availTracks: ('military' | 'grid' | 'nano')[] = [];
+            if (simMilitary < 7) availTracks.push('military');
+            if (simGrid < 7) availTracks.push('grid');
+            if (simNano < 7) availTracks.push('nano');
+            if (availTracks.length === 0) {
+              return { valid: false, error: 'All technology tracks are full (maximum 7 technologies each).' };
+            }
+            const getCnt = (tr: 'military' | 'grid' | 'nano') => (tr === 'military' ? simMilitary : tr === 'grid' ? simGrid : simNano);
+            availTracks.sort((a, b) => getCnt(b) - getCnt(a));
+            targetTrack = availTracks[0]!;
+          }
           if (targetTrack === 'military') count = simMilitary++;
           else if (targetTrack === 'grid') count = simGrid++;
           else count = simNano++;
+        }
+
+        if (tech.id === 'warp_portal') {
+          const controlledSectors = state.sectors.filter((s) => s.discOwner === player.id);
+          if (controlledSectors.length === 0) {
+            return { valid: false, error: 'Cannot research Warp Portal: you must control at least one sector to place the portal.' };
+          }
+          const portalSectorId = item.warpPortalSectorId || (action as any).warpPortalSectorId;
+          if (!portalSectorId) {
+            return { valid: false, error: 'Warp Portal placement requires selecting a controlled sector.' };
+          }
+          const sec = state.sectors.find((s) => s.id === portalSectorId && s.discOwner === player.id);
+          if (!sec) {
+            return { valid: false, error: 'Invalid sector for Warp Portal: must be a controlled sector.' };
+          }
         }
 
         totalScienceCost += calculateTechCost(tech, count);
@@ -491,6 +534,28 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
       // 3. Validate paths, drive speed limits, and pinning
       const pinnedShips = new Set<string>();
+      const isDraco = player.faction.id === 'descendants_of_draco';
+
+      // Track ships in each sector across activations
+      const simSectorShips = new Map<string, { id: string; ownerId: string; type: string }[]>();
+      for (const s of state.sectors) {
+        simSectorShips.set(s.id, s.ships.map((sh) => ({ id: sh.id, ownerId: sh.ownerId, type: sh.type })));
+      }
+
+      const getHostilesInSec = (sec: SectorTile, shipsList: { id: string; ownerId: string; type: string }[]) => {
+        let ancients = Math.max(
+          sec.ancientsCount || 0,
+          shipsList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
+        );
+        if (isDraco) ancients = 0;
+        const gcdsShips = shipsList.filter((s) => s.ownerId === 'gcds' || s.type === 'gcds').length;
+        const gcdsCount = sec.hasGCDS && gcdsShips === 0 ? 1 : gcdsShips;
+        const guardianShips = shipsList.filter((s) => s.ownerId === 'guardian' || s.type === 'guardian').length;
+        const otherPlayerShips = shipsList.filter(
+          (s) => s.ownerId !== action.playerId && s.ownerId.startsWith('player_')
+        ).length;
+        return ancients + gcdsCount + guardianShips + otherPlayerShips;
+      };
 
       for (const act of activations) {
         const shipInfo = shipMap.get(act.shipId);
@@ -510,7 +575,23 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           return { valid: false, error: `Ship ${shipInfo.ship.type} is pinned by hostile forces and cannot move further.` };
         }
 
-        for (const step of act.steps) {
+        // Check if origin sector pins this ship before taking any step (hostiles pin 1:1)
+        const originSecId = shipInfo.currentSectorId;
+        const originSec = state.sectors.find((s) => s.id === originSecId);
+        if (originSec) {
+          const shipsInOrigin = simSectorShips.get(originSecId) || [];
+          const friendlyCount = shipsInOrigin.filter((s) => s.ownerId === action.playerId).length;
+          const hostiles = getHostilesInSec(originSec, shipsInOrigin);
+          if (hostiles > 0 && friendlyCount <= hostiles) {
+            return {
+              valid: false,
+              error: `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`,
+            };
+          }
+        }
+
+        for (let sIdx = 0; sIdx < act.steps.length; sIdx++) {
+          const step = act.steps[sIdx]!;
           if (pinnedShips.has(act.shipId)) {
             return { valid: false, error: `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering and cannot take further movement steps.` };
           }
@@ -533,19 +614,29 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             };
           }
 
-          // Advance ship's simulated location
+          // Advance ship's simulated location in simSectorShips
+          const fromList = simSectorShips.get(fromSec.id) || [];
+          const shipInFromIdx = fromList.findIndex((s) => s.id === act.shipId);
+          if (shipInFromIdx >= 0) {
+            const [moved] = fromList.splice(shipInFromIdx, 1);
+            const toList = simSectorShips.get(toSec.id) || [];
+            toList.push(moved!);
+            simSectorShips.set(toSec.id, toList);
+          }
           shipInfo.currentSectorId = step.toSectorId;
 
-          // Check if destination has hostiles -> pinned! (Draco ships are not pinned by Ancients)
-          const isDraco = player.faction.id === 'descendants_of_draco';
-          const hasHostiles =
-            (!isDraco && toSec.ancientsCount > 0) ||
-            toSec.hasGCDS ||
-            toSec.ships.some(
-              (s) => s.ownerId !== action.playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
-            );
-          if (hasHostiles) {
+          // Check if destination has hostiles -> pinned if friendly <= hostile
+          const shipsInTo = simSectorShips.get(toSec.id) || [];
+          const friendlyInTo = shipsInTo.filter((s) => s.ownerId === action.playerId).length;
+          const hostilesInTo = getHostilesInSec(toSec, shipsInTo);
+          if (hostilesInTo > 0 && friendlyInTo <= hostilesInTo) {
             pinnedShips.add(act.shipId);
+            if (sIdx < act.steps.length - 1) {
+              return {
+                valid: false,
+                error: `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`,
+              };
+            }
           }
         }
       }
@@ -716,6 +807,68 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'DIPLOMACY_EXCHANGE': {
+      if (state.phase !== 'ACTION_PHASE') {
+        return { valid: false, error: 'Diplomatic relations can only be established during the Action Phase.' };
+      }
+      const targetPlayer = state.players.find((p) => p.id === action.targetPlayerId);
+      if (!targetPlayer) {
+        return { valid: false, error: 'Target player not found.' };
+      }
+      if (player.id === targetPlayer.id) {
+        return { valid: false, error: 'Cannot exchange ambassadors with yourself.' };
+      }
+      if (player.ambassadorTiles.includes(targetPlayer.id)) {
+        return { valid: false, error: 'Players already have an active diplomatic relation.' };
+      }
+      if (state.traitorPlayerId === player.id) {
+        return { valid: false, error: `${player.name} holds the Traitor Tile and cannot establish diplomatic relations.` };
+      }
+      if (state.traitorPlayerId === targetPlayer.id) {
+        return { valid: false, error: `${targetPlayer.name} holds the Traitor Tile and cannot establish diplomatic relations.` };
+      }
+
+      const p1AmbSlots = player.faction.ambassadorSlots ?? 3;
+      const p1RepSlots = player.faction.reputationSlots ?? 5;
+      if (p1AmbSlots <= 0) {
+        return { valid: false, error: `${player.name} cannot establish diplomatic relations (${player.faction.name} has 0 ambassador slots).` };
+      }
+      if (player.ambassadorTiles.length >= p1AmbSlots) {
+        return { valid: false, error: `${player.name} has no available ambassador slots.` };
+      }
+      if (player.ambassadorTiles.length + player.reputationTiles.length >= p1RepSlots) {
+        return { valid: false, error: `${player.name}'s reputation track is full.` };
+      }
+
+      const p2AmbSlots = targetPlayer.faction.ambassadorSlots ?? 3;
+      const p2RepSlots = targetPlayer.faction.reputationSlots ?? 5;
+      if (p2AmbSlots <= 0) {
+        return { valid: false, error: `${targetPlayer.name} cannot establish diplomatic relations (${targetPlayer.faction.name} has 0 ambassador slots).` };
+      }
+      if (targetPlayer.ambassadorTiles.length >= p2AmbSlots) {
+        return { valid: false, error: `${targetPlayer.name} has no available ambassador slots.` };
+      }
+      if (targetPlayer.ambassadorTiles.length + targetPlayer.reputationTiles.length >= p2RepSlots) {
+        return { valid: false, error: `${targetPlayer.name}'s reputation track is full.` };
+      }
+
+      // Check connectivity: do they have connected controlled sectors or ships?
+      const p1Sectors = state.sectors.filter((s) => s.discOwner === player.id || s.ships.some((shp) => shp.ownerId === player.id));
+      const p2Sectors = state.sectors.filter((s) => s.discOwner === targetPlayer.id || s.ships.some((shp) => shp.ownerId === targetPlayer.id));
+      const hasWormholeGen =
+        player.techTrack.researched.some((t) => t.id === 'wormhole_generator') ||
+        targetPlayer.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+
+      const areConnected = p1Sectors.some((s1) =>
+        p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen))
+      );
+      if (!areConnected) {
+        return { valid: false, error: 'Players must control adjacent or connected sectors via wormholes/warp portals to establish diplomacy.' };
+      }
+
+      return { valid: true };
+    }
+
     case 'DISCOVERY_CHOICE': {
       if (!state.pendingDiscovery) {
         return { valid: false, error: 'No pending discovery tile to claim.' };
@@ -728,6 +881,21 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (!bp) return { valid: false, error: `Invalid ship type ${action.equipShipType}.` };
         if (action.equipSlotIndex === undefined || action.equipSlotIndex < 0 || action.equipSlotIndex >= bp.maxSlots) {
           return { valid: false, error: `Invalid slot index for ${action.equipShipType}.` };
+        }
+        const disc = state.pendingDiscovery.discovery;
+        if (disc.shipPartId) {
+          const part = SHIP_PARTS[disc.shipPartId];
+          if (part) {
+            const testBp = { ...bp, slots: [...bp.slots] };
+            testBp.slots[action.equipSlotIndex] = part;
+            const stats = calculateBlueprintStats(testBp);
+            if (stats.totalPowerConsumed > stats.totalPowerProduced) {
+              return {
+                valid: false,
+                error: `Cannot install ${part.name}: power consumed (${stats.totalPowerConsumed}) exceeds power produced (${stats.totalPowerProduced}).`,
+              };
+            }
+          }
         }
       }
       return { valid: true };
@@ -1050,16 +1218,25 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         if (tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano') {
           targetTrack = tech.category;
         } else {
-          if (item.targetTrack) {
+          if (
+            item.targetTrack &&
+            (item.targetTrack === 'military'
+              ? player.techTrack.militaryCount < 7
+              : item.targetTrack === 'grid'
+              ? player.techTrack.gridCount < 7
+              : player.techTrack.nanoCount < 7)
+          ) {
             targetTrack = item.targetTrack;
           } else {
-            if (
-              player.techTrack.militaryCount >= player.techTrack.gridCount &&
-              player.techTrack.militaryCount >= player.techTrack.nanoCount
-            ) {
-              targetTrack = 'military';
-            } else if (player.techTrack.gridCount >= player.techTrack.nanoCount) {
-              targetTrack = 'grid';
+            const availTracks: ('military' | 'grid' | 'nano')[] = [];
+            if (player.techTrack.militaryCount < 7) availTracks.push('military');
+            if (player.techTrack.gridCount < 7) availTracks.push('grid');
+            if (player.techTrack.nanoCount < 7) availTracks.push('nano');
+            if (availTracks.length > 0) {
+              const getCnt = (tr: 'military' | 'grid' | 'nano') =>
+                tr === 'military' ? player.techTrack.militaryCount : tr === 'grid' ? player.techTrack.gridCount : player.techTrack.nanoCount;
+              availTracks.sort((a, b) => getCnt(b) - getCnt(a));
+              targetTrack = availTracks[0]!;
             } else {
               targetTrack = 'nano';
             }
@@ -1082,7 +1259,19 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         else if (targetTrack === 'nano') player.techTrack.nanoCount += 1;
 
         // Special instantaneous tech abilities
-        if (tech.id === 'quantum_grid') {
+        if (tech.id === 'warp_portal') {
+          let targetSec = action.warpPortalSectorId
+            ? newState.sectors.find((s) => s.id === action.warpPortalSectorId && s.discOwner === player.id)
+            : null;
+          if (!targetSec) {
+            targetSec = newState.sectors.find((s) => s.discOwner === player.id) || null;
+          }
+          if (targetSec) {
+            targetSec.hasWarpPortal = true;
+            targetSec.hasRareWarpPortal = true;
+            addLog(`${player.name} placed the Warp Portal Tile on Sector ${targetSec.sectorNumber} (+1 VP to controller at game end)!`);
+          }
+        } else if (tech.id === 'quantum_grid') {
           player.influenceTrack.totalDiscs += 2;
           player.influenceTrack.discsOnTrack += 2;
           addLog(`${player.name} gained 2 bonus Influence Discs from Quantum Grid.`);
@@ -1233,12 +1422,43 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             const [movedShip] = fromSector.ships.splice(shipIdx, 1);
             if (movedShip) {
               toSector.ships.push(movedShip);
+              toSector.playerEntryOrder = toSector.playerEntryOrder || [];
+              if (!toSector.playerEntryOrder.includes(player.id)) {
+                toSector.playerEntryOrder.push(player.id);
+              }
+
+              // Check if moved into allied player's territory -> break alliance and take Traitor tile (-2 VP)
+              const alliedPresent =
+                (toSector.discOwner && toSector.discOwner !== player.id && player.ambassadorTiles.includes(toSector.discOwner) ? toSector.discOwner : null) ||
+                toSector.ships.find((s) => s.ownerId !== player.id && s.ownerId.startsWith('player_') && player.ambassadorTiles.includes(s.ownerId))?.ownerId ||
+                toSector.planets.find((p) => p.colonizedBy && p.colonizedBy !== player.id && player.ambassadorTiles.includes(p.colonizedBy))?.colonizedBy;
+
+              if (alliedPresent) {
+                const allyPlayer = newState.players.find((p) => p.id === alliedPresent);
+                player.ambassadorTiles = player.ambassadorTiles.filter((id) => id !== alliedPresent);
+                if (allyPlayer) {
+                  allyPlayer.ambassadorTiles = allyPlayer.ambassadorTiles.filter((id) => id !== player.id);
+                }
+                newState.traitorPlayerId = player.id;
+                addLog(`⚔️ ${player.name} moved into allied space of ${allyPlayer?.name || alliedPresent}, breaking the alliance and claiming the Traitor Tile (-2 VP)!`, 'combat');
+              }
+
               addLog(
                 `${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber} to Sector ${toSector.sectorNumber}.`
               );
             }
           }
         }
+      }
+      break;
+    }
+
+    case 'DIPLOMACY_EXCHANGE': {
+      const targetPlayer = newState.players.find((p) => p.id === action.targetPlayerId);
+      if (targetPlayer) {
+        player.ambassadorTiles.push(targetPlayer.id);
+        targetPlayer.ambassadorTiles.push(player.id);
+        addLog(`🤝 ${player.name} and ${targetPlayer.name} established Diplomatic Relations and exchanged Ambassadors (+1 VP each)!`, 'action');
       }
       break;
     }
@@ -1434,6 +1654,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         }
         if (disc.immediateReward?.warpPortal && sector) {
           sector.hasWarpPortal = true;
+          sector.hasDiscoveryWarpPortal = true;
           addLog(`${player.name} discovered and placed an Ancient Warp Portal in Sector ${sector.sectorNumber}!`);
         }
         if (disc.immediateReward?.ancientTech) {
@@ -1446,7 +1667,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             .sort((a, b) => a.baseCost - b.baseCost);
 
           if (eligibleTechs.length > 0) {
-            const chosenTech = eligibleTechs[0]!;
+            const minCost = eligibleTechs[0]!.baseCost;
+            const tiedLowest = eligibleTechs.filter((t) => t.baseCost === minCost);
+            const chosenTech = (action.chosenTechId && tiedLowest.find((t) => t.id === action.chosenTechId)) || tiedLowest[0]!;
             const techIdx = newState.techSupply.findIndex((t) => t.id === chosenTech.id);
             if (techIdx >= 0) {
               newState.techSupply.splice(techIdx, 1);
@@ -1491,6 +1714,16 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             const bp = player.blueprints[action.equipShipType];
             const part = SHIP_PARTS[disc.shipPartId];
             if (bp && part && action.equipSlotIndex >= 0 && action.equipSlotIndex < bp.maxSlots) {
+              const testBp = { ...bp, slots: [...bp.slots] };
+              testBp.slots[action.equipSlotIndex] = part;
+              const testStats = calculateBlueprintStats(testBp);
+              if (testStats.powerConsumed > testStats.powerProduced) {
+                return {
+                  success: false,
+                  newState: state,
+                  error: `Cannot install ${part.name}: power consumed (${testStats.powerConsumed}) exceeds power produced (${testStats.powerProduced}).`,
+                };
+              }
               bp.slots[action.equipSlotIndex] = part;
               // Placed immediately when taken: ensure it is NOT stored in player.unlockedAncientParts
               player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== disc.shipPartId);
@@ -1584,37 +1817,21 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       if (newState.activeCombat) {
         const sector = newState.sectors.find((s) => s.id === newState.activeCombat!.sectorId);
         if (sector) {
-          // If combat is already in 'resolved' stage or explicitly flagged to conclude:
-          if (newState.activeCombat.stage === 'resolved' || action.concludeCombat) {
-            for (const ship of sector.ships) {
-              ship.damage = 0;
-            }
-
-            const winnerId = (newState.activeCombat as any).winnerOwnerId || getSectorDefenderOwnerId(sector);
-            addLog(`Combat in Sector ${sector.sectorNumber} has concluded! Winner: ${winnerId || 'None'}.`, 'combat');
-
-            if (!newState.resolvedCombatSectorIds) {
-              newState.resolvedCombatSectorIds = [];
-            }
-            newState.resolvedCombatSectorIds.push(sector.id);
-
-            // --- ATTACKING POPULATION & INFLUENCE CONQUEST ---
-            resolveAttackingPopulationAndConquest(newState, sector, winnerId);
+          const concludeEngagement = (winnerId: string | undefined, currentUnits: ReturnType<typeof buildCombatUnitsForSector>) => {
+            // Identify duel participants (Bug 57: even if ships destroyed, player participated)
+            const duelPlayerIds = (newState.activeCombat?.participatingPlayerIds || Array.from(new Set(currentUnits.map((u) => u.ownerId)))).filter((id) => id.startsWith('player_'));
 
             // Compute reputation tiles for participating players
-            const units = buildCombatUnitsForSector(sector, newState.players);
-            const participants = Array.from(
-              new Set(units.map((u) => u.ownerId))
-            ).filter((id) => id.startsWith('player_'));
-
             const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string }[] = [];
 
-            for (const pId of participants) {
-              const allRetreated = newState.activeCombat.retreatAttemptedPlayerIds?.includes(pId);
-              let tilesCount = allRetreated ? 0 : 1; // 1 tile for participating unless all remaining ships retreated
+            for (const pId of duelPlayerIds) {
+              const attemptedRetreat = newState.activeCombat?.retreatAttemptedPlayerIds?.includes(pId);
+              const survivingShipsInSec = sector.ships.filter((s) => s.ownerId === pId).length;
+              const allRetreated = attemptedRetreat && survivingShipsInSec === 0 && !newState.activeCombat?.destroyedShips?.some((d) => d.ownerId === pId);
+              let tilesCount = allRetreated ? 0 : 1; // 1 tile for participating unless all retreated without losses
 
               // Kills tiles
-              for (const casualty of newState.activeCombat.destroyedShips || []) {
+              for (const casualty of newState.activeCombat?.destroyedShips || []) {
                 if (casualty.killerId === pId && casualty.ownerId !== pId) {
                   if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient') {
                     tilesCount += 1;
@@ -1643,20 +1860,72 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               }
             }
 
+            // Remove eliminated / retreated participants from sector.playerEntryOrder
+            if (sector.playerEntryOrder) {
+              sector.playerEntryOrder = sector.playerEntryOrder.filter((pId) => {
+                return sector.ships.some((s) => s.ownerId === pId);
+              });
+            }
+
+            // Check if more combats remain in this sector (Bug 66: multi-player sequential combat)
+            const remainingOwners = Array.from(new Set(sector.ships.map((s) => s.ownerId)));
+            const hasMoreCombatsInSector =
+              remainingOwners.length > 1 &&
+              !(remainingOwners.length === 2 && remainingOwners.includes('ancient') && remainingOwners.some((o) => newState.players.find((p) => p.id === o)?.faction.id === 'descendants_of_draco'));
+
+            if (hasMoreCombatsInSector) {
+              // Winner continues to fight the next player WITHOUT repairing ship damage!
+              addLog(
+                `⚔️ Duel in Sector ${sector.sectorNumber} resolved. Victor ${winnerId || 'Unknown'} advances to fight the next opponent without repairing ship damage!`,
+                'combat'
+              );
+              newState.activeCombat = null;
+
+              if (repDrawQueue.length > 0) {
+                newState.pendingReputationDraw = repDrawQueue[0];
+                newState.pendingReputationDrawQueue = repDrawQueue.slice(1);
+              } else {
+                checkAndTriggerCombat(newState);
+              }
+              return;
+            }
+
+            // All combats in this sector are complete!
+            // 1. Repair damage on surviving ships
+            for (const ship of sector.ships) {
+              ship.damage = 0;
+            }
+
+            addLog(`Combat in Sector ${sector.sectorNumber} has concluded! Winner: ${winnerId || 'None'}.`, 'combat');
+
+            if (!newState.resolvedCombatSectorIds) {
+              newState.resolvedCombatSectorIds = [];
+            }
+            newState.resolvedCombatSectorIds.push(sector.id);
+
+            // 2. Resolve attacking population & influence conquest
+            resolveAttackingPopulationAndConquest(newState, sector, winnerId);
+
             newState.activeCombat = null;
 
-            // Enqueue reputation draws
+            // 3. Enqueue reputation draws
             if (repDrawQueue.length > 0) {
               newState.pendingReputationDraw = repDrawQueue[0];
               newState.pendingReputationDrawQueue = repDrawQueue.slice(1);
             } else if (!newState.pendingCombatConquest) {
               checkAndTriggerCombat(newState);
             }
+          };
 
+          const units = buildCombatUnitsForSector(sector, newState.players, newState.activeCombat.participatingPlayerIds);
+
+          // If combat is already in 'resolved' stage or explicitly flagged to conclude:
+          if (newState.activeCombat.stage === 'resolved' || action.concludeCombat) {
+            const winnerId = (newState.activeCombat as any).winnerOwnerId || getSectorDefenderOwnerId(sector);
+            concludeEngagement(winnerId, units);
             return { success: true, newState };
           }
 
-          const units = buildCombatUnitsForSector(sector, newState.players);
           const defenderId = newState.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector);
           const destroyedBeforeCount = newState.activeCombat.destroyedShips?.length || 0;
 
@@ -1751,73 +2020,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               return { success: true, newState };
             }
 
-            // Repair damage on surviving ships at the end of engagement
-            for (const ship of sector.ships) {
-              ship.damage = 0;
-            }
-
-            addLog(`Combat in Sector ${sector.sectorNumber} has concluded! Winner: ${combatRes.winnerOwnerId || 'None'}.`, 'combat');
-
-            const winnerId = combatRes.winnerOwnerId;
-
-            if (!newState.resolvedCombatSectorIds) {
-              newState.resolvedCombatSectorIds = [];
-            }
-            newState.resolvedCombatSectorIds.push(sector.id);
-
-            // --- ATTACKING POPULATION & INFLUENCE CONQUEST ---
-            resolveAttackingPopulationAndConquest(newState, sector, winnerId);
-
-            // Compute reputation tiles for participating players
-            const participants = Array.from(
-              new Set(units.map((u) => u.ownerId))
-            ).filter((id) => id.startsWith('player_'));
-
-            const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string }[] = [];
-
-            for (const pId of participants) {
-              const allRetreated = newState.activeCombat.retreatAttemptedPlayerIds?.includes(pId);
-              let tilesCount = allRetreated ? 0 : 1; // 1 tile for participating unless all remaining ships retreated
-
-              // Kills tiles
-              for (const casualty of newState.activeCombat.destroyedShips || []) {
-                if (casualty.killerId === pId && casualty.ownerId !== pId) {
-                  if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient') {
-                    tilesCount += 1;
-                  } else if (casualty.type === 'cruiser' || casualty.type === 'guardian') {
-                    tilesCount += 2;
-                  } else if (casualty.type === 'dreadnought' || casualty.type === 'gcds') {
-                    tilesCount += 3;
-                  }
-                }
-              }
-
-              tilesCount = Math.min(5, tilesCount); // Maximum 5 tiles drawn per battle
-
-              if (tilesCount > 0 && newState.reputationBag.length > 0) {
-                const drawn: number[] = [];
-                for (let k = 0; k < tilesCount && newState.reputationBag.length > 0; k++) {
-                  drawn.push(newState.reputationBag.pop()!);
-                }
-                if (drawn.length > 0) {
-                  repDrawQueue.push({
-                    playerId: pId,
-                    drawnTiles: drawn,
-                    sectorId: sector.id,
-                  });
-                }
-              }
-            }
-
-            newState.activeCombat = null;
-
-            // Enqueue reputation draws
-            if (repDrawQueue.length > 0) {
-              newState.pendingReputationDraw = repDrawQueue[0];
-              newState.pendingReputationDrawQueue = repDrawQueue.slice(1);
-            } else if (!newState.pendingCombatConquest) {
-              checkAndTriggerCombat(newState);
-            }
+            concludeEngagement(combatRes.winnerOwnerId, units);
           }
         }
       }
@@ -2098,17 +2301,18 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 export function resolveAttackingPopulationAndConquest(
   state: GameState,
   sector: SectorTile,
-  winnerId?: string
+  winnerId?: string | { id: string }
 ): void {
-  if (!winnerId || !winnerId.startsWith('player_')) {
+  const actualWinnerId = typeof winnerId === 'string' ? winnerId : winnerId?.id;
+  if (!actualWinnerId || typeof actualWinnerId !== 'string' || !actualWinnerId.startsWith('player_')) {
     return;
   }
 
-  const attackerPlayer = state.players.find((p) => p.id === winnerId);
+  const attackerPlayer = state.players.find((p) => p.id === actualWinnerId);
   if (!attackerPlayer) return;
 
   const opponentCubes = sector.planets.filter(
-    (p) => p.colonizedBy && p.colonizedBy !== winnerId
+    (p) => p.colonizedBy && p.colonizedBy !== actualWinnerId
   );
 
   let bombardmentSummary: import('../types/state').BombardmentSummary | undefined = undefined;
@@ -2122,7 +2326,7 @@ export function resolveAttackingPopulationAndConquest(
     const firstDefPlayer = state.players.find((pl) => pl.id === opponentCubes[0]?.colonizedBy);
 
     if (hasNeutronBombs) {
-      // Neutron Bombs automatically annihilate all population cubes in the sector
+      // Neutron Bombs automatically annihilate all unshielded population cubes in the sector
       let destroyedCount = 0;
       sector.planets.forEach((p, pIdx) => {
         if (p.colonizedBy && p.colonizedBy !== winnerId) {
@@ -2158,18 +2362,15 @@ export function resolveAttackingPopulationAndConquest(
           type: 'combat',
         });
       }
-      bombardmentSummary = {
-        attackerName: attackerPlayer.name,
-        defenderName: firstDefPlayer?.name || 'Defender',
-        totalDamage: 99,
-        rolls: [],
-        cubesDestroyed,
-        cubesRemaining: sector.planets.filter((p) => p.colonizedBy && p.colonizedBy !== winnerId).length,
-        hasNeutronBombs: true,
-      };
-    } else {
-      // Each surviving attacker ship attacks once with non-missile weapons vs 0 shield
-      let totalDamage = 0;
+    }
+
+    const remainingOppCubesBeforeCannons = sector.planets.filter(
+      (p) => p.colonizedBy && p.colonizedBy !== winnerId
+    );
+
+    // If opponent cubes remain (either no neutron bombs, or defender has neutron_absorber - Bug 59), resolve standard cannon bombardment
+    if (remainingOppCubesBeforeCannons.length > 0) {
+      let cannonDamage = 0;
       const survivingAttackerShips = sector.ships.filter((s) => s.ownerId === winnerId);
 
       for (const s of survivingAttackerShips) {
@@ -2195,7 +2396,7 @@ export function resolveAttackingPopulationAndConquest(
                   damage: dmg,
                 });
                 if (isHit) {
-                  totalDamage += d.damagePerHit;
+                  cannonDamage += d.damagePerHit;
                 }
               }
             }
@@ -2203,10 +2404,7 @@ export function resolveAttackingPopulationAndConquest(
         }
       }
 
-      // Attacker destroys population cubes up to totalDamage points (1 damage per cube).
-      // Planta cubes are automatically destroyed by opponent ships regardless of damage.
-      // Priority targets: Money first, then Materials, then Science
-      let damageRemaining = totalDamage;
+      let damageRemaining = cannonDamage;
       const targetPlanetsWithIndices = sector.planets
         .map((p, idx) => ({ p, idx }))
         .filter(({ p }) => p.colonizedBy && p.colonizedBy !== winnerId)
@@ -2217,6 +2415,7 @@ export function resolveAttackingPopulationAndConquest(
           return ((order as any)[resA] || 5) - ((order as any)[resB] || 5);
         });
 
+      let cannonCubesDestroyed = 0;
       for (const { p, idx } of targetPlanetsWithIndices) {
         const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
         const isPlanta = defPlayer?.faction.id === 'planta';
@@ -2234,6 +2433,7 @@ export function resolveAttackingPopulationAndConquest(
         cubesDestroyed.push({ resource: p.colonizedResource || p.resource, planetIndex: idx });
         p.colonizedBy = undefined;
         p.colonizedResource = undefined;
+        cannonCubesDestroyed++;
         if (!isPlanta) {
           damageRemaining -= 1;
         }
@@ -2248,20 +2448,24 @@ export function resolveAttackingPopulationAndConquest(
         timestamp: Date.now(),
         round: state.round,
         phase: state.phase,
-        message: `${attackerPlayer.name} bombarded Sector ${sector.sectorNumber} population: rolled ${totalDamage} damage, destroying ${cubesDestroyed.length} cube(s) (${remainingOppCubes} remaining). Destroyed cubes placed in Casualty Slot until Cleanup.`,
+        message: `${attackerPlayer.name} bombarded Sector ${sector.sectorNumber} population with cannons: rolled ${cannonDamage} damage, destroying ${cannonCubesDestroyed} cube(s) (${remainingOppCubes} remaining). Destroyed cubes placed in Casualty Slot until Cleanup.`,
         type: 'combat',
       });
-
-      bombardmentSummary = {
-        attackerName: attackerPlayer.name,
-        defenderName: firstDefPlayer?.name || 'Defender',
-        totalDamage,
-        rolls,
-        cubesDestroyed,
-        cubesRemaining: remainingOppCubes,
-        hasNeutronBombs: false,
-      };
     }
+
+    const finalRemainingOppCubes = sector.planets.filter(
+      (p) => p.colonizedBy && p.colonizedBy !== winnerId
+    ).length;
+
+    bombardmentSummary = {
+      attackerName: attackerPlayer.name,
+      defenderName: firstDefPlayer?.name || 'Defender',
+      totalDamage: hasNeutronBombs ? 99 : rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0),
+      rolls,
+      cubesDestroyed,
+      cubesRemaining: finalRemainingOppCubes,
+      hasNeutronBombs,
+    };
   }
 
   // --- INFLUENCE SECTOR OVERTHROW / CONQUEST ---
@@ -2326,6 +2530,84 @@ export function resolveAttackingPopulationAndConquest(
   }
 }
 
+export interface PinningState {
+  pinnedShipIds: Set<string>;
+  isShipPinned: (shipId: string) => boolean;
+}
+
+export function computePinningState(
+  state: GameState,
+  playerId: string,
+  plannedMoves: { shipId: string; fromSectorId: string; toSectorId: string }[] = []
+): PinningState {
+  const player = state.players.find((p) => p.id === playerId);
+  const isDraco = player?.faction.id === 'descendants_of_draco';
+  const pinnedShipIds = new Set<string>();
+
+  // Track simulated ships in sectors
+  const simSectorShips = new Map<string, { id: string; ownerId: string; type: string }[]>();
+  for (const s of state.sectors) {
+    simSectorShips.set(s.id, s.ships.map((sh) => ({ id: sh.id, ownerId: sh.ownerId, type: sh.type })));
+  }
+
+  const getHostilesInSec = (sec: SectorTile, shipsList: { id: string; ownerId: string; type: string }[]) => {
+    let ancients = Math.max(
+      sec.ancientsCount || 0,
+      shipsList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
+    );
+    if (isDraco) ancients = 0;
+    const gcdsShips = shipsList.filter((s) => s.ownerId === 'gcds' || s.type === 'gcds').length;
+    const gcdsCount = sec.hasGCDS && gcdsShips === 0 ? 1 : gcdsShips;
+    const guardianShips = shipsList.filter((s) => s.ownerId === 'guardian' || s.type === 'guardian').length;
+    const otherPlayerShips = shipsList.filter(
+      (s) => s.ownerId !== playerId && s.ownerId.startsWith('player_')
+    ).length;
+    return ancients + gcdsCount + guardianShips + otherPlayerShips;
+  };
+
+  // Replay planned moves step by step
+  for (const m of plannedMoves) {
+    const fromList = simSectorShips.get(m.fromSectorId) || [];
+    const shipIdx = fromList.findIndex((s) => s.id === m.shipId);
+    let movedShip: { id: string; ownerId: string; type: string } | undefined;
+    if (shipIdx >= 0) {
+      [movedShip] = fromList.splice(shipIdx, 1);
+    }
+    const toList = simSectorShips.get(m.toSectorId) || [];
+    if (movedShip) {
+      toList.push(movedShip);
+      simSectorShips.set(m.toSectorId, toList);
+    }
+
+    const toSec = state.sectors.find((s) => s.id === m.toSectorId);
+    if (toSec) {
+      const friendlyInTo = toList.filter((s) => s.ownerId === playerId).length;
+      const hostilesInTo = getHostilesInSec(toSec, toList);
+      if (hostilesInTo > 0 && friendlyInTo <= hostilesInTo) {
+        pinnedShipIds.add(m.shipId);
+      }
+    }
+  }
+
+  // Check currently simulated sector for each friendly ship
+  for (const s of state.sectors) {
+    const shipsInSec = simSectorShips.get(s.id) || [];
+    const friendlyShips = shipsInSec.filter((sh) => sh.ownerId === playerId);
+    const hostiles = getHostilesInSec(s, shipsInSec);
+
+    if (hostiles > 0 && friendlyShips.length <= hostiles) {
+      for (const sh of friendlyShips) {
+        pinnedShipIds.add(sh.id);
+      }
+    }
+  }
+
+  return {
+    pinnedShipIds,
+    isShipPinned: (shipId: string) => pinnedShipIds.has(shipId),
+  };
+}
+
 export function checkAndTriggerCombat(state: GameState): void {
   // If a player still has a pending conquest, discovery, or reputation tile decision, wait for resolution
   if (state.pendingCombatConquest || state.pendingDiscovery || state.pendingReputationDraw || state.activeCombat) {
@@ -2355,13 +2637,59 @@ export function checkAndTriggerCombat(state: GameState): void {
 
   if (shipCombatSectors.length > 0) {
     const sector = shipCombatSectors[0]!;
-    const defenderOwnerId = getSectorDefenderOwnerId(sector);
-    const combatUnits = buildCombatUnitsForSector(sector, state.players);
+    const distinctOwners = Array.from(new Set(sector.ships.map((s) => s.ownerId)));
+
+    // Order owners by entry order (Rulebook page 20 & Bug 66):
+    // "the person who last enter the system is the first attacker then attack the player who enter the system second last,
+    // then the winner continue to attack the next player without repairing the ship. The player who control the sector is always consider the one who enter the system first."
+    const orderedOwners: string[] = [];
+    if (sector.discOwner && distinctOwners.includes(sector.discOwner)) {
+      orderedOwners.push(sector.discOwner);
+    }
+    for (const npc of ['ancient', 'guardian', 'gcds']) {
+      if (distinctOwners.includes(npc) && !orderedOwners.includes(npc)) {
+        orderedOwners.push(npc);
+      }
+    }
+    for (const o of distinctOwners) {
+      if (!orderedOwners.includes(o) && !(sector.playerEntryOrder || []).includes(o)) {
+        orderedOwners.push(o);
+      }
+    }
+    for (const o of (sector.playerEntryOrder || [])) {
+      if (distinctOwners.includes(o) && !orderedOwners.includes(o)) {
+        orderedOwners.push(o);
+      }
+    }
+
+    let attackerOwnerId = orderedOwners[orderedOwners.length - 1];
+    let defenderOwnerId = orderedOwners[orderedOwners.length - 2];
+
+    // Draco does not battle Ancients
+    if (
+      attackerOwnerId &&
+      defenderOwnerId &&
+      ((attackerOwnerId === 'ancient' && state.players.find((p) => p.id === defenderOwnerId)?.faction.id === 'descendants_of_draco') ||
+       (defenderOwnerId === 'ancient' && state.players.find((p) => p.id === attackerOwnerId)?.faction.id === 'descendants_of_draco'))
+    ) {
+      const otherOpponent = orderedOwners
+        .slice(0, orderedOwners.length - 2)
+        .reverse()
+        .find((o) => !(o === 'ancient' || state.players.find((p) => p.id === o)?.faction.id === 'descendants_of_draco'));
+      if (otherOpponent) {
+        defenderOwnerId = otherOpponent;
+      }
+    }
+
+    const duelParticipants = [attackerOwnerId, defenderOwnerId].filter(Boolean) as string[];
+    const combatUnits = buildCombatUnitsForSector(sector, state.players, duelParticipants);
     const hasMissiles = combatUnits.some((u) => u.weapons.some((w) => w.isMissile));
 
     state.activeCombat = {
       sectorId: sector.id,
-      defenderOwnerId,
+      attackerOwnerId,
+      defenderOwnerId: defenderOwnerId || getSectorDefenderOwnerId(sector),
+      participatingPlayerIds: duelParticipants,
       roundNumber: 1,
       stage: hasMissiles ? 'missile' : 'regular',
       initiativeOrder: [],
@@ -2661,6 +2989,7 @@ export interface PlayerScoreBreakdown {
   ambassadors: number;
   discoveries: number;
   speciesBonus: number;
+  traitor?: number;
   total: number;
 }
 
@@ -2684,8 +3013,31 @@ export function computeCurrentScores(state: GameState): {
     // 3. Reputation tiles (sum of tiles)
     const repVP = p.reputationTiles.reduce((sum, val) => sum + val, 0);
 
-    // 4. Technology VP
-    const techVP = p.techTrack.researched.reduce((sum, t) => sum + (t.victoryPoints || 0), 0);
+    // 4. Technology VP: Track VP (1/2/3/5 VP for 4/5/6/7 techs per track) + printed tile VP
+    const mCount = Math.max(
+      p.techTrack.militaryCount || 0,
+      p.techTrack.researched.filter((t) => (t.placedTrack || t.category) === 'military').length
+    );
+    const gCount = Math.max(
+      p.techTrack.gridCount || 0,
+      p.techTrack.researched.filter((t) => (t.placedTrack || t.category) === 'grid').length
+    );
+    const nCount = Math.max(
+      p.techTrack.nanoCount || 0,
+      p.techTrack.researched.filter((t) => (t.placedTrack || t.category) === 'nano').length
+    );
+
+    const getTrackVP = (cnt: number) => {
+      if (cnt >= 7) return 5;
+      if (cnt === 6) return 3;
+      if (cnt === 5) return 2;
+      if (cnt === 4) return 1;
+      return 0;
+    };
+
+    const trackVP = getTrackVP(mCount) + getTrackVP(gCount) + getTrackVP(nCount);
+    const tileVP = p.techTrack.researched.reduce((sum, t) => sum + (t.victoryPoints || 0), 0);
+    const techVP = trackVP + tileVP;
 
     // 5. Ambassadors
     const ambassadorVP = p.ambassadorTiles.length;
@@ -2693,16 +3045,25 @@ export function computeCurrentScores(state: GameState): {
     // 6. Kept Discovery Tiles (2 VP each)
     const discoveryVP = (p.keptDiscoveryTiles?.length || 0) * 2;
 
-    // 7. Warp Portal VP (2 VP if controlled at end of game)
-    const warpPortalVP = controlledSectors.filter((s) => s.hasWarpPortal).length * 2;
+    // 7. Warp Portal VP:
+    // Rare Tech warp portal in controlled sector: +1 VP
+    // Discovery tile warp portal in controlled sector: +2 VP
+    let warpPortalVP = 0;
+    for (const s of controlledSectors) {
+      if (s.hasRareWarpPortal) {
+        warpPortalVP += 1;
+      } else if (s.hasDiscoveryWarpPortal) {
+        warpPortalVP += 2;
+      } else if (s.hasWarpPortal && s.sectorNumber !== 281 && s.sectorNumber !== 381 && s.sectorNumber !== 382) {
+        warpPortalVP += 2;
+      }
+    }
 
     // 8. Species Bonus VP
     let speciesBonus = 0;
     if (p.faction.id === 'planta') {
-      // Planta scores +1 extra VP for each Controlled Sector at game end
       speciesBonus += controlledSectors.length * 1;
     } else if (p.faction.id === 'descendants_of_draco') {
-      // Draco scores 1 VP per Ancient on the game board at game end
       const totalAncientsOnBoard = state.sectors.reduce((sum, s) => {
         const shipsCount = s.ships.filter((ship) => ship.ownerId === 'ancient' || ship.type === 'ancient').length;
         return sum + Math.max(s.ancientsCount, shipsCount);
@@ -2710,7 +3071,10 @@ export function computeCurrentScores(state: GameState): {
       speciesBonus += totalAncientsOnBoard;
     }
 
-    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP + speciesBonus;
+    // 9. Traitor Tile Penalty (-2 VP)
+    const traitorVP = state.traitorPlayerId === p.id ? -2 : 0;
+
+    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP + speciesBonus + traitorVP;
 
     scores[p.id] = {
       sectors: sectorVP,
@@ -2720,6 +3084,7 @@ export function computeCurrentScores(state: GameState): {
       ambassadors: ambassadorVP,
       discoveries: discoveryVP + warpPortalVP,
       speciesBonus,
+      traitor: traitorVP,
       total,
     };
 

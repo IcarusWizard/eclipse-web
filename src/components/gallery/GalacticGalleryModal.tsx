@@ -342,14 +342,6 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                           <span className="text-slate-500">Minimum Cost:</span>
                           <span className="text-slate-300">{tech.minCost} Science</span>
                         </div>
-                        {tech.costByDiscount && (
-                          <div className="flex justify-between">
-                            <span className="text-slate-500">Discount Steps:</span>
-                            <span className="text-slate-400">
-                              [{tech.costByDiscount.join(', ')}]
-                            </span>
-                          </div>
-                        )}
                         {tech.unlocksPartId && (
                           <div className="flex justify-between text-amber-400">
                             <span>Unlocks Component:</span>

@@ -57,6 +57,9 @@ export interface SectorTile {
   guardiansCount?: number;
   hasGCDS?: boolean;
   hasWarpPortal?: boolean; // Warp portal structure placed in this sector
+  hasRareWarpPortal?: boolean; // Placed via Rare Tech Warp Portal (+1 VP to controller at game end)
+  hasDiscoveryWarpPortal?: boolean; // Placed via Discovery Tile (+2 VP to controller at game end)
+  playerEntryOrder?: string[]; // Order players entered this sector for multi-player combat resolution
   discOwner?: string; // Player ID holding influence on this sector
   ships: SectorShip[];
   structures?: {

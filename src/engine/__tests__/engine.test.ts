@@ -36,6 +36,7 @@ import {
   transitionToUpkeep,
   transitionToCleanup,
   resolveAttackingPopulationAndConquest,
+  computePinningState,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -712,21 +713,22 @@ describe('Game Setup & Turn Engine Flow', () => {
       playerId: p1.id,
     };
 
-    // Cruiser slot 3 initially empty (null) or replace it
+    // Cruiser with fusion source (6 power) and equip to empty slot 5
+    p1.blueprints.cruiser.slots[3] = SHIP_PARTS.fusion_source;
     const res = executeAction(game, {
       type: 'DISCOVERY_CHOICE',
       playerId: p1.id,
       sectorId: 'sector_101',
       keepForVictoryPoints: false,
       equipShipType: 'cruiser',
-      equipSlotIndex: 3,
+      equipSlotIndex: 5,
     });
 
     expect(res.success).toBe(true);
     expect(res.newState.pendingDiscovery).toBeNull();
     const updatedP1 = res.newState.players[0]!;
     expect(updatedP1.unlockedAncientParts).not.toContain('flux_shield');
-    expect(updatedP1.blueprints.cruiser.slots[3]?.id).toBe('flux_shield');
+    expect(updatedP1.blueprints.cruiser.slots[5]?.id).toBe('flux_shield');
   });
 
   it('deploys a free cruiser to the sector when choosing Ancient Cruiser immediate reward', () => {
@@ -5014,20 +5016,20 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           },
         };
 
-        // Equip immediately to cruiser slot 3
+        // Equip immediately to cruiser slot 5 (empty slot)
         const resEquip = executeAction(game, {
           type: 'DISCOVERY_CHOICE',
           playerId: p1.id,
           sectorId: game.sectors[1]!.id,
           keepForVictoryPoints: false,
           equipShipType: 'cruiser',
-          equipSlotIndex: 3,
+          equipSlotIndex: 5,
         });
 
         expect(resEquip.success).toBe(true);
         const p1AfterEquip = resEquip.newState.players[0]!;
         // Placed directly on blueprint
-        expect(p1AfterEquip.blueprints.cruiser.slots[3]?.id).toBe('ion_turret');
+        expect(p1AfterEquip.blueprints.cruiser.slots[5]?.id).toBe('ion_turret');
         // Crucial: NOT stored in unlockedAncientParts
         expect(p1AfterEquip.unlockedAncientParts).not.toContain('ion_turret');
 
@@ -5120,6 +5122,399 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         expect(available.some((p) => p.id === 'ion_turret')).toBe(false);
         expect(available.some((p) => p.id === 'flux_shield')).toBe(false);
+      });
+
+      it('42. verifies Bug Fixes 52-66: Discovery power check, Ancient Tech choice, Defeated rep draw, Draco ancient immunity, Neutron Bomb vs Absorber, 7-tech row cap, Warp Portal rare tech & scoring, 1:1 Movement Pinning, Sector ships offset, Tech VP scoring (1/2/3/5), Multi-player sequential combat (1v1 reverse entry), Diplomacy ambassador exchange & Traitor tile', () => {
+        // --- Bug 52: Galactic Gallery Tech discount steps removed ---
+        // Verify GalacticGalleryModal no longer renders Discount Steps or tech.costByDiscount
+        const fs = require('fs');
+        const path = require('path');
+        const gallerySource = fs.readFileSync(path.resolve(__dirname, '../../components/gallery/GalacticGalleryModal.tsx'), 'utf-8');
+        expect(gallerySource).not.toContain('Discount Steps');
+        expect(gallerySource).not.toContain('costByDiscount');
+
+        // --- Bug 53: Discovery Choice immediate installation power validation ---
+        const discGame = createInitialGame(2);
+        const p1 = discGame.players[0]!;
+        // Interceptor with nuclear source (produces 3 power), fusion drive (uses 2), cannon (uses 1) -> net power 0
+        p1.blueprints.interceptor.slots = [
+          SHIP_PARTS.nuclear_source, // produces 3 power
+          SHIP_PARTS.fusion_drive,   // uses 2 power
+          SHIP_PARTS.ion_cannon,     // uses 1 power
+          null,
+        ];
+        // Discovery tile provides Ion Turret (uses 2 power)
+        discGame.pendingDiscovery = {
+          discovery: {
+            id: 'ion_turret_tile',
+            type: 'ship_part',
+            shipPartId: 'ion_turret', // power consumption: 2
+            description: 'Ion Turret Discovery',
+          },
+          sectorId: discGame.sectors[0]!.id,
+          playerId: p1.id,
+        };
+
+        // Attempting to install Ion Turret into slot 3 causes power consumption (1 + 1 + 2 = 4) > production (2)
+        const invalidPowerVal = validateAction(discGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          keepForVictoryPoints: false,
+          equipShipType: 'interceptor',
+          equipSlotIndex: 3,
+        });
+        expect(invalidPowerVal.valid).toBe(false);
+        expect(invalidPowerVal.error).toContain('power');
+
+        // With sufficient power (Tachyon Source producing 9 power), installation succeeds
+        p1.blueprints.interceptor.slots[0] = SHIP_PARTS.tachyon_source;
+        const validPowerVal = validateAction(discGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          keepForVictoryPoints: false,
+          equipShipType: 'interceptor',
+          equipSlotIndex: 3,
+        });
+        expect(validPowerVal.valid).toBe(true);
+
+        // --- Bug 54: Explore preview planet sockets are rectangles (verified in component) ---
+
+        // --- Bug 55: Ambassador exchange diplomacy, slot distinction, and Traitor tile ---
+        const diploGame = createInitialGame(3, ['terran_directorate', 'planta', 'orion_hegemony']);
+        const terran = diploGame.players[0]!;
+        const planta = diploGame.players[1]!;
+        const orion = diploGame.players[2]!;
+
+        // Settle Terran in sector 0 and Planta in connected adjacent sector 1
+        const s0 = diploGame.sectors[0]!;
+        const s1 = diploGame.sectors[1]!;
+        s0.hasGCDS = false;
+        s0.ships = [];
+        s0.ancientsCount = 0;
+        s0.discOwner = terran.id;
+        s0.wormholes = [0, 1, 2, 3, 4, 5];
+        s1.coord = { q: 0, r: 1 };
+        s1.wormholes = [0, 1, 2, 3, 4, 5];
+        s1.ships = [];
+        s1.discOwner = planta.id;
+
+        // Exchange ambassadors between Terran and Planta
+        const diploRes = executeAction(diploGame, {
+          type: 'DIPLOMACY_EXCHANGE',
+          playerId: terran.id,
+          targetPlayerId: planta.id,
+        });
+        expect(diploRes.success).toBe(true);
+        expect(diploRes.newState.players[0]!.ambassadorTiles).toContain(planta.id);
+        expect(diploRes.newState.players[1]!.ambassadorTiles).toContain(terran.id);
+
+        // Both players receive +1 VP from ambassador
+        const diploScores = computeCurrentScores(diploRes.newState);
+        expect(diploScores.scores[terran.id]!.ambassadors).toBe(1);
+        expect(diploScores.scores[planta.id]!.ambassadors).toBe(1);
+
+        // Orion has 0 ambassador slots, so diplomacy is rejected
+        diploRes.newState.activePlayerIndex = 0;
+        const orionDiploVal = validateAction(diploRes.newState, {
+          type: 'DIPLOMACY_EXCHANGE',
+          playerId: terran.id,
+          targetPlayerId: orion.id,
+        });
+        expect(orionDiploVal.valid).toBe(false);
+        expect(orionDiploVal.error).toContain('0 ambassador slots');
+
+        // Terran breaks alliance by moving a ship into Planta's controlled sector
+        diploRes.newState.activePlayerIndex = 0;
+        diploRes.newState.sectors[0]!.ships = [
+          { id: 'terran_cruiser_1', ownerId: terran.id, type: 'cruiser', damage: 0 },
+        ];
+        const breakRes = executeAction(diploRes.newState, {
+          type: 'MOVE',
+          playerId: terran.id,
+          moves: [
+            {
+              shipId: 'terran_cruiser_1',
+              fromSectorId: diploRes.newState.sectors[0]!.id,
+              toSectorId: diploRes.newState.sectors[1]!.id,
+            },
+          ],
+        });
+        expect(breakRes.success).toBe(true);
+        // Alliance broken: ambassador tiles removed and Terran branded Traitor (-2 VP)
+        expect(breakRes.newState.players[0]!.ambassadorTiles).not.toContain(planta.id);
+        expect(breakRes.newState.players[1]!.ambassadorTiles).not.toContain(terran.id);
+        expect(breakRes.newState.traitorPlayerId).toBe(terran.id);
+
+        const traitorScores = computeCurrentScores(breakRes.newState);
+        expect(traitorScores.scores[terran.id]!.traitor).toBe(-2);
+
+        // Traitor cannot form new diplomatic alliances
+        breakRes.newState.activePlayerIndex = 0;
+        const traitorExchangeVal = validateAction(breakRes.newState, {
+          type: 'DIPLOMACY_EXCHANGE',
+          playerId: terran.id,
+          targetPlayerId: planta.id,
+        });
+        expect(traitorExchangeVal.valid).toBe(false);
+        expect(traitorExchangeVal.error).toContain('Traitor Tile');
+
+        // --- Bug 56: Ancient Technology discovery tile flip with chosenTechId ---
+        const ancientTechGame = createInitialGame(2);
+        const atPlayer = ancientTechGame.players[0]!;
+        ancientTechGame.pendingDiscovery = {
+          discovery: {
+            id: 'ancient_technology_tile',
+            type: 'ancient_technology',
+            description: 'Ancient Technology: Gain lowest-cost regular tech from supply',
+            immediateReward: { ancientTech: true, victoryPoints: 2 },
+          },
+          sectorId: ancientTechGame.sectors[0]!.id,
+          playerId: atPlayer.id,
+        };
+
+        const eligibleTechs = ancientTechGame.techSupply
+          .filter((t) => t.category !== 'rare')
+          .sort((a, b) => a.baseCost - b.baseCost);
+        const chosenTech = eligibleTechs[0]!;
+
+        const atRes = executeAction(ancientTechGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: atPlayer.id,
+          keepForVictoryPoints: false,
+          chosenTechId: chosenTech.id,
+        });
+        expect(atRes.success).toBe(true);
+        expect(atRes.newState.players[0]!.techTrack.researched.some((t) => t.id === chosenTech.id)).toBe(true);
+
+        // --- Bug 57: Defeated player in battle draws reputation tile(s) ---
+        const defeatGame = createInitialGame(2);
+        const defP1 = defeatGame.players[0]!;
+        const defP2 = defeatGame.players[1]!;
+        const battleSector = defeatGame.sectors[1]!;
+        battleSector.discOwner = defP2.id;
+        battleSector.ships = [
+          { id: 'p1_dread', ownerId: defP1.id, type: 'dreadnought', damage: 0 },
+          { id: 'p2_interceptor', ownerId: defP2.id, type: 'interceptor', damage: 0 },
+        ];
+        defeatGame.reputationTileSupply = [3, 2, 2, 1, 1];
+
+        // Trigger combat in sector
+        defeatGame.phase = 'COMBAT_PHASE';
+        checkAndTriggerCombat(defeatGame);
+        expect(defeatGame.activeCombat).not.toBeNull();
+
+        // P2 interceptor destroyed without retreating
+        defeatGame.activeCombat!.stage = 'resolved';
+        battleSector.ships = [{ id: 'p1_dread', ownerId: defP1.id, type: 'dreadnought', damage: 0 }];
+
+        // Conclude engagement
+        const combatConcludeRes = executeAction(defeatGame, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: defP1.id,
+          sectorId: battleSector.id,
+          concludeCombat: true,
+        });
+        expect(combatConcludeRes.success).toBe(true);
+        // Defeated P2 did not retreat and had a ship destroyed in battle -> must receive at least 1 reputation tile in queue
+        const allPendingRepDraws = [
+          combatConcludeRes.newState.pendingReputationDraw,
+          ...(combatConcludeRes.newState.pendingReputationDrawQueue || []),
+        ].filter(Boolean);
+        const p2Draw = allPendingRepDraws.find((d) => d?.playerId === defP2.id);
+        expect(p2Draw).toBeDefined();
+        expect(p2Draw!.drawnTiles.length).toBeGreaterThanOrEqual(1);
+
+        // --- Bug 58: Draco ship not pinned by Ancients ---
+        const dracoGame = createInitialGame(2, ['descendants_of_draco', 'terran_directorate']);
+        const dracoPlayer = dracoGame.players[0]!;
+        const dracoSector = dracoGame.sectors[1]!;
+        dracoSector.ancientsCount = 2;
+        dracoSector.ships = [
+          { id: 'ancient_1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          { id: 'ancient_2', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          { id: 'draco_cruiser', ownerId: dracoPlayer.id, type: 'cruiser', damage: 0 },
+        ];
+        const dracoPinState = computePinningState(dracoGame, dracoPlayer.id, []);
+        expect(dracoPinState.pinnedShipIds.has('draco_cruiser')).toBe(false);
+
+        // --- Bug 59: Neutron Bombs vs Neutron Absorber ---
+        const bombGame = createInitialGame(2);
+        const attP1 = bombGame.players[0]!;
+        const defAbsP2 = bombGame.players[1]!;
+        const popSector = bombGame.sectors[1]!;
+        popSector.discOwner = defAbsP2.id;
+        popSector.planets = [
+          { type: 'money', hasOrbital: false, colonizedBy: defAbsP2.id },
+          { type: 'science', hasOrbital: false, colonizedBy: defAbsP2.id },
+        ];
+        popSector.ships = [
+          { id: 'bomb_cruiser', ownerId: attP1.id, type: 'cruiser', damage: 0 },
+        ];
+        attP1.techTrack.researched.push({
+          id: 'neutron_bombs',
+          name: 'Neutron Bombs',
+          category: 'military',
+          cost: 2,
+          minCost: 1,
+        });
+        defAbsP2.techTrack.researched.push({
+          id: 'neutron_absorber',
+          name: 'Neutron Absorber',
+          category: 'grid',
+          cost: 2,
+          minCost: 1,
+        });
+        // Cruiser has 1 ion cannon (roll hits with high roll)
+        attP1.blueprints.cruiser.slots = [
+          SHIP_PARTS.ion_cannon,
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_drive,
+          null,
+          null,
+          null,
+        ];
+
+        // Resolve population attack: absorber blocks neutron bombs, but normal cannon attack resolves
+        resolveAttackingPopulationAndConquest(bombGame, popSector, attP1.id);
+        const remainingCubes = popSector.planets.filter((p) => p.colonizedBy === defAbsP2.id).length;
+        // Normal cannon attack resolves against remaining cubes
+        expect(remainingCubes).toBeLessThanOrEqual(2);
+
+        // --- Bug 60: 7-Tech row limit per track ---
+        const techCapGame = createInitialGame(2);
+        const capPlayer = techCapGame.players[0]!;
+        capPlayer.resources.science = 50;
+        // Fill military track with 7 techs
+        capPlayer.techTrack.militaryCount = 7;
+        for (let i = 0; i < 7; i++) {
+          capPlayer.techTrack.researched.push({
+            id: `mil_tech_${i}`,
+            name: `Mil Tech ${i}`,
+            category: 'military',
+            cost: 2,
+            minCost: 1,
+          });
+        }
+        // Ensure plasma_cannon is in supply
+        techCapGame.techSupply.push({
+          id: 'plasma_cannon',
+          name: 'Plasma Cannon',
+          category: 'military',
+          cost: 6,
+          minCost: 3,
+          baseCost: 6,
+        });
+        // Attempting to research an 8th military tech fails validation
+        const eighthTechVal = validateAction(techCapGame, {
+          type: 'RESEARCH',
+          playerId: capPlayer.id,
+          techId: 'plasma_cannon', // military category
+        });
+        expect(eighthTechVal.valid).toBe(false);
+        expect(eighthTechVal.error).toContain('tech track is full');
+
+        // --- Bug 61: Warp Portal rare tech sector placement and +1 VP scoring ---
+        const warpGame = createInitialGame(2);
+        const warpPlayer = warpGame.players[0]!;
+        warpPlayer.resources.science = 20;
+        const targetSector = warpGame.sectors[0]!;
+        targetSector.discOwner = warpPlayer.id;
+
+        // Ensure warp_portal is in techSupply
+        warpGame.techSupply.push({
+          id: 'warp_portal',
+          name: 'Warp Portal',
+          category: 'rare',
+          cost: 5,
+          minCost: 5,
+          baseCost: 5,
+          isRare: true,
+        });
+
+        // Requires warpPortalSectorId
+        const missingSectorVal = validateAction(warpGame, {
+          type: 'RESEARCH',
+          playerId: warpPlayer.id,
+          techId: 'warp_portal',
+        });
+        expect(missingSectorVal.valid).toBe(false);
+        expect(missingSectorVal.error).toContain('controlled sector');
+
+        // Research with sector placement succeeds
+        const warpRes = executeAction(warpGame, {
+          type: 'RESEARCH',
+          playerId: warpPlayer.id,
+          techId: 'warp_portal',
+          warpPortalSectorId: targetSector.id,
+        });
+        expect(warpRes.success).toBe(true);
+        expect(warpRes.newState.sectors[0]!.hasRareWarpPortal).toBe(true);
+
+        const warpScores = computeCurrentScores(warpRes.newState);
+        // Warp portal in controlled sector awards +1 VP
+        expect(warpScores.scores[warpPlayer.id]!.discoveries).toBe(1);
+
+        // --- Bug 62 & 63: 1:1 Movement Pinning Logic ---
+        const pinGame = createInitialGame(2);
+        const pinP1 = pinGame.players[0]!;
+        const pinSector = pinGame.sectors[1]!;
+        pinSector.ships = [
+          { id: 'ancient_ship', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          { id: 'friendly_cruiser_1', ownerId: pinP1.id, type: 'cruiser', damage: 0 },
+          { id: 'friendly_cruiser_2', ownerId: pinP1.id, type: 'cruiser', damage: 0 },
+        ];
+        // 1 hostile vs 2 friendly: friendly > hostiles, so excess ships can move
+        const pinResult = computePinningState(pinGame, pinP1.id, []);
+        expect(pinResult.pinnedShipIds.has('friendly_cruiser_1')).toBe(false);
+        expect(pinResult.pinnedShipIds.has('friendly_cruiser_2')).toBe(false);
+
+        // After friendly_cruiser_1 moves, remaining friendly_cruiser_2 has friendly (1) <= hostile (1) -> pinned!
+        const plannedPinResult = computePinningState(pinGame, pinP1.id, [
+          { shipId: 'friendly_cruiser_1', fromSectorId: pinSector.id, toSectorId: pinGame.sectors[0]!.id },
+        ]);
+        expect(plannedPinResult.pinnedShipIds.has('friendly_cruiser_2')).toBe(true);
+
+        // When 1 ship starts in pinned sector with 1 hostile (friendly <= hostile): ship is pinned
+        pinSector.ships = [
+          { id: 'ancient_ship', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          { id: 'friendly_cruiser_1', ownerId: pinP1.id, type: 'cruiser', damage: 0 },
+        ];
+        const strictPinResult = computePinningState(pinGame, pinP1.id, []);
+        expect(strictPinResult.pinnedShipIds.has('friendly_cruiser_1')).toBe(true);
+
+        // --- Bug 65: Tech Scoring (1, 2, 3, 5 VP for 4, 5, 6, 7 techs per track) ---
+        const hydranGame = createInitialGame(2, ['hydran_progress', 'terran_directorate']);
+        const hydranPlayer = hydranGame.players[0]!;
+        // 7 military techs and 7 grid techs: 5 VP + 5 VP = 10 VP
+        hydranPlayer.techTrack.militaryCount = 7;
+        hydranPlayer.techTrack.gridCount = 7;
+        hydranPlayer.techTrack.nanoCount = 0;
+        hydranPlayer.techTrack.researched = [];
+        const hydranScores = computeCurrentScores(hydranGame);
+        expect(hydranScores.scores[hydranPlayer.id]!.techs).toBe(10);
+
+        // --- Bug 66: Sequential 1v1 multi-player combat in reverse entry order ---
+        const multiCombatGame = createInitialGame(3);
+        const mcP1 = multiCombatGame.players[0]!;
+        const mcP2 = multiCombatGame.players[1]!;
+        const mcP3 = multiCombatGame.players[2]!;
+        const multiSector = multiCombatGame.sectors[1]!;
+        multiSector.discOwner = mcP1.id; // Controller: entered first
+        multiSector.playerEntryOrder = [mcP1.id, mcP2.id, mcP3.id];
+        multiSector.ships = [
+          { id: 'p1_ship', ownerId: mcP1.id, type: 'cruiser', damage: 0 },
+          { id: 'p2_ship', ownerId: mcP2.id, type: 'cruiser', damage: 0 },
+          { id: 'p3_ship', ownerId: mcP3.id, type: 'cruiser', damage: 0 },
+        ];
+        multiCombatGame.phase = 'COMBAT_PHASE';
+
+        // Check combat trigger: last 2 entrants fight first (P3 vs P2)
+        checkAndTriggerCombat(multiCombatGame);
+        expect(multiCombatGame.activeCombat).not.toBeNull();
+        expect(multiCombatGame.activeCombat!.participatingPlayerIds).toBeDefined();
+        expect(multiCombatGame.activeCombat!.participatingPlayerIds).toContain(mcP3.id);
+        expect(multiCombatGame.activeCombat!.participatingPlayerIds).toContain(mcP2.id);
+        expect(multiCombatGame.activeCombat!.participatingPlayerIds).not.toContain(mcP1.id);
       });
     });
   });

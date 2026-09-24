@@ -62,7 +62,14 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame }
                     <td className="p-3 flex items-center gap-2">
                       <div className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: p.color }} />
                       <div>
-                        <div className="text-slate-200">{p.name}</div>
+                        <div className="text-slate-200 flex items-center gap-1.5">
+                          <span>{p.name}</span>
+                          {s?.traitor ? (
+                            <span className="text-[10px] text-rose-300 font-bold px-1.5 py-0.2 bg-rose-950/80 border border-rose-800 rounded">
+                              Traitor (-2 VP)
+                            </span>
+                          ) : null}
+                        </div>
                         <div className="text-[10px] text-slate-400 font-normal">{p.faction.name}</div>
                       </div>
                     </td>

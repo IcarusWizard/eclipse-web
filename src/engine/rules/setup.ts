@@ -31,6 +31,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
+    ambassadorSlots: 3,
   },
   {
     id: 'terran_directorate',
@@ -51,6 +52,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
+    ambassadorSlots: 3,
   },
   {
     id: 'terran_republic',
@@ -71,6 +73,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
+    ambassadorSlots: 3,
   },
   {
     id: 'terran_conglomerate',
@@ -91,6 +94,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
+    ambassadorSlots: 3,
   },
   {
     id: 'terran_union',
@@ -111,6 +115,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
+    ambassadorSlots: 3,
   },
   {
     id: 'terran_alliance',
@@ -131,6 +136,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
+    ambassadorSlots: 3,
   },
 ];
 
@@ -189,6 +195,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
+    ambassadorSlots: 2,
   },
   {
     id: 'hydran_progress',
@@ -209,6 +216,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
+    ambassadorSlots: 3,
   },
   {
     id: 'planta',
@@ -229,6 +237,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
+    ambassadorSlots: 3,
   },
   {
     id: 'descendants_of_draco',
@@ -249,6 +258,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
+    ambassadorSlots: 3,
   },
   {
     id: 'mechanema',
@@ -269,6 +279,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
+    ambassadorSlots: 3,
   },
   {
     id: 'orion_hegemony',
@@ -289,6 +300,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 5,
+    ambassadorSlots: 0,
   },
 ];
 

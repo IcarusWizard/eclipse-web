@@ -39,7 +39,9 @@ import {
   ChevronRight,
   Info,
   Lock,
+  Handshake,
 } from 'lucide-react';
+import { areSectorsConnected } from '../../engine/rules/hexMath';
 
 interface PhysicalPlayerBoardModalProps {
   player: PlayerState;
@@ -51,6 +53,8 @@ interface PhysicalPlayerBoardModalProps {
   onOpenBlueprintEditor: (shipType?: ShipType) => void;
   onOpenTechMarket: () => void;
   hideOpponentReputation?: boolean;
+  traitorPlayerId?: string | null;
+  onExchangeAmbassador?: (targetPlayerId: string) => void;
 }
 
 export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> = ({
@@ -63,6 +67,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   onOpenBlueprintEditor,
   onOpenTechMarket,
   hideOpponentReputation = false,
+  traitorPlayerId,
+  onExchangeAmbassador,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'tracks' | 'tech' | 'blueprints'>('all');
   const [selectedTech, setSelectedTech] = useState<Technology | null>(null);
@@ -492,6 +498,28 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
           {/* ================================================================= */}
           {(activeTab === 'all' || activeTab === 'tracks') && (
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg space-y-4">
+              {/* Traitor Tile Warning Banner */}
+              {traitorPlayerId === player.id && (
+                <div className="bg-rose-950/70 border-2 border-rose-500 rounded-xl p-3.5 shadow-xl shadow-rose-950/50 flex items-center justify-between gap-4">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-rose-600/30 border border-rose-500 flex items-center justify-center text-rose-300 shrink-0">
+                      <AlertTriangle className="w-6 h-6 text-rose-400" />
+                    </div>
+                    <div>
+                      <div className="text-sm font-extrabold font-display text-rose-200 flex items-center gap-2">
+                        TRAITOR TILE IN POSSESSION
+                        <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-900 border border-rose-700 text-rose-300">
+                          -2 VP Penalty
+                        </span>
+                      </div>
+                      <p className="text-xs text-rose-300/90 mt-0.5">
+                        This commander entered allied territory, breaking diplomatic relations. Suffers a -2 VP endgame penalty and cannot establish new alliances while holding this tile.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
                 <div className="flex items-center gap-2">
                   <Trophy className="w-5 h-5 text-amber-400" />
@@ -499,11 +527,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
                       REPUTATION TRACK ({player.faction.reputationSlots ?? 5} SLOTS)
                       <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-950/60 border border-amber-600/60 text-amber-300">
-                        Total: {hideOpponentReputation ? '? VP' : `${player.reputationTiles.reduce((a, b) => a + b, 0)} VP`}
+                        Total: {hideOpponentReputation
+                          ? `${player.ambassadorTiles?.length || 0} Amb VP + ? Rep VP`
+                          : `${(player.ambassadorTiles?.length || 0) + player.reputationTiles.reduce((a, b) => a + b, 0)} VP`}
                       </span>
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Combat rewards and battle participation tiles placed facedown. Maximum {player.faction.reputationSlots ?? 5} slots on species board.
+                      Slots 1–{player.faction.ambassadorSlots ?? 3} accept Ambassador or Reputation tiles. Remaining slots accept Reputation tiles only.
                     </p>
                   </div>
                 </div>
@@ -511,57 +541,220 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
                   <span>Slots Filled:</span>
                   <span className="font-bold text-slate-200">
-                    {player.reputationTiles.length} / {player.faction.reputationSlots ?? 5}
+                    {(player.ambassadorTiles?.length || 0) + player.reputationTiles.length} / {player.faction.reputationSlots ?? 5}
                   </span>
                 </div>
               </div>
 
               {/* Physical Cardboard Slots */}
-              <div className={`grid ${(player.faction.reputationSlots ?? 5) === 4 ? 'grid-cols-4' : 'grid-cols-5'} gap-3`}>
-                {Array.from({ length: player.faction.reputationSlots ?? 5 }).map((_, slotIdx) => {
-                  const tile = player.reputationTiles[slotIdx];
-                  const hasTile = tile !== undefined;
+              {(() => {
+                const totalSlots = player.faction.reputationSlots ?? 5;
+                const ambSlotsCount = player.faction.ambassadorSlots ?? 3;
+                const ambCount = player.ambassadorTiles?.length || 0;
 
-                  return (
-                    <div
-                      key={`rep_slot_${slotIdx}`}
-                      className={`h-28 rounded-xl border-2 flex flex-col items-center justify-between p-2.5 transition-all relative ${
-                        hasTile
-                          ? 'bg-gradient-to-b from-amber-950/40 to-slate-950 border-amber-500/80 shadow-lg shadow-amber-950/50'
-                          : 'bg-slate-950 border-dashed border-slate-800/90'
-                      }`}
-                    >
-                      <div className="w-full flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                        <span>Slot #{slotIdx + 1}</span>
-                        {slotIdx === 0 && <span className="text-[9px] text-indigo-400">Amb / Rep</span>}
-                      </div>
+                return (
+                  <div className={`grid ${totalSlots === 4 ? 'grid-cols-4' : 'grid-cols-5'} gap-3`}>
+                    {Array.from({ length: totalSlots }).map((_, slotIdx) => {
+                      const isAmbassadorEligible = slotIdx < ambSlotsCount;
+                      const isAmbassadorSlot = slotIdx < ambCount;
+                      const allyId = isAmbassadorSlot ? player.ambassadorTiles[slotIdx] : null;
+                      const ally = allyId ? players.find((p) => p.id === allyId) : null;
 
-                      {hasTile ? (
-                        <div className="flex flex-col items-center">
-                          <div className="w-10 h-10 rounded-lg bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300 shadow-md">
-                            <Trophy className="w-5 h-5 text-amber-400" />
+                      const repTileIdx = slotIdx - ambCount;
+                      const repTile = repTileIdx >= 0 ? player.reputationTiles[repTileIdx] : undefined;
+                      const hasRepTile = repTile !== undefined;
+
+                      return (
+                        <div
+                          key={`rep_slot_${slotIdx}`}
+                          className={`h-32 rounded-xl border-2 flex flex-col items-center justify-between p-2.5 transition-all relative ${
+                            isAmbassadorSlot
+                              ? 'bg-gradient-to-b from-indigo-950/50 to-slate-950 border-indigo-500/80 shadow-lg shadow-indigo-950/50'
+                              : hasRepTile
+                              ? 'bg-gradient-to-b from-amber-950/40 to-slate-950 border-amber-500/80 shadow-lg shadow-amber-950/50'
+                              : 'bg-slate-950 border-dashed border-slate-800/90'
+                          }`}
+                        >
+                          <div className="w-full flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                            <span>Slot #{slotIdx + 1}</span>
+                            {isAmbassadorEligible ? (
+                              <span
+                                className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-950/90 text-indigo-300 border border-indigo-700/60"
+                                title="This slot can hold either an Ambassador Tile or a Reputation Tile"
+                              >
+                                Amb / Rep
+                              </span>
+                            ) : (
+                              <span
+                                className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-900 text-slate-400 border border-slate-800"
+                                title="This slot can only hold Reputation Tiles"
+                              >
+                                Rep Only
+                              </span>
+                            )}
                           </div>
-                          <span className="text-base font-extrabold font-display text-amber-300 mt-1">
-                            {hideOpponentReputation ? '? VP' : `+${tile} VP`}
-                          </span>
-                        </div>
-                      ) : (
-                        <div className="flex flex-col items-center text-center">
-                          <span className="text-xs text-slate-600 font-bold uppercase tracking-wider">
-                            Empty
-                          </span>
-                          <span className="text-[9px] text-slate-600 mt-0.5">
-                            Facedown Tile
-                          </span>
-                        </div>
-                      )}
 
-                      <div className="text-[9px] font-semibold text-slate-400">
-                        {hasTile ? (hideOpponentReputation ? 'Secret Tile' : 'Reputation Tile') : 'Available Slot'}
+                          {isAmbassadorSlot ? (
+                            <div className="flex flex-col items-center text-center">
+                              <div
+                                className="w-9 h-9 rounded-lg flex items-center justify-center shadow-md border-2"
+                                style={{
+                                  backgroundColor: (ally?.color || '#6366f1') + '33',
+                                  borderColor: ally?.color || '#818cf8',
+                                }}
+                              >
+                                <Handshake className="w-5 h-5" style={{ color: ally?.color || '#a5b4fc' }} />
+                              </div>
+                              <span className="text-base font-extrabold font-display text-indigo-300 mt-0.5">
+                                +1 VP
+                              </span>
+                              <span className="text-[10px] font-medium text-slate-300 truncate max-w-[100px]" title={ally?.name}>
+                                {ally?.name || allyId}
+                              </span>
+                            </div>
+                          ) : hasRepTile ? (
+                            <div className="flex flex-col items-center">
+                              <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300 shadow-md">
+                                <Trophy className="w-5 h-5 text-amber-400" />
+                              </div>
+                              <span className="text-base font-extrabold font-display text-amber-300 mt-0.5">
+                                {hideOpponentReputation ? '? VP' : `+${repTile} VP`}
+                              </span>
+                              <span className="text-[10px] text-slate-400">
+                                {hideOpponentReputation ? 'Secret Tile' : `${repTile} Rep`}
+                              </span>
+                            </div>
+                          ) : (
+                            <div className="flex flex-col items-center text-center">
+                              <span className="text-xs text-slate-600 font-bold uppercase tracking-wider">
+                                Empty
+                              </span>
+                              <span className="text-[9px] text-slate-600 mt-0.5">
+                                {isAmbassadorEligible ? 'Amb or Rep Tile' : 'Rep Tile Only'}
+                              </span>
+                            </div>
+                          )}
+
+                          <div className="text-[9px] font-semibold text-slate-400">
+                            {isAmbassadorSlot
+                              ? 'Ambassador'
+                              : hasRepTile
+                              ? (hideOpponentReputation ? 'Secret Tile' : 'Reputation')
+                              : 'Available Slot'}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+
+              {/* DIPLOMATIC RELATIONS / AMBASSADOR EXCHANGE */}
+              <div className="pt-3 border-t border-slate-800/80">
+                <div className="flex items-center justify-between mb-3">
+                  <div>
+                    <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5 font-display">
+                      <Handshake className="w-4 h-4 text-indigo-400" />
+                      Diplomatic Relations & Ambassadors
+                    </h3>
+                    <p className="text-[11px] text-slate-400">
+                      Exchange ambassadors with connected species for +1 VP each. Moving into allied space forfeits the alliance and claims the Traitor Tile (-2 VP).
+                    </p>
+                  </div>
+                  <div className="text-xs font-mono text-slate-400">
+                    Ambassadors: <strong className="text-indigo-300">{player.ambassadorTiles?.length || 0} / {player.faction.ambassadorSlots ?? 3}</strong>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                  {players.filter((other) => other.id !== player.id).map((other) => {
+                    const isAllied = player.ambassadorTiles?.includes(other.id);
+                    const isTraitorSelf = traitorPlayerId === player.id;
+                    const isTraitorOther = traitorPlayerId === other.id;
+                    const selfAmbSlots = player.faction.ambassadorSlots ?? 3;
+                    const otherAmbSlots = other.faction.ambassadorSlots ?? 3;
+                    const selfRepSlots = player.faction.reputationSlots ?? 5;
+                    const otherRepSlots = other.faction.reputationSlots ?? 5;
+
+                    const selfAmbFull = (player.ambassadorTiles?.length || 0) >= selfAmbSlots;
+                    const otherAmbFull = (other.ambassadorTiles?.length || 0) >= otherAmbSlots;
+                    const selfRepFull = (player.ambassadorTiles?.length || 0) + player.reputationTiles.length >= selfRepSlots;
+                    const otherRepFull = (other.ambassadorTiles?.length || 0) + other.reputationTiles.length >= otherRepSlots;
+
+                    // Connectivity check
+                    const p1Sectors = sectors.filter((s) => s.discOwner === player.id || s.ships.some((shp) => shp.ownerId === player.id));
+                    const p2Sectors = sectors.filter((s) => s.discOwner === other.id || s.ships.some((shp) => shp.ownerId === other.id));
+                    const hasWormholeGen =
+                      player.techTrack.researched.some((t) => t.id === 'wormhole_generator') ||
+                      other.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+                    const isConnected = p1Sectors.some((s1) =>
+                      p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen))
+                    );
+
+                    const canExchange =
+                      !isAllied &&
+                      !isTraitorSelf &&
+                      !isTraitorOther &&
+                      selfAmbSlots > 0 &&
+                      otherAmbSlots > 0 &&
+                      !selfAmbFull &&
+                      !otherAmbFull &&
+                      !selfRepFull &&
+                      !otherRepFull &&
+                      isConnected;
+
+                    let reason = '';
+                    if (isAllied) reason = 'Allied (+1 VP)';
+                    else if (selfAmbSlots === 0) reason = `${player.faction.name} cannot form alliances (0 slots)`;
+                    else if (otherAmbSlots === 0) reason = `${other.faction.name} cannot form alliances (0 slots)`;
+                    else if (isTraitorSelf) reason = 'You hold Traitor tile';
+                    else if (isTraitorOther) reason = `${other.name} holds Traitor tile`;
+                    else if (selfAmbFull) reason = 'Your ambassador slots full';
+                    else if (otherAmbFull) reason = `${other.name} ambassador slots full`;
+                    else if (selfRepFull) reason = 'Your reputation track full';
+                    else if (otherRepFull) reason = `${other.name} reputation track full`;
+                    else if (!isConnected) reason = 'Borders not connected';
+
+                    return (
+                      <div
+                        key={other.id}
+                        className={`p-2.5 rounded-lg border flex items-center justify-between gap-2 ${
+                          isAllied
+                            ? 'bg-indigo-950/40 border-indigo-500/60 text-indigo-200'
+                            : 'bg-slate-900/60 border-slate-800 text-slate-300'
+                        }`}
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <div className="w-3 h-3 rounded-full shrink-0 shadow" style={{ backgroundColor: other.color }} />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold truncate text-slate-100">{other.name}</div>
+                            <div className="text-[10px] text-slate-400 truncate">{other.faction.name}</div>
+                          </div>
+                        </div>
+
+                        <div>
+                          {isAllied ? (
+                            <span className="px-2 py-1 rounded bg-indigo-900/80 text-indigo-300 text-[10px] font-bold border border-indigo-700/60 flex items-center gap-1 shrink-0">
+                              <Handshake className="w-3 h-3 text-indigo-400" /> Allied (+1 VP)
+                            </span>
+                          ) : canExchange && onExchangeAmbassador && (isActive || player.id === activePlayerId) ? (
+                            <button
+                              type="button"
+                              onClick={() => onExchangeAmbassador(other.id)}
+                              className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase tracking-wider transition shadow-sm hover:shadow cursor-pointer flex items-center gap-1 shrink-0"
+                            >
+                              <Handshake className="w-3 h-3" /> Exchange (+1 VP)
+                            </button>
+                          ) : (
+                            <span className="text-[10px] text-slate-500 font-mono italic shrink-0" title={reason}>
+                              {reason}
+                            </span>
+                          )}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
+                    );
+                  })}
+                </div>
               </div>
             </div>
           )}

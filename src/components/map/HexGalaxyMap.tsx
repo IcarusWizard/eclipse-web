@@ -864,12 +864,18 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 </g>
 
                 {/* Sector VP Badge */}
-                {((sector.victoryPoints || 0) > 0 || sector.structures?.monolith) && (() => {
+                {((sector.victoryPoints || 0) > 0 || sector.structures?.monolith || sector.hasRareWarpPortal || sector.hasDiscoveryWarpPortal) && (() => {
                   const baseVP = sector.victoryPoints || 0;
                   const hasMonolith = !!sector.structures?.monolith;
-                  const totalVP = baseVP + (hasMonolith ? 3 : 0);
-                  const vpText = hasMonolith ? (baseVP > 0 ? `★ ${baseVP}+3 VP` : '★ 3 VP') : `★ ${baseVP} VP`;
-                  const rectWidth = hasMonolith ? (baseVP > 0 ? 52 : 38) : 36;
+                  const warpVP = sector.hasRareWarpPortal ? 1 : (sector.hasDiscoveryWarpPortal ? 2 : 0);
+                  const totalVP = baseVP + (hasMonolith ? 3 : 0) + warpVP;
+                  const bonusParts: string[] = [];
+                  if (hasMonolith) bonusParts.push('+3');
+                  if (warpVP > 0) bonusParts.push(`+${warpVP}`);
+                  const vpText = bonusParts.length > 0
+                    ? (baseVP > 0 ? `★ ${baseVP}${bonusParts.join('')} VP` : `★ ${totalVP} VP`)
+                    : `★ ${baseVP} VP`;
+                  const rectWidth = bonusParts.length > 0 ? (baseVP > 0 ? 56 : 40) : 36;
                   return (
                     <g transform={`translate(${x}, ${y - HEX_RADIUS + 32})`} className="pointer-events-none">
                       <rect
@@ -879,14 +885,14 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         height="14"
                         rx="3.5"
                         fill="#1e1b4b"
-                        stroke={hasMonolith ? '#818cf8' : '#f59e0b'}
+                        stroke={hasMonolith ? '#818cf8' : warpVP > 0 ? '#c084fc' : '#f59e0b'}
                         strokeWidth="1.2"
                       />
                       <text
                         x="0"
                         y="3.5"
                         textAnchor="middle"
-                        fill={hasMonolith ? '#c7d2fe' : '#fbbf24'}
+                        fill={hasMonolith ? '#c7d2fe' : warpVP > 0 ? '#f3e8ff' : '#fbbf24'}
                         fontSize="9"
                         fontWeight="900"
                         letterSpacing="0.3"
@@ -896,6 +902,36 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     </g>
                   );
                 })()}
+
+                {/* Warp Portal Structure / Tile Icon (Bug 61) */}
+                {(sector.hasWarpPortal || sector.structures?.warpPortal || sector.sectorNumber === 281 || sector.sectorNumber === 381 || sector.sectorNumber === 382) && (
+                  <g
+                    transform={`translate(${
+                      sector.structures?.monolith
+                        ? x - 24
+                        : sector.ancientsCount > 0
+                        ? x - 24
+                        : sector.hasArtifact || sector.discoveryTile
+                        ? x + 24
+                        : x - 20
+                    }, ${y - 12})`}
+                    className="pointer-events-none"
+                  >
+                    {/* Glowing outer portal ring */}
+                    <circle cx="0" cy="0" r="10" fill="#2e1065" stroke="#a855f7" strokeWidth="1.5" className="animate-pulse" />
+                    <circle cx="0" cy="0" r="7" fill="#3b0764" stroke="#c084fc" strokeWidth="1" strokeDasharray="3 2" />
+                    <circle cx="0" cy="0" r="4" fill="#0f172a" stroke="#e9d5ff" strokeWidth="0.8" />
+                    <circle cx="0" cy="0" r="1.5" fill="#f3e8ff" />
+                    {sector.hasRareWarpPortal && (
+                      <g transform="translate(0, 15)">
+                        <rect x="-11" y="-5" width="22" height="10" rx="2.5" fill="#581c87" stroke="#d8b4fe" strokeWidth="0.8" />
+                        <text x="0" y="3" textAnchor="middle" fill="#f5d0fe" fontSize="7" fontWeight="900">
+                          +1 VP
+                        </text>
+                      </g>
+                    )}
+                  </g>
+                )}
 
                 {/* Monolith Structure Icon */}
                 {sector.structures?.monolith && (
@@ -1207,7 +1243,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   return (
                     <g transform={`translate(${x}, ${y + (isCenter ? 38 : 34)})`}>
                       {fleetGroups.map((group, gIdx) => {
-                        const offsetY = fleetGroups.length === 1 ? 0 : (gIdx === 0 ? -9 : 9);
+                        const offsetY = (gIdx - (fleetGroups.length - 1) / 2) * 17;
                         const labelStr = group.typeCounts.map((t) => `${t.count}${t.label}`).join(' ');
                         const badgeWidth = Math.max(50, labelStr.length * 6.5 + 24);
 
@@ -1666,15 +1702,24 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
                     return (
                       <g key={planet.id || pIdx} transform={`translate(${offsetX}, ${offsetY})`}>
-                        <circle
-                          cx="0"
-                          cy="0"
-                          r={planet.isAdvanced ? '8.5' : '7.5'}
+                        <rect
+                          x={planet.isAdvanced ? '-7' : '-6.5'}
+                          y={planet.isAdvanced ? '-7' : '-6.5'}
+                          width={planet.isAdvanced ? '14' : '13'}
+                          height={planet.isAdvanced ? '14' : '13'}
+                          rx="2"
                           fill="rgba(15, 23, 42, 0.95)"
                           stroke={planet.isAdvanced ? '#ffffff' : planetColor}
-                          strokeWidth={planet.isAdvanced ? '2' : '1.8'}
+                          strokeWidth={planet.isAdvanced ? '1.8' : '1.6'}
                         />
-                        <circle cx="0" cy="0" r="3.2" fill={planetColor} />
+                        <rect
+                          x="-3"
+                          y="-3"
+                          width="6"
+                          height="6"
+                          rx="1.2"
+                          fill={planetColor}
+                        />
                       </g>
                     );
                   })}

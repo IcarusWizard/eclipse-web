@@ -25,6 +25,7 @@ export interface CombatRoll {
 
 export interface CombatState {
   sectorId: string;
+  attackerOwnerId?: string;
   defenderOwnerId?: string;
   roundNumber: number;
   stage: 'missile' | 'regular' | 'bombardment' | 'resolved';
@@ -150,6 +151,7 @@ export interface GameState {
   pendingReputationDraw?: PendingReputationDraw | null;
   pendingReputationDrawQueue?: PendingReputationDraw[];
   resolvedCombatSectorIds?: string[];
+  traitorPlayerId?: string;
   log: GameLogEntry[];
   winnerId?: string;
   finalScores?: Record<string, {
@@ -160,6 +162,7 @@ export interface GameState {
     monoliths: number;
     discoveries: number;
     speciesBonus: number;
+    traitor?: number;
     total: number;
   }>;
 }

@@ -176,6 +176,11 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
                                   Leader
                                 </span>
                               )}
+                              {Boolean(b.traitor && b.traitor < 0) && (
+                                <span className="text-[10px] text-rose-300 font-semibold px-1.5 py-0.2 bg-rose-950/80 border border-rose-800 rounded">
+                                  Traitor (-2 VP)
+                                </span>
+                              )}
                             </div>
                             <div className="text-[11px] text-slate-400">{player.faction.name}</div>
                           </div>

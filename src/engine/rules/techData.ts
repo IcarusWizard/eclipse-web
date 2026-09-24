@@ -71,7 +71,6 @@ export const NANO_TECHS: Technology[] = [
     minCost: 6,
     costByDiscount: [12, 10, 8, 6],
     unlocksStructure: 'monolith',
-    victoryPoints: 3,
     description: 'Permits building Monoliths (cost 10 Materials, grants 3 VP at game end).',
   },
   {
@@ -383,7 +382,6 @@ export const RARE_TECHS: Technology[] = [
     baseCost: 9,
     minCost: 7,
     costByDiscount: [9, 8, 7, 7],
-    victoryPoints: 1,
     description: 'Immediately place the Warp Portal Tile on any Sector you Control. Connects this Sector to all other Warp Portal Sectors and is worth 1 VP if Controlled at game end.',
   },
   {
