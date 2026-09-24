@@ -29,12 +29,12 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({ logs }) => {
   }, [logs]);
 
   return (
-    <div className="fixed bottom-4 right-4 z-30 flex flex-col items-end">
+    <div className="fixed bottom-24 md:bottom-4 right-3.5 md:right-4 z-20 md:z-30 flex flex-col items-end">
       {/* Drawer Box */}
       {isOpen && (
         <div
           className={`${
-            isExpanded ? 'w-[28rem] h-[34rem]' : 'w-96 h-80'
+            isExpanded ? 'w-[calc(100vw-28px)] sm:w-[28rem] h-[34rem]' : 'w-[calc(100vw-28px)] sm:w-96 h-80'
           } bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl p-3 flex flex-col mb-2 backdrop-blur-md transition-all`}
         >
           {/* Header */}

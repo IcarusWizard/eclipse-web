@@ -5682,6 +5682,103 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(terranDraw).toBeDefined();
         expect(terranDraw!.drawnTiles.length).toBe(1);
       });
+
+      it('44. verifies Responsive Mobile Layout & Action Bar availability (Mobile UI playable)', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { ActionBar } = await import('../../components/layout/ActionBar');
+        const { BugReportCornerButton } = await import('../../components/feedback/BugReportCornerButton');
+        const { GameLogDrawer } = await import('../../components/layout/GameLogDrawer');
+        const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+
+        const game = createInitialGame(2, ['terran_directorate', 'planta']);
+        const p1 = game.players[0]!;
+
+        // 1. Render normal ActionBar
+        const actionBarHtml = renderToString(
+          React.createElement(ActionBar, {
+            activePlayer: p1,
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+          })
+        );
+
+        // Expect 7-column grid layout for mobile and flex for desktop
+        expect(actionBarHtml).toContain('grid-cols-7');
+        expect(actionBarHtml).toContain('md:flex');
+        // Expect all 7 actions to be present and labeled
+        expect(actionBarHtml).toContain('EXP');
+        expect(actionBarHtml).toContain('RES');
+        expect(actionBarHtml).toContain('UPG');
+        expect(actionBarHtml).toContain('BLD');
+        expect(actionBarHtml).toContain('MOV');
+        expect(actionBarHtml).toContain('INF');
+        expect(actionBarHtml).toContain('PASS');
+
+        // 2. Render ActionBar with pending confirmation
+        const pendingConfirmHtml = renderToString(
+          React.createElement(ActionBar, {
+            activePlayer: p1,
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+            pendingConfirmation: {
+              actionType: 'BUILD',
+              description: 'Built 1 Interceptor in Sol',
+              canRevert: true,
+              priorState: game,
+            },
+            onConfirmAction: () => {},
+            onRevertAction: () => {},
+          })
+        );
+        expect(pendingConfirmHtml).toContain('Confirm &amp; End Turn');
+        expect(pendingConfirmHtml).toContain('Revert');
+        expect(pendingConfirmHtml).toContain('Built 1 Interceptor in Sol');
+
+        // 3. Render BugReportCornerButton with responsive non-overlapping bottom coordinates
+        const bugButtonHtml = renderToString(
+          React.createElement(BugReportCornerButton, {
+            onClick: () => {},
+          })
+        );
+        expect(bugButtonHtml).toContain('bottom-24');
+        expect(bugButtonHtml).toContain('md:bottom-3.5');
+
+        // 4. Render GameLogDrawer with responsive coordinates and mobile max-width
+        const gameLogHtml = renderToString(
+          React.createElement(GameLogDrawer, {
+            logs: [{ id: '1', timestamp: Date.now(), round: 1, type: 'action', message: 'Round 1 begins' }],
+          })
+        );
+        expect(gameLogHtml).toContain('bottom-24');
+        expect(gameLogHtml).toContain('md:bottom-4');
+
+        // 5. Render PlayerBoard
+        const playerBoardHtml = renderToString(
+          React.createElement(PlayerBoard, {
+            player: p1,
+            isActive: true,
+            sectors: game.sectors,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        );
+        expect(playerBoardHtml).toBeDefined();
+        expect(playerBoardHtml.length).toBeGreaterThan(0);
+      });
     });
   });
 });

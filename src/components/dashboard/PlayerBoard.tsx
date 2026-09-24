@@ -53,7 +53,12 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   gamePhase = 'ACTION_PHASE',
   onInitiateDiplomacy,
 }) => {
-  const [isCollapsed, setIsCollapsed] = useState<boolean>(false);
+  const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 768;
+    }
+    return false;
+  });
   const [showFleet, setShowFleet] = useState<boolean>(false);
   const [showTech, setShowTech] = useState<boolean>(false);
 

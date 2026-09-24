@@ -1305,8 +1305,8 @@ export const App: React.FC = () => {
           }
         />
 
-        {/* Floating Player Dashboard (Bottom-Left) */}
-        <div className="absolute top-4 left-4 z-20 w-80 max-w-[calc(100vw-32px)] max-h-[calc(100vh-140px)] overflow-y-auto scrollbar-thin pointer-events-auto">
+        {/* Floating Player Dashboard (Top-Left) */}
+        <div className="absolute top-4 left-4 z-20 w-[calc(100vw-32px)] sm:w-80 max-h-[calc(100vh-140px)] overflow-y-auto scrollbar-thin pointer-events-auto">
           <PlayerBoard
             player={viewedPlayer}
             isActive={viewedPlayer.id === activePlayer.id}
