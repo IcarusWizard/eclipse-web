@@ -92,3 +92,6 @@
 - [x] one player shouldn't see the other people's rep tile selection page (Round 8, GAME_OVER, Player: Descendants of Draco, Table #386)
 - [x] now the game need to be fresh to know the other player confirm the turn (Round 1, ACTION_PHASE, Player: Planta, Table #860)
 - [x] after both pass, shows X is not defined error (Round 2, ACTION_PHASE, Player: Eridani Empire, Table #860)
+- [ ] the existance of the whomhole on the sector is not previewed before placed (Round 2, ACTION_PHASE, Player: Planta, Table #860)
+- [ ] for the influence action, the flip back coloney ship can happen after the put influence and population cube, the game should allow this (Round 3, ACTION_PHASE, Player: Planta, Table #860)
+- [ ] when planta explore but cancel the action after the first explore, it should finish the turn (Round 4, ACTION_PHASE, Player: Planta, Table #860)
