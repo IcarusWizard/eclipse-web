@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GameState, CombatState } from '../../engine/types/state';
-import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X, Navigation, ArrowRight } from 'lucide-react';
+import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X, Navigation, ArrowRight, Minimize2, Maximize2 } from 'lucide-react';
 import { buildCombatUnitsForSector, sortUnitsByInitiative, getSectorDefenderOwnerId } from '../../engine/rules/combatEngine';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
 
@@ -66,6 +66,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const [selectedRetreatSectorId, setSelectedRetreatSectorId] = useState<string>(
     eligibleRetreatDestinations[0]?.id || ''
   );
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
   const isAlreadyRetreating = activeAttacker ? !!combat.retreatDeclared?.[activeAttacker.id] : false;
   const retreatDestination = isAlreadyRetreating && activeAttacker
@@ -84,6 +85,39 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
     onStepCombat(sameTypeIds, destId);
   };
+
+  if (isMinimized) {
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-rose-500 rounded-full shadow-2xl backdrop-blur-md text-white">
+          <div className="flex items-center gap-2">
+            <span className="relative flex h-3 w-3">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-rose-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-3 w-3 bg-rose-500"></span>
+            </span>
+            <Crosshair className="w-4 h-4 text-rose-400 animate-spin-slow" />
+            <span className="font-bold text-xs sm:text-sm tracking-wide text-rose-300">
+              FLEET ENGAGEMENT: SECTOR {sector.sectorNumber}
+            </span>
+            <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300">
+              {isResolved ? 'RESOLVED' : isMissileStage ? 'MISSILE' : `RND ${combat.roundNumber}`}
+            </span>
+          </div>
+
+          <div className="h-4 w-px bg-slate-800" />
+
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="px-3.5 py-1 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white rounded-full text-xs font-bold transition-all shadow-md shadow-rose-950/50 flex items-center gap-1.5"
+            title="Return to combat window"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>Return to Combat</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
@@ -105,17 +139,27 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               </p>
             </div>
           </div>
-          <span
-            className={`text-xs font-bold px-2.5 py-1 rounded border uppercase ${
-              isResolved
-                ? 'bg-emerald-950 border-emerald-500 text-emerald-300'
-                : isMissileStage
-                ? 'bg-amber-950 border-amber-500 text-amber-300'
-                : 'bg-rose-950 border-rose-800 text-rose-300'
-            }`}
-          >
-            {isResolved ? '🏆 RESOLVED' : isMissileStage ? '🚀 MISSILE STAGE' : `Round ${combat.roundNumber}`}
-          </span>
+          <div className="flex items-center gap-2">
+            <span
+              className={`text-xs font-bold px-2.5 py-1 rounded border uppercase ${
+                isResolved
+                  ? 'bg-emerald-950 border-emerald-500 text-emerald-300'
+                  : isMissileStage
+                  ? 'bg-amber-950 border-amber-500 text-amber-300'
+                  : 'bg-rose-950 border-rose-800 text-rose-300'
+              }`}
+            >
+              {isResolved ? '🏆 RESOLVED' : isMissileStage ? '🚀 MISSILE STAGE' : `Round ${combat.roundNumber}`}
+            </span>
+            <button
+              onClick={() => setIsMinimized(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-sm"
+              title="Minimize combat window to view galaxy map"
+            >
+              <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
+              <span>View Map</span>
+            </button>
+          </div>
         </div>
 
         {/* Combat Field */}

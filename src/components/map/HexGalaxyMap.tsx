@@ -670,13 +670,20 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             const isMoveOrigin = moveMode ? moveMode.currentSimSectorId === sector.id : false;
             const isMoveConnectedDest = moveMode ? moveMode.connectedDestinationSectorIds.includes(sector.id) : false;
 
-            let hexFill = isCenter
+            // Combat status
+            const isCombatSector = state.activeCombat?.sectorId === sector.id;
+
+            let hexFill = isCombatSector
+              ? 'rgba(225, 29, 72, 0.25)'
+              : isCenter
               ? 'rgba(30, 27, 75, 0.95)'
               : owner
               ? `${owner.color}15`
               : 'rgba(15, 23, 42, 0.95)';
 
-            let hexStroke = isSelected
+            let hexStroke = isCombatSector
+              ? '#f43f5e'
+              : isSelected
               ? '#38bdf8'
               : owner
               ? owner.color
@@ -684,7 +691,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? '#a855f7'
               : '#334155';
 
-            let hexStrokeWidth = isSelected ? '3' : owner ? '2.5' : '1.5';
+            let hexStrokeWidth = isCombatSector ? '4.5' : isSelected ? '3' : owner ? '2.5' : '1.5';
             let hexStrokeDasharray: string | undefined = undefined;
 
             if (buildMode) {
@@ -775,6 +782,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     stroke="#06b6d4"
                     strokeWidth="2.5"
                     strokeDasharray="5 3"
+                    className="animate-pulse pointer-events-none"
+                  />
+                )}
+                {isCombatSector && (
+                  <polygon
+                    points={getHexCornerPoints(x, y, HEX_RADIUS + 4)}
+                    fill="none"
+                    stroke="#f43f5e"
+                    strokeWidth="3.5"
+                    strokeDasharray="6 3"
                     className="animate-pulse pointer-events-none"
                   />
                 )}
@@ -902,6 +919,34 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     </g>
                   );
                 })()}
+
+                {/* Active Combat Badge */}
+                {isCombatSector && (
+                  <g transform={`translate(${x}, ${y - HEX_RADIUS + 46})`} className="pointer-events-none">
+                    <rect
+                      x="-38"
+                      y="-8"
+                      width="76"
+                      height="16"
+                      rx="8"
+                      fill="#881337"
+                      stroke="#f43f5e"
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      x="0"
+                      y="3.5"
+                      textAnchor="middle"
+                      fill="#ffe4e6"
+                      fontSize="9"
+                      fontFamily="monospace"
+                      fontWeight="900"
+                      letterSpacing="0.8"
+                    >
+                      ⚔️ COMBAT
+                    </text>
+                  </g>
+                )}
 
                 {/* Warp Portal Structure / Tile Icon (Bug 61) */}
                 {(sector.hasWarpPortal || sector.structures?.warpPortal || sector.sectorNumber === 281 || sector.sectorNumber === 381 || sector.sectorNumber === 382) && (

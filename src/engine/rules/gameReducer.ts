@@ -658,11 +658,18 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           return { valid: false, error: `Ship ${shipInfo.ship.type} is pinned by hostile forces and cannot move further.` };
         }
 
-        // Check if origin sector pins this ship before taking any step (hostiles pin 1:1)
+        // Check if origin sector pins this ship before taking any step (GCDS pins all, other hostiles pin 1:1)
         const originSecId = shipInfo.currentSectorId;
         const originSec = state.sectors.find((s) => s.id === originSecId);
         if (originSec) {
           const shipsInOrigin = simSectorShips.get(originSecId) || [];
+          const hasLiveGcds = originSec.hasGCDS || shipsInOrigin.some((s) => s.ownerId === 'gcds' || s.type === 'gcds');
+          if (hasLiveGcds) {
+            return {
+              valid: false,
+              error: `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} by the Galactic Center Defense System (GCDS) and cannot move.`,
+            };
+          }
           const friendlyCount = shipsInOrigin.filter((s) => s.ownerId === action.playerId).length;
           const hostiles = getHostilesInSec(originSec, shipsInOrigin);
           if (hostiles > 0 && friendlyCount <= hostiles) {
@@ -708,16 +715,19 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
           shipInfo.currentSectorId = step.toSectorId;
 
-          // Check if destination has hostiles -> pinned if friendly <= hostile
+          // Check if destination has hostiles -> GCDS pins all; other hostiles pin 1:1 if friendly <= hostile
           const shipsInTo = simSectorShips.get(toSec.id) || [];
+          const hasLiveGcdsInTo = toSec.hasGCDS || shipsInTo.some((s) => s.ownerId === 'gcds' || s.type === 'gcds');
           const friendlyInTo = shipsInTo.filter((s) => s.ownerId === action.playerId).length;
           const hostilesInTo = getHostilesInSec(toSec, shipsInTo);
-          if (hostilesInTo > 0 && friendlyInTo <= hostilesInTo) {
+          if (hasLiveGcdsInTo || (hostilesInTo > 0 && friendlyInTo <= hostilesInTo)) {
             pinnedShips.add(act.shipId);
             if (sIdx < act.steps.length - 1) {
               return {
                 valid: false,
-                error: `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`,
+                error: hasLiveGcdsInTo
+                  ? `Ship ${shipInfo.ship.type} was pinned by the Galactic Center Defense System (GCDS) upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`
+                  : `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`,
               };
             }
           }
@@ -1866,7 +1876,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             planet.colonizedBy = player.id;
             player.colonyShips.ready = Math.max(0, player.colonyShips.ready - 1);
             let placedRes: 'money' | 'science' | 'material';
-            if (planet.isOrbital) {
+            if (action.planetResourceChoices && action.planetResourceChoices[pIdx]) {
+              placedRes = action.planetResourceChoices[pIdx];
+            } else if (planet.isOrbital) {
               placedRes = player.population.money.cubesOnBoard > 0 ? 'money' : 'science';
             } else if (planet.resource === 'any') {
               placedRes = player.population.money.cubesOnBoard > 0 ? 'money' : player.population.science.cubesOnBoard > 0 ? 'science' : 'material';
@@ -2592,10 +2604,15 @@ export function resolveAttackingPopulationAndConquest(
     // If attacker has surviving ships and sector is uncontrolled by them, prompt conquest
     const hasAttackerShips = sector.ships.some((s) => s.ownerId === winnerId);
     if (hasAttackerShips && sector.discOwner !== winnerId) {
+      let discoveryToClaim = sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined;
+      if (!discoveryToClaim && sector.hasDiscovery && !sector.discoveryClaimed && state.discoveryBag && state.discoveryBag.length > 0) {
+        sector.discoveryTile = state.discoveryBag.pop();
+        discoveryToClaim = sector.discoveryTile;
+      }
       state.pendingCombatConquest = {
         sectorId: sector.id,
         winnerPlayerId: winnerId,
-        discoveryToClaim: sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined,
+        discoveryToClaim,
         bombardmentSummary,
         canClaimInfluence: true,
       };
@@ -2675,9 +2692,10 @@ export function computePinningState(
 
     const toSec = state.sectors.find((s) => s.id === m.toSectorId);
     if (toSec) {
+      const hasLiveGcdsInTo = toSec.hasGCDS || toList.some((s) => s.ownerId === 'gcds' || s.type === 'gcds');
       const friendlyInTo = toList.filter((s) => s.ownerId === playerId).length;
       const hostilesInTo = getHostilesInSec(toSec, toList);
-      if (hostilesInTo > 0 && friendlyInTo <= hostilesInTo) {
+      if (hasLiveGcdsInTo || (hostilesInTo > 0 && friendlyInTo <= hostilesInTo)) {
         pinnedShipIds.add(m.shipId);
       }
     }
@@ -2687,11 +2705,18 @@ export function computePinningState(
   for (const s of state.sectors) {
     const shipsInSec = simSectorShips.get(s.id) || [];
     const friendlyShips = shipsInSec.filter((sh) => sh.ownerId === playerId);
-    const hostiles = getHostilesInSec(s, shipsInSec);
+    const hasLiveGcds = s.hasGCDS || shipsInSec.some((sh) => sh.ownerId === 'gcds' || sh.type === 'gcds');
 
-    if (hostiles > 0 && friendlyShips.length <= hostiles) {
+    if (hasLiveGcds) {
       for (const sh of friendlyShips) {
         pinnedShipIds.add(sh.id);
+      }
+    } else {
+      const hostiles = getHostilesInSec(s, shipsInSec);
+      if (hostiles > 0 && friendlyShips.length <= hostiles) {
+        for (const sh of friendlyShips) {
+          pinnedShipIds.add(sh.id);
+        }
       }
     }
   }
@@ -2882,10 +2907,15 @@ export function checkAndTriggerCombat(state: GameState): void {
     state.resolvedCombatSectorIds!.push(sector.id);
     const winnerId = sector.ships.find((s) => s.ownerId.startsWith('player_'))!.ownerId;
     state.phase = 'COMBAT_PHASE';
+    let discoveryToClaim = sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined;
+    if (!discoveryToClaim && sector.hasDiscovery && !sector.discoveryClaimed && state.discoveryBag && state.discoveryBag.length > 0) {
+      sector.discoveryTile = state.discoveryBag.pop();
+      discoveryToClaim = sector.discoveryTile;
+    }
     state.pendingCombatConquest = {
       sectorId: sector.id,
       winnerPlayerId: winnerId,
-      discoveryToClaim: sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined,
+      discoveryToClaim,
       canClaimInfluence: true,
     };
     return;
@@ -3206,7 +3236,9 @@ export function getMaxResearchActivations(player: PlayerState): number {
 }
 
 export function getMaxUpgradeActivations(player: PlayerState): number {
-  return player.faction.upgradeActivations ?? 2;
+  const base = player.faction.upgradeActivations ?? 2;
+  const hasPicoModulator = player.techTrack.researched.some((t) => t.id === 'pico_modulator');
+  return base + (hasPicoModulator ? 2 : 0);
 }
 
 export function getMaxBuildActivations(player: PlayerState): number {

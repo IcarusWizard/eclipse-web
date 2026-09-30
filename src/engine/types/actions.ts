@@ -143,6 +143,7 @@ export interface CombatConquestAction extends BaseAction {
   sectorId: string;
   claimInfluence: boolean;
   colonizePlanetIndices?: number[];
+  planetResourceChoices?: Record<number, 'money' | 'science' | 'material'>;
 }
 
 export interface ClaimReputationTileAction extends BaseAction {

@@ -20,7 +20,11 @@ import {
 interface CombatConquestModalProps {
   state: GameState;
   conquest: PendingCombatConquest;
-  onConfirm: (claimInfluence: boolean, colonizePlanetIndices: number[]) => void;
+  onConfirm: (
+    claimInfluence: boolean,
+    colonizePlanetIndices: number[],
+    planetResourceChoices?: Record<number, 'money' | 'science' | 'material'>
+  ) => void;
 }
 
 export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
@@ -43,6 +47,19 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   );
 
   const [selectedPlanetIndices, setSelectedPlanetIndices] = useState<number[]>([]);
+  const [planetResourceChoices, setPlanetResourceChoices] = useState<
+    Record<number, 'money' | 'science' | 'material'>
+  >({});
+
+  const hasAdvancedEconomy = winner.techTrack.researched.some(
+    (t) => t.id === 'advanced_economy' || t.id === 'metasynthesis'
+  );
+  const hasAdvancedLabs = winner.techTrack.researched.some(
+    (t) => t.id === 'advanced_labs' || t.id === 'metasynthesis'
+  );
+  const hasAdvancedMining = winner.techTrack.researched.some(
+    (t) => t.id === 'advanced_mining' || t.id === 'metasynthesis'
+  );
 
   const readyColonyShips = winner.colonyShips.ready;
   const remainingColonyShips = readyColonyShips - selectedPlanetIndices.length;
@@ -60,7 +77,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   const handleConfirm = () => {
     // If not claiming influence or cannot claim, clear planet colonization
     const effectivePlanets = canClaim && (claimInfluence || alreadyControls) ? selectedPlanetIndices : [];
-    onConfirm(canClaim && !alreadyControls ? claimInfluence : false, effectivePlanets);
+    onConfirm(
+      canClaim && !alreadyControls ? claimInfluence : false,
+      effectivePlanets,
+      planetResourceChoices
+    );
   };
 
   const handleDeclineAll = () => {
@@ -325,6 +346,23 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                         const check = canColonizePlanetSlot(winner, planet);
                         const canSelect = isSelected || (check.canColonize && remainingColonyShips > 0);
 
+                        const isWild = planet.resource === 'any';
+                        const isOrb = !!planet.isOrbital;
+
+                        // Default resource selection if not chosen yet
+                        const defaultRes: 'money' | 'science' | 'material' = isOrb
+                          ? winner.population.money.cubesOnBoard > 0
+                            ? 'money'
+                            : 'science'
+                          : winner.population.money.cubesOnBoard > 0
+                          ? 'money'
+                          : winner.population.science.cubesOnBoard > 0
+                          ? 'science'
+                          : 'material';
+
+                        const chosenRes = planetResourceChoices[pIdx] || defaultRes;
+                        const displayResource = isWild || isOrb ? chosenRes : planet.resource;
+
                         return (
                           <div
                             key={planet.id || pIdx}
@@ -343,25 +381,27 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                 : 'bg-slate-950/40 border-slate-900 opacity-50 cursor-not-allowed'
                             }`}
                           >
-                            <div className="flex items-center gap-2.5">
+                            <div className="flex items-center gap-2.5 min-w-0">
                               {/* Resource Icon badge */}
                               <div
-                                className={`w-7 h-7 rounded-full flex items-center justify-center border font-bold text-xs ${
-                                  planet.resource === 'money'
+                                className={`w-7 h-7 rounded-full flex items-center justify-center border font-bold text-xs shrink-0 ${
+                                  displayResource === 'money'
                                     ? 'bg-yellow-500/20 border-yellow-400 text-yellow-300'
-                                    : planet.resource === 'science'
+                                    : displayResource === 'science'
                                     ? 'bg-pink-500/20 border-pink-400 text-pink-300'
-                                    : 'bg-amber-800/30 border-amber-600 text-amber-500'
+                                    : displayResource === 'material'
+                                    ? 'bg-amber-800/30 border-amber-600 text-amber-500'
+                                    : 'bg-slate-800 border-slate-700 text-slate-300'
                                 }`}
                               >
-                                {planet.resource === 'money' && <Coins className="w-3.5 h-3.5" />}
-                                {planet.resource === 'science' && <FlaskConical className="w-3.5 h-3.5" />}
-                                {planet.resource === 'material' && <Hammer className="w-3.5 h-3.5" />}
+                                {displayResource === 'money' && <Coins className="w-3.5 h-3.5" />}
+                                {displayResource === 'science' && <FlaskConical className="w-3.5 h-3.5" />}
+                                {displayResource === 'material' && <Hammer className="w-3.5 h-3.5" />}
                               </div>
 
-                              <div className="flex flex-col text-left">
+                              <div className="flex flex-col text-left min-w-0">
                                 <span className="font-bold text-xs capitalize text-slate-200 flex items-center gap-1.5">
-                                  {planet.resource} Planet
+                                  {isOrb ? 'Orbital Station' : isWild ? 'Wild Habitat' : `${planet.resource} Planet`}
                                   {planet.isAdvanced && (
                                     <span className="text-[9px] font-mono px-1 rounded bg-slate-800 border border-slate-700 text-slate-400">
                                       Adv
@@ -372,16 +412,89 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                   {isColonized
                                     ? 'Already Colonized'
                                     : isSelected
-                                    ? 'Deploying Colony Ship'
+                                    ? `Deploying Colony Ship (${chosenRes.toUpperCase()})`
                                     : !check.canColonize
                                     ? check.reason
                                     : 'Ready to Colonize'}
                                 </span>
+
+                                {/* Resource Selector for Wild / Orbital Habitats */}
+                                {(isWild || isOrb) && !isColonized && (
+                                  <div
+                                    className="flex items-center gap-1 mt-1.5 flex-wrap"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    {/* Money Button */}
+                                    <button
+                                      type="button"
+                                      disabled={winner.population.money.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedEconomy)}
+                                      onClick={() => {
+                                        setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'money' }));
+                                        if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
+                                          setSelectedPlanetIndices((prev) => [...prev, pIdx]);
+                                        }
+                                      }}
+                                      className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold border transition-all flex items-center gap-1 ${
+                                        chosenRes === 'money'
+                                          ? 'bg-yellow-500 text-slate-950 border-yellow-400 shadow-sm'
+                                          : 'bg-slate-800 text-yellow-400 border-slate-700 hover:border-yellow-500/50'
+                                      } disabled:opacity-30 disabled:pointer-events-none`}
+                                      title="Colonize with Money Cube"
+                                    >
+                                      <Coins className="w-2.5 h-2.5" />
+                                      <span>Money ({winner.population.money.cubesOnBoard})</span>
+                                    </button>
+
+                                    {/* Science Button */}
+                                    <button
+                                      type="button"
+                                      disabled={winner.population.science.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedLabs)}
+                                      onClick={() => {
+                                        setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'science' }));
+                                        if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
+                                          setSelectedPlanetIndices((prev) => [...prev, pIdx]);
+                                        }
+                                      }}
+                                      className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold border transition-all flex items-center gap-1 ${
+                                        chosenRes === 'science'
+                                          ? 'bg-pink-500 text-white border-pink-400 shadow-sm'
+                                          : 'bg-slate-800 text-pink-400 border-slate-700 hover:border-pink-500/50'
+                                      } disabled:opacity-30 disabled:pointer-events-none`}
+                                      title="Colonize with Science Cube"
+                                    >
+                                      <FlaskConical className="w-2.5 h-2.5" />
+                                      <span>Science ({winner.population.science.cubesOnBoard})</span>
+                                    </button>
+
+                                    {/* Material Button (only if not orbital) */}
+                                    {!isOrb && (
+                                      <button
+                                        type="button"
+                                        disabled={winner.population.material.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedMining)}
+                                        onClick={() => {
+                                          setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'material' }));
+                                          if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
+                                            setSelectedPlanetIndices((prev) => [...prev, pIdx]);
+                                          }
+                                        }}
+                                        className={`px-1.5 py-0.5 rounded text-[9.5px] font-bold border transition-all flex items-center gap-1 ${
+                                          chosenRes === 'material'
+                                            ? 'bg-amber-600 text-white border-amber-500 shadow-sm'
+                                            : 'bg-slate-800 text-amber-400 border-slate-700 hover:border-amber-500/50'
+                                        } disabled:opacity-30 disabled:pointer-events-none`}
+                                        title="Colonize with Material Cube"
+                                      >
+                                        <Hammer className="w-2.5 h-2.5" />
+                                        <span>Materials ({winner.population.material.cubesOnBoard})</span>
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
                               </div>
                             </div>
 
                             {/* Checkbox / Lock */}
-                            <div>
+                            <div className="shrink-0 ml-2">
                               {isColonized ? (
                                 <span className="text-[10px] text-slate-500">Taken</span>
                               ) : !check.canColonize && !isSelected ? (

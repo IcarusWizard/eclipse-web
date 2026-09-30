@@ -38,6 +38,7 @@ import {
   resolveAttackingPopulationAndConquest,
   computePinningState,
   canExchangeAmbassadors,
+  getMaxUpgradeActivations,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -6020,6 +6021,316 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(techModalHtml).toContain('Place Portal on Sector:');
         expect(techModalHtml).toContain('201');
         expect(techModalHtml).toContain('sec_a');
+      });
+
+      it('46. verifies Bug Fixes 80-86: Pico Modulator upgrade activations, Combat conquest wild/orbital resource selection, Combat window minimization & sector battle highlighting, Traitor Tile display on PlayerBoard, GCDS absolute sector pinning, Bankruptcy plan confirmation with TRADE, and Sector 1 discovery tile resolution', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const game = createInitialGame(2, ['hydran_progress', 'orion_hegemony']);
+        const hydran = game.players[0]!;
+        const orion = game.players[1]!;
+
+        // =====================================================================
+        // Bug 80: Pico Modulator increases upgrade activations by +2
+        // =====================================================================
+        expect(getMaxUpgradeActivations(hydran)).toBe(2);
+        hydran.techTrack.researched.push({
+          id: 'pico_modulator',
+          name: 'Pico Modulator',
+          category: 'rare',
+          cost: 5,
+          minCost: 5,
+          baseCost: 5,
+          isRare: true,
+        });
+        expect(getMaxUpgradeActivations(hydran)).toBe(4);
+
+        const mechGame = createInitialGame(1, ['mechanema']);
+        const mech = mechGame.players[0]!;
+        expect(getMaxUpgradeActivations(mech)).toBe(3);
+        mech.techTrack.researched.push({
+          id: 'pico_modulator',
+          name: 'Pico Modulator',
+          category: 'rare',
+          cost: 5,
+          minCost: 5,
+          baseCost: 5,
+          isRare: true,
+        });
+        expect(getMaxUpgradeActivations(mech)).toBe(5);
+
+        // =====================================================================
+        // Bug 81: Combat conquest wild/orbital planet resource selection
+        // =====================================================================
+        const testSector: SectorTile = {
+          id: 'sec_wild_test',
+          sectorNumber: 301,
+          name: 'Wild Sector',
+          ring: 3,
+          coord: { q: 2, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [
+            { id: 'p_wild_1', resource: 'any', isAdvanced: false },
+            { id: 'p_orb_1', resource: 'science', isAdvanced: false, isOrbital: true },
+          ],
+          ships: [{ id: 'hydran_ship_1', ownerId: hydran.id, type: 'cruiser', damage: 0 }],
+        };
+        game.sectors.push(testSector);
+
+        game.pendingCombatConquest = {
+          sectorId: testSector.id,
+          winnerPlayerId: hydran.id,
+          canClaimInfluence: true,
+        };
+        hydran.colonyShips.ready = 2;
+        hydran.population.science.cubesOnBoard = 5;
+        hydran.population.money.cubesOnBoard = 5;
+        hydran.influenceTrack.discsOnTrack = 5;
+
+        // Colonize planet 0 (wild) choosing science instead of default money
+        const conquestRes = executeAction(game, {
+          type: 'COMBAT_CONQUEST',
+          playerId: hydran.id,
+          sectorId: testSector.id,
+          claimInfluence: true,
+          colonizePlanetIndices: [0],
+          planetResourceChoices: { 0: 'science' },
+        });
+        expect(conquestRes.success).toBe(true);
+        const updatedSector = conquestRes.newState.sectors.find((s) => s.id === testSector.id)!;
+        const updatedHydran = conquestRes.newState.players.find((p) => p.id === hydran.id)!;
+        expect(updatedSector.discOwner).toBe(hydran.id);
+        expect(updatedSector.planets[0]!.colonizedBy).toBe(hydran.id);
+        expect(updatedSector.planets[0]!.colonizedResource).toBe('science');
+        expect(updatedHydran.population.science.cubesOnBoard).toBe(4);
+
+        // Verify CombatConquestModal renders resource choice buttons
+        const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+        const modalHtml = renderToString(
+          React.createElement(CombatConquestModal, {
+            state: game,
+            conquest: {
+              sectorId: testSector.id,
+              winnerPlayerId: orion.id,
+              canClaimInfluence: true,
+            },
+            onConfirm: () => {},
+          })
+        );
+        expect(modalHtml).toContain('Money');
+        expect(modalHtml).toContain('Science');
+        expect(modalHtml).toContain('Materials');
+
+        // =====================================================================
+        // Bug 82: Combat window minimization & sector battle highlighting
+        // =====================================================================
+        const { CombatModal } = await import('../../components/combat/CombatModal');
+        const combatModalHtml = renderToString(
+          React.createElement(CombatModal, {
+            state: game,
+            combat: {
+              sectorId: testSector.id,
+              roundNumber: 1,
+              stage: 'cannon',
+              currentTurnIndex: 0,
+              participatingPlayerIds: [hydran.id, orion.id],
+            } as any,
+            onStepCombat: () => {},
+          })
+        );
+        expect(combatModalHtml).toContain('View Map');
+        expect(combatModalHtml).toContain('FLEET ENGAGEMENT');
+
+        // Verify HexGalaxyMap highlights active combat sector with #f43f5e and COMBAT badge
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        game.activeCombat = {
+          sectorId: testSector.id,
+          roundNumber: 1,
+          stage: 'cannon',
+          currentTurnIndex: 0,
+          participatingPlayerIds: [hydran.id, orion.id],
+        } as any;
+
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        );
+        expect(mapHtml).toContain('#f43f5e');
+        expect(mapHtml).toContain('⚔️ COMBAT');
+        game.activeCombat = null;
+
+        // =====================================================================
+        // Bug 83: Traitor Tile display on upper left window (PlayerBoard)
+        // =====================================================================
+        const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+        const traitorHtml = renderToString(
+          React.createElement(PlayerBoard, {
+            player: orion,
+            isActive: true,
+            sectors: game.sectors,
+            traitorPlayerId: orion.id,
+            allPlayers: game.players,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        );
+        expect(traitorHtml).toContain('🗡️ Traitor (-2)');
+
+        // =====================================================================
+        // Bug 84: GCDS absolute sector pinning (pins all ships regardless of count)
+        // =====================================================================
+        const centerSector = game.sectors.find((s) => s.sectorNumber === 1)!;
+        centerSector.hasGCDS = true;
+        centerSector.ships = [
+          { id: 'gcds_1', ownerId: 'gcds', type: 'gcds', damage: 0 },
+          { id: 'hydran_gcds_ship_1', ownerId: hydran.id, type: 'dreadnought', damage: 0 },
+          { id: 'hydran_gcds_ship_2', ownerId: hydran.id, type: 'dreadnought', damage: 0 },
+          { id: 'hydran_gcds_ship_3', ownerId: hydran.id, type: 'interceptor', damage: 0 },
+        ];
+
+        // computePinningState should mark all friendly ships in Sector 1 as pinned
+        const pinning = computePinningState(game, hydran.id);
+        expect(pinning.isShipPinned('hydran_gcds_ship_1')).toBe(true);
+        expect(pinning.isShipPinned('hydran_gcds_ship_2')).toBe(true);
+        expect(pinning.isShipPinned('hydran_gcds_ship_3')).toBe(true);
+
+        // Moving any ship out of Sector 1 with GCDS must fail validation
+        const moveValidation = validateAction(game, {
+          type: 'MOVE',
+          playerId: hydran.id,
+          moves: [
+            {
+              shipId: 'hydran_gcds_ship_1',
+              fromSectorId: centerSector.id,
+              toSectorId: testSector.id,
+            },
+          ],
+        });
+        expect(moveValidation.valid).toBe(false);
+        expect(moveValidation.error).toContain('pinned in Sector 1 by the Galactic Center Defense System (GCDS)');
+
+        // A ship moving into Sector 1 cannot take further steps
+        const outerSec: SectorTile = {
+          id: 'sec_outer_test',
+          sectorNumber: 302,
+          name: 'Outer Sector',
+          ring: 1,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [{ id: 'hydran_entering_ship', ownerId: hydran.id, type: 'cruiser', damage: 0 }],
+        };
+        game.sectors.push(outerSec);
+        hydran.blueprints.cruiser.slots = [
+          SHIP_PARTS.nuclear_drive!,
+          SHIP_PARTS.nuclear_drive!, // Drive speed 2
+          SHIP_PARTS.nuclear_source!,
+          SHIP_PARTS.hull!,
+          SHIP_PARTS.electron_cannon!,
+          SHIP_PARTS.electron_cannon!,
+        ];
+
+        const enterValidation = validateAction(game, {
+          type: 'MOVE',
+          playerId: hydran.id,
+          moves: [
+            {
+              shipId: 'hydran_entering_ship',
+              fromSectorId: outerSec.id,
+              toSectorId: centerSector.id,
+              activationIndex: 0,
+            },
+            {
+              shipId: 'hydran_entering_ship',
+              fromSectorId: centerSector.id,
+              toSectorId: testSector.id,
+              activationIndex: 0,
+            },
+          ],
+        });
+        expect(enterValidation.valid).toBe(false);
+        expect(enterValidation.error).toContain('pinned by the Galactic Center Defense System (GCDS) upon entering');
+
+        // =====================================================================
+        // Bug 85: Resolving bankruptcy with TRADE actions
+        // =====================================================================
+        hydran.resources.money = -2; // Deficit of 2
+        hydran.resources.materials = 6;
+        hydran.resources.science = 6;
+        const hydranRatio = hydran.faction.tradeRatio || 3; // 3:1
+        game.pendingBankruptcy = {
+          playerId: hydran.id,
+          deficit: 2,
+        };
+
+        const trade1Res = executeAction(game, {
+          type: 'TRADE',
+          playerId: hydran.id,
+          fromResource: 'material',
+          toResource: 'money',
+          amount: hydranRatio, // 3 materials -> +1 money
+        });
+        expect(trade1Res.success).toBe(true);
+        const pAfterTrade1 = trade1Res.newState.players.find((p) => p.id === hydran.id)!;
+        expect(pAfterTrade1.resources.materials).toBe(3);
+        expect(pAfterTrade1.resources.money).toBe(-1);
+        expect(trade1Res.newState.pendingBankruptcy?.deficit).toBe(1);
+
+        const trade2Res = executeAction(trade1Res.newState, {
+          type: 'TRADE',
+          playerId: hydran.id,
+          fromResource: 'science',
+          toResource: 'money',
+          amount: hydranRatio, // 3 science -> +1 money
+        });
+        expect(trade2Res.success).toBe(true);
+        const pAfterTrade2 = trade2Res.newState.players.find((p) => p.id === hydran.id)!;
+        // 6 - 3 = 3 science remaining after trade; clearing bankruptcy collects upkeep science income (+12) -> 15
+        expect(pAfterTrade2.resources.science).toBe(15);
+        expect(pAfterTrade2.resources.money).toBe(0);
+        expect(trade2Res.newState.pendingBankruptcy).toBeNull();
+        expect(trade2Res.newState.phase).toBe('ACTION_PHASE');
+        expect(trade2Res.newState.round).toBe(2);
+
+        // =====================================================================
+        // Bug 86: Conquering Sector 1 prompts discovery tile
+        // =====================================================================
+        centerSector.hasGCDS = false;
+        centerSector.ships = [{ id: 'hydran_winner_ship', ownerId: hydran.id, type: 'dreadnought', damage: 0 }];
+        centerSector.discoveryTile = undefined;
+        centerSector.discoveryClaimed = false;
+        centerSector.hasDiscovery = true;
+        game.discoveryBag = [
+          {
+            id: 'disc_galactic_cache',
+            name: 'Ancient Cache',
+            immediateReward: { money: 8 },
+          },
+        ];
+
+        // Conquering Sector 1
+        resolveAttackingPopulationAndConquest(game, centerSector, hydran.id);
+        expect(game.pendingCombatConquest).toBeDefined();
+        expect(game.pendingCombatConquest?.sectorId).toBe(centerSector.id);
+        expect(game.pendingCombatConquest?.discoveryToClaim).toBeDefined();
+        expect(game.pendingCombatConquest?.discoveryToClaim?.id).toBe('disc_galactic_cache');
+
+        // Confirming combat conquest triggers pendingDiscovery
+        const conquestFinal = executeAction(game, {
+          type: 'COMBAT_CONQUEST',
+          playerId: hydran.id,
+          sectorId: centerSector.id,
+          claimInfluence: true,
+        });
+        expect(conquestFinal.success).toBe(true);
+        expect(conquestFinal.newState.pendingDiscovery).toBeDefined();
+        expect(conquestFinal.newState.pendingDiscovery?.discovery.id).toBe('disc_galactic_cache');
       });
     });
   });

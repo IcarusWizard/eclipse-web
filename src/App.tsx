@@ -300,23 +300,19 @@ export const App: React.FC = () => {
     const ratio = player.faction.tradeRatio || 2;
     if (player.resources[from] < ratio) return;
 
+    const fromResource = from === 'materials' ? 'material' : 'science';
     const result = executeAction(state, {
-      type: 'TRADE_RESOURCE',
-      from,
-      to: 'money',
+      type: 'TRADE',
+      playerId: player.id,
+      fromResource,
+      toResource: 'money',
       amount: ratio,
     });
     if (result.success) {
       const updated = result.newState;
       const updatedPlayer = updated.players.find((p) => p.id === player.id)!;
       if (updatedPlayer.resources.money >= 0) {
-        updated.pendingBankruptcy = null;
         showToast('Treasury balanced! Bankruptcy averted.');
-      } else {
-        updated.pendingBankruptcy = {
-          playerId: player.id,
-          deficit: Math.abs(updatedPlayer.resources.money),
-        };
       }
       setState(updated);
     } else {
@@ -351,10 +347,10 @@ export const App: React.FC = () => {
       const player = currentState.players.find((p) => p.id === playerId);
       const ratio = player?.faction.tradeRatio || 2;
       const res = executeAction(currentState, {
-        type: 'TRADE_RESOURCE',
+        type: 'TRADE',
         playerId,
-        from: 'materials',
-        to: 'money',
+        fromResource: 'material',
+        toResource: 'money',
         amount: ratio,
       });
       if (res.success) currentState = res.newState;
@@ -364,10 +360,10 @@ export const App: React.FC = () => {
       const player = currentState.players.find((p) => p.id === playerId);
       const ratio = player?.faction.tradeRatio || 2;
       const res = executeAction(currentState, {
-        type: 'TRADE_RESOURCE',
+        type: 'TRADE',
         playerId,
-        from: 'science',
-        to: 'money',
+        fromResource: 'science',
+        toResource: 'money',
         amount: ratio,
       });
       if (res.success) currentState = res.newState;
@@ -384,7 +380,6 @@ export const App: React.FC = () => {
 
     const updatedPlayer = currentState.players.find((p) => p.id === playerId);
     if (updatedPlayer && updatedPlayer.resources.money >= 0) {
-      currentState.pendingBankruptcy = null;
       showToast('Treasury balanced! Bankruptcy averted.');
     }
 
@@ -1114,7 +1109,11 @@ export const App: React.FC = () => {
   };
 
   // Combat Conquest Flow (Sector Control & Colonization)
-  const handleCombatConquest = (claimInfluence: boolean, colonizePlanetIndices: number[]) => {
+  const handleCombatConquest = (
+    claimInfluence: boolean,
+    colonizePlanetIndices: number[],
+    planetResourceChoices?: Record<number, 'money' | 'science' | 'material'>
+  ) => {
     if (!state.pendingCombatConquest) return;
     const res = executeAction(state, {
       type: 'COMBAT_CONQUEST',
@@ -1122,6 +1121,7 @@ export const App: React.FC = () => {
       sectorId: state.pendingCombatConquest.sectorId,
       claimInfluence,
       colonizePlanetIndices,
+      planetResourceChoices,
     });
     if (res.success) {
       setState(res.newState);

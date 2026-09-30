@@ -97,6 +97,14 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 Pass
               </span>
             )}
+            {traitorPlayerId === player.id && (
+              <span
+                className="text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-600 px-1 py-0.2 rounded uppercase shrink-0 animate-pulse"
+                title="Traitor Tile: -2 VP penalty. Diplomacy broken."
+              >
+                🗡️ Traitor (-2)
+              </span>
+            )}
           </div>
 
           {/* Quick buttons & Expand */}
@@ -242,6 +250,16 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             </div>
           )}
 
+          {/* Traitor Badge */}
+          {traitorPlayerId === player.id && (
+            <div
+              className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-600 text-rose-300 font-bold shrink-0 animate-pulse"
+              title="Traitor Tile: -2 VP endgame penalty"
+            >
+              <span>🗡️ Traitor (-2)</span>
+            </div>
+          )}
+
           {/* Reputation */}
           <div
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-600/50 text-amber-300 ml-auto"
@@ -281,6 +299,14 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               {player.hasPassed && (
                 <span className="text-[9px] bg-slate-800 text-amber-400 px-1 py-0.2 rounded uppercase font-sans">
                   Passed
+                </span>
+              )}
+              {traitorPlayerId === player.id && (
+                <span
+                  className="text-[10px] font-bold bg-rose-950/90 text-rose-300 border border-rose-600 px-1.5 py-0.5 rounded flex items-center gap-1 shadow animate-pulse font-sans"
+                  title="Traitor Tile: -2 VP endgame penalty. Diplomacy forbidden."
+                >
+                  🗡️ Traitor (-2)
                 </span>
               )}
             </div>
