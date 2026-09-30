@@ -95,6 +95,25 @@ export const App: React.FC = () => {
   const [isBugReportOpen, setIsBugReportOpen] = useState<boolean>(false);
   const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
+
+  const prevRoundRef = React.useRef<number>(state.round);
+  const pendingActionRef = React.useRef(state.pendingActionConfirmation);
+
+  useEffect(() => {
+    pendingActionRef.current = state.pendingActionConfirmation;
+  }, [state.pendingActionConfirmation]);
+
+  // Bug 88: Prominent hint / banner when a new round starts
+  useEffect(() => {
+    if (state.round > prevRoundRef.current && state.phase === 'ACTION_PHASE') {
+      setNewRoundHint({ round: state.round });
+      const timer = setTimeout(() => setNewRoundHint(null), 7000);
+      prevRoundRef.current = state.round;
+      return () => clearTimeout(timer);
+    }
+    prevRoundRef.current = state.round;
+  }, [state.round, state.phase]);
 
   const activePlayer = state.players[state.activePlayerIndex]!;
   const viewedPlayer = state.players[selectedViewIndex] || activePlayer;
@@ -194,6 +213,11 @@ export const App: React.FC = () => {
     if (!tableTarget) return;
 
     const unsubscribe = subscribeToGameSync(tableTarget, (remoteState) => {
+      // Bug 87: When this player has an in-progress unconfirmed action on screen,
+      // remote sync must NOT overwrite or cancel their local action!
+      if (pendingActionRef.current) {
+        return;
+      }
       const remoteFp = getStateFingerprint(remoteState);
       if (remoteFp !== lastStateFingerprintRef.current) {
         lastStateFingerprintRef.current = remoteFp;
@@ -544,18 +568,10 @@ export const App: React.FC = () => {
   };
 
   // --- BUILD FLOW STATE & HANDLERS ---
+  // Bug 90: Official Eclipse rules allow producing ships & starbases even when enemy ships are present!
   const eligibleBuildSectors = useMemo(() => {
-    const isDraco = activePlayer.faction?.id === 'descendants_of_draco';
-    return state.sectors.filter((s) => {
-      if (s.discOwner !== activePlayer.id) return false;
-      const hasEnemies = s.ships.some(
-        (ship) =>
-          ship.ownerId !== activePlayer.id &&
-          (!isDraco || (ship.ownerId !== 'ancient' && ship.type !== 'ancient'))
-      );
-      return !hasEnemies;
-    });
-  }, [state.sectors, activePlayer.id, activePlayer.faction?.id]);
+    return state.sectors.filter((s) => s.discOwner === activePlayer.id);
+  }, [state.sectors, activePlayer.id]);
 
   const [buildSlots, setBuildSlots] = useState<BuildItemPayload[]>([
     { sectorId: '', itemType: 'interceptor' },
@@ -879,6 +895,45 @@ export const App: React.FC = () => {
   // Ambassador exchange
   const handleExchangeAmbassador = (targetPlayerId: string) => {
     setDiplomacyTargetPlayerId(targetPlayerId);
+  };
+
+  const handleProposeDiplomacy = (initiatorCube: PopulationResourceType) => {
+    if (!diplomacyTargetPlayerId) return;
+    const targetPlayer = state.players.find((p) => p.id === diplomacyTargetPlayerId);
+    const res = executeAction(state, {
+      type: 'PROPOSE_DIPLOMACY',
+      playerId: activePlayer.id,
+      targetPlayerId: diplomacyTargetPlayerId,
+      initiatorCube,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(`Alliance proposal sent to ${targetPlayer?.name || 'Commander'}!`);
+    } else {
+      showToast(res.error || 'Failed to propose alliance.');
+    }
+    setDiplomacyTargetPlayerId(null);
+  };
+
+  const handleRespondDiplomacy = (accept: boolean, targetCube?: PopulationResourceType) => {
+    if (!state.pendingDiplomacyProposal) return;
+    const targetId = state.pendingDiplomacyProposal.targetId;
+    const res = executeAction(state, {
+      type: 'RESPOND_DIPLOMACY',
+      playerId: targetId,
+      accept,
+      targetCube,
+    });
+    if (res.success) {
+      setState(res.newState);
+      if (accept) {
+        showToast('Alliance established! Ambassadors exchanged (+1 VP each).');
+      } else {
+        showToast('Alliance proposal declined.');
+      }
+    } else {
+      showToast(res.error || 'Failed to respond to alliance proposal.');
+    }
   };
 
   const handleConfirmDiplomacyExchange = (
@@ -1480,11 +1535,26 @@ export const App: React.FC = () => {
       )}
 
       {state.pendingReputationDraw && (
-        <ReputationTileModal
-          state={state}
-          pendingDraw={state.pendingReputationDraw}
-          onClaimTile={handleClaimReputationTile}
-        />
+        currentSeat === 'all' ||
+        (typeof currentSeat === 'number' &&
+          state.players[currentSeat]?.id === state.pendingReputationDraw.playerId) ? (
+          <ReputationTileModal
+            state={state}
+            pendingDraw={state.pendingReputationDraw}
+            onClaimTile={handleClaimReputationTile}
+          />
+        ) : (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-slate-700/80 px-4 py-2 rounded-xl text-xs text-slate-300 shadow-xl backdrop-blur-md flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+            <span>
+              Commander{' '}
+              <strong className="text-cyan-300">
+                {state.players.find((p) => p.id === state.pendingReputationDraw!.playerId)?.name || 'Player'}
+              </strong>{' '}
+              is selecting a secret Reputation Tile from the bag...
+            </span>
+          </div>
+        )
       )}
 
       {state.pendingCombatConquest && (
@@ -1617,9 +1687,85 @@ export const App: React.FC = () => {
           initiator={activePlayer}
           target={state.players.find((p) => p.id === diplomacyTargetPlayerId) || viewedPlayer}
           onClose={() => setDiplomacyTargetPlayerId(null)}
+          onPropose={handleProposeDiplomacy}
           onConfirm={handleConfirmDiplomacyExchange}
         />
       )}
+
+      {/* Diplomacy Modal: Target player responding to incoming proposal (Bug 91) */}
+      {state.pendingDiplomacyProposal &&
+        (currentSeat === 'all' ||
+          (typeof currentSeat === 'number' &&
+            state.players[currentSeat]?.id === state.pendingDiplomacyProposal.targetId) ||
+          viewedPlayer.id === state.pendingDiplomacyProposal.targetId) && (
+          <DiplomacyModal
+            isOpen={true}
+            initiator={
+              state.players.find((p) => p.id === state.pendingDiplomacyProposal!.initiatorId) ||
+              activePlayer
+            }
+            target={
+              state.players.find((p) => p.id === state.pendingDiplomacyProposal!.targetId) ||
+              viewedPlayer
+            }
+            isProposalResponse={true}
+            pendingInitiatorCube={state.pendingDiplomacyProposal.initiatorCube}
+            onClose={() => handleRespondDiplomacy(false)}
+            onRespond={handleRespondDiplomacy}
+          />
+        )}
+
+      {/* Bug 88: Prominent hint about new round start */}
+      {newRoundHint && (
+        <div className="fixed top-16 left-1/2 -translate-x-1/2 z-50 pointer-events-auto max-w-md w-full px-4 animate-fade-in">
+          <div className="bg-gradient-to-r from-amber-950 via-slate-900 to-indigo-950 border-2 border-amber-500/80 rounded-2xl p-4 shadow-2xl shadow-amber-950/80 backdrop-blur-md flex items-center justify-between gap-3 text-slate-100">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/20 border border-amber-500/50 flex items-center justify-center text-xl shrink-0">
+                🚀
+              </div>
+              <div>
+                <div className="text-xs font-bold uppercase tracking-wider text-amber-400">
+                  New Round Commenced
+                </div>
+                <div className="text-base font-extrabold font-display">
+                  ROUND {newRoundHint.round} OF {state.maxRounds}
+                </div>
+                <div className="text-[11px] text-slate-300">
+                  Action Phase is active. All influence discs and colony ships refreshed!
+                </div>
+              </div>
+            </div>
+            <button
+              onClick={() => setNewRoundHint(null)}
+              className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0"
+            >
+              <X className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Bug 87: Other player action highlight banner */}
+      {state.lastConfirmedAction &&
+        (currentSeat !== 'all' &&
+          (typeof currentSeat === 'number'
+            ? state.players[currentSeat]?.id !== state.lastConfirmedAction.playerId
+            : true)) &&
+        Date.now() - state.lastConfirmedAction.timestamp < 12000 && (
+          <div className="fixed top-20 right-4 z-40 max-w-sm w-full animate-fade-in pointer-events-none">
+            <div className="bg-slate-900/95 border border-amber-500/60 rounded-xl p-3 shadow-2xl backdrop-blur-md flex items-start gap-2.5 text-slate-200">
+              <span className="text-lg">✨</span>
+              <div className="min-w-0">
+                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                  Galaxy Intel Update
+                </div>
+                <div className="text-xs font-semibold leading-tight text-slate-100">
+                  {state.lastConfirmedAction.summary}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
     </div>
   );
 };

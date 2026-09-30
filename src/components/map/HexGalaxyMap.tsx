@@ -672,9 +672,13 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
             // Combat status
             const isCombatSector = state.activeCombat?.sectorId === sector.id;
+            // Recent action highlight (Bug 87: other players see highlights about what player just did)
+            const isActionHighlight = !!(state.lastConfirmedAction?.sectorIds?.includes(sector.id));
 
             let hexFill = isCombatSector
               ? 'rgba(225, 29, 72, 0.25)'
+              : isActionHighlight
+              ? 'rgba(234, 179, 8, 0.20)'
               : isCenter
               ? 'rgba(30, 27, 75, 0.95)'
               : owner
@@ -683,6 +687,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
             let hexStroke = isCombatSector
               ? '#f43f5e'
+              : isActionHighlight
+              ? '#fbbf24'
               : isSelected
               ? '#38bdf8'
               : owner
@@ -691,7 +697,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? '#a855f7'
               : '#334155';
 
-            let hexStrokeWidth = isCombatSector ? '4.5' : isSelected ? '3' : owner ? '2.5' : '1.5';
+            let hexStrokeWidth = isCombatSector ? '4.5' : isActionHighlight ? '3.5' : isSelected ? '3' : owner ? '2.5' : '1.5';
             let hexStrokeDasharray: string | undefined = undefined;
 
             if (buildMode) {
@@ -792,6 +798,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     stroke="#f43f5e"
                     strokeWidth="3.5"
                     strokeDasharray="6 3"
+                    className="animate-pulse pointer-events-none"
+                  />
+                )}
+                {isActionHighlight && !isCombatSector && (
+                  <polygon
+                    points={getHexCornerPoints(x, y, HEX_RADIUS + 3)}
+                    fill="rgba(234, 179, 8, 0.10)"
+                    stroke="#fbbf24"
+                    strokeWidth="2.5"
+                    strokeDasharray="4 2"
                     className="animate-pulse pointer-events-none"
                   />
                 )}
@@ -944,6 +960,38 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                       letterSpacing="0.8"
                     >
                       ⚔️ COMBAT
+                    </text>
+                  </g>
+                )}
+
+                {/* Recent Action Highlight Badge (Bug 87) */}
+                {isActionHighlight && !isCombatSector && (
+                  <g transform={`translate(${x}, ${y - 48})`} className="pointer-events-none">
+                    <rect
+                      x="-38"
+                      y="-8"
+                      width="76"
+                      height="16"
+                      rx="8"
+                      fill="#78350f"
+                      stroke="#fbbf24"
+                      strokeWidth="1.5"
+                    />
+                    <text
+                      x="0"
+                      y="3.5"
+                      textAnchor="middle"
+                      fill="#fef3c7"
+                      fontSize="8.5"
+                      fontFamily="monospace"
+                      fontWeight="900"
+                      letterSpacing="0.6"
+                    >
+                      {state.lastConfirmedAction?.actionType === 'BUILD'
+                        ? '🔨 BUILT'
+                        : state.lastConfirmedAction?.actionType === 'MOVE'
+                        ? '🚀 MOVED'
+                        : '✨ ACTION'}
                     </text>
                   </g>
                 )}
@@ -1141,11 +1189,13 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                             <line x1="-11" y1="0" x2="11" y2="0" stroke="#38bdf8" strokeWidth="1.5" strokeLinecap="round" />
                             <line x1="-10" y1="-3" x2="-10" y2="3" stroke="#38bdf8" strokeWidth="1.2" />
                             <line x1="10" y1="-3" x2="10" y2="3" stroke="#38bdf8" strokeWidth="1.2" />
-                            {/* Habitat ring */}
-                            <circle
-                              cx="0"
-                              cy="0"
-                              r="7"
+                            {/* Habitat square cube slot (Bug 89: orbit symbol is cube not circle) */}
+                            <rect
+                              x="-6.5"
+                              y="-6.5"
+                              width="13"
+                              height="13"
+                              rx="2"
                               fill="#0f172a"
                               stroke="#38bdf8"
                               strokeWidth="1.8"
@@ -1164,10 +1214,12 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                                 strokeWidth="1.2"
                               />
                             ) : (
-                              <circle
-                                cx="0"
-                                cy="0"
-                                r="2.8"
+                              <rect
+                                x="-3"
+                                y="-3"
+                                width="6"
+                                height="6"
+                                rx="1"
                                 fill="#38bdf8"
                               />
                             )}

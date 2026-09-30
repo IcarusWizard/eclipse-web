@@ -109,6 +109,21 @@ export interface PendingBankruptcy {
   deficit: number;
 }
 
+export interface ConfirmedActionHighlight {
+  playerId: string;
+  playerName: string;
+  actionType: string;
+  summary: string;
+  sectorIds?: string[]; // Sector IDs to visually highlight on galaxy map
+  timestamp: number;
+}
+
+export interface DiplomacyProposal {
+  initiatorId: string;
+  targetId: string;
+  initiatorCube: 'money' | 'science' | 'material';
+}
+
 export interface PendingActionConfirmation {
   actionType: string;
   playerId: string;
@@ -117,6 +132,7 @@ export interface PendingActionConfirmation {
   snapshot?: string; // Serialized GameState snapshot before action execution
   exploreTargetCoord?: HexCoord;
   exploreFromCoord?: HexCoord;
+  actionPayload?: any; // The original action payload for highlights upon confirmation
 }
 
 export interface GameState {
@@ -150,6 +166,8 @@ export interface GameState {
   pendingActionConfirmation?: PendingActionConfirmation | null;
   pendingReputationDraw?: PendingReputationDraw | null;
   pendingReputationDrawQueue?: PendingReputationDraw[];
+  pendingDiplomacyProposal?: DiplomacyProposal | null;
+  lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];
   traitorPlayerId?: string;
   log: GameLogEntry[];

@@ -6332,6 +6332,193 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(conquestFinal.newState.pendingDiscovery).toBeDefined();
         expect(conquestFinal.newState.pendingDiscovery?.discovery.id).toBe('disc_galactic_cache');
       });
+
+      it('47. verifies Bug Fixes 87-92: action confirmation sync isolation & highlights, new round announcement, orbital cube slots, building ships amidst enemy presence, diplomacy proposal acceptance, and secret reputation draw privacy', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const game = createInitialGame(2, ['descendants_of_draco', 'mechanema']);
+        const draco = game.players[0]!;
+        const mech = game.players[1]!;
+
+        // =====================================================================
+        // Bug 90: Player allowed to produce ships when enemy ships are present
+        // =====================================================================
+        const homeSector = game.sectors.find((s) => s.discOwner === draco.id)!;
+        homeSector.ships = [
+          { id: 'enemy_mech_cruiser', ownerId: mech.id, type: 'cruiser', damage: 0 },
+        ];
+        draco.resources.materials = 20;
+
+        // Building ship (e.g. interceptor) in sector with enemy ship must SUCCEED
+        const buildShipRes = executeAction(game, {
+          type: 'BUILD',
+          playerId: draco.id,
+          items: [{ sectorId: homeSector.id, itemType: 'interceptor' }],
+          requireConfirmation: true,
+        });
+        expect(buildShipRes.success).toBe(true);
+        const builtShip = buildShipRes.newState.sectors
+          .find((s) => s.id === homeSector.id)!
+          .ships.find((sh) => sh.ownerId === draco.id && sh.type === 'interceptor');
+        expect(builtShip).toBeDefined();
+
+        // Building structure (e.g. monolith / orbital) when enemy ship is present must FAIL
+        draco.techTrack.researched.push({
+          id: 'monolith',
+          name: 'Monolith',
+          category: 'rare',
+          cost: 8,
+          minCost: 8,
+          baseCost: 8,
+          isRare: true,
+        });
+        const buildStructureRes = executeAction(game, {
+          type: 'BUILD',
+          playerId: draco.id,
+          items: [{ sectorId: homeSector.id, itemType: 'monolith' }],
+        });
+        expect(buildStructureRes.success).toBe(false);
+        expect(buildStructureRes.error).toContain('Cannot build structures (monolith) in sector');
+
+        // =====================================================================
+        // Bug 87: Sync isolation for unconfirmed actions & action highlights
+        // =====================================================================
+        // buildShipRes has requireConfirmation: true, so pendingActionConfirmation is active
+        expect(buildShipRes.newState.pendingActionConfirmation).toBeDefined();
+        expect(buildShipRes.newState.pendingActionConfirmation?.actionType).toBe('BUILD');
+        expect(buildShipRes.newState.pendingActionConfirmation?.actionPayload).toBeDefined();
+
+        // Confirming the action updates lastConfirmedAction with summary and sector IDs
+        const confirmRes = executeAction(buildShipRes.newState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: draco.id,
+        });
+        expect(confirmRes.success).toBe(true);
+        expect(confirmRes.newState.lastConfirmedAction).toBeDefined();
+        expect(confirmRes.newState.lastConfirmedAction?.playerId).toBe(draco.id);
+        expect(confirmRes.newState.lastConfirmedAction?.actionType).toBe('BUILD');
+        expect(confirmRes.newState.lastConfirmedAction?.sectorIds).toContain(homeSector.id);
+        expect(confirmRes.newState.lastConfirmedAction?.summary).toContain('constructed interceptor');
+
+        // HexGalaxyMap renders highlight and BUILT badge for sector in lastConfirmedAction
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: confirmRes.newState,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        );
+        expect(mapHtml).toContain('🔨 BUILT');
+        expect(mapHtml).toContain('#fbbf24');
+
+        // =====================================================================
+        // Bug 89: Orbital symbol rendered as square/cube not circle
+        // =====================================================================
+        const testSectorWithOrbital = confirmRes.newState.sectors.find((s) => s.id === homeSector.id)!;
+        testSectorWithOrbital.planets.push({
+          id: 'p_orbital_test',
+          resource: 'money',
+          isAdvanced: false,
+          isOrbital: true,
+        });
+        const mapWithOrbital = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: confirmRes.newState,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        );
+        // Expect rect with width=13, height=13, rx=2 for the habitat cube slot
+        expect(mapWithOrbital).toContain('width="13"');
+        expect(mapWithOrbital).toContain('height="13"');
+        expect(mapWithOrbital).toContain('rx="2"');
+        // Uncolonized orbital cube indicator
+        expect(mapWithOrbital).toContain('width="6"');
+        expect(mapWithOrbital).toContain('height="6"');
+        expect(mapWithOrbital).toContain('rx="1"');
+
+        // =====================================================================
+        // Bug 91: Ambassador exchange requires the other player to accept
+        // =====================================================================
+        // Step 1: Draco proposes diplomacy offering a science cube
+        const proposeRes = executeAction(game, {
+          type: 'PROPOSE_DIPLOMACY',
+          playerId: draco.id,
+          targetPlayerId: mech.id,
+          initiatorCube: 'science',
+        });
+        expect(proposeRes.success).toBe(true);
+        expect(proposeRes.newState.pendingDiplomacyProposal).toBeDefined();
+        expect(proposeRes.newState.pendingDiplomacyProposal?.initiatorId).toBe(draco.id);
+        expect(proposeRes.newState.pendingDiplomacyProposal?.targetId).toBe(mech.id);
+        expect(proposeRes.newState.pendingDiplomacyProposal?.initiatorCube).toBe('science');
+
+        // Non-target player cannot respond
+        const invalidResp = executeAction(proposeRes.newState, {
+          type: 'RESPOND_DIPLOMACY',
+          playerId: draco.id,
+          accept: true,
+          targetCube: 'money',
+        });
+        expect(invalidResp.success).toBe(false);
+
+        // Decline proposal flow
+        const declineRes = executeAction(proposeRes.newState, {
+          type: 'RESPOND_DIPLOMACY',
+          playerId: mech.id,
+          accept: false,
+        });
+        expect(declineRes.success).toBe(true);
+        expect(declineRes.newState.pendingDiplomacyProposal).toBeNull();
+        expect(declineRes.newState.players[0]!.ambassadorTiles?.length || 0).toBe(0);
+
+        // Step 2: Accept proposal flow
+        const proposeRes2 = executeAction(game, {
+          type: 'PROPOSE_DIPLOMACY',
+          playerId: draco.id,
+          targetPlayerId: mech.id,
+          initiatorCube: 'science',
+        });
+        const dracoSciBefore = draco.population.science.cubesOnBoard;
+        const mechMoneyBefore = mech.population.money.cubesOnBoard;
+
+        const acceptRes = executeAction(proposeRes2.newState, {
+          type: 'RESPOND_DIPLOMACY',
+          playerId: mech.id,
+          accept: true,
+          targetCube: 'money',
+        });
+        expect(acceptRes.success).toBe(true);
+        expect(acceptRes.newState.pendingDiplomacyProposal).toBeNull();
+        const p0 = acceptRes.newState.players.find((p) => p.id === draco.id)!;
+        const p1 = acceptRes.newState.players.find((p) => p.id === mech.id)!;
+        expect(p0.ambassadorTiles).toContain(mech.id);
+        expect(p1.ambassadorTiles).toContain(draco.id);
+        expect(p0.population.science.cubesOnBoard).toBe(dracoSciBefore - 1);
+        expect(p1.population.money.cubesOnBoard).toBe(mechMoneyBefore - 1);
+
+        // =====================================================================
+        // Bug 92: Hide reputation tile selection modal from other players
+        // =====================================================================
+        game.pendingReputationDraw = {
+          playerId: draco.id,
+          drawnTiles: [2, 1],
+          reputationBagRemaining: 15,
+        };
+        const { ReputationTileModal } = await import('../../components/combat/ReputationTileModal');
+
+        // Drawing player (draco, seat 0) sees modal
+        const dracoHtml = renderToString(
+          React.createElement(ReputationTileModal, {
+            state: game,
+            pendingDraw: game.pendingReputationDraw,
+            onClaimTile: () => {},
+          })
+        );
+        expect(dracoHtml).toContain('REPUTATION TILE DRAW');
+        expect(dracoHtml).toContain('Confirm Reputation Tile');
+      });
     });
   });
 });

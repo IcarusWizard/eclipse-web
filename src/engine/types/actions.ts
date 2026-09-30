@@ -22,7 +22,9 @@ export type ActionType =
   | 'ALLOCATE_ARTIFACT_REWARD'
   | 'ABANDON_SECTOR_BANKRUPTCY'
   | 'CONFIRM_TURN_ACTION'
-  | 'REVERT_TURN_ACTION';
+  | 'REVERT_TURN_ACTION'
+  | 'PROPOSE_DIPLOMACY'
+  | 'RESPOND_DIPLOMACY';
 
 export interface BaseAction {
   playerId: string;
@@ -130,6 +132,18 @@ export interface DiplomacyExchangeAction extends BaseAction {
   targetCube?: 'money' | 'science' | 'material';
 }
 
+export interface ProposeDiplomacyAction extends BaseAction {
+  type: 'PROPOSE_DIPLOMACY';
+  targetPlayerId: string;
+  initiatorCube: 'money' | 'science' | 'material';
+}
+
+export interface RespondDiplomacyAction extends BaseAction {
+  type: 'RESPOND_DIPLOMACY';
+  accept: boolean;
+  targetCube?: 'money' | 'science' | 'material';
+}
+
 export interface ResolveCombatStepAction extends BaseAction {
   type: 'RESOLVE_COMBAT_STEP';
   sectorId: string;
@@ -187,6 +201,8 @@ export type GameAction =
   | PassAction
   | DiscoveryChoiceAction
   | DiplomacyExchangeAction
+  | ProposeDiplomacyAction
+  | RespondDiplomacyAction
   | ResolveCombatStepAction
   | CombatConquestAction
   | ClaimReputationTileAction

@@ -127,12 +127,16 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
 
     storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
 
-    if (!skipBroadcast) {
+    // When an action is unconfirmed, keep it isolated on the acting player's local screen.
+    // Other players only see the action after the player has confirmed it.
+    const isUnconfirmedAction = !!state.pendingActionConfirmation;
+
+    if (!skipBroadcast && !isUnconfirmedAction) {
       broadcastGameState(state, stateJson);
     }
 
-    // Persist to server API for cross-IP multi-device gameplay
-    if (typeof fetch !== 'undefined') {
+    // Persist to server API for cross-IP multi-device gameplay (only for confirmed actions)
+    if (!isUnconfirmedAction && typeof fetch !== 'undefined') {
       fetch(`/api/tables/${state.id}`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

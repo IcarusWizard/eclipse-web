@@ -186,7 +186,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'RESOLVE_COMBAT_STEP' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
-      action.type !== 'COLONIZE'
+      action.type !== 'COLONIZE' &&
+      action.type !== 'PROPOSE_DIPLOMACY' &&
+      action.type !== 'RESPOND_DIPLOMACY'
     ) {
       return {
         valid: false,
@@ -195,7 +197,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
   }
 
-  // Active player check (except combat, colonization, trade, conquest, discovery choices, confirm/revert)
+  // Active player check (except combat, colonization, trade, conquest, discovery choices, confirm/revert, diplomacy)
   if (state.phase === 'ACTION_PHASE') {
     const activePlayer = state.players[state.activePlayerIndex];
     if (
@@ -209,7 +211,10 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'ABANDON_SECTOR_BANKRUPTCY' &&
       action.type !== 'CONFIRM_TURN_ACTION' &&
-      action.type !== 'REVERT_TURN_ACTION'
+      action.type !== 'REVERT_TURN_ACTION' &&
+      action.type !== 'DIPLOMACY_EXCHANGE' &&
+      action.type !== 'PROPOSE_DIPLOMACY' &&
+      action.type !== 'RESPOND_DIPLOMACY'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -471,13 +476,15 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (sector.discOwner !== action.playerId) {
           return { valid: false, error: `Must control sector ${item.sectorId} with an influence disc to build here.` };
         }
-        // Enemy ships cannot be present to build (Draco can build in sectors with friendly Ancients)
+        // Official Eclipse rules: Ships and Starbases CAN be built in sectors with enemy ships!
+        // Only Structures (Orbitals and Monoliths) cannot be built while enemy ships are present.
         const isDraco = player.faction.id === 'descendants_of_draco';
         const hasEnemies = sector.ships.some(
           (s) => s.ownerId !== action.playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
         );
-        if (hasEnemies) {
-          return { valid: false, error: `Cannot build in sector ${item.sectorId} while enemy ships are present.` };
+        const isStructure = item.itemType === 'orbital' || item.itemType === 'monolith';
+        if (hasEnemies && isStructure) {
+          return { valid: false, error: `Cannot build structures (${item.itemType}) in sector ${item.sectorId} while enemy ships are present.` };
         }
 
         // Validate Ship Supply Limits (8 Interceptors, 4 Cruisers, 2 Dreadnoughts, 4 Starbases)
@@ -916,6 +923,32 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'PROPOSE_DIPLOMACY': {
+      const check = canExchangeAmbassadors(state, action.playerId, action.targetPlayerId);
+      if (!check.canExchange) {
+        return { valid: false, error: check.reason || 'Cannot exchange ambassadors.' };
+      }
+      if (!action.initiatorCube || player.population[action.initiatorCube].cubesOnBoard <= 0) {
+        return { valid: false, error: `${player.name} has no available population cubes on the ${action.initiatorCube} track.` };
+      }
+      return { valid: true };
+    }
+
+    case 'RESPOND_DIPLOMACY': {
+      if (!state.pendingDiplomacyProposal) {
+        return { valid: false, error: 'No diplomacy proposal pending.' };
+      }
+      if (state.pendingDiplomacyProposal.targetId !== action.playerId) {
+        return { valid: false, error: 'Only the invited player can respond to this proposal.' };
+      }
+      if (action.accept) {
+        if (!action.targetCube || player.population[action.targetCube].cubesOnBoard <= 0) {
+          return { valid: false, error: `${player.name} has no available population cubes on the ${action.targetCube} track.` };
+        }
+      }
+      return { valid: true };
+    }
+
     case 'DISCOVERY_CHOICE': {
       if (!state.pendingDiscovery) {
         return { valid: false, error: 'No pending discovery tile to claim.' };
@@ -1131,7 +1164,10 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     action.type !== 'RESOLVE_COMBAT_STEP' &&
     action.type !== 'COMBAT_CONQUEST' &&
     action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
-    action.type !== 'ABANDON_SECTOR_BANKRUPTCY'
+    action.type !== 'ABANDON_SECTOR_BANKRUPTCY' &&
+    action.type !== 'DIPLOMACY_EXCHANGE' &&
+    action.type !== 'PROPOSE_DIPLOMACY' &&
+    action.type !== 'RESPOND_DIPLOMACY'
   ) {
     newState.consecutivePasses = 0;
   }
@@ -1555,6 +1591,62 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           'action'
         );
       }
+      return { success: true, newState };
+    }
+
+    case 'PROPOSE_DIPLOMACY': {
+      const targetPlayer = newState.players.find((p) => p.id === action.targetPlayerId);
+      newState.pendingDiplomacyProposal = {
+        initiatorId: action.playerId,
+        targetId: action.targetPlayerId,
+        initiatorCube: action.initiatorCube,
+      };
+      const cubeIcon = (c: string) => (c === 'money' ? '💰' : c === 'science' ? '🔬' : '🔨');
+      addLog(
+        `🤝 ${player.name} proposed an Ambassador Exchange with ${targetPlayer ? targetPlayer.name : 'another empire'} (offering a ${cubeIcon(action.initiatorCube)} cube). Waiting for acceptance.`,
+        'action'
+      );
+      return { success: true, newState };
+    }
+
+    case 'RESPOND_DIPLOMACY': {
+      const proposal = newState.pendingDiplomacyProposal;
+      if (!proposal) {
+        return { success: false, newState: state, error: 'No pending diplomacy proposal.' };
+      }
+      const initiator = newState.players.find((p) => p.id === proposal.initiatorId);
+      const responder = player;
+
+      if (action.accept && initiator) {
+        const initCube = proposal.initiatorCube;
+        const tgtCube = action.targetCube || 'money';
+
+        initiator.ambassadorTiles = initiator.ambassadorTiles || [];
+        responder.ambassadorTiles = responder.ambassadorTiles || [];
+        initiator.ambassadorTiles.push(responder.id);
+        responder.ambassadorTiles.push(initiator.id);
+
+        initiator.ambassadorCubes = initiator.ambassadorCubes || {};
+        responder.ambassadorCubes = responder.ambassadorCubes || {};
+
+        initiator.population[initCube].cubesOnBoard = Math.max(0, initiator.population[initCube].cubesOnBoard - 1);
+        responder.population[tgtCube].cubesOnBoard = Math.max(0, responder.population[tgtCube].cubesOnBoard - 1);
+
+        initiator.ambassadorCubes[responder.id] = initCube;
+        responder.ambassadorCubes[initiator.id] = tgtCube;
+
+        const cubeIcon = (c: string) => (c === 'money' ? '💰' : c === 'science' ? '🔬' : '🔨');
+        addLog(
+          `🤝 ${responder.name} ACCEPTED the Diplomatic Proposal from ${initiator.name}! Exchanged ambassadors (${cubeIcon(tgtCube)} / ${cubeIcon(initCube)}) (+1 VP each).`,
+          'action'
+        );
+      } else if (initiator) {
+        addLog(
+          `🤝 ${responder.name} DECLINED the Diplomatic Proposal from ${initiator.name}.`,
+          'action'
+        );
+      }
+      newState.pendingDiplomacyProposal = null;
       return { success: true, newState };
     }
 
@@ -2283,6 +2375,51 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         `${actingPlayer ? actingPlayer.name : 'Commander'} confirmed action (${conf.description}) and passed turn.`,
         'action'
       );
+
+      // Record confirmed action highlight for all other players / map
+      let highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} confirmed ${conf.description}`;
+      let sectorIds: string[] | undefined = undefined;
+      const payload = conf.actionPayload;
+
+      if (conf.actionType === 'BUILD' && payload?.items) {
+        sectorIds = Array.from(new Set(payload.items.map((i: any) => i.sectorId as string)));
+        const itemNames = payload.items.map((i: any) => i.itemType).join(', ');
+        const secLabels = sectorIds.map((s) => {
+          const sec = newState.sectors.find((x) => x.id === s);
+          return sec ? `Sector ${sec.sectorNumber}` : s;
+        }).join(', ');
+        highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} constructed ${itemNames} in ${secLabels}`;
+      } else if (conf.actionType === 'MOVE' && payload?.moves) {
+        sectorIds = Array.from(new Set(payload.moves.map((m: any) => m.toSectorId as string)));
+        const secLabels = sectorIds.map((s) => {
+          const sec = newState.sectors.find((x) => x.id === s);
+          return sec ? `Sector ${sec.sectorNumber}` : s;
+        }).join(', ');
+        highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} moved fleet to ${secLabels}`;
+      } else if (conf.actionType === 'EXPLORE') {
+        if (conf.exploreTargetCoord) {
+          const sec = newState.sectors.find((s) => areCoordsEqual(s.coord, conf.exploreTargetCoord!));
+          if (sec) sectorIds = [sec.id];
+        }
+        highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} finished exploration${sectorIds && sectorIds.length > 0 ? ` of ${sectorIds.map(s => { const sc = newState.sectors.find(x => x.id === s); return sc ? `Sector ${sc.sectorNumber}` : s; }).join(', ')}` : ''}`;
+      } else if (conf.actionType === 'RESEARCH' && payload?.researches) {
+        const techList = payload.researches.map((r: any) => r.techId).join(', ');
+        highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} researched ${techList}`;
+      } else if (conf.actionType === 'UPGRADE') {
+        highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} upgraded ship blueprints`;
+      } else if (conf.actionType === 'INFLUENCE') {
+        highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} refreshed colony ships & adjusted influence`;
+      }
+
+      newState.lastConfirmedAction = {
+        playerId: conf.playerId,
+        playerName: actingPlayer ? actingPlayer.name : 'Commander',
+        actionType: conf.actionType,
+        summary: highlightSummary,
+        sectorIds,
+        timestamp: Date.now(),
+      };
+
       // Advance turn or proceed to combat phase if all passed consecutively
       const activePlayers = newState.players.filter((p) => !p.isEliminated);
       const allPassedConsecutively = (newState.consecutivePasses || 0) >= activePlayers.length;
@@ -2379,6 +2516,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         snapshot: canRevert ? snapshotJson : undefined,
         exploreTargetCoord: exploreAct?.targetCoord,
         exploreFromCoord: exploreAct?.fromCoord,
+        actionPayload: action,
       };
       return { success: true, newState };
     }
