@@ -90,3 +90,5 @@
 - [x] player should still allow to produce ship even when there are enermy ship presence (Round 6, ACTION_PHASE, Player: Descendants of Draco, Table #386)
 - [x] when exchange embassdor, it should be the other player choose to accept the proposal (Round 6, ACTION_PHASE, Player: Descendants of Draco, Table #386)
 - [x] one player shouldn't see the other people's rep tile selection page (Round 8, GAME_OVER, Player: Descendants of Draco, Table #386)
+- [ ] now the game need to be fresh to know the other player confirm the turn (Round 1, ACTION_PHASE, Player: Planta, Table #860)
+- [ ] after both pass, shows X is not defined error (Round 2, ACTION_PHASE, Player: Eridani Empire, Table #860)
