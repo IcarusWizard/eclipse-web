@@ -4,7 +4,7 @@
 
 import { GameState, GamePhase, GameLogEntry, CombatState } from '../types/state';
 import { GameAction, BuildAction, UpgradeAction, MoveAction, ResearchAction } from '../types/actions';
-import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge } from './hexMath';
+import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors } from './hexMath';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
@@ -12,6 +12,7 @@ import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepF
 import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, sortUnitsByInitiative } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip } from '../types/galaxy';
 import { PlayerState } from '../types/player';
+import { getMaxReputationTilesForPlayer } from './setup';
 
 export interface ActionResult {
   success: boolean;
@@ -1190,10 +1191,17 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       drawnTile.coord = action.targetCoord;
       drawnTile.rotation = action.rotation;
 
-      // Wormhole connection check
+      // Wormhole connection check (Bug 74: connect to either adjacent player sector)
       const sourceSector = newState.sectors.find((s) => areCoordsEqual(s.coord, action.fromCoord));
       const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
-      const isConnected = sourceSector ? areSectorsConnected(sourceSector, drawnTile, hasWormholeGen) : true;
+      const isConnected = isLegallyConnectedToPlayerSectors(
+        newState.sectors,
+        action.targetCoord,
+        drawnTile,
+        player.id,
+        hasWormholeGen,
+        sourceSector
+      );
 
       if (!action.discard && isConnected) {
         // Place on map (Draco can place influence discs in sectors with Ancients)
@@ -1537,7 +1545,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           'action'
         );
       }
-      break;
+      return { success: true, newState };
     }
 
     case 'INFLUENCE': {
@@ -2127,7 +2135,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         action.selectedTileIndex < drawnTiles.length
       ) {
         const keptTile = drawnTiles.splice(action.selectedTileIndex, 1)[0]!;
-        const maxRepTiles = player.faction.reputationSlots ?? 5;
+        const maxRepTiles = getMaxReputationTilesForPlayer(player);
 
         if (
           player.reputationTiles.length >= maxRepTiles &&

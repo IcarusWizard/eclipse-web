@@ -43,8 +43,11 @@ export interface FactionInfo {
   readonly moveActivations?: number; // Base move activations per Move action disc (Humans 3, Aliens 2)
   readonly influenceActivations?: number; // Base influence activations per Influence action disc (standard 2)
   readonly reputationSlots?: number; // Capacity of reputation track (4 for Eridani, Planta, Mechanema, Hydran, Draco; 5 for Orion and Terrans)
-  readonly ambassadorSlots?: number; // Number of ambassador-eligible slots on reputation track (3 for Terrans/Planta/Draco/Mechanema/Hydran, 2 for Eridani, 0 for Orion)
+  readonly ambassadorSlots?: number; // Number of ambassador-eligible slots on reputation track (3 for Terrans/Planta/Draco/Mechanema, 4 for Orion/Hydran, 2 for Eridani)
+  readonly reputationSlotTypes?: ReputationSlotType[];
 }
+
+export type ReputationSlotType = 'rep_only' | 'amb_only' | 'both';
 
 export interface PlayerResources {
   money: number;

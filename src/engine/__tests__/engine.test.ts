@@ -5215,15 +5215,23 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(diploScores.scores[terran.id]!.ambassadors).toBe(1);
         expect(diploScores.scores[planta.id]!.ambassadors).toBe(1);
 
-        // Orion has 0 ambassador slots, so diplomacy is rejected
+        // Orion now has 4 ambassador slots (Bug 72)
+        expect(orion.faction.ambassadorSlots).toBe(4);
+        expect(orion.faction.reputationSlots).toBe(5);
+        expect(orion.faction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both', 'rep_only']);
+
+        // When Orion's 4 ambassador slots are filled, diplomacy is rejected
         diploRes.newState.activePlayerIndex = 0;
+        const orionInState = diploRes.newState.players.find((p) => p.id === orion.id)!;
+        orionInState.ambassadorTiles = ['dummy1', 'dummy2', 'dummy3', 'dummy4'];
         const orionDiploVal = validateAction(diploRes.newState, {
           type: 'DIPLOMACY_EXCHANGE',
           playerId: terran.id,
           targetPlayerId: orion.id,
         });
         expect(orionDiploVal.valid).toBe(false);
-        expect(orionDiploVal.error).toContain('0 ambassador slots');
+        expect(orionDiploVal.error).toContain('no available ambassador slots');
+        orionInState.ambassadorTiles = [];
 
         // Terran breaks alliance by moving a ship into Planta's controlled sector
         diploRes.newState.activePlayerIndex = 0;
@@ -5560,10 +5568,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         s1.ships = [];
         s1.discOwner = pPlanta.id;
 
-        // 1. Orion Hegemony has 0 ambassador slots -> cannot exchange
+        // 1. Orion Hegemony has 4 ambassador slots (Bug 72)
+        expect(pOrion.faction.ambassadorSlots).toBe(4);
+        pOrion.ambassadorTiles = ['dummy1', 'dummy2', 'dummy3', 'dummy4'];
         const orionDiploCheck = canExchangeAmbassadors(diplo3Game, pTerran.id, pOrion.id);
         expect(orionDiploCheck.canExchange).toBe(false);
-        expect(orionDiploCheck.reason).toContain('0 ambassador slots');
+        expect(orionDiploCheck.reason).toContain('no available ambassador slots');
+        pOrion.ambassadorTiles = [];
 
         // 2. Terran and Planta can exchange
         const terranPlantaCheck = canExchangeAmbassadors(diplo3Game, pTerran.id, pPlanta.id);
@@ -5709,9 +5720,9 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           })
         );
 
-        // Expect 7-column grid layout for mobile and flex for desktop
+        // Expect 7-column grid layout with compact width (Bugs 75 & 76)
         expect(actionBarHtml).toContain('grid-cols-7');
-        expect(actionBarHtml).toContain('md:flex');
+        expect(actionBarHtml).toContain('max-w-fit');
         // Expect all 7 actions to be present and labeled
         expect(actionBarHtml).toContain('EXP');
         expect(actionBarHtml).toContain('RES');
@@ -5778,6 +5789,237 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(playerBoardHtml).toBeDefined();
         expect(playerBoardHtml.length).toBeGreaterThan(0);
+      });
+
+      it('45. verifies Bug Fixes 71-79: Return to Lobby, Orion & Hydran Reputation Slots, Multi-Adjacent Sector Exploration, Vertical Action Bar, Free Action Diplomacy, Reputation Track Ambassador Visibility, and Warp Portal Research', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { Header } = await import('../../components/layout/Header');
+        const { ActionBar } = await import('../../components/layout/ActionBar');
+        const { ReputationTileModal } = await import('../../components/combat/ReputationTileModal');
+        const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+        const {
+          getFactionReputationSlotTypes,
+          getMaxReputationTilesForPlayer,
+          getPlayerReputationTrackSlots,
+          ALL_FACTIONS,
+        } = await import('../rules/setup');
+        const { isLegallyConnectedToPlayerSectors } = await import('../rules/hexMath');
+
+        // --- Bug 71: Return to Lobby button in Header ---
+        const game = createInitialGame(2, ['orion_hegemony', 'hydran_progress']);
+        const headerHtml = renderToString(
+          React.createElement(Header, {
+            state: game,
+            selectedViewIndex: 0,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onReturnToLobby: () => {},
+          })
+        );
+        expect(headerHtml).toContain('Lobby');
+        expect(headerHtml).toContain('Return to Main Page (Galaxy Lobby)');
+
+        // --- Bug 72: Orion Hegemony reputation track slots ---
+        const orionFaction = ALL_FACTIONS.find((f) => f.id === 'orion_hegemony')!;
+        expect(orionFaction.reputationSlots).toBe(5);
+        expect(orionFaction.ambassadorSlots).toBe(4);
+        expect(orionFaction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both', 'rep_only']);
+        const orionPlayer = game.players[0]!;
+        expect(getMaxReputationTilesForPlayer(orionPlayer)).toBe(5);
+        orionPlayer.ambassadorTiles = ['ally1', 'ally2'];
+        expect(getMaxReputationTilesForPlayer(orionPlayer)).toBe(3); // 2 both slots left + 1 rep_only slot
+
+        // --- Bug 73: Hydran Progress reputation track slots ---
+        const hydranFaction = ALL_FACTIONS.find((f) => f.id === 'hydran_progress')!;
+        expect(hydranFaction.reputationSlots).toBe(4);
+        expect(hydranFaction.ambassadorSlots).toBe(4);
+        expect(hydranFaction.reputationSlotTypes).toEqual(['amb_only', 'both', 'both', 'both']);
+        const hydranPlayer = game.players[1]!;
+        // With 0 ambassadors, slot 0 is amb_only, so 3 rep slots available
+        hydranPlayer.ambassadorTiles = [];
+        expect(getMaxReputationTilesForPlayer(hydranPlayer)).toBe(3);
+        // With 1 ambassador, it occupies the amb_only slot -> still 3 rep slots available!
+        hydranPlayer.ambassadorTiles = ['ally1'];
+        expect(getMaxReputationTilesForPlayer(hydranPlayer)).toBe(3);
+        // With 2 ambassadors, 1 occupies amb_only and 1 occupies a both slot -> 2 rep slots available
+        hydranPlayer.ambassadorTiles = ['ally1', 'ally2'];
+        expect(getMaxReputationTilesForPlayer(hydranPlayer)).toBe(2);
+
+        // --- Bug 74: Explore placement adjacent to multiple player sectors ---
+        // Player controls Sector A at (0, -2) and Sector B at (1, -2).
+        // Target hex is (0, -1) which is adjacent to both (0, -2) [edge 4 / opposite 1] and (1, -2) [edge 5 / opposite 2].
+        const sectorA: SectorTile = {
+          id: 'sec_a',
+          sectorNumber: 201,
+          ring: 2,
+          coord: { q: 0, r: -2 },
+          rotation: 0,
+          wormholes: [false, true, false, false, false, false], // Has wormhole facing (0, -1) on edge 1
+          discOwner: orionPlayer.id,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ships: [],
+          populationSlots: [],
+          vp: 1,
+        };
+        const sectorB: SectorTile = {
+          id: 'sec_b',
+          sectorNumber: 202,
+          ring: 2,
+          coord: { q: 1, r: -2 },
+          rotation: 0,
+          wormholes: [false, false, false, false, false, false], // No wormholes facing (0, -1)
+          discOwner: orionPlayer.id,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ships: [],
+          populationSlots: [],
+          vp: 1,
+        };
+        // Candidate sector has wormhole only facing Sector A (edge 4), none facing Sector B
+        const candidateSector: SectorTile = {
+          id: 'candidate_sec',
+          sectorNumber: 205,
+          ring: 2,
+          coord: { q: 0, r: -1 },
+          rotation: 0,
+          wormholes: [false, false, false, false, true, false], // Wormhole facing Sector A on edge 4
+          hasArtifact: false,
+          hasDiscovery: false,
+          ships: [],
+          populationSlots: [],
+          vp: 2,
+        };
+        const multiSectors = [sectorA, sectorB];
+        // Must be legal because it connects to Sector A (even though Sector B is also adjacent)
+        const isLegalPlacement = isLegallyConnectedToPlayerSectors(
+          multiSectors,
+          { q: 0, r: -1 },
+          candidateSector,
+          orionPlayer.id,
+          false,
+          sectorA
+        );
+        expect(isLegalPlacement).toBe(true);
+
+        // --- Bugs 75 & 76: Action Bar Compact Vertical Layout ---
+        const actionBarHtml = renderToString(
+          React.createElement(ActionBar, {
+            activePlayer: orionPlayer,
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+          })
+        );
+        expect(actionBarHtml).toContain('grid-cols-7');
+        expect(actionBarHtml).toContain('max-w-fit');
+        expect(actionBarHtml).toContain('EXP');
+        expect(actionBarHtml).toContain('RES');
+        expect(actionBarHtml).toContain('UPG');
+        expect(actionBarHtml).toContain('BLD');
+        expect(actionBarHtml).toContain('MOV');
+        expect(actionBarHtml).toContain('INF');
+        expect(actionBarHtml).toContain('PASS');
+
+        // --- Bug 77: DIPLOMACY_EXCHANGE is a free action ---
+        // Set up connected sectors for diplomacy
+        const diploState = createInitialGame(2, ['terran_directorate', 'planta']);
+        const [p1, p2] = diploState.players;
+        diploState.sectors[0]!.discOwner = p1!.id;
+        diploState.sectors[0]!.wormholes = [0, 1, 2, 3, 4, 5];
+        diploState.sectors[1]!.discOwner = p2!.id;
+        diploState.sectors[1]!.coord = { q: 0, r: 1 };
+        diploState.sectors[1]!.wormholes = [0, 1, 2, 3, 4, 5];
+        diploState.activePlayerIndex = 0;
+        const initialActiveIdx = diploState.activePlayerIndex;
+        const initialActionsCount = p1!.actionsTakenThisRound;
+
+        const diploResult = executeAction(diploState, {
+          type: 'DIPLOMACY_EXCHANGE',
+          playerId: p1!.id,
+          targetPlayerId: p2!.id,
+        });
+        expect(diploResult.success).toBe(true);
+        // Turn must NOT advance: activePlayerIndex remains 0, actionsTakenThisRound does not increase
+        expect(diploResult.newState.activePlayerIndex).toBe(initialActiveIdx);
+        expect(diploResult.newState.players[0]!.actionsTakenThisRound).toBe(initialActionsCount);
+        expect(diploResult.newState.players[0]!.ambassadorTiles).toContain(p2!.id);
+
+        // --- Bug 78: Reputation Track display with Ambassador Slots ---
+        // Hydran has 1 ambassador ('ally1') and 2 rep tiles [3, 2]
+        hydranPlayer.ambassadorTiles = ['ally1'];
+        hydranPlayer.reputationTiles = [3, 2];
+        const hydranSlots = getPlayerReputationTrackSlots(hydranPlayer, [
+          { ...hydranPlayer },
+          { id: 'ally1', name: 'Terran Directorate', color: '#2563eb' } as any,
+        ]);
+        expect(hydranSlots.length).toBe(4);
+        expect(hydranSlots[0]!.slotType).toBe('amb_only');
+        expect(hydranSlots[0]!.tile?.type).toBe('ambassador');
+        expect(hydranSlots[0]!.tile?.vp).toBe(1);
+        expect(hydranSlots[1]!.slotType).toBe('both');
+        expect(hydranSlots[1]!.tile?.type).toBe('reputation');
+        expect(hydranSlots[1]!.tile?.vp).toBe(3);
+        expect(hydranSlots[2]!.slotType).toBe('both');
+        expect(hydranSlots[2]!.tile?.type).toBe('reputation');
+        expect(hydranSlots[2]!.tile?.vp).toBe(2);
+        expect(hydranSlots[3]!.slotType).toBe('both');
+        expect(hydranSlots[3]!.tile).toBeUndefined(); // Empty slot
+
+        // Render ReputationTileModal with ambassador tile visible
+        const repModalHtml = renderToString(
+          React.createElement(ReputationTileModal, {
+            state: {
+              ...game,
+              players: [
+                hydranPlayer,
+                { id: 'ally1', name: 'Terran Directorate', color: '#2563eb' } as any,
+              ],
+            },
+            pendingDraw: {
+              playerId: hydranPlayer.id,
+              sectorId: game.sectors[0]!.id,
+              drawnTiles: [2, 4],
+            },
+            onClaimTile: () => {},
+          })
+        );
+        expect(repModalHtml).toContain('+1 VP Amb');
+        expect(repModalHtml).toContain('Pact (Locked)');
+        expect(repModalHtml).toContain('Terran Directorate');
+
+        // --- Bug 79: Researching Warp Portal with controlled sectors without error ---
+        const techModalHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: orionPlayer,
+            activePlayer: orionPlayer,
+            players: game.players,
+            sectors: [sectorA, sectorB],
+            techSupply: [
+              {
+                id: 'warp_portal',
+                name: 'Warp Portal',
+                category: 'rare',
+                cost: 5,
+                minCost: 5,
+                baseCost: 5,
+                isRare: true,
+              },
+            ],
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(techModalHtml).toBeDefined();
+        expect(techModalHtml).toContain('Place Portal on Sector:');
+        expect(techModalHtml).toContain('201');
+        expect(techModalHtml).toContain('sec_a');
       });
     });
   });

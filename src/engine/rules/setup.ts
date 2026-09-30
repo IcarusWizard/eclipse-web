@@ -4,7 +4,7 @@
  */
 
 import { GameState } from '../types/state';
-import { FactionInfo, PlayerState } from '../types/player';
+import { FactionInfo, PlayerState, ReputationSlotType } from '../types/player';
 import { SectorTile, HexCoord } from '../types/galaxy';
 import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
@@ -32,6 +32,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 5,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
   },
   {
     id: 'terran_directorate',
@@ -53,6 +54,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 5,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
   },
   {
     id: 'terran_republic',
@@ -74,6 +76,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 5,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
   },
   {
     id: 'terran_conglomerate',
@@ -95,6 +98,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 5,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
   },
   {
     id: 'terran_union',
@@ -116,6 +120,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 5,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
   },
   {
     id: 'terran_alliance',
@@ -137,6 +142,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 5,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
   },
 ];
 
@@ -196,6 +202,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 4,
     ambassadorSlots: 2,
+    reputationSlotTypes: ['both', 'both', 'rep_only', 'rep_only'],
   },
   {
     id: 'hydran_progress',
@@ -216,7 +223,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
-    ambassadorSlots: 3,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both'],
   },
   {
     id: 'planta',
@@ -238,6 +246,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 4,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
   },
   {
     id: 'descendants_of_draco',
@@ -259,6 +268,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 4,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
   },
   {
     id: 'mechanema',
@@ -280,6 +290,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     influenceActivations: 2,
     reputationSlots: 4,
     ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
   },
   {
     id: 'orion_hegemony',
@@ -300,7 +311,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 5,
-    ambassadorSlots: 0,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both', 'rep_only'],
   },
 ];
 
@@ -308,6 +320,132 @@ export const ALL_FACTIONS: FactionInfo[] = [
   ...HUMAN_FACTIONS,
   ...ALIEN_FACTIONS,
 ];
+
+export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationSlotType[] {
+  if (faction.reputationSlotTypes && faction.reputationSlotTypes.length > 0) {
+    return faction.reputationSlotTypes;
+  }
+  if (faction.id === 'hydran_progress') {
+    return ['amb_only', 'both', 'both', 'both'];
+  }
+  if (faction.id === 'orion_hegemony') {
+    return ['both', 'both', 'both', 'both', 'rep_only'];
+  }
+  if (faction.id === 'eridani_empire') {
+    return ['both', 'both', 'rep_only', 'rep_only'];
+  }
+  const total = faction.reputationSlots ?? (faction.isHuman ? 5 : 4);
+  const amb = faction.ambassadorSlots ?? 3;
+  const types: ReputationSlotType[] = [];
+  for (let i = 0; i < total; i++) {
+    types.push(i < amb ? 'both' : 'rep_only');
+  }
+  return types;
+}
+
+export function getMaxReputationTilesForPlayer(player: PlayerState): number {
+  const slotTypes = getFactionReputationSlotTypes(player.faction);
+  const ambCount = player.ambassadorTiles?.length || 0;
+  let remainingAmb = ambCount;
+  let repSlotsAvailable = 0;
+  for (const type of slotTypes) {
+    if (type === 'amb_only') {
+      if (remainingAmb > 0) remainingAmb--;
+    } else if (type === 'both') {
+      if (remainingAmb > 0) {
+        remainingAmb--;
+      } else {
+        repSlotsAvailable++;
+      }
+    } else if (type === 'rep_only') {
+      repSlotsAvailable++;
+    }
+  }
+  return repSlotsAvailable;
+}
+
+export interface ReputationTrackSlotInfo {
+  slotIndex: number;
+  slotType: ReputationSlotType;
+  tile?:
+    | {
+        type: 'ambassador';
+        allyId: string;
+        allyName?: string;
+        allyColor?: string;
+        vp: number;
+      }
+    | {
+        type: 'reputation';
+        vp: number;
+        repIndex: number;
+      };
+}
+
+export function getPlayerReputationTrackSlots(
+  player: PlayerState,
+  players?: PlayerState[]
+): ReputationTrackSlotInfo[] {
+  const slotTypes = getFactionReputationSlotTypes(player.faction);
+  const ambTiles = player.ambassadorTiles || [];
+  const repTiles = player.reputationTiles || [];
+
+  const slots: ReputationTrackSlotInfo[] = slotTypes.map((type, idx) => ({
+    slotIndex: idx,
+    slotType: type,
+  }));
+
+  let ambIdx = 0;
+  // Place ambassadors into 'amb_only' slots first
+  for (const slot of slots) {
+    if (slot.slotType === 'amb_only' && ambIdx < ambTiles.length) {
+      const allyId = ambTiles[ambIdx++];
+      const ally = players?.find((p) => p.id === allyId);
+      slot.tile = {
+        type: 'ambassador',
+        allyId,
+        allyName: ally?.name || allyId,
+        allyColor: ally?.color || '#6366f1',
+        vp: 1,
+      };
+    }
+  }
+
+  // Then place ambassadors into 'both' slots
+  for (const slot of slots) {
+    if (!slot.tile && slot.slotType === 'both' && ambIdx < ambTiles.length) {
+      const allyId = ambTiles[ambIdx++];
+      const ally = players?.find((p) => p.id === allyId);
+      slot.tile = {
+        type: 'ambassador',
+        allyId,
+        allyName: ally?.name || allyId,
+        allyColor: ally?.color || '#6366f1',
+        vp: 1,
+      };
+    }
+  }
+
+  // Then place reputation tiles into empty 'both' or 'rep_only' slots
+  let repIdx = 0;
+  for (const slot of slots) {
+    if (
+      !slot.tile &&
+      (slot.slotType === 'both' || slot.slotType === 'rep_only') &&
+      repIdx < repTiles.length
+    ) {
+      const vp = repTiles[repIdx];
+      slot.tile = {
+        type: 'reputation',
+        vp,
+        repIndex: repIdx,
+      };
+      repIdx++;
+    }
+  }
+
+  return slots;
+}
 
 export function createInitialGame(
   playerCount: number = 2,

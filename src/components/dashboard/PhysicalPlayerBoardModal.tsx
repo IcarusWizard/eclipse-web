@@ -15,6 +15,7 @@ import {
 import { calculateBlueprintStats, countPlayerShips, SHIP_LIMITS } from '../../engine/rules/shipValidation';
 import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
 import { ANCIENT_PART_IDS } from '../../engine/rules/partData';
+import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 import {
   X,
   Zap,
@@ -533,7 +534,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       </span>
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Slots 1–{player.faction.ambassadorSlots ?? 3} accept Ambassador or Reputation tiles. Remaining slots accept Reputation tiles only.
+                      Track holds up to {player.faction.reputationSlots ?? 5} tiles. Slots accept Ambassador and/or Reputation tiles according to faction board specifications.
                     </p>
                   </div>
                 </div>
@@ -546,27 +547,25 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 </div>
               </div>
 
-              {/* Physical Cardboard Slots */}
+              {/* Physical Cardboard Slots (Bugs 72, 73, 78) */}
               {(() => {
-                const totalSlots = player.faction.reputationSlots ?? 5;
-                const ambSlotsCount = player.faction.ambassadorSlots ?? 3;
-                const ambCount = player.ambassadorTiles?.length || 0;
+                const trackSlots = getPlayerReputationTrackSlots(player, players);
+                const totalSlots = trackSlots.length;
 
                 return (
                   <div className={`grid ${totalSlots === 4 ? 'grid-cols-4' : 'grid-cols-5'} gap-3`}>
-                    {Array.from({ length: totalSlots }).map((_, slotIdx) => {
-                      const isAmbassadorEligible = slotIdx < ambSlotsCount;
-                      const isAmbassadorSlot = slotIdx < ambCount;
-                      const allyId = isAmbassadorSlot ? player.ambassadorTiles[slotIdx] : null;
+                    {trackSlots.map((slot) => {
+                      const isAmbassadorSlot = slot.tile?.type === 'ambassador';
+                      const allyId = isAmbassadorSlot ? slot.tile?.allyId : null;
                       const ally = allyId ? players.find((p) => p.id === allyId) : null;
 
-                      const repTileIdx = slotIdx - ambCount;
-                      const repTile = repTileIdx >= 0 ? player.reputationTiles[repTileIdx] : undefined;
-                      const hasRepTile = repTile !== undefined;
+                      const isRepSlot = slot.tile?.type === 'reputation';
+                      const repTile = isRepSlot ? slot.tile?.vp : undefined;
+                      const hasRepTile = isRepSlot;
 
                       return (
                         <div
-                          key={`rep_slot_${slotIdx}`}
+                          key={`rep_slot_${slot.slotIndex}`}
                           className={`h-32 rounded-xl border-2 flex flex-col items-center justify-between p-2.5 transition-all relative ${
                             isAmbassadorSlot
                               ? 'bg-gradient-to-b from-indigo-950/50 to-slate-950 border-indigo-500/80 shadow-lg shadow-indigo-950/50'
@@ -576,8 +575,15 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           }`}
                         >
                           <div className="w-full flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                            <span>Slot #{slotIdx + 1}</span>
-                            {isAmbassadorEligible ? (
+                            <span>Slot #{slot.slotIndex + 1}</span>
+                            {slot.slotType === 'amb_only' ? (
+                              <span
+                                className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-950/90 text-purple-300 border border-purple-700/60"
+                                title="This slot can only hold Ambassador Tiles"
+                              >
+                                Amb Only
+                              </span>
+                            ) : slot.slotType === 'both' ? (
                               <span
                                 className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-950/90 text-indigo-300 border border-indigo-700/60"
                                 title="This slot can hold either an Ambassador Tile or a Reputation Tile"
@@ -630,7 +636,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                 Empty
                               </span>
                               <span className="text-[9px] text-slate-600 mt-0.5">
-                                {isAmbassadorEligible ? 'Amb or Rep Tile' : 'Rep Tile Only'}
+                                {slot.slotType === 'amb_only'
+                                  ? 'Ambassador Only'
+                                  : slot.slotType === 'both'
+                                  ? 'Amb or Rep Tile'
+                                  : 'Rep Tile Only'}
                               </span>
                             </div>
                           )}

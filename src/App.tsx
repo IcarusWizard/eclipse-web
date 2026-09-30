@@ -1375,6 +1375,7 @@ export const App: React.FC = () => {
       {pendingExploreCoords && candidateTile && sourceSector && (
         <ExploreModal
           player={activePlayer}
+          sectors={state.sectors}
           fromCoord={pendingExploreCoords.from}
           targetCoord={pendingExploreCoords.target}
           candidateTile={candidateTile}

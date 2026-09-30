@@ -6,6 +6,7 @@ import {
   getRingFromCoord,
   findLegalExploreRotation,
   findNextLegalExploreRotation,
+  isLegallyConnectedToPlayerSectors,
 } from '../../engine/rules/hexMath';
 import {
   Compass,
@@ -29,6 +30,7 @@ interface ExploreModalProps {
   candidateTile: SectorTile;
   candidateTiles?: SectorTile[];
   sourceSector: SectorTile;
+  sectors?: SectorTile[];
   rotation: number;
   onRotate: (newRotation: number | ((prev: number) => number)) => void;
   onConfirmPlacement: (rotation: number, claimInfluence: boolean, chosenTileIndex?: number) => void;
@@ -44,6 +46,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   candidateTile,
   candidateTiles,
   sourceSector,
+  sectors = [],
   rotation,
   onRotate,
   onConfirmPlacement,
@@ -75,7 +78,14 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   };
 
   const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
-  const isConnected = areSectorsConnected(sourceSector, simulatedTile, hasWormholeGen);
+  const isConnected = isLegallyConnectedToPlayerSectors(
+    sectors,
+    targetCoord,
+    simulatedTile,
+    player.id,
+    hasWormholeGen,
+    sourceSector
+  );
   const ring = getRingFromCoord(targetCoord);
 
   // Player researched advanced techs
@@ -252,7 +262,9 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                     activeTile,
                     targetCoord,
                     rotation,
-                    hasWormholeGen
+                    hasWormholeGen,
+                    sectors,
+                    player.id
                   );
                   onRotate(nextLegal);
                 }

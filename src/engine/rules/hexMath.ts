@@ -32,6 +32,10 @@ export function getHexDistance(a: HexCoord, b: HexCoord): number {
   );
 }
 
+export function areCoordsAdjacent(a: HexCoord, b: HexCoord): boolean {
+  return getHexDistance(a, b) === 1;
+}
+
 export function getRingFromCoord(coord: HexCoord): 0 | 1 | 2 | 3 {
   const dist = getHexDistance({ q: 0, r: 0 }, coord);
   if (dist === 0) return 0;
@@ -120,12 +124,46 @@ export function areSectorsConnected(
 }
 
 /**
+ * Checks if a candidate sector tile placed at targetCoord connects legally
+ * to either the exploring sourceSector OR any other adjacent sector on the board
+ * controlled or occupied by the player (Bug 74).
+ */
+export function isLegallyConnectedToPlayerSectors(
+  allSectors: SectorTile[] = [],
+  targetCoord: HexCoord,
+  candidateTile: SectorTile,
+  playerId?: string,
+  hasWormholeGenerator: boolean = false,
+  sourceSector?: SectorTile | null
+): boolean {
+  // 1. Direct connection to sourceSector
+  if (sourceSector && areSectorsConnected(sourceSector, candidateTile, hasWormholeGenerator)) {
+    return true;
+  }
+
+  // 2. Or connection to ANY adjacent sector containing player's influence disc or ship
+  for (const s of allSectors) {
+    if (!areCoordsAdjacent(s.coord, targetCoord)) continue;
+    const isPlayerSector =
+      !playerId ||
+      s.discOwner === playerId ||
+      (s.ships && s.ships.some((ship) => ship.ownerId === playerId));
+    if (isPlayerSector && areSectorsConnected(s, candidateTile, hasWormholeGenerator)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/**
  * Finds the best legal rotation (0-5) for a candidate sector tile being placed
  * at `targetCoord` explored from `sourceSector`.
  *
  * Rules:
  * - A legal placement must connect an open wormhole on the new tile with the
- *   wormhole of the exploring source sector (or satisfy Wormhole Generator tech).
+ *   wormhole of the exploring source sector OR any adjacent sector controlled/occupied
+ *   by the player (or satisfy Wormhole Generator tech).
  * - Full two-way wormhole connections receive highest priority (+100 score).
  * - Additional open wormhole connections formed with other existing adjacent sectors
  *   on the map grant bonus score (+10 each) to maximize player connectivity.
@@ -136,7 +174,8 @@ export function findLegalExploreRotation(
   candidateTile: SectorTile,
   targetCoord: HexCoord,
   hasWormholeGenerator: boolean = false,
-  allSectors?: SectorTile[]
+  allSectors?: SectorTile[],
+  playerId?: string
 ): number {
   let bestRot = -1;
   let maxScore = -1;
@@ -148,22 +187,17 @@ export function findLegalExploreRotation(
       rotation: rot,
     };
 
-    const edgeAtoB = getEdgeBetween(sourceSector.coord, targetCoord);
-    if (edgeAtoB === null) continue;
-
-    const edgeBtoA = getOppositeEdge(edgeAtoB);
-    const aHas = hasWormholeOnEdge(sourceSector, edgeAtoB);
-    const bHas = hasWormholeOnEdge(testTile, edgeBtoA);
-
-    const isConnected = hasWormholeGenerator ? (aHas || bHas) : (aHas && bHas);
+    const isConnected = isLegallyConnectedToPlayerSectors(
+      allSectors || [],
+      targetCoord,
+      testTile,
+      playerId,
+      hasWormholeGenerator,
+      sourceSector
+    );
     if (!isConnected) continue;
 
-    let score = 0;
-    if (aHas && bHas) {
-      score += 100;
-    } else {
-      score += 50;
-    }
+    let score = 100;
 
     // Bonus for connecting to other already-placed sectors on the board
     if (allSectors) {
@@ -193,7 +227,9 @@ export function findNextLegalExploreRotation(
   candidateTile: SectorTile,
   targetCoord: HexCoord,
   currentRotation: number,
-  hasWormholeGenerator: boolean = false
+  hasWormholeGenerator: boolean = false,
+  allSectors?: SectorTile[],
+  playerId?: string
 ): number {
   for (let step = 1; step <= 6; step++) {
     const rot = (currentRotation + step) % 6;
@@ -202,7 +238,16 @@ export function findNextLegalExploreRotation(
       coord: targetCoord,
       rotation: rot,
     };
-    if (areSectorsConnected(sourceSector, testTile, hasWormholeGenerator)) {
+    if (
+      isLegallyConnectedToPlayerSectors(
+        allSectors || [],
+        targetCoord,
+        testTile,
+        playerId,
+        hasWormholeGenerator,
+        sourceSector
+      )
+    ) {
       return rot;
     }
   }

@@ -101,6 +101,18 @@ export const Header: React.FC<HeaderProps> = ({
           <div className="text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-900 border border-slate-700 text-slate-300">
             {state.phase.replace('_', ' ')}
           </div>
+
+          {/* Main Page / Lobby Return Button (Bug 71) */}
+          {onReturnToLobby && (
+            <button
+              onClick={onReturnToLobby}
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/60 text-slate-300 hover:text-cyan-300 text-xs font-bold transition-all shadow cursor-pointer shrink-0"
+              title="Return to Main Page (Galaxy Lobby)"
+            >
+              <Home className="w-3.5 h-3.5 text-cyan-400" />
+              <span className="hidden sm:inline">Lobby</span>
+            </button>
+          )}
         </div>
 
         {/* Right Section: Player Switcher + Player Board + Slider Menu Toggle */}

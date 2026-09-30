@@ -63,6 +63,12 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   const hasPassed = commander.hasPassed;
   const maxResearch = commander.faction.researchActivations ?? 1;
 
+  // Player-controlled sectors for Warp Portal placement (Bug 79)
+  const controlledSectors = React.useMemo(
+    () => (sectors || []).filter((s) => s.discOwner === commander.id),
+    [sectors, commander.id]
+  );
+
   const [selectedForResearch, setSelectedForResearch] = useState<
     { techId: string; targetTrack: 'military' | 'grid' | 'nano' }[]
   >([]);
