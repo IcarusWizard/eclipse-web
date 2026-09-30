@@ -43,6 +43,7 @@ import {
 import {
   saveGameState,
   loadActiveGameState,
+  loadTable,
   loadTableByNumber,
   listSavedTables,
   getTableNumber,
@@ -6518,6 +6519,124 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(dracoHtml).toContain('REPUTATION TILE DRAW');
         expect(dracoHtml).toContain('Confirm Reputation Tile');
+      });
+
+      it('48. verifies Bug Fixes 93-94: turn confirmation sync propagation without refresh and new round hint with close icon (no undefined X)', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+
+        // =====================================================================
+        // Bug 93: Unconfirmed action isolation & automatic sync on confirm
+        // =====================================================================
+        // Create 2-player game for Planta and Eridani on Table #860
+        const game = createInitialGame(2, ['planta', 'eridani']);
+        game.id = 'galaxy-860';
+        (game as any).tableNumber = 860;
+        const planta = game.players[0]!;
+        const eridani = game.players[1]!;
+
+        // 1. Initial confirmed state saves to table storage
+        saveGameState(game);
+        const storedInitial = loadTable('galaxy-860');
+        expect(storedInitial).toBeDefined();
+        expect(storedInitial?.id).toBe('galaxy-860');
+
+        // 2. Planta executes BUILD with requireConfirmation: true
+        const homeSector = game.sectors.find((s) => s.discOwner === planta.id)!;
+        planta.resources.materials = 10;
+        const buildRes = executeAction(game, {
+          type: 'BUILD',
+          playerId: planta.id,
+          items: [{ sectorId: homeSector.id, itemType: 'interceptor' }],
+          requireConfirmation: true,
+        });
+        expect(buildRes.success).toBe(true);
+        expect(buildRes.newState.pendingActionConfirmation).toBeDefined();
+        expect(buildRes.newState.pendingActionConfirmation?.playerId).toBe(planta.id);
+
+        // 3. Attempting saveGameState on unconfirmed state must NOT overwrite shared storage
+        saveGameState(buildRes.newState);
+        const storedDuringAction = loadTable('galaxy-860');
+        expect(storedDuringAction?.pendingActionConfirmation).toBeFalsy();
+
+        // 4. Planta confirms action
+        const confirmRes = executeAction(buildRes.newState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: planta.id,
+        });
+        expect(confirmRes.success).toBe(true);
+        expect(confirmRes.newState.pendingActionConfirmation).toBeNull();
+        expect(confirmRes.newState.lastConfirmedAction).toBeDefined();
+        expect(confirmRes.newState.lastConfirmedAction?.playerId).toBe(planta.id);
+        expect(confirmRes.newState.activePlayerIndex).toBe(1); // Now Eridani's turn
+
+        // 5. Confirmed state immediately saves to storage
+        saveGameState(confirmRes.newState);
+        const storedAfterConfirm = loadTable('galaxy-860');
+        expect(storedAfterConfirm?.pendingActionConfirmation).toBeFalsy();
+        expect(storedAfterConfirm?.lastConfirmedAction).toBeDefined();
+        expect(storedAfterConfirm?.activePlayerIndex).toBe(1);
+
+        // 6. Test sync filter logic:
+        // A client at Seat 1 (Eridani) ignores unconfirmed remote states from Planta,
+        // but immediately receives and adopts confirmed state without page refresh.
+        let adoptedRemoteState: GameState | null = null;
+        const simulatedSyncHandler = (remoteState: GameState, currentSeat: number, localPending: any) => {
+          if (remoteState.pendingActionConfirmation) {
+            return false; // Ignored unconfirmed action
+          }
+          const isMyPending = !!localPending && localPending.playerId === remoteState.players[currentSeat]?.id;
+          if (isMyPending) {
+            return false;
+          }
+          adoptedRemoteState = remoteState;
+          return true;
+        };
+
+        // When remote state is unconfirmed:
+        const unconfirmedAdopted = simulatedSyncHandler(buildRes.newState, 1, null);
+        expect(unconfirmedAdopted).toBe(false);
+        expect(adoptedRemoteState).toBeNull();
+
+        // When remote state is confirmed:
+        const confirmedAdopted = simulatedSyncHandler(confirmRes.newState, 1, null);
+        expect(confirmedAdopted).toBe(true);
+        expect(adoptedRemoteState).toBeDefined();
+        expect((adoptedRemoteState as any)?.activePlayerIndex).toBe(1);
+
+        // =====================================================================
+        // Bug 94: Both pass -> Round 2 starts -> New Round Hint with close icon X
+        // =====================================================================
+        let roundState: GameState = confirmRes.newState;
+        // Both Planta and Eridani pass
+        const p1Pass = executeAction(roundState, { type: 'PASS', playerId: eridani.id });
+        expect(p1Pass.success).toBe(true);
+        const p0Pass = executeAction(p1Pass.newState, { type: 'PASS', playerId: planta.id });
+        expect(p0Pass.success).toBe(true);
+
+        // Verify round advanced to 2
+        expect(p0Pass.newState.round).toBe(2);
+        expect(p0Pass.newState.phase).toBe('ACTION_PHASE');
+
+        // Verify rendering App component and close icon X does not crash with "ReferenceError: X is not defined"
+        const { X } = await import('lucide-react');
+        const iconHtml = renderToString(React.createElement(X, { className: 'w-5 h-5' }));
+        expect(iconHtml).toContain('<svg');
+
+        if (typeof window !== 'undefined') {
+          window.history.pushState({}, '', '?table=galaxy-860');
+        }
+        const { App } = await import('../../App');
+        saveGameState(p0Pass.newState);
+
+        let appHtml = '';
+        expect(() => {
+          appHtml = renderToString(React.createElement(App));
+        }).not.toThrow();
+
+        expect(appHtml).toBeDefined();
+        expect(appHtml).toContain('ROUND');
+        expect(appHtml).toMatch(/2<!-- -->\/<!-- -->8/);
       });
     });
   });

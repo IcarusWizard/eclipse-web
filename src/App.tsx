@@ -7,6 +7,7 @@ import { executeAction, getMaxMoveActivations, computePinningState } from './eng
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative } from './engine/rules/combatEngine';
+import { X } from 'lucide-react';
 
 // UI Components
 import { Header } from './components/layout/Header';
@@ -213,11 +214,20 @@ export const App: React.FC = () => {
     if (!tableTarget) return;
 
     const unsubscribe = subscribeToGameSync(tableTarget, (remoteState) => {
-      // Bug 87: When this player has an in-progress unconfirmed action on screen,
-      // remote sync must NOT overwrite or cancel their local action!
-      if (pendingActionRef.current) {
+      // Never adopt unconfirmed intermediate actions from other players
+      if (remoteState.pendingActionConfirmation) {
         return;
       }
+
+      // Bug 87 & 93: Only protect if THIS seat has an active unconfirmed action that this player is editing
+      const isMyPendingAction =
+        !!pendingActionRef.current &&
+        (currentSeat === 'all' ||
+          pendingActionRef.current.playerId === state.players[currentSeat as number]?.id);
+      if (isMyPendingAction) {
+        return;
+      }
+
       const remoteFp = getStateFingerprint(remoteState);
       if (remoteFp !== lastStateFingerprintRef.current) {
         lastStateFingerprintRef.current = remoteFp;
@@ -969,6 +979,8 @@ export const App: React.FC = () => {
       playerId: state.pendingActionConfirmation.playerId,
     });
     if (res.success) {
+      lastStateFingerprintRef.current = getStateFingerprint(res.newState);
+      saveGameState(res.newState);
       setState(res.newState);
       showToast('Action confirmed and turn passed.');
     } else {
@@ -984,6 +996,8 @@ export const App: React.FC = () => {
       playerId: conf.playerId,
     });
     if (res.success) {
+      lastStateFingerprintRef.current = getStateFingerprint(res.newState);
+      saveGameState(res.newState);
       setState(res.newState);
       if (conf.actionType === 'EXPLORE' && conf.exploreTargetCoord && conf.exploreFromCoord) {
         setPendingExploreCoords({ from: conf.exploreFromCoord, target: conf.exploreTargetCoord });

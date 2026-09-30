@@ -3,7 +3,7 @@
  */
 
 import { GameState, GamePhase, GameLogEntry, CombatState } from '../types/state';
-import { GameAction, BuildAction, UpgradeAction, MoveAction, ResearchAction } from '../types/actions';
+import { GameAction, BuildAction, UpgradeAction, MoveAction, ResearchAction, ExploreAction } from '../types/actions';
 import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors } from './hexMath';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
