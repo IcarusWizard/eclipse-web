@@ -1690,17 +1690,23 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     >
                       {/* Semicircle curving INWARD into the hex towards local -X */}
                       <path
-                        d="M 0 -13 A 13 13 0 0 0 0 13 Z"
-                        fill={isNeighborConnected ? 'rgba(255, 255, 255, 0.95)' : 'rgba(255, 255, 255, 0.25)'}
-                        stroke="#ffffff"
-                        strokeWidth={isNeighborConnected ? '2.5' : '2'}
-                        strokeDasharray={isNeighborConnected ? undefined : '3.5 2'}
+                        d="M 0 -14 A 14 14 0 0 0 0 14 Z"
+                        fill={isNeighborConnected ? '#38bdf8' : 'rgba(255, 255, 255, 0.75)'}
+                        stroke={isNeighborConnected ? '#7dd3fc' : '#ffffff'}
+                        strokeWidth={isNeighborConnected ? '3' : '2.2'}
                       />
                       <path
                         d="M 0 -7 A 7 7 0 0 0 0 7"
-                        fill="none"
-                        stroke="#ffffff"
+                        fill={isNeighborConnected ? '#0284c7' : 'rgba(15, 23, 42, 0.8)'}
+                        stroke={isNeighborConnected ? '#bae6fd' : '#cbd5e1'}
                         strokeWidth="1.5"
+                      />
+                      {/* Center indicator dot at edge boundary */}
+                      <circle
+                        cx="0"
+                        cy="0"
+                        r="2.5"
+                        fill={isNeighborConnected ? '#38bdf8' : '#ffffff'}
                       />
                     </g>
                   );

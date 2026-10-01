@@ -518,16 +518,25 @@ export const App: React.FC = () => {
     const res = executeAction(state, {
       type: 'FINISH_EXPLORE',
       playerId: activePlayer.id,
-      requireConfirmation: true,
+      requireConfirmation: false,
     });
     if (res.success) {
       setState(res.newState);
+      saveGameState(res.newState);
       setIsExploreMode(false);
       setPendingExploreCoords(null);
-      showToast('Finished exploration action.');
+      showToast('Finished exploration and passed turn.');
     } else {
       showToast(res.error || 'Could not finish exploration.');
     }
+  };
+
+  const handleToggleExplore = () => {
+    if (isExploreMode && state.pendingExploreActivations && state.pendingExploreActivations > 0) {
+      handleFinishExplore();
+      return;
+    }
+    setIsExploreMode((prev) => !prev);
   };
 
   // Research flow (supports single tech or array of technologies for Hydran double research)
@@ -1412,7 +1421,7 @@ export const App: React.FC = () => {
           <ActionBar
             activePlayer={activePlayer}
             isExploreMode={isExploreMode}
-            onToggleExplore={() => setIsExploreMode((prev) => !prev)}
+            onToggleExplore={handleToggleExplore}
             onOpenResearch={() => setIsTechMarketOpen(true)}
             onOpenUpgrade={() => setIsBlueprintOpen(true)}
             onOpenBuild={() => setIsBuildOpen(true)}
@@ -1421,6 +1430,7 @@ export const App: React.FC = () => {
             onPass={handlePass}
             isTurnGated={isTurnGated}
             pendingConfirmation={state.pendingActionConfirmation}
+            pendingExploreActivations={state.pendingExploreActivations}
             onConfirmAction={handleConfirmTurnAction}
             onRevertAction={handleRevertTurnAction}
           />

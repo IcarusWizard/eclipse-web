@@ -1,12 +1,17 @@
 import React, { useState, useEffect } from 'react';
 import { PlayerState } from '../../engine/types/player';
-import { SectorTile, HexCoord, PlanetResourceType } from '../../engine/types/galaxy';
+import { SectorTile, HexCoord, PlanetResourceType, HexEdge } from '../../engine/types/galaxy';
 import {
   areSectorsConnected,
   getRingFromCoord,
   findLegalExploreRotation,
   findNextLegalExploreRotation,
   isLegallyConnectedToPlayerSectors,
+  hasWormholeOnEdge,
+  getHexCornerPoints,
+  getHexEdgeCenter,
+  getNeighborCoord,
+  areCoordsEqual,
 } from '../../engine/rules/hexMath';
 import {
   Compass,
@@ -249,6 +254,10 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
             <span className="text-[11px] font-bold text-cyan-400">
               {activeTile.victoryPoints} VP
             </span>
+            <span className="text-[11px] px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-700/80 text-cyan-300 font-bold flex items-center gap-1">
+              <span>🌌</span>
+              <span>{activeTile.wormholes.filter(Boolean).length} WH</span>
+            </span>
           </div>
 
           {/* Connection Status & Rotation Controls */}
@@ -319,6 +328,62 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
         {/* Shrunk Compact Info Row with Hover Tooltips */}
         <div className="flex items-center justify-between gap-4 py-0.5">
           <div className="flex items-center gap-3.5 flex-wrap">
+            {/* Wormhole Tile Layout Preview */}
+            <div
+              className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800"
+              title={`Sector ${activeTile.sectorNumber} has ${activeTile.wormholes.filter(Boolean).length} wormholes (current orientation: ${rotation * 60}°)`}
+            >
+              <svg width="34" height="34" viewBox="0 0 34 34" className="shrink-0 overflow-visible">
+                <polygon
+                  points={getHexCornerPoints(17, 17, 14)}
+                  fill="#0f172a"
+                  stroke={isConnected ? '#38bdf8' : '#f43f5e'}
+                  strokeWidth="1.2"
+                />
+                {([0, 1, 2, 3, 4, 5] as HexEdge[]).map((edge) => {
+                  const hasWh = hasWormholeOnEdge(simulatedTile, edge);
+                  if (!hasWh) return null;
+                  const edgePos = getHexEdgeCenter(17, 17, 14, edge);
+                  const neighborCoord = getNeighborCoord(simulatedTile.coord, edge);
+                  const isConn = areCoordsEqual(neighborCoord, sourceSector.coord)
+                    ? areSectorsConnected(simulatedTile, sourceSector, hasWormholeGen)
+                    : false;
+                  return (
+                    <g
+                      key={`mini_wh_${edge}`}
+                      transform={`translate(${edgePos.x}, ${edgePos.y}) rotate(${edgePos.angle})`}
+                    >
+                      <path
+                        d="M 0 -4 A 4 4 0 0 0 0 4 Z"
+                        fill={isConn ? '#38bdf8' : '#ffffff'}
+                        stroke={isConn ? '#7dd3fc' : '#cbd5e1'}
+                        strokeWidth="0.8"
+                      />
+                    </g>
+                  );
+                })}
+                <text
+                  x="17"
+                  y="20"
+                  textAnchor="middle"
+                  fill="#cbd5e1"
+                  fontSize="7"
+                  fontWeight="bold"
+                  fontFamily="monospace"
+                >
+                  {activeTile.sectorNumber}
+                </text>
+              </svg>
+              <div className="flex flex-col text-left leading-none">
+                <span className="text-[10px] font-bold text-slate-200">
+                  {activeTile.wormholes.filter(Boolean).length} Wormholes
+                </span>
+                <span className="text-[8.5px] font-mono text-cyan-400 mt-0.5">
+                  {isConnected ? '✓ Connected' : 'Unconnected'}
+                </span>
+              </div>
+            </div>
+
             {/* Habitats Group */}
             <div className="flex items-center gap-2">
               <span className="text-[11px] font-semibold text-slate-400">Habitats:</span>

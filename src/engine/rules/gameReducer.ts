@@ -815,7 +815,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
 
     case 'COLONIZE': {
-      if (player.colonyShips.ready <= 0) {
+      const effectiveReady =
+        player.colonyShips.ready +
+        (state.pendingActionConfirmation?.actionType === 'INFLUENCE' &&
+        state.pendingActionConfirmation.playerId === player.id
+          ? state.pendingActionConfirmation.influenceRefreshesRemaining || 0
+          : 0);
+      if (effectiveReady <= 0) {
         return { valid: false, error: 'No ready colony ships available.' };
       }
       const sector = state.sectors.find((s) => s.id === action.sectorId);
@@ -1187,6 +1193,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
   const snapshotJson = action.requireConfirmation
     ? JSON.stringify({ ...state, pendingActionConfirmation: null })
     : undefined;
+
+  let influenceRefreshesRemaining: number | undefined;
 
   switch (action.type) {
     case 'EXPLORE': {
@@ -1655,10 +1663,13 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       player.actionsTakenThisRound += 1;
 
       // Flip two colony ships face-up (ready)
+      const initialReady = player.colonyShips.ready;
       player.colonyShips.ready = Math.min(
         player.colonyShips.total,
         player.colonyShips.ready + 2
       );
+      const readiedCount = player.colonyShips.ready - initialReady;
+      influenceRefreshesRemaining = Math.max(0, 2 - readiedCount);
 
       // Abandon sectors first (returns influence discs and population cubes)
       if (action.abandonSectors) {
@@ -1746,6 +1757,23 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       planet.colonizedResource = placedRes;
       player.population[placedRes].cubesOnBoard = Math.max(0, player.population[placedRes].cubesOnBoard - 1);
       addLog(`${player.name} colonized a ${placedRes.toUpperCase()} slot in Sector ${sector.sectorNumber}.`);
+
+      // Bug 96: If an Influence action is pending confirmation and has remaining colony ship refreshes,
+      // flip the used colony ship back face-up (or apply unused refresh)
+      if (
+        newState.pendingActionConfirmation?.actionType === 'INFLUENCE' &&
+        newState.pendingActionConfirmation.playerId === player.id &&
+        newState.pendingActionConfirmation.influenceRefreshesRemaining &&
+        newState.pendingActionConfirmation.influenceRefreshesRemaining > 0
+      ) {
+        newState.pendingActionConfirmation.influenceRefreshesRemaining -= 1;
+        player.colonyShips.ready = Math.min(player.colonyShips.total, player.colonyShips.ready + 1);
+        addLog(
+          `${player.name} flipped back a Colony Ship face-up from the Influence action (${newState.pendingActionConfirmation.influenceRefreshesRemaining} refresh(es) remaining).`,
+          'action'
+        );
+      }
+
       return { success: true, newState }; // Colonize does not pass the turn
     }
 
@@ -2371,6 +2399,23 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       const conf = newState.pendingActionConfirmation!;
       newState.pendingActionConfirmation = null;
       const actingPlayer = newState.players.find((p) => p.id === conf.playerId);
+
+      // Bug 96: If Influence action has unused colony ship refreshes and player has exhausted ships, ready them now
+      if (
+        conf.actionType === 'INFLUENCE' &&
+        conf.influenceRefreshesRemaining &&
+        conf.influenceRefreshesRemaining > 0 &&
+        actingPlayer &&
+        actingPlayer.colonyShips.ready < actingPlayer.colonyShips.total
+      ) {
+        const toAdd = Math.min(
+          conf.influenceRefreshesRemaining,
+          actingPlayer.colonyShips.total - actingPlayer.colonyShips.ready
+        );
+        actingPlayer.colonyShips.ready += toAdd;
+        conf.influenceRefreshesRemaining -= toAdd;
+      }
+
       addLog(
         `${actingPlayer ? actingPlayer.name : 'Commander'} confirmed action (${conf.description}) and passed turn.`,
         'action'
@@ -2517,8 +2562,19 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         exploreTargetCoord: exploreAct?.targetCoord,
         exploreFromCoord: exploreAct?.fromCoord,
         actionPayload: action,
+        influenceRefreshesRemaining: action.type === 'INFLUENCE' ? influenceRefreshesRemaining : undefined,
       };
       return { success: true, newState };
+    }
+
+    if (action.type === 'FINISH_EXPLORE') {
+      newState.lastConfirmedAction = {
+        playerId: player.id,
+        playerName: player.name,
+        actionType: 'EXPLORE',
+        summary: `${player.name} finished exploration`,
+        timestamp: Date.now(),
+      };
     }
 
     const activePlayers = newState.players.filter((p) => !p.isEliminated);

@@ -133,6 +133,7 @@ export interface PendingActionConfirmation {
   exploreTargetCoord?: HexCoord;
   exploreFromCoord?: HexCoord;
   actionPayload?: any; // The original action payload for highlights upon confirmation
+  influenceRefreshesRemaining?: number; // Remaining colony ship refreshes from Influence action that can be applied upon colonizing
 }
 
 export interface GameState {

@@ -37,6 +37,7 @@ interface ActionBarProps {
   onPass: () => void;
   isTurnGated?: boolean;
   pendingConfirmation?: PendingActionConfirmation | null;
+  pendingExploreActivations?: number;
   onConfirmAction?: () => void;
   onRevertAction?: () => void;
 }
@@ -53,6 +54,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onPass,
   isTurnGated = false,
   pendingConfirmation,
+  pendingExploreActivations,
   onConfirmAction,
   onRevertAction,
 }) => {
@@ -92,6 +94,14 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             <span className="text-[10px] text-cyan-300 font-medium flex items-center gap-1 mt-0.5">
               <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
               You may colonize hex planets before confirming!
+            </span>
+          )}
+          {pendingConfirmation.actionType === 'INFLUENCE' && (
+            <span className="text-[10px] text-cyan-300 font-medium flex items-center gap-1 mt-0.5">
+              <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
+              {pendingConfirmation.influenceRefreshesRemaining && pendingConfirmation.influenceRefreshesRemaining > 0
+                ? `You may colonize hex planets (${pendingConfirmation.influenceRefreshesRemaining} flip-back refresh available)!`
+                : 'You may colonize hex planets before confirming!'}
             </span>
           )}
         </div>
@@ -180,7 +190,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           disabled={!canActNormal}
           onClick={onToggleExplore}
-          title={isExploreMode ? 'Cancel Explore Target' : `Explore (EXP) - Discover new sectors (${maxExplore} activation)`}
+          title={
+            isExploreMode
+              ? pendingExploreActivations && pendingExploreActivations > 0
+                ? 'Cancel Explore & finish turn'
+                : 'Cancel Explore Target'
+              : `Explore (EXP) - Discover new sectors (${maxExplore} activation)`
+          }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             isExploreMode
               ? 'bg-cyan-500 text-slate-950 ring-2 ring-cyan-300'

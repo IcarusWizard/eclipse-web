@@ -6638,6 +6638,198 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(appHtml).toContain('ROUND');
         expect(appHtml).toMatch(/2<!-- -->\/<!-- -->8/);
       });
+      it('49. verifies Bug Fixes 95-97: candidate tile wormhole preview (Bug 95), delayed Influence colony ship flip-back (Bug 96), and Planta cancelling explore finishing turn (Bug 97)', async () => {
+        // =====================================================================
+        // Bug 95: Wormhole preview before placement on sector candidate tile
+        // =====================================================================
+        const game = createInitialGame(2, ['planta', 'eridani_empire']);
+        const planta = game.players[0]!;
+        const eridani = game.players[1]!;
+        const plantaHome = game.sectors.find((s) => s.discOwner === planta.id)!;
+
+        // Candidate tile with wormholes on edges [0, 2, 4] (base)
+        const candidateTile: SectorTile = {
+          id: 'tile_sec_205',
+          sectorNumber: 205,
+          ring: 2,
+          coord: { q: 1, r: -2 },
+          rotation: 0,
+          planets: [
+            { resource: 'money', isAdvanced: false },
+            { resource: 'material', isAdvanced: false },
+          ],
+          wormholes: [true, false, true, false, true, false],
+          victoryPoints: 2,
+          ancientsCount: 0,
+          hasDiscovery: false,
+          hasArtifact: false,
+          ships: [],
+        };
+
+        // Rotation 0: edges 0, 2, 4 have wormholes
+        expect(hasWormholeOnEdge(candidateTile, 0)).toBe(true);
+        expect(hasWormholeOnEdge(candidateTile, 1)).toBe(false);
+        expect(hasWormholeOnEdge(candidateTile, 2)).toBe(true);
+        expect(hasWormholeOnEdge(candidateTile, 3)).toBe(false);
+        expect(hasWormholeOnEdge(candidateTile, 4)).toBe(true);
+        expect(hasWormholeOnEdge(candidateTile, 5)).toBe(false);
+
+        // Rotation 1 (rotated 60 deg CW): wormholes are now on edges 1, 3, 5
+        const rotated1 = { ...candidateTile, rotation: 1 };
+        expect(hasWormholeOnEdge(rotated1, 0)).toBe(false);
+        expect(hasWormholeOnEdge(rotated1, 1)).toBe(true);
+        expect(hasWormholeOnEdge(rotated1, 2)).toBe(false);
+        expect(hasWormholeOnEdge(rotated1, 3)).toBe(true);
+        expect(hasWormholeOnEdge(rotated1, 4)).toBe(false);
+        expect(hasWormholeOnEdge(rotated1, 5)).toBe(true);
+
+        // Verify ExploreModal renders with wormhole count and mini hex layout
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+        let modalHtml = '';
+        expect(() => {
+          modalHtml = renderToString(
+            React.createElement(ExploreModal, {
+              player: planta,
+              fromCoord: plantaHome.coord,
+              targetCoord: { q: 1, r: -2 },
+              candidateTile,
+              sourceSector: plantaHome,
+              sectors: game.sectors,
+              rotation: 1,
+              onRotate: () => {},
+              onConfirmPlacement: () => {},
+              onDiscard: () => {},
+              onClose: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        expect(modalHtml).toContain('WH');
+        expect(modalHtml).toContain('Wormholes');
+        expect(modalHtml).toContain('rotate(60)');
+        expect(modalHtml).toContain('rotate(180)');
+        expect(modalHtml).toContain('rotate(300)');
+
+        // =====================================================================
+        // Bug 96: Delayed Colony Ship flip-back during Influence action
+        // =====================================================================
+        // Planta starts with 4 ready colony ships
+        expect(planta.colonyShips.ready).toBe(4);
+        expect(planta.colonyShips.total).toBe(4);
+
+        // Setup an unowned empty sector adjacent to Planta
+        const targetCoord = { q: plantaHome.coord.q + 1, r: plantaHome.coord.r };
+        const emptySec: SectorTile = {
+          id: 'test_sec_claim',
+          sectorNumber: 206,
+          ring: 2,
+          coord: targetCoord,
+          rotation: 0,
+          planets: [
+            { resource: 'money', isAdvanced: false },
+            { resource: 'science', isAdvanced: false },
+          ],
+          wormholes: [true, true, true, true, true, true],
+          victoryPoints: 1,
+          ancientsCount: 0,
+          hasDiscovery: false,
+          hasArtifact: false,
+          ships: [],
+        };
+        game.sectors.push(emptySec);
+
+        // Planta takes INFLUENCE action to claim the sector
+        const influenceRes = executeAction(game, {
+          type: 'INFLUENCE',
+          playerId: planta.id,
+          claimSectors: [emptySec.id],
+          requireConfirmation: true,
+        });
+        expect(influenceRes.success).toBe(true);
+        const postInfluence = influenceRes.newState;
+        const plantaPostInf = postInfluence.players.find((p) => p.id === planta.id)!;
+        expect(plantaPostInf.colonyShips.ready).toBe(4);
+        expect(postInfluence.pendingActionConfirmation).toBeDefined();
+        expect(postInfluence.pendingActionConfirmation?.actionType).toBe('INFLUENCE');
+        // Planta had 4/4 ready, so 2 refreshes were deferred
+        expect(postInfluence.pendingActionConfirmation?.influenceRefreshesRemaining).toBe(2);
+
+        // Planta puts population cube on planet 0 (COLONIZE)
+        const colonize1Res = executeAction(postInfluence, {
+          type: 'COLONIZE',
+          playerId: planta.id,
+          sectorId: emptySec.id,
+          planetIndex: 0,
+        });
+        expect(colonize1Res.success).toBe(true);
+        const postCol1 = colonize1Res.newState;
+        const plantaPostCol1 = postCol1.players.find((p) => p.id === planta.id)!;
+        // The colony ship used was immediately flipped back face-up!
+        expect(plantaPostCol1.colonyShips.ready).toBe(4);
+        expect(postCol1.pendingActionConfirmation?.influenceRefreshesRemaining).toBe(1);
+
+        // Planta puts population cube on planet 1 (COLONIZE)
+        const colonize2Res = executeAction(postCol1, {
+          type: 'COLONIZE',
+          playerId: planta.id,
+          sectorId: emptySec.id,
+          planetIndex: 1,
+        });
+        expect(colonize2Res.success).toBe(true);
+        const postCol2 = colonize2Res.newState;
+        const plantaPostCol2 = postCol2.players.find((p) => p.id === planta.id)!;
+        // The second colony ship used was also immediately flipped back face-up!
+        expect(plantaPostCol2.colonyShips.ready).toBe(4);
+        expect(postCol2.pendingActionConfirmation?.influenceRefreshesRemaining).toBe(0);
+
+        // Planta confirms action and passes turn
+        const confirmInfRes = executeAction(postCol2, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: planta.id,
+        });
+        expect(confirmInfRes.success).toBe(true);
+        const postConfirmInf = confirmInfRes.newState;
+        const plantaFinal = postConfirmInf.players.find((p) => p.id === planta.id)!;
+        expect(plantaFinal.colonyShips.ready).toBe(4);
+        expect(postConfirmInf.activePlayerIndex).toBe(1); // Turn passed to Eridani
+
+        // =====================================================================
+        // Bug 97: Planta cancel explore after first explore finishes turn
+        // =====================================================================
+        // Reset active player to Planta
+        postConfirmInf.activePlayerIndex = 0;
+        const targetExploreCoord = { q: plantaHome.coord.q - 1, r: plantaHome.coord.r };
+
+        // Planta explores 1st activation
+        const explore1Res = executeAction(postConfirmInf, {
+          type: 'EXPLORE',
+          playerId: planta.id,
+          fromCoord: plantaHome.coord,
+          targetCoord: targetExploreCoord,
+          rotation: 0,
+          claimInfluence: false,
+          requireConfirmation: true,
+        });
+        expect(explore1Res.success).toBe(true);
+        expect(explore1Res.newState.pendingExploreActivations).toBe(1);
+        expect(explore1Res.newState.activePlayerIndex).toBe(0); // Turn still Planta's
+
+        // Planta decides to cancel remaining explore activation (FINISH_EXPLORE without requireConfirmation)
+        const cancelExploreRes = executeAction(explore1Res.newState, {
+          type: 'FINISH_EXPLORE',
+          playerId: planta.id,
+          requireConfirmation: false,
+        });
+        expect(cancelExploreRes.success).toBe(true);
+        expect(cancelExploreRes.newState.pendingExploreActivations).toBe(0);
+        // Turn is cleanly finished and passed to Eridani!
+        expect(cancelExploreRes.newState.activePlayerIndex).toBe(1);
+        expect(cancelExploreRes.newState.lastConfirmedAction).toBeDefined();
+        expect(cancelExploreRes.newState.lastConfirmedAction?.playerId).toBe(planta.id);
+        expect(cancelExploreRes.newState.lastConfirmedAction?.summary).toContain('finished exploration');
+      });
     });
   });
 });
