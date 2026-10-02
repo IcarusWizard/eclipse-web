@@ -1,5 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { ALL_FACTIONS, HUMAN_FACTIONS, ALIEN_FACTIONS } from '../../engine/rules/setup';
+import {
+  ALL_FACTIONS,
+  HUMAN_FACTIONS,
+  ALIEN_FACTIONS,
+  areFactionsConflictingColor,
+  FACTION_COLOR_GROUP,
+  FactionColorGroup,
+} from '../../engine/rules/setup';
 import { FactionInfo } from '../../engine/types/player';
 import {
   Users,
@@ -38,6 +45,11 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
   const allDrafted = draftedFactions.length === playerCount;
 
   const handleSelectFaction = (factionId: string) => {
+    const conflictingPlayerIndex = draftedFactions.findIndex(
+      (id, idx) => idx !== currentDrafterIndex && areFactionsConflictingColor(id, factionId)
+    );
+    if (conflictingPlayerIndex !== -1) return;
+
     const newDraft = [...draftedFactions];
     newDraft[currentDrafterIndex] = factionId;
     setDraftedFactions(newDraft);
@@ -59,9 +71,15 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
   };
 
   const handleRandomize = () => {
-    // Pick N unique factions randomly across all available factions
-    const shuffled = [...ALL_FACTIONS].sort(() => Math.random() - 0.5);
-    const selected = shuffled.slice(0, playerCount).map((f) => f.id);
+    // Pick N factions with distinct colors randomly across all available factions
+    const colorGroups: FactionColorGroup[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange'];
+    const shuffledColors = [...colorGroups].sort(() => Math.random() - 0.5).slice(0, playerCount);
+    const selected: string[] = [];
+    for (const color of shuffledColors) {
+      const candidates = ALL_FACTIONS.filter((f) => FACTION_COLOR_GROUP[f.id] === color);
+      const chosen = candidates[Math.floor(Math.random() * candidates.length)]!;
+      selected.push(chosen.id);
+    }
     setDraftedFactions(selected);
     setCurrentDrafterIndex(playerCount - 1);
   };
@@ -233,10 +251,10 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
         {/* Faction Cards Grid */}
         <div className="flex-1 overflow-y-auto pr-1 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
           {filteredFactions.map((faction) => {
-            const claimedPlayerIndex = draftedFactions.findIndex(
-              (id, idx) => id === faction.id && idx !== currentDrafterIndex
+            const conflictingPlayerIndex = draftedFactions.findIndex(
+              (id, idx) => idx !== currentDrafterIndex && areFactionsConflictingColor(id, faction.id)
             );
-            const isClaimedByOther = claimedPlayerIndex !== -1;
+            const isClaimedByOther = conflictingPlayerIndex !== -1;
             const isSelectedByCurrent = draftedFactions[currentDrafterIndex] === faction.id;
 
             return (
@@ -336,7 +354,9 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                 <div className="mt-2.5 pt-2 border-t border-slate-800/80">
                   {isClaimedByOther ? (
                     <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider text-center py-1 bg-slate-950/60 rounded">
-                      Claimed by Player {claimedPlayerIndex + 1}
+                      {draftedFactions[conflictingPlayerIndex] === faction.id
+                        ? `Claimed by Player ${conflictingPlayerIndex + 1}`
+                        : `Color In Use (Player ${conflictingPlayerIndex + 1})`}
                     </div>
                   ) : isSelectedByCurrent ? (
                     <div className="flex items-center justify-center gap-1 py-1 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 text-xs font-bold">

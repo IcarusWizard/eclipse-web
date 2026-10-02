@@ -2521,9 +2521,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     if (action.requireConfirmation) {
-      const canRevert =
-        action.type !== 'FINISH_EXPLORE' &&
-        action.type !== 'DISCOVERY_CHOICE';
+      const canRevert = action.type !== 'FINISH_EXPLORE';
       let description = `${action.type} Action`;
       if (action.type === 'BUILD') {
         const buildAct = action as BuildAction;

@@ -114,10 +114,18 @@ export const ActionBar: React.FC<ActionBarProps> = ({
                 type="button"
                 onClick={onRevertAction}
                 className="flex-1 md:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-rose-300 hover:text-white font-bold text-xs uppercase tracking-wider border border-rose-800/80 transition shadow cursor-pointer"
-                title="Undo action and reset turn"
+                title={
+                  pendingConfirmation.actionPayload?.type === 'DISCOVERY_CHOICE'
+                    ? 'Change your mind about +2 VP or reward'
+                    : 'Undo action and reset turn'
+                }
               >
                 <Undo2 className="w-3.5 h-3.5 shrink-0" />
-                <span>Revert</span>
+                <span>
+                  {pendingConfirmation.actionPayload?.type === 'DISCOVERY_CHOICE'
+                    ? 'Change Discovery'
+                    : 'Revert'}
+                </span>
               </button>
             ) : (
               <span className="flex-1 md:flex-initial px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-center gap-1 text-center">

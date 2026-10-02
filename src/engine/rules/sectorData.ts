@@ -445,7 +445,7 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
   {
     id: 'disc_antimatter_missile',
     name: 'Antimatter Missile',
-    description: 'Ancient missile weapon: 2 red missiles (4 dmg each) with 1 power consumption.',
+    description: 'Ancient missile weapon: 1 red missile (4 dmg) with 1 power consumption.',
     shipPartId: 'antimatter_missile',
   },
   {

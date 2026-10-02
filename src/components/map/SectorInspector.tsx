@@ -31,9 +31,9 @@ interface SectorInspectorProps {
     planetIndex: number,
     chosenResource?: 'money' | 'science' | 'material'
   ) => void;
-  onClaimInfluence?: (sectorId: string) => void;
   onAbandonInfluence?: (sectorId: string) => void;
   onClose: () => void;
+  pendingBankruptcy?: { playerId: string; deficit: number } | null;
 }
 
 export const SectorInspector: React.FC<SectorInspectorProps> = ({
@@ -41,10 +41,11 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   players,
   activePlayer,
   onColonizePlanet,
-  onClaimInfluence,
   onAbandonInfluence,
   onClose,
+  pendingBankruptcy,
 }) => {
+  const [isConfirmingBankruptcyAbandon, setIsConfirmingBankruptcyAbandon] = React.useState<boolean>(false);
   const discOwner = players.find((p) => p.id === sector.discOwner);
   const isCenter = sector.sectorNumber === 1;
 
@@ -62,12 +63,9 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
     sector.ships.some((s) => s.ownerId === 'ancient' || s.ownerId === 'gcds' || s.ownerId === 'guardian');
 
   const hasFriendlyShips = sector.ships.some((s) => s.ownerId === activePlayer.id);
-  const canClaimControl =
-    !discOwner &&
-    hasFriendlyShips &&
-    !hasHostiles &&
-    activePlayer.influenceTrack.discsOnTrack > 0 &&
-    Boolean(onClaimInfluence);
+  const isBankruptcyActive = Boolean(
+    pendingBankruptcy && pendingBankruptcy.playerId === activePlayer.id
+  );
   const canAbandonControl =
     sector.discOwner === activePlayer.id &&
     Boolean(onAbandonInfluence);
@@ -122,24 +120,47 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
             )}
           </div>
 
-          {canClaimControl && onClaimInfluence && (
-            <button
-              type="button"
-              onClick={() => onClaimInfluence(sector.id)}
-              className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs tracking-wider uppercase transition shadow shadow-cyan-950 cursor-pointer"
-            >
-              <CircleDot className="w-3.5 h-3.5" /> Claim Sector Control (Place Influence Disc)
-            </button>
-          )}
-
-          {canAbandonControl && onAbandonInfluence && (
-            <button
-              type="button"
-              onClick={() => onAbandonInfluence(sector.id)}
-              className="w-full flex items-center justify-center gap-1.5 py-1 px-3 rounded-lg bg-slate-800 hover:bg-rose-950 text-slate-400 hover:text-rose-300 border border-slate-700 hover:border-rose-700 text-[10px] font-semibold transition cursor-pointer"
-            >
-              Abandon Sector (Retrieve Influence Disc)
-            </button>
+          {isBankruptcyActive && sector.discOwner === activePlayer.id && onAbandonInfluence && (
+            <div className="pt-2 border-t border-slate-800">
+              {!isConfirmingBankruptcyAbandon ? (
+                <button
+                  type="button"
+                  onClick={() => setIsConfirmingBankruptcyAbandon(true)}
+                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-300 hover:text-white border border-rose-800/80 text-xs font-bold transition cursor-pointer"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
+                  Abandon Sector to Resolve Bankruptcy
+                </button>
+              ) : (
+                <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-700 space-y-2">
+                  <div className="text-[11px] text-rose-200 font-semibold leading-snug">
+                    Confirm Bankruptcy Resolution: Abandon Sector {sector.sectorNumber}?
+                    <div className="text-[10px] text-slate-300 font-normal mt-0.5">
+                      Influence disc and population cubes will be retrieved to reduce upkeep deficit.
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setIsConfirmingBankruptcyAbandon(false)}
+                      className="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsConfirmingBankruptcyAbandon(false);
+                        onAbandonInfluence(sector.id);
+                      }}
+                      className="flex-1 py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider transition shadow shadow-emerald-950 cursor-pointer"
+                    >
+                      Confirm & Finish
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
           )}
         </div>
 
@@ -353,13 +374,21 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                       icon: <Sparkles className="w-3.5 h-3.5 text-cyan-400" />,
                     }
                   : isWild
-                  ? {
-                      name: 'Wild Habitat (Any Resource)',
-                      badge: 'bg-slate-300 text-slate-950 font-extrabold',
-                      border: 'border-slate-500/40 bg-slate-900/40',
-                      text: 'text-slate-200',
-                      icon: <Globe className="w-3.5 h-3.5 text-slate-300" />,
-                    }
+                  ? planet.isAdvanced
+                    ? {
+                        name: '★ Advanced Wild Habitat',
+                        badge: 'bg-amber-400 text-slate-950 font-black',
+                        border: 'border-amber-500/60 bg-amber-950/20 ring-1 ring-amber-500/40',
+                        text: 'text-amber-300 font-bold',
+                        icon: <Sparkles className="w-3.5 h-3.5 text-amber-400" />,
+                      }
+                    : {
+                        name: 'Standard Wild Habitat (Any Resource)',
+                        badge: 'bg-slate-300 text-slate-950 font-extrabold',
+                        border: 'border-slate-500/40 bg-slate-900/40',
+                        text: 'text-slate-200',
+                        icon: <Globe className="w-3.5 h-3.5 text-slate-300" />,
+                      }
                   : planet.resource === 'money'
                   ? {
                       name: 'Money (Economy)',

@@ -106,8 +106,8 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-amber-500/70 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden text-slate-100 flex flex-col max-h-[90vh]">
+    <div className="fixed top-18 right-4 z-40 w-full max-w-lg pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
+      <div className="bg-slate-900/95 border-2 border-amber-500/80 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden text-slate-100 flex flex-col max-h-[calc(100vh-90px)]">
         {/* Victory / Bombardment Header */}
         <div className="flex items-center justify-between p-4 border-b border-amber-950 bg-slate-950">
           <div className="flex items-center gap-3">

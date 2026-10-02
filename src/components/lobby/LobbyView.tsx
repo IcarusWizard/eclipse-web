@@ -8,7 +8,7 @@ import {
   loadTableByNumber,
   fetchTableFromServer,
 } from '../../engine/rules/persistence';
-import { ALL_FACTIONS } from '../../engine/rules/setup';
+import { ALL_FACTIONS, areFactionsConflictingColor } from '../../engine/rules/setup';
 import { FactionInfo } from '../../engine/types/player';
 import {
   Rocket,
@@ -56,12 +56,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const [playerCount, setPlayerCount] = useState<number>(2);
   const [customTableId, setCustomTableId] = useState<string>(() => `galaxy-${Math.floor(100 + Math.random() * 900)}`);
   const [selectedFactions, setSelectedFactions] = useState<string[]>([
-    'terran_federation',
-    'orion_hegemony',
-    'planta',
-    'mechanema',
-    'hydran_progress',
-    'eridani_empire',
+    'terran_federation', // Blue
+    'orion_hegemony',    // Orange
+    'planta',            // Green
+    'mechanema',         // Purple
+    'eridani_empire',    // Red
+    'descendants_of_draco', // Yellow
   ]);
   const [mySeat, setMySeat] = useState<number | 'all'>(0);
 
@@ -83,6 +83,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const handleLaunchGame = (e: React.FormEvent) => {
     e.preventDefault();
     const activeFactions = selectedFactions.slice(0, playerCount);
+    for (let i = 0; i < activeFactions.length; i++) {
+      for (let j = i + 1; j < activeFactions.length; j++) {
+        if (areFactionsConflictingColor(activeFactions[i]!, activeFactions[j]!)) {
+          alert('Each player must select a faction with a distinct color.');
+          return;
+        }
+      }
+    }
     onStartNewGame(playerCount, activeFactions, customTableId.trim() || `galaxy-${Date.now() % 1000}`, mySeat);
   };
 
@@ -255,11 +263,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         onChange={(e) => handleFactionChange(idx, e.target.value)}
                         className="bg-slate-900 border border-slate-700 text-xs font-medium rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400"
                       >
-                        {ALL_FACTIONS.map((f) => (
-                          <option key={f.id} value={f.id}>
-                            {f.name}
-                          </option>
-                        ))}
+                        {ALL_FACTIONS.map((f) => {
+                          const conflictSeat = selectedFactions.slice(0, playerCount).findIndex(
+                            (otherId, otherIdx) => otherIdx !== idx && areFactionsConflictingColor(otherId, f.id)
+                          );
+                          const isDisabled = conflictSeat !== -1;
+                          return (
+                            <option key={f.id} value={f.id} disabled={isDisabled}>
+                              {f.name}{isDisabled ? ` (Color in use: Seat ${conflictSeat + 1})` : ''}
+                            </option>
+                          );
+                        })}
                       </select>
                     </div>
                   );

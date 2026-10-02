@@ -104,13 +104,17 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     (t) => t.id === 'advanced_mining' || t.id === 'metasynthesis'
   );
 
-  const getPlanetMeta = (resource: PlanetResourceType) => {
+  const hasMetasynthesis = player.techTrack.researched.some((t) => t.id === 'metasynthesis');
+  const hasAnyAdvancedTech =
+    hasAdvancedEconomy || hasAdvancedLabs || hasAdvancedMining || hasMetasynthesis;
+
+  const getPlanetMeta = (resource: PlanetResourceType, isAdvanced?: boolean) => {
     switch (resource) {
       case 'money':
         return {
-          name: 'Yellow Money',
+          name: isAdvanced ? '★ Advanced Money' : 'Yellow Money',
           color: '#facc15',
-          borderClass: 'border-yellow-400',
+          borderClass: isAdvanced ? 'border-yellow-400 ring-1 ring-yellow-400/50' : 'border-yellow-400',
           textClass: 'text-yellow-400',
           icon: <Coins className="w-3.5 h-3.5 text-yellow-400" />,
           techName: 'Advanced Economy',
@@ -118,9 +122,9 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
         };
       case 'science':
         return {
-          name: 'Pink Science',
+          name: isAdvanced ? '★ Advanced Science' : 'Pink Science',
           color: '#ec4899',
-          borderClass: 'border-pink-500',
+          borderClass: isAdvanced ? 'border-pink-500 ring-1 ring-pink-500/50' : 'border-pink-500',
           textClass: 'text-pink-400',
           icon: <FlaskConical className="w-3.5 h-3.5 text-pink-400" />,
           techName: 'Advanced Labs',
@@ -128,9 +132,9 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
         };
       case 'material':
         return {
-          name: 'Brown Materials',
+          name: isAdvanced ? '★ Advanced Materials' : 'Brown Materials',
           color: '#854d0e',
-          borderClass: 'border-amber-700',
+          borderClass: isAdvanced ? 'border-amber-700 ring-1 ring-amber-700/50' : 'border-amber-700',
           textClass: 'text-amber-400',
           icon: <Hammer className="w-3.5 h-3.5 text-amber-500" />,
           techName: 'Advanced Mining',
@@ -138,13 +142,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
         };
       default:
         return {
-          name: 'Wild / Any',
-          color: '#94a3b8',
-          borderClass: 'border-slate-500',
-          textClass: 'text-slate-300',
-          icon: <Sparkles className="w-3.5 h-3.5 text-slate-300" />,
-          techName: 'Metasynthesis',
-          hasTech: true,
+          name: isAdvanced ? '★ Advanced Wild' : 'Standard Wild',
+          color: isAdvanced ? '#fbbf24' : '#94a3b8',
+          borderClass: isAdvanced ? 'border-amber-400 ring-1 ring-amber-400/60' : 'border-slate-500',
+          textClass: isAdvanced ? 'text-amber-300 font-bold' : 'text-slate-300',
+          icon: <Sparkles className={`w-3.5 h-3.5 ${isAdvanced ? 'text-amber-400' : 'text-slate-300'}`} />,
+          techName: 'Adv Economy / Labs / Mining (or Metasynthesis)',
+          hasTech: !isAdvanced || hasAnyAdvancedTech,
         };
     }
   };
@@ -392,7 +396,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
               ) : (
                 <div className="flex items-center gap-1.5">
                   {activeTile.planets.map((planet, pIdx) => {
-                    const meta = getPlanetMeta(planet.resource);
+                    const meta = getPlanetMeta(planet.resource, planet.isAdvanced);
                     return (
                       <div
                         key={planet.id || pIdx}
@@ -401,9 +405,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                         onMouseLeave={() => setHoveredPlanet(null)}
                       >
                         <div
+                          title={meta.name}
+                          aria-label={meta.name}
                           className={`w-6 h-6 rounded-md flex items-center justify-center cursor-pointer transition-transform hover:scale-110 border ${
                             planet.isAdvanced
-                              ? 'border-white ring-1 ring-white/50 bg-slate-950 shadow-sm'
+                              ? planet.resource === 'any'
+                                ? 'border-amber-400 ring-2 ring-amber-400/70 bg-amber-950/40 shadow-sm shadow-amber-950'
+                                : 'border-white ring-1 ring-white/50 bg-slate-950 shadow-sm'
                               : `${meta.borderClass} bg-slate-950`
                           }`}
                         >
@@ -412,7 +420,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                             style={{ backgroundColor: meta.color }}
                           />
                           {planet.isAdvanced && (
-                            <span className="absolute -top-1 -right-1 text-[8px] font-black text-white bg-slate-900 rounded-sm px-0.5 border border-white/60 leading-tight">
+                            <span
+                              className={`absolute -top-1 -right-1 text-[8px] font-black ${
+                                planet.resource === 'any'
+                                  ? 'text-amber-300 bg-slate-950 border-amber-400'
+                                  : 'text-white bg-slate-900 border-white/60'
+                              } rounded-sm px-0.5 border leading-tight`}
+                            >
                               ★
                             </span>
                           )}

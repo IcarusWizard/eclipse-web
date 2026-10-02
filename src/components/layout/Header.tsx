@@ -102,15 +102,21 @@ export const Header: React.FC<HeaderProps> = ({
             {state.phase.replace('_', ' ')}
           </div>
 
-          {/* Main Page / Lobby Return Button (Bug 71) */}
+          {/* Main Page / Lobby Return Button (Bug 71, Bug 106) */}
           {onReturnToLobby && (
             <button
               onClick={onReturnToLobby}
-              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/60 text-slate-300 hover:text-cyan-300 text-xs font-bold transition-all shadow cursor-pointer shrink-0"
+              className={`flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg border text-xs font-bold transition-all shadow cursor-pointer shrink-0 ${
+                state.phase === 'GAME_OVER'
+                  ? 'bg-cyan-600 hover:bg-cyan-500 border-cyan-400 text-slate-950 font-black shadow-cyan-950'
+                  : 'bg-slate-900 hover:bg-slate-800 border-slate-700/80 hover:border-cyan-500/60 text-slate-300 hover:text-cyan-300'
+              }`}
               title="Return to Main Page (Galaxy Lobby)"
             >
-              <Home className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden sm:inline">Lobby</span>
+              <Home className={`w-3.5 h-3.5 ${state.phase === 'GAME_OVER' ? 'text-slate-950' : 'text-cyan-400'}`} />
+              <span className={state.phase === 'GAME_OVER' ? 'inline' : 'hidden sm:inline'}>
+                {state.phase === 'GAME_OVER' ? 'Exit to Lobby' : 'Lobby'}
+              </span>
             </button>
           )}
         </div>

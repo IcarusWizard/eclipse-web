@@ -11,12 +11,70 @@ import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTile
 import { createDefaultHumanBlueprints, createFactionBlueprints } from './shipValidation';
 import { getEdgeTowardCenter } from './hexMath';
 
+export const ECLIPSE_COLOR_PALETTE = {
+  red: '#dc2626',
+  blue: '#0284c7',
+  green: '#16a34a',
+  yellow: '#eab308',
+  purple: '#9333ea',
+  orange: '#ea580c',
+} as const;
+
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange';
+
+export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
+  // Red
+  eridani_empire: 'red',
+  terran_directorate: 'red',
+  // Blue
+  hydran_progress: 'blue',
+  terran_federation: 'blue',
+  // Green
+  planta: 'green',
+  terran_conglomerate: 'green',
+  // Yellow
+  descendants_of_draco: 'yellow',
+  terran_republic: 'yellow',
+  // Purple
+  mechanema: 'purple',
+  terran_union: 'purple',
+  // Orange
+  orion_hegemony: 'orange',
+  terran_alliance: 'orange',
+};
+
+export const FACTION_COLOR_MAP: Record<string, string> = {
+  eridani_empire: ECLIPSE_COLOR_PALETTE.red,
+  terran_directorate: ECLIPSE_COLOR_PALETTE.red,
+  hydran_progress: ECLIPSE_COLOR_PALETTE.blue,
+  terran_federation: ECLIPSE_COLOR_PALETTE.blue,
+  planta: ECLIPSE_COLOR_PALETTE.green,
+  terran_conglomerate: ECLIPSE_COLOR_PALETTE.green,
+  descendants_of_draco: ECLIPSE_COLOR_PALETTE.yellow,
+  terran_republic: ECLIPSE_COLOR_PALETTE.yellow,
+  mechanema: ECLIPSE_COLOR_PALETTE.purple,
+  terran_union: ECLIPSE_COLOR_PALETTE.purple,
+  orion_hegemony: ECLIPSE_COLOR_PALETTE.orange,
+  terran_alliance: ECLIPSE_COLOR_PALETTE.orange,
+};
+
+export function getFactionColor(factionId: string): string {
+  return FACTION_COLOR_MAP[factionId] || '#94a3b8';
+}
+
+export function areFactionsConflictingColor(factionIdA: string, factionIdB: string): boolean {
+  if (factionIdA === factionIdB) return true;
+  const groupA = FACTION_COLOR_GROUP[factionIdA];
+  const groupB = FACTION_COLOR_GROUP[factionIdB];
+  return Boolean(groupA && groupB && groupA === groupB);
+}
+
 export const HUMAN_FACTIONS: FactionInfo[] = [
   {
     id: 'terran_federation',
     name: 'Terran Federation',
     isHuman: true,
-    defaultColor: '#ef4444', // Red
+    defaultColor: ECLIPSE_COLOR_PALETTE.blue, // Blue (Paired with Hydran Progress)
     startingSectorNumber: 221,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
@@ -38,7 +96,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     id: 'terran_directorate',
     name: 'Terran Directorate',
     isHuman: true,
-    defaultColor: '#3b82f6', // Blue
+    defaultColor: ECLIPSE_COLOR_PALETTE.red, // Red (Paired with Eridani Empire)
     startingSectorNumber: 222,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
@@ -60,7 +118,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     id: 'terran_republic',
     name: 'Terran Republic',
     isHuman: true,
-    defaultColor: '#eab308', // Yellow
+    defaultColor: ECLIPSE_COLOR_PALETTE.yellow, // Yellow (Paired with Descendants of Draco)
     startingSectorNumber: 223,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
@@ -82,7 +140,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     id: 'terran_conglomerate',
     name: 'Terran Conglomerate',
     isHuman: true,
-    defaultColor: '#10b981', // Green
+    defaultColor: ECLIPSE_COLOR_PALETTE.green, // Green (Paired with Planta)
     startingSectorNumber: 224,
     startingResources: { money: 4, science: 2, materials: 4 },
     startingDiscs: 13,
@@ -104,7 +162,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     id: 'terran_union',
     name: 'Terran Union',
     isHuman: true,
-    defaultColor: '#a855f7', // Purple
+    defaultColor: ECLIPSE_COLOR_PALETTE.purple, // Purple (Paired with Mechanema)
     startingSectorNumber: 225,
     startingResources: { money: 3, science: 4, materials: 3 },
     startingDiscs: 13,
@@ -126,7 +184,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     id: 'terran_alliance',
     name: 'Terran Alliance',
     isHuman: true,
-    defaultColor: '#f97316', // Orange
+    defaultColor: ECLIPSE_COLOR_PALETTE.orange, // Orange (Paired with Orion Hegemony)
     startingSectorNumber: 226,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
@@ -186,7 +244,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     id: 'eridani_empire',
     name: 'Eridani Empire',
     isHuman: false,
-    defaultColor: '#dc2626', // Red
+    defaultColor: ECLIPSE_COLOR_PALETTE.red, // Red
     startingSectorNumber: 222,
     startingResources: { money: 26, science: 2, materials: 4 },
     startingDiscs: 11, // 2 fewer than normal 13
@@ -208,7 +266,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     id: 'hydran_progress',
     name: 'Hydran Progress',
     isHuman: false,
-    defaultColor: '#0284c7', // Sky Blue
+    defaultColor: ECLIPSE_COLOR_PALETTE.blue, // Blue
     startingSectorNumber: 224,
     startingResources: { money: 2, science: 6, materials: 2 },
     startingDiscs: 13,
@@ -230,7 +288,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     id: 'planta',
     name: 'Planta',
     isHuman: false,
-    defaultColor: '#16a34a', // Emerald Green
+    defaultColor: ECLIPSE_COLOR_PALETTE.green, // Green
     startingSectorNumber: 226,
     startingResources: { money: 2, science: 3, materials: 4 },
     startingDiscs: 13,
@@ -252,7 +310,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     id: 'descendants_of_draco',
     name: 'Descendants of Draco',
     isHuman: false,
-    defaultColor: '#eab308', // Amber
+    defaultColor: ECLIPSE_COLOR_PALETTE.yellow, // Yellow
     startingSectorNumber: 228,
     startingResources: { money: 2, science: 4, materials: 3 },
     startingDiscs: 13,
@@ -274,7 +332,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     id: 'mechanema',
     name: 'Mechanema',
     isHuman: false,
-    defaultColor: '#9333ea', // Purple
+    defaultColor: ECLIPSE_COLOR_PALETTE.purple, // Purple
     startingSectorNumber: 230,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
@@ -296,7 +354,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     id: 'orion_hegemony',
     name: 'Orion Hegemony',
     isHuman: false,
-    defaultColor: '#ea580c', // Orange
+    defaultColor: ECLIPSE_COLOR_PALETTE.orange, // Orange
     startingSectorNumber: 232,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,

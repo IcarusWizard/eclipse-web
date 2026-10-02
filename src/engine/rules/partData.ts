@@ -295,7 +295,7 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     computerBonus: 0,
     shieldBonus: 0,
     hullBonus: 0,
-    dice: [{ color: 'red', count: 2, damagePerHit: 4, isMissile: true }],
+    dice: [{ color: 'red', count: 1, damagePerHit: 4, isMissile: true }],
   },
   muon_source: {
     id: 'muon_source',

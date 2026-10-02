@@ -26,7 +26,13 @@ import {
   buildCombatUnitsForSector,
   executeCombatStep,
 } from '../rules/combatEngine';
-import { createInitialGame, ALIEN_FACTIONS } from '../rules/setup';
+import {
+  createInitialGame,
+  ALIEN_FACTIONS,
+  areFactionsConflictingColor,
+  ECLIPSE_COLOR_PALETTE,
+  FACTION_COLOR_GROUP,
+} from '../rules/setup';
 import {
   executeAction,
   validateAction,
@@ -4218,10 +4224,10 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(discChoiceRes.newState.pendingDiscovery).toBeNull();
         // 2 VP tile recorded
         expect(discChoiceRes.newState.players[0]!.keptDiscoveryTiles.length).toBe(1);
-        // Action confirmation is now set with canRevert: false
+        // Action confirmation is now set with canRevert: true (Bug 100: allowed to revert discovery choice before confirming)
         expect(discChoiceRes.newState.pendingActionConfirmation).not.toBeNull();
         expect(discChoiceRes.newState.pendingActionConfirmation?.actionType).toBe('EXPLORE');
-        expect(discChoiceRes.newState.pendingActionConfirmation?.canRevert).toBe(false);
+        expect(discChoiceRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
         expect(discChoiceRes.newState.pendingActionConfirmation?.description).toContain('resolved discovery');
         // Still Player 1's turn pending confirmation
         expect(discChoiceRes.newState.activePlayerIndex).toBe(0);
@@ -6802,6 +6808,22 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         postConfirmInf.activePlayerIndex = 0;
         const targetExploreCoord = { q: plantaHome.coord.q - 1, r: plantaHome.coord.r };
 
+        // Ensure top of ring 3 deck is a non-discovery tile so discovery choice does not pause the turn
+        postConfirmInf.sectorDecks.ring3.push({
+          id: 'test_sec_planta_explore_nodisc',
+          sectorNumber: 308,
+          ring: 3,
+          coord: { q: 99, r: 99 },
+          rotation: 0,
+          planets: [{ resource: 'money', isAdvanced: false }],
+          wormholes: [true, true, true, true, true, true],
+          victoryPoints: 1,
+          ancientsCount: 0,
+          hasDiscovery: false,
+          hasArtifact: false,
+          ships: [],
+        });
+
         // Planta explores 1st activation
         const explore1Res = executeAction(postConfirmInf, {
           type: 'EXPLORE',
@@ -6829,6 +6851,253 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(cancelExploreRes.newState.lastConfirmedAction).toBeDefined();
         expect(cancelExploreRes.newState.lastConfirmedAction?.playerId).toBe(planta.id);
         expect(cancelExploreRes.newState.lastConfirmedAction?.summary).toContain('finished exploration');
+      });
+
+      it('50. verifies Bug Fixes 98-106: unique color exclusion, antimatter missile dice count, discovery revert choice, advanced wild differentiation & preview, bankruptcy map confirmation, no direct sector claim, combat conquest side window, and exit to lobby', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+
+        // =====================================================================
+        // Bug 98: Color exclusion across players (same color / alien-human pairs)
+        // =====================================================================
+        expect(areFactionsConflictingColor('eridani_empire', 'terran_directorate')).toBe(true);
+        expect(areFactionsConflictingColor('hydran_progress', 'terran_federation')).toBe(true);
+        expect(areFactionsConflictingColor('planta', 'terran_conglomerate')).toBe(true);
+        expect(areFactionsConflictingColor('descendants_of_draco', 'terran_republic')).toBe(true);
+        expect(areFactionsConflictingColor('mechanema', 'terran_union')).toBe(true);
+        expect(areFactionsConflictingColor('orion_hegemony', 'terran_alliance')).toBe(true);
+        expect(areFactionsConflictingColor('eridani_empire', 'terran_federation')).toBe(false);
+
+        // Verify NewGameModal component renders and respects color conflict checks
+        const { NewGameModal } = await import('../../components/setup/NewGameModal');
+        let newGameHtml = '';
+        expect(() => {
+          newGameHtml = renderToString(
+            React.createElement(NewGameModal, {
+              onStartGame: () => {},
+              onClose: () => {},
+            })
+          );
+        }).not.toThrow();
+        expect(newGameHtml).toContain('COMMENCE NEW EXPEDITION');
+
+        // =====================================================================
+        // Bug 99: Antimatter missile has 1 red die, not 2
+        // =====================================================================
+        const antimatterMissile = SHIP_PARTS.antimatter_missile;
+        expect(antimatterMissile).toBeDefined();
+        expect(antimatterMissile.dice).toBeDefined();
+        expect(antimatterMissile.dice?.length).toBe(1);
+        expect(antimatterMissile.dice?.[0]?.count).toBe(1);
+        expect(antimatterMissile.dice?.[0]?.color).toBe('red');
+        expect(antimatterMissile.dice?.[0]?.damagePerHit).toBe(4);
+        expect(antimatterMissile.dice?.[0]?.isMissile).toBe(true);
+
+        // =====================================================================
+        // Bug 100: Discovery choice can be reverted to change mind before confirming
+        // =====================================================================
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const p1 = game.players[0]!;
+        const testSector = game.sectors.find((s) => s.discOwner === p1.id)!;
+        game.pendingDiscovery = {
+          sectorId: testSector.id,
+          playerId: p1.id,
+          discovery: {
+            id: 'disc_test_part',
+            name: 'Ancient Cache',
+            description: 'Ancient cache',
+            immediateReward: { money: 5 },
+          },
+        };
+
+        // Player picks victory points (+2 VP) with requireConfirmation: true
+        const discVpRes = executeAction(game, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: testSector.id,
+          keepForVictoryPoints: true,
+          requireConfirmation: true,
+        });
+        expect(discVpRes.success).toBe(true);
+        expect(discVpRes.newState.pendingActionConfirmation).toBeDefined();
+        expect(discVpRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
+        expect(discVpRes.newState.pendingDiscovery).toBeNull();
+        expect(p1.keptDiscoveryTiles.length).toBe(0); // in pending confirmation
+        expect(discVpRes.newState.players[0]!.keptDiscoveryTiles.length).toBe(1);
+
+        // Player changes mind! Reverts discovery action:
+        const revertDiscRes = executeAction(discVpRes.newState, {
+          type: 'REVERT_TURN_ACTION',
+          playerId: p1.id,
+        });
+        expect(revertDiscRes.success).toBe(true);
+        // Discovery is restored and choice modal can re-open!
+        expect(revertDiscRes.newState.pendingDiscovery).toBeDefined();
+        expect(revertDiscRes.newState.pendingDiscovery?.discovery.id).toBe('disc_test_part');
+        expect(revertDiscRes.newState.players[0]!.keptDiscoveryTiles.length).toBe(0);
+
+        // Now player decides to take the reward instead of +2 VP
+        const discRewardRes = executeAction(revertDiscRes.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: testSector.id,
+          keepForVictoryPoints: false,
+          requireConfirmation: true,
+        });
+        expect(discRewardRes.success).toBe(true);
+        // Player gained money reward (initial + 5)
+        expect(discRewardRes.newState.players[0]!.resources.money).toBe(
+          revertDiscRes.newState.players[0]!.resources.money + 5
+        );
+        expect(discRewardRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
+
+        // =====================================================================
+        // Bug 101 & 102: Sector 313 advanced wild differentiation and preview
+        // =====================================================================
+        const { RING_3_CONFIGS } = await import('../rules/sectorData');
+        const sec313Def = RING_3_CONFIGS.find((s) => s.sectorNum === 313);
+        expect(sec313Def).toBeDefined();
+        expect(sec313Def?.planets[0]?.resource).toBe('any');
+        expect(sec313Def?.planets[0]?.isAdvanced).toBe(true);
+
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+        const sec313Tile: SectorTile = {
+          id: 'sec_313_test',
+          sectorNumber: 313,
+          ring: 3,
+          coord: { q: 2, r: 1 },
+          rotation: 0,
+          planets: [{ resource: 'any', isAdvanced: true }],
+          wormholes: [true, false, false, true, false, false],
+          victoryPoints: 1,
+          ancientsCount: 0,
+          hasDiscovery: true,
+          hasArtifact: false,
+          ships: [],
+        };
+
+        let exploreHtml = '';
+        expect(() => {
+          exploreHtml = renderToString(
+            React.createElement(ExploreModal, {
+              player: p1,
+              fromCoord: { q: 1, r: 0 },
+              targetCoord: { q: 2, r: 1 },
+              candidateTile: sec313Tile,
+              sourceSector: testSector,
+              sectors: game.sectors,
+              rotation: 0,
+              onRotate: () => {},
+              onConfirmPlacement: () => {},
+              onDiscard: () => {},
+              onClose: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        // Must display as Advanced Wild, not standard wild
+        expect(exploreHtml).toContain('Advanced Wild');
+        expect(exploreHtml).toContain('★');
+
+        // =====================================================================
+        // Bug 103: Bankruptcy resolution map interaction has confirmation
+        // =====================================================================
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        let inspectorBankruptcyHtml = '';
+        expect(() => {
+          inspectorBankruptcyHtml = renderToString(
+            React.createElement(SectorInspector, {
+              sector: testSector,
+              players: game.players,
+              activePlayer: p1,
+              pendingBankruptcy: { playerId: p1.id, deficit: 3 },
+              onAbandonInfluence: () => {},
+              onClose: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        expect(inspectorBankruptcyHtml).toContain('Abandon Sector to Resolve Bankruptcy');
+
+        // =====================================================================
+        // Bug 104: No direct sector claim button without influence action
+        // =====================================================================
+        const neutralSectorWithShips: SectorTile = {
+          id: 'test_neutral_ships',
+          sectorNumber: 206,
+          ring: 2,
+          coord: { q: 1, r: 1 },
+          rotation: 0,
+          planets: [],
+          wormholes: [true, true, true, true, true, true],
+          victoryPoints: 1,
+          ancientsCount: 0,
+          hasDiscovery: false,
+          hasArtifact: false,
+          ships: [{ id: 'ship_p1_cruiser', ownerId: p1.id, type: 'cruiser', damage: 0 }],
+        };
+
+        let neutralInspectorHtml = '';
+        expect(() => {
+          neutralInspectorHtml = renderToString(
+            React.createElement(SectorInspector, {
+              sector: neutralSectorWithShips,
+              players: game.players,
+              activePlayer: p1,
+              onClose: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        // Must NOT allow placing influence discs directly outside official actions
+        expect(neutralInspectorHtml).not.toContain('Claim Sector Control');
+
+        // =====================================================================
+        // Bug 105: Combat conquest is a side window and does not block map
+        // =====================================================================
+        const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+        let conquestHtml = '';
+        expect(() => {
+          conquestHtml = renderToString(
+            React.createElement(CombatConquestModal, {
+              state: game,
+              conquest: {
+                sectorId: testSector.id,
+                winnerPlayerId: p1.id,
+                canClaimInfluence: true,
+              },
+              onConfirm: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        // Must be a side floating card rather than fixed inset-0 full screen modal
+        expect(conquestHtml).toContain('slide-in-from-right');
+        expect(conquestHtml).toContain('SECTOR CONQUEST');
+        expect(conquestHtml).not.toContain('fixed inset-0 bg-black/90');
+
+        // =====================================================================
+        // Bug 106: Exit to lobby button on Game Over
+        // =====================================================================
+        const { GameOverModal } = await import('../../components/gameover/GameOverModal');
+        let gameOverHtml = '';
+        expect(() => {
+          gameOverHtml = renderToString(
+            React.createElement(GameOverModal, {
+              state: {
+                ...game,
+                phase: 'GAME_OVER',
+                winnerId: p1.id,
+                finalScores: { [p1.id]: { total: 42, sectors: 3 } },
+              },
+              onNewGame: () => {},
+              onExitToLobby: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        expect(gameOverHtml).toContain('Exit to Lobby');
+        expect(gameOverHtml).toContain('Start New Galactic War');
       });
     });
   });

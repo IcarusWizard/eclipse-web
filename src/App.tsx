@@ -1409,9 +1409,9 @@ export const App: React.FC = () => {
               players={state.players}
               activePlayer={activePlayer}
               onColonizePlanet={handleColonizePlanet}
-              onClaimInfluence={handleClaimInfluence}
               onAbandonInfluence={handleAbandonInfluence}
               onClose={() => setSelectedSector(null)}
+              pendingBankruptcy={state.pendingBankruptcy}
             />
           </div>
         )}
@@ -1633,6 +1633,7 @@ export const App: React.FC = () => {
         <GameOverModal
           state={state}
           onNewGame={() => setIsNewGameOpen(true)}
+          onExitToLobby={handleReturnToLobby}
         />
       )}
 

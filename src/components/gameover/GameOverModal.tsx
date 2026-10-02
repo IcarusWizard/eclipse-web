@@ -1,13 +1,14 @@
 import React from 'react';
 import { GameState } from '../../engine/types/state';
-import { Trophy, RefreshCw, Award, Star } from 'lucide-react';
+import { Trophy, RefreshCw, Award, Star, Home } from 'lucide-react';
 
 interface GameOverModalProps {
   state: GameState;
   onNewGame: () => void;
+  onExitToLobby?: () => void;
 }
 
-export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame }) => {
+export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, onExitToLobby }) => {
   const winner = state.players.find((p) => p.id === state.winnerId);
   const scores = state.finalScores || {};
 
@@ -96,12 +97,22 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame }
           </table>
         </div>
 
-        <button
-          onClick={onNewGame}
-          className="flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm uppercase tracking-wider shadow-lg shadow-amber-950 transition-all"
-        >
-          <RefreshCw className="w-4 h-4" /> Start New Galactic War
-        </button>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          {onExitToLobby && (
+            <button
+              onClick={onExitToLobby}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase tracking-wider border border-slate-700 hover:border-cyan-500 transition-all shadow-lg cursor-pointer"
+            >
+              <Home className="w-4 h-4 text-cyan-400" /> Exit to Lobby
+            </button>
+          )}
+          <button
+            onClick={onNewGame}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm uppercase tracking-wider shadow-lg shadow-amber-950 transition-all cursor-pointer"
+          >
+            <RefreshCw className="w-4 h-4" /> Start New Galactic War
+          </button>
+        </div>
       </div>
     </div>
   );
