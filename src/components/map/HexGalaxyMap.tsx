@@ -75,6 +75,7 @@ interface HexGalaxyMapProps {
   onRotateExplore?: (delta: number) => void;
   buildMode?: HexMapBuildMode | null;
   moveMode?: HexMapMoveMode | null;
+  stagedAbandonedSectorIds?: string[];
 }
 
 const HEX_RADIUS = 78;
@@ -141,6 +142,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   onRotateExplore,
   buildMode = null,
   moveMode = null,
+  stagedAbandonedSectorIds = [],
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -675,6 +677,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             const isCombatSector = state.activeCombat?.sectorId === sector.id || isConquestSector;
             // Recent action highlight (Bug 87: other players see highlights about what player just did)
             const isActionHighlight = !!(state.lastConfirmedAction?.sectorIds?.includes(sector.id));
+            // Staged for abandonment in bankruptcy plan (Bug 111)
+            const isStagedAbandon = stagedAbandonedSectorIds?.includes(sector.id);
 
             let hexFill = isCombatSector
               ? isConquestSector
@@ -682,8 +686,10 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 : 'rgba(225, 29, 72, 0.25)'
               : isActionHighlight
               ? 'rgba(234, 179, 8, 0.20)'
+              : isStagedAbandon
+              ? 'rgba(244, 63, 94, 0.22)'
               : isCenter
-              ? 'rgba(30, 27, 75, 0.95)'
+              ? 'rgba(15, 23, 42, 0.98)'
               : owner
               ? `${owner.color}15`
               : 'rgba(15, 23, 42, 0.95)';
@@ -696,14 +702,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? '#fbbf24'
               : isSelected
               ? '#38bdf8'
+              : isStagedAbandon
+              ? '#f43f5e'
               : owner
               ? owner.color
               : isCenter
-              ? '#a855f7'
+              ? '#cbd5e1'
               : '#334155';
 
-            let hexStrokeWidth = isCombatSector ? '4.5' : isActionHighlight ? '3.5' : isSelected ? '3' : owner ? '2.5' : '1.5';
-            let hexStrokeDasharray: string | undefined = undefined;
+            let hexStrokeWidth = isCombatSector ? '4.5' : isActionHighlight ? '3.5' : isSelected ? '3' : isStagedAbandon ? '3' : owner ? '2.5' : isCenter ? '2.2' : '1.5';
+            let hexStrokeDasharray: string | undefined = isStagedAbandon ? '4 3' : undefined;
 
             if (buildMode) {
               if (isBuildSelected) {
@@ -884,14 +892,14 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     height="18"
                     rx="4"
                     fill="rgba(2, 6, 23, 0.92)"
-                    stroke={isCenter ? '#ec4899' : '#38bdf8'}
+                    stroke={isCenter ? '#cbd5e1' : '#38bdf8'}
                     strokeWidth="1.3"
                   />
                   <text
                     x="0"
                     y="3.5"
                     textAnchor="middle"
-                    fill={isCenter ? '#f472b6' : '#f0f9ff'}
+                    fill={isCenter ? '#f8fafc' : '#f0f9ff'}
                     fontSize="11"
                     fontFamily="monospace"
                     fontWeight="900"
@@ -1238,13 +1246,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                               height={planet.isAdvanced ? '15' : '13'}
                               rx="2"
                               fill="rgba(15, 23, 42, 0.95)"
-                              stroke={
-                                planet.isAdvanced
-                                  ? planet.resource === 'any'
-                                    ? '#f59e0b'
-                                    : '#ffffff'
-                                  : planetColor
-                              }
+                              stroke={planet.isAdvanced ? '#ffffff' : planetColor}
                               strokeWidth={planet.isAdvanced ? '2' : '1.6'}
                             />
                             {planet.colonizedBy ? (
@@ -1265,7 +1267,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                                 width="6"
                                 height="6"
                                 rx="1.2"
-                                fill={planet.isAdvanced && planet.resource === 'any' ? '#fbbf24' : planetColor}
+                                fill={planetColor}
                               />
                             )}
                             {planet.isAdvanced && (
@@ -1274,7 +1276,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                                 y="-4"
                                 fontSize="6.5"
                                 fontWeight="black"
-                                fill={planet.resource === 'any' ? '#f59e0b' : '#ffffff'}
+                                fill="#ffffff"
                                 textAnchor="middle"
                                 className="pointer-events-none select-none font-bold"
                               >
@@ -1836,13 +1838,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                           height={planet.isAdvanced ? '15' : '13'}
                           rx="2"
                           fill="rgba(15, 23, 42, 0.95)"
-                          stroke={
-                            planet.isAdvanced
-                              ? planet.resource === 'any'
-                                ? '#f59e0b'
-                                : '#ffffff'
-                              : planetColor
-                          }
+                          stroke={planet.isAdvanced ? '#ffffff' : planetColor}
                           strokeWidth={planet.isAdvanced ? '2' : '1.6'}
                         />
                         <rect
@@ -1851,7 +1847,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                           width="6"
                           height="6"
                           rx="1.2"
-                          fill={planet.isAdvanced && planet.resource === 'any' ? '#fbbf24' : planetColor}
+                          fill={planetColor}
                         />
                         {planet.isAdvanced && (
                           <text
@@ -1859,7 +1855,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                             y="-4"
                             fontSize="6.5"
                             fontWeight="black"
-                            fill={planet.resource === 'any' ? '#f59e0b' : '#ffffff'}
+                            fill="#ffffff"
                             textAnchor="middle"
                             className="pointer-events-none select-none font-bold"
                           >

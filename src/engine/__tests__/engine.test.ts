@@ -60,7 +60,7 @@ import {
 } from '../rules/persistence';
 import { formatBugReportLine } from '../rules/bugReport';
 import type { SectorTile } from '../types/sector';
-import type { CombatState } from '../types/state';
+import type { CombatState, GameState } from '../types/state';
 import {
   getIncomeForTrack,
   getUpkeepForDiscs,
@@ -7017,7 +7017,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           );
         }).not.toThrow();
 
-        expect(inspectorBankruptcyHtml).toContain('Abandon Sector to Resolve Bankruptcy');
+        expect(inspectorBankruptcyHtml).toContain('Stage Sector for Abandonment');
 
         // =====================================================================
         // Bug 104: No direct sector claim button without influence action
@@ -7098,6 +7098,269 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         expect(gameOverHtml).toContain('Exit to Lobby');
         expect(gameOverHtml).toContain('Start New Galactic War');
+      });
+
+      it('51. verifies Bug Fixes 107-112: wild planet rendering & star badge, distinct center sector color, ancient orbital colonization on claim, non-blocking combat side window, bankruptcy staging & batch confirmation, and ancient labs discovery tile draw', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+
+        // =====================================================================
+        // Bug 107: Wild habitat gray fill, advanced wild gray fill + white border + star badge
+        // =====================================================================
+        const testAdvWildSector: SectorTile = {
+          id: 'test_sec_adv_wild',
+          sectorNumber: 313,
+          ring: 3,
+          coord: { q: 2, r: 1 },
+          rotation: 0,
+          planets: [
+            { id: 'p_norm_wild', resource: 'any', isAdvanced: false },
+            { id: 'p_adv_wild', resource: 'any', isAdvanced: true },
+          ],
+          wormholes: [true, false, true, false, false, false],
+          victoryPoints: 2,
+          ancientsCount: 0,
+          hasDiscovery: false,
+          hasArtifact: false,
+          ships: [],
+        };
+
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        const game = createInitialGame(2, ['mechanema', 'terran_republic']);
+        const p1 = game.players[0]!;
+
+        let inspectorHtml = '';
+        expect(() => {
+          inspectorHtml = renderToString(
+            React.createElement(SectorInspector, {
+              sector: testAdvWildSector,
+              players: game.players,
+              activePlayer: p1,
+              onClose: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        // Advanced wild habitat should render distinct badge with star
+        expect(inspectorHtml).toContain('★ Advanced Wild Habitat');
+        expect(inspectorHtml).toContain('Wild Habitat');
+
+        // =====================================================================
+        // Bug 108: Center Sector 1 has distinct color (Galactic Platinum #cbd5e1), not Mechanema purple
+        // =====================================================================
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        let mapHtml = '';
+        expect(() => {
+          mapHtml = renderToString(
+            React.createElement(HexGalaxyMap, {
+              state: game,
+              selectedSectorId: null,
+              onSelectSector: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        // Sector 1 badge and stroke should use platinum (#cbd5e1), not purple (#a855f7)
+        expect(mapHtml).toContain('#cbd5e1');
+        expect(mapHtml).toContain('GCDS 1');
+
+        // =====================================================================
+        // Bug 109: Ancient orbital discovery choice prompt & immediate colonization
+        // =====================================================================
+        const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+        const ancientOrbitalTile = DISCOVERY_TILES.find((d) => d.id === 'ancient_orbital') || {
+          id: 'ancient_orbital',
+          tileNumber: 1,
+          name: 'Ancient Orbital',
+          description: 'Place an orbital structure in this sector.',
+          immediateReward: { grantStructure: 'orbital' as const },
+        };
+
+        // When player has ready colony ships, DiscoveryChoiceModal presents colonization options
+        let orbitalChoiceHtml = '';
+        expect(() => {
+          orbitalChoiceHtml = renderToString(
+            React.createElement(DiscoveryChoiceModal, {
+              discovery: ancientOrbitalTile,
+              player: p1,
+              onChoice: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        expect(orbitalChoiceHtml).toContain('Colonize with Money');
+        expect(orbitalChoiceHtml).toContain('Colonize with Science');
+        expect(orbitalChoiceHtml).toContain('Leave Empty');
+
+        // Execute DISCOVERY_CHOICE in engine with immediate colonization
+        const homeSector = game.sectors.find((s) => s.discOwner === p1.id)!;
+        const initialReadyShips = p1.colonyShips.ready;
+        const initialMoneyPop = p1.population.money.cubesOnBoard;
+
+        const stateWithPendingOrbital: GameState = {
+          ...game,
+          pendingDiscovery: {
+            playerId: p1.id,
+            sectorId: homeSector.id,
+            discovery: ancientOrbitalTile,
+          },
+        };
+
+        const colonizeOrbitalRes = executeAction(stateWithPendingOrbital, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: homeSector.id,
+          keepForVictoryPoints: false,
+          colonizeOrbitalResource: 'money',
+        });
+
+        expect(colonizeOrbitalRes.success).toBe(true);
+        const updatedP1 = colonizeOrbitalRes.newState.players[0]!;
+        expect(updatedP1.colonyShips.ready).toBe(initialReadyShips - 1);
+        expect(updatedP1.population.money.cubesOnBoard).toBe(initialMoneyPop - 1);
+
+        const updatedHomeSec = colonizeOrbitalRes.newState.sectors.find((s) => s.id === homeSector.id)!;
+        const createdOrbital = updatedHomeSec.planets.find((p) => p.isOrbital);
+        expect(createdOrbital).toBeDefined();
+        expect(createdOrbital?.colonizedBy).toBe(p1.id);
+        expect(createdOrbital?.resource).toBe('money');
+
+        // =====================================================================
+        // Bug 110: Combat resolution window is a side window that does not block galaxy map
+        // =====================================================================
+        const { CombatModal } = await import('../../components/combat/CombatModal');
+        const mockCombatSector = game.sectors[0]!;
+        const mockCombatState: CombatState = {
+          sectorId: mockCombatSector.id,
+          roundNumber: 1,
+          stage: 'engagement',
+          currentTurnIndex: 0,
+          units: [
+            {
+              id: 'unit_p1_int',
+              ownerId: p1.id,
+              shipType: 'interceptor',
+              damage: 0,
+              initiative: 3,
+              shield: 0,
+              hull: 1,
+              cannons: [],
+              missiles: [],
+            },
+          ],
+          battleLog: [],
+        };
+
+        let combatHtml = '';
+        expect(() => {
+          combatHtml = renderToString(
+            React.createElement(CombatModal, {
+              state: game,
+              combat: mockCombatState,
+              onStepCombat: () => {},
+              onClose: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        // Must be a floating side drawer, not full-screen blocking modal
+        expect(combatHtml).toContain('slide-in-from-right');
+        expect(combatHtml).toContain('fixed top-18 right-2');
+        expect(combatHtml).not.toContain('fixed inset-0 bg-black/90');
+
+        // =====================================================================
+        // Bug 111: Bankruptcy resolution: staged operations and overall plan confirmation
+        // =====================================================================
+        const { BankruptcyModal } = await import('../../components/actions/BankruptcyModal');
+        const bankruptPlayer = {
+          ...p1,
+          resources: {
+            ...p1.resources,
+            money: -4,
+            materials: 8,
+            science: 6,
+          },
+        };
+
+        let bankruptcyHtml = '';
+        expect(() => {
+          bankruptcyHtml = renderToString(
+            React.createElement(BankruptcyModal, {
+              player: bankruptPlayer,
+              deficit: 4,
+              sectors: game.sectors,
+              onAbandonSector: () => {},
+              stagedTrades: { materials: 4, science: 0 },
+              stagedAbandonedSectorIds: [],
+            })
+          );
+        }).not.toThrow();
+
+        expect(bankruptcyHtml).toContain('Staged Plan');
+        expect(bankruptcyHtml).toContain('Restore Solvency');
+
+        // Inspector shows toggle for staging sector abandonment
+        let stagedInspectorHtml = '';
+        expect(() => {
+          stagedInspectorHtml = renderToString(
+            React.createElement(SectorInspector, {
+              sector: homeSector,
+              players: game.players,
+              activePlayer: p1,
+              pendingBankruptcy: { playerId: p1.id, deficit: 4 },
+              stagedAbandonedSectorIds: [homeSector.id],
+              onToggleAbandonSector: () => {},
+              onClose: () => {},
+            })
+          );
+        }).not.toThrow();
+
+        expect(stagedInspectorHtml).toContain('Staged for Abandonment');
+
+        // =====================================================================
+        // Bug 112: Researching Ancient Labs draws a random discovery tile into pendingDiscovery
+        // =====================================================================
+        const gameWithLabs = createInitialGame(2, ['mechanema', 'terran_republic']);
+        const pLabs = gameWithLabs.players[1]!; // Terran Republic
+        gameWithLabs.activePlayerIndex = 1;
+        pLabs.resources.science = 20;
+        gameWithLabs.techSupply.push({
+          id: 'ancient_labs',
+          name: 'Ancient Labs',
+          category: 'rare',
+          baseCost: 13,
+          minCost: 9,
+          costByDiscount: [13, 11, 9, 9],
+          description: 'Immediately draw and resolve one Discovery Tile.',
+        });
+
+        const researchLabsRes = executeAction(gameWithLabs, {
+          type: 'RESEARCH',
+          playerId: pLabs.id,
+          techId: 'ancient_labs',
+        });
+
+        expect(researchLabsRes.success).toBe(true);
+        expect(researchLabsRes.newState.pendingDiscovery).toBeDefined();
+        expect(researchLabsRes.newState.pendingDiscovery?.discovery).toBeDefined();
+
+        // Player must NOT yet have been awarded 2 VP auto-committed
+        const pLabsAfterRes = researchLabsRes.newState.players.find((p) => p.id === pLabs.id)!;
+        expect(pLabsAfterRes.keptDiscoveryTiles?.length || 0).toBe(0);
+
+        // Player can now choose to keep the drawn tile for 2 VP or claim its reward
+        const drawnDisc = researchLabsRes.newState.pendingDiscovery!.discovery;
+        const choiceRes = executeAction(researchLabsRes.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: pLabs.id,
+          sectorId: researchLabsRes.newState.pendingDiscovery!.sectorId,
+          keepForVictoryPoints: true,
+        });
+
+        expect(choiceRes.success).toBe(true);
+        expect(choiceRes.newState.pendingDiscovery).toBeNull();
+        const pLabsFinal = choiceRes.newState.players.find((p) => p.id === pLabs.id)!;
+        expect(pLabsFinal.keptDiscoveryTiles.some((d) => d.id === drawnDisc.id)).toBe(true);
       });
     });
   });

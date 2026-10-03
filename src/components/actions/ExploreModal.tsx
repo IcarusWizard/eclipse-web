@@ -143,10 +143,10 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
       default:
         return {
           name: isAdvanced ? '★ Advanced Wild' : 'Standard Wild',
-          color: isAdvanced ? '#fbbf24' : '#94a3b8',
-          borderClass: isAdvanced ? 'border-amber-400 ring-1 ring-amber-400/60' : 'border-slate-500',
-          textClass: isAdvanced ? 'text-amber-300 font-bold' : 'text-slate-300',
-          icon: <Sparkles className={`w-3.5 h-3.5 ${isAdvanced ? 'text-amber-400' : 'text-slate-300'}`} />,
+          color: '#94a3b8',
+          borderClass: isAdvanced ? 'border-white ring-1 ring-white/50' : 'border-slate-500',
+          textClass: isAdvanced ? 'text-white font-bold' : 'text-slate-300',
+          icon: <Sparkles className={`w-3.5 h-3.5 ${isAdvanced ? 'text-white' : 'text-slate-300'}`} />,
           techName: 'Adv Economy / Labs / Mining (or Metasynthesis)',
           hasTech: !isAdvanced || hasAnyAdvancedTech,
         };
@@ -409,9 +409,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                           aria-label={meta.name}
                           className={`w-6 h-6 rounded-md flex items-center justify-center cursor-pointer transition-transform hover:scale-110 border ${
                             planet.isAdvanced
-                              ? planet.resource === 'any'
-                                ? 'border-amber-400 ring-2 ring-amber-400/70 bg-amber-950/40 shadow-sm shadow-amber-950'
-                                : 'border-white ring-1 ring-white/50 bg-slate-950 shadow-sm'
+                              ? 'border-white ring-1 ring-white/50 bg-slate-950 shadow-sm'
                               : `${meta.borderClass} bg-slate-950`
                           }`}
                         >
@@ -421,11 +419,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                           />
                           {planet.isAdvanced && (
                             <span
-                              className={`absolute -top-1 -right-1 text-[8px] font-black ${
-                                planet.resource === 'any'
-                                  ? 'text-amber-300 bg-slate-950 border-amber-400'
-                                  : 'text-white bg-slate-900 border-white/60'
-                              } rounded-sm px-0.5 border leading-tight`}
+                              className="absolute -top-1 -right-1 text-[8px] font-black text-white bg-slate-900 border-white/60 rounded-sm px-0.5 border leading-tight"
                             >
                               ★
                             </span>

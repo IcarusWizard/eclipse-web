@@ -10,9 +10,10 @@ import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipVa
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs } from './economyEngine';
 import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, sortUnitsByInitiative } from './combatEngine';
-import { SectorTile, ShipType, PlanetSlot, SectorShip } from '../types/galaxy';
+import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import { getMaxReputationTilesForPlayer } from './setup';
+import { DISCOVERY_TILES } from './sectorData';
 
 export interface ActionResult {
   success: boolean;
@@ -1378,10 +1379,25 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           player.influenceTrack.discsOnTrack += 1;
           addLog(`${player.name} gained 1 bonus Influence Disc from Advanced Robotics.`);
         } else if (tech.id === 'ancient_labs') {
+          let disc: DiscoveryTile | undefined;
           if (newState.discoveryBag && newState.discoveryBag.length > 0) {
-            const disc = newState.discoveryBag.shift()!;
-            player.keptDiscoveryTiles.push(disc);
-            addLog(`${player.name} claimed Discovery Tile (${disc.name}) from Ancient Labs.`);
+            const randIdx = Math.floor(Math.random() * newState.discoveryBag.length);
+            disc = newState.discoveryBag.splice(randIdx, 1)[0];
+          } else {
+            const randIdx = Math.floor(Math.random() * DISCOVERY_TILES.length);
+            disc = { ...DISCOVERY_TILES[randIdx]! };
+          }
+          if (disc) {
+            const homeSector = newState.sectors.find((s) => s.discOwner === player.id);
+            newState.pendingDiscovery = {
+              sectorId: homeSector?.id || newState.sectors[0]?.id || 'sec_1',
+              playerId: player.id,
+              discovery: disc,
+            };
+            addLog(
+              `${player.name} researched Ancient Labs and drew Discovery Tile "${disc.name}"! Must decide whether to claim reward or keep for 2 VP.`,
+              'tech'
+            );
           }
         } else if (tech.id === 'artifact_key') {
           const controlledArtifacts = newState.sectors.filter(
@@ -1853,13 +1869,31 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         if (disc.immediateReward?.grantStructure === 'orbital' && sector) {
           sector.structures = sector.structures || {};
           sector.structures.orbital = true;
-          sector.planets.push({
+          const choice = action.colonizeOrbitalResource;
+          const canColonize =
+            choice &&
+            player.colonyShips.ready > 0 &&
+            (choice === 'money' || choice === 'science') &&
+            player.population[choice].cubesOnBoard > 0;
+
+          const orbitalPlanet: PlanetSlot = {
             id: `orbital_${sector.id}_${Date.now()}`,
-            resource: 'science',
+            resource: choice || 'science',
             isAdvanced: false,
             isOrbital: true,
-          });
-          addLog(`${player.name} placed an Ancient Orbital in Sector ${sector.sectorNumber}!`);
+            colonizedBy: canColonize ? player.id : undefined,
+          };
+          sector.planets.push(orbitalPlanet);
+
+          if (canColonize && choice) {
+            player.colonyShips.ready -= 1;
+            player.population[choice].cubesOnBoard -= 1;
+            addLog(
+              `${player.name} placed an Ancient Orbital in Sector ${sector.sectorNumber} and colonized it with ${choice.toUpperCase()} using 1 Colony Ship!`
+            );
+          } else {
+            addLog(`${player.name} placed an Ancient Orbital in Sector ${sector.sectorNumber}!`);
+          }
         }
         if (disc.immediateReward?.grantStructure === 'monolith' && sector) {
           sector.structures = sector.structures || {};

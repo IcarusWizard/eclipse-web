@@ -34,6 +34,8 @@ interface SectorInspectorProps {
   onAbandonInfluence?: (sectorId: string) => void;
   onClose: () => void;
   pendingBankruptcy?: { playerId: string; deficit: number } | null;
+  stagedAbandonedSectorIds?: string[];
+  onToggleAbandonSector?: (sectorId: string) => void;
 }
 
 export const SectorInspector: React.FC<SectorInspectorProps> = ({
@@ -44,8 +46,10 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   onAbandonInfluence,
   onClose,
   pendingBankruptcy,
+  stagedAbandonedSectorIds = [],
+  onToggleAbandonSector,
 }) => {
-  const [isConfirmingBankruptcyAbandon, setIsConfirmingBankruptcyAbandon] = React.useState<boolean>(false);
+  const isStagedForAbandonment = stagedAbandonedSectorIds.includes(sector.id);
   const discOwner = players.find((p) => p.id === sector.discOwner);
   const isCenter = sector.sectorNumber === 1;
 
@@ -120,46 +124,42 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
             )}
           </div>
 
-          {isBankruptcyActive && sector.discOwner === activePlayer.id && onAbandonInfluence && (
+          {isBankruptcyActive && sector.discOwner === activePlayer.id && (onToggleAbandonSector || onAbandonInfluence) && (
             <div className="pt-2 border-t border-slate-800">
-              {!isConfirmingBankruptcyAbandon ? (
-                <button
-                  type="button"
-                  onClick={() => setIsConfirmingBankruptcyAbandon(true)}
-                  className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-rose-950/80 hover:bg-rose-900 text-rose-300 hover:text-white border border-rose-800/80 text-xs font-bold transition cursor-pointer"
-                >
-                  <AlertTriangle className="w-3.5 h-3.5 text-rose-400" />
-                  Abandon Sector to Resolve Bankruptcy
-                </button>
-              ) : (
-                <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-700 space-y-2">
-                  <div className="text-[11px] text-rose-200 font-semibold leading-snug">
-                    Confirm Bankruptcy Resolution: Abandon Sector {sector.sectorNumber}?
-                    <div className="text-[10px] text-slate-300 font-normal mt-0.5">
-                      Influence disc and population cubes will be retrieved to reduce upkeep deficit.
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <button
-                      type="button"
-                      onClick={() => setIsConfirmingBankruptcyAbandon(false)}
-                      className="flex-1 py-1 px-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition cursor-pointer"
-                    >
-                      Cancel
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setIsConfirmingBankruptcyAbandon(false);
-                        onAbandonInfluence(sector.id);
-                      }}
-                      className="flex-1 py-1 px-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold uppercase tracking-wider transition shadow shadow-emerald-950 cursor-pointer"
-                    >
-                      Confirm & Finish
-                    </button>
-                  </div>
-                </div>
-              )}
+              <button
+                type="button"
+                onClick={() => {
+                  if (onToggleAbandonSector) {
+                    onToggleAbandonSector(sector.id);
+                  } else if (onAbandonInfluence) {
+                    onAbandonInfluence(sector.id);
+                  }
+                }}
+                className={`w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg text-xs font-bold transition cursor-pointer border ${
+                  isStagedForAbandonment
+                    ? 'bg-rose-900/70 hover:bg-rose-800 text-white border-rose-500 shadow-md ring-1 ring-rose-500/50'
+                    : 'bg-slate-900 hover:bg-rose-950/60 text-slate-300 hover:text-rose-200 border-slate-700 hover:border-rose-700'
+                }`}
+              >
+                <AlertTriangle className={`w-3.5 h-3.5 ${isStagedForAbandonment ? 'text-white' : 'text-rose-400'}`} />
+                <span>
+                  {isStagedForAbandonment
+                    ? 'Staged for Abandonment (Click to Keep Sector)'
+                    : 'Stage Sector for Abandonment'}
+                </span>
+              </button>
+            </div>
+          )}
+          {!isBankruptcyActive && sector.discOwner === activePlayer.id && onAbandonInfluence && (
+            <div className="pt-2 border-t border-slate-800">
+              <button
+                type="button"
+                onClick={() => onAbandonInfluence(sector.id)}
+                className="w-full flex items-center justify-center gap-1.5 py-1.5 px-3 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white border border-slate-700 text-xs font-semibold transition cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5 text-slate-400" />
+                <span>Retrieve Influence Disc (Influence Action)</span>
+              </button>
             </div>
           )}
         </div>
@@ -377,10 +377,10 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                   ? planet.isAdvanced
                     ? {
                         name: '★ Advanced Wild Habitat',
-                        badge: 'bg-amber-400 text-slate-950 font-black',
-                        border: 'border-amber-500/60 bg-amber-950/20 ring-1 ring-amber-500/40',
-                        text: 'text-amber-300 font-bold',
-                        icon: <Sparkles className="w-3.5 h-3.5 text-amber-400" />,
+                        badge: 'bg-white text-slate-950 font-black',
+                        border: 'border-white/80 bg-slate-900/60 ring-1 ring-white/50',
+                        text: 'text-white font-bold',
+                        icon: <Sparkles className="w-3.5 h-3.5 text-white" />,
                       }
                     : {
                         name: 'Standard Wild Habitat (Any Resource)',

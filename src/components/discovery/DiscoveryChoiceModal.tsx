@@ -10,7 +10,13 @@ interface DiscoveryChoiceModalProps {
   discovery: DiscoveryTile;
   player: PlayerState;
   techSupply?: Technology[];
-  onChoice: (keepForVictoryPoints: boolean, equipShipType?: ShipType, equipSlotIndex?: number, chosenTechId?: string) => void;
+  onChoice: (
+    keepForVictoryPoints: boolean,
+    equipShipType?: ShipType,
+    equipSlotIndex?: number,
+    chosenTechId?: string,
+    colonizeOrbitalResource?: 'money' | 'science'
+  ) => void;
 }
 
 export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
@@ -24,6 +30,9 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   const [selectedShipType, setSelectedShipType] = React.useState<ShipType>('cruiser');
   const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number>(0);
   const [selectedTechId, setSelectedTechId] = React.useState<string>('');
+  const [colonizeOrbitalResource, setColonizeOrbitalResource] = React.useState<'money' | 'science' | null>(null);
+
+  const hasColonyShipReady = player.colonyShips.ready > 0;
 
   const currentBlueprint = player.blueprints[selectedShipType];
 
@@ -203,10 +212,65 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                 </div>
               )}
               {discovery.immediateReward.grantStructure === 'orbital' && (
-                <span className="px-2.5 py-1 bg-blue-500/20 border border-blue-500/40 text-blue-300 rounded-md text-xs font-bold flex items-center gap-1.5">
-                  <Zap className="w-3.5 h-3.5 text-blue-400" />
-                  +1 Ancient Orbital (+2 Materials)
-                </span>
+                <div className="w-full mt-2 p-2.5 rounded-lg bg-blue-950/60 border border-blue-500/40 text-left">
+                  <div className="text-xs font-bold text-blue-300 flex items-center justify-between mb-1.5">
+                    <span className="flex items-center gap-1.5">
+                      <Zap className="w-4 h-4 text-blue-400" />
+                      Ancient Orbital Habitat (+2 Materials)
+                    </span>
+                    <span className="text-[10px] font-mono text-blue-200">
+                      Ready Colony Ships: <strong>{player.colonyShips.ready}</strong>
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300 mb-2">
+                    You may immediately colonize the new Orbital using 1 ready Colony Ship. Orbitals can produce Money or Science.
+                  </p>
+                  {hasColonyShipReady ? (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setColonizeOrbitalResource(null)}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold transition ${
+                          colonizeOrbitalResource === null
+                            ? 'bg-slate-700 border-white text-white shadow'
+                            : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                        }`}
+                      >
+                        Leave Empty (No Colonization)
+                      </button>
+                      <button
+                        type="button"
+                        disabled={player.population.money.cubesOnBoard <= 0}
+                        onClick={() => setColonizeOrbitalResource('money')}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
+                          colonizeOrbitalResource === 'money'
+                            ? 'bg-yellow-500/30 border-yellow-400 text-yellow-200 font-bold shadow'
+                            : 'bg-slate-900 border-slate-700 text-yellow-400/80 hover:text-yellow-300'
+                        } disabled:opacity-40 disabled:cursor-not-allowed`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
+                        Colonize with Money (🪙)
+                      </button>
+                      <button
+                        type="button"
+                        disabled={player.population.science.cubesOnBoard <= 0}
+                        onClick={() => setColonizeOrbitalResource('science')}
+                        className={`px-2.5 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
+                          colonizeOrbitalResource === 'science'
+                            ? 'bg-pink-500/30 border-pink-400 text-pink-200 font-bold shadow'
+                            : 'bg-slate-900 border-slate-700 text-pink-400/80 hover:text-pink-300'
+                        } disabled:opacity-40 disabled:cursor-not-allowed`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-pink-400 inline-block" />
+                        Colonize with Science (🔬)
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="text-[11px] text-slate-400 italic">
+                      No ready colony ships available to colonize immediately.
+                    </div>
+                  )}
+                </div>
               )}
               {discovery.immediateReward.grantStructure === 'monolith' && (
                 <span className="px-2.5 py-1 bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-md text-xs font-bold flex items-center gap-1.5">
@@ -353,7 +417,15 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
             <button
               type="button"
-              onClick={() => onChoice(false, undefined, undefined, selectedTechId || tiedTechs[0]?.id)}
+              onClick={() =>
+                onChoice(
+                  false,
+                  undefined,
+                  undefined,
+                  selectedTechId || tiedTechs[0]?.id,
+                  colonizeOrbitalResource || undefined
+                )
+              }
               className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25 transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-cyan-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">

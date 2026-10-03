@@ -27,6 +27,10 @@ interface BankruptcyModalProps {
   onEmergencyTrade?: (from: 'materials' | 'science') => void;
   onSelectSector?: (sector: SectorTile) => void;
   selectedSectorId?: string | null;
+  stagedTrades?: { materials: number; science: number };
+  stagedAbandonedSectorIds?: string[];
+  onStageTrade?: (from: 'materials' | 'science', delta: 1 | -1) => void;
+  onToggleAbandonSector?: (sectorId: string) => void;
   onConfirmPlan?: (plan: { trades: { materials: number; science: number }; abandonedSectorIds: string[] }) => void;
   onResetPlan?: () => void;
 }
@@ -39,15 +43,22 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
   onEmergencyTrade,
   onSelectSector,
   selectedSectorId,
+  stagedTrades: propsStagedTrades,
+  stagedAbandonedSectorIds: propsStagedAbandonedSectorIds,
+  onStageTrade,
+  onToggleAbandonSector,
   onConfirmPlan,
   onResetPlan,
 }) => {
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
-  const [stagedTrades, setStagedTrades] = useState<{ materials: number; science: number }>({
+  const [localTrades, setLocalTrades] = useState<{ materials: number; science: number }>({
     materials: 0,
     science: 0,
   });
-  const [stagedAbandonedSectorIds, setStagedAbandonedSectorIds] = useState<string[]>([]);
+  const [localAbandoned, setLocalAbandoned] = useState<string[]>([]);
+
+  const stagedTrades = propsStagedTrades ?? localTrades;
+  const stagedAbandonedSectorIds = propsStagedAbandonedSectorIds ?? localAbandoned;
 
   const controlledSectors = sectors.filter((s) => s.discOwner === player.id);
   const tradeRatio = player.faction.tradeRatio || 2;
@@ -93,21 +104,29 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
     stagedTrades.materials > 0 || stagedTrades.science > 0 || stagedAbandonedSectorIds.length > 0;
 
   const handleStageTrade = (from: 'materials' | 'science', delta: 1 | -1) => {
-    setStagedTrades((prev) => ({
-      ...prev,
-      [from]: Math.max(0, prev[from] + delta),
-    }));
+    if (onStageTrade) {
+      onStageTrade(from, delta);
+    } else {
+      setLocalTrades((prev) => ({
+        ...prev,
+        [from]: Math.max(0, prev[from] + delta),
+      }));
+    }
   };
 
   const handleToggleAbandonSector = (sectorId: string) => {
-    setStagedAbandonedSectorIds((prev) =>
-      prev.includes(sectorId) ? prev.filter((id) => id !== sectorId) : [...prev, sectorId]
-    );
+    if (onToggleAbandonSector) {
+      onToggleAbandonSector(sectorId);
+    } else {
+      setLocalAbandoned((prev) =>
+        prev.includes(sectorId) ? prev.filter((id) => id !== sectorId) : [...prev, sectorId]
+      );
+    }
   };
 
   const handleResetDecisions = () => {
-    setStagedTrades({ materials: 0, science: 0 });
-    setStagedAbandonedSectorIds([]);
+    setLocalTrades({ materials: 0, science: 0 });
+    setLocalAbandoned([]);
     if (onResetPlan) onResetPlan();
   };
 

@@ -123,6 +123,7 @@ export interface DiscoveryChoiceAction extends BaseAction {
   equipShipType?: ShipType;
   equipSlotIndex?: number;
   chosenTechId?: string; // For Ancient Tech discovery when multiple lowest-cost regular techs available
+  colonizeOrbitalResource?: 'money' | 'science'; // For Ancient Orbital discovery when colonizing with ready colony ship
 }
 
 export interface DiplomacyExchangeAction extends BaseAction {

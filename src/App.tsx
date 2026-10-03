@@ -369,6 +369,37 @@ export const App: React.FC = () => {
     }
   };
 
+  const [stagedBankruptcyTrades, setStagedBankruptcyTrades] = useState<{ materials: number; science: number }>({
+    materials: 0,
+    science: 0,
+  });
+  const [stagedBankruptcySectors, setStagedBankruptcySectors] = useState<string[]>([]);
+
+  React.useEffect(() => {
+    if (!state.pendingBankruptcy) {
+      setStagedBankruptcyTrades({ materials: 0, science: 0 });
+      setStagedBankruptcySectors([]);
+    }
+  }, [state.pendingBankruptcy]);
+
+  const handleStageBankruptcyTrade = (from: 'materials' | 'science', delta: 1 | -1) => {
+    setStagedBankruptcyTrades((prev) => ({
+      ...prev,
+      [from]: Math.max(0, prev[from] + delta),
+    }));
+  };
+
+  const handleToggleAbandonSectorBankruptcy = (sectorId: string) => {
+    setStagedBankruptcySectors((prev) =>
+      prev.includes(sectorId) ? prev.filter((id) => id !== sectorId) : [...prev, sectorId]
+    );
+  };
+
+  const handleResetBankruptcyPlan = () => {
+    setStagedBankruptcyTrades({ materials: 0, science: 0 });
+    setStagedBankruptcySectors([]);
+  };
+
   const handleConfirmBankruptcyPlan = (plan: {
     trades: { materials: number; science: number };
     abandonedSectorIds: string[];
@@ -417,6 +448,8 @@ export const App: React.FC = () => {
       showToast('Treasury balanced! Bankruptcy averted.');
     }
 
+    setStagedBankruptcyTrades({ materials: 0, science: 0 });
+    setStagedBankruptcySectors([]);
     setState(currentState);
   };
 
@@ -1024,7 +1057,8 @@ export const App: React.FC = () => {
     keepForVictoryPoints: boolean,
     equipShipType?: ShipType,
     equipSlotIndex?: number,
-    chosenTechId?: string
+    chosenTechId?: string,
+    colonizeOrbitalResource?: 'money' | 'science'
   ) => {
     if (!state.pendingDiscovery) return;
     const res = executeAction(state, {
@@ -1035,12 +1069,16 @@ export const App: React.FC = () => {
       equipShipType,
       equipSlotIndex,
       chosenTechId,
+      colonizeOrbitalResource,
       requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
       if (equipShipType && equipSlotIndex !== undefined) {
         showToast(`Ancient tech installed on ${equipShipType.toUpperCase()}!`);
+      }
+      if (colonizeOrbitalResource) {
+        showToast(`Ancient Orbital colonized with ${colonizeOrbitalResource.toUpperCase()}!`);
       }
     } else {
       showToast(res.error || 'Failed to claim discovery.');
@@ -1381,6 +1419,7 @@ export const App: React.FC = () => {
                 }
               : null
           }
+          stagedAbandonedSectorIds={stagedBankruptcySectors}
         />
 
         {/* Floating Player Dashboard (Top-Left) */}
@@ -1412,6 +1451,8 @@ export const App: React.FC = () => {
               onAbandonInfluence={handleAbandonInfluence}
               onClose={() => setSelectedSector(null)}
               pendingBankruptcy={state.pendingBankruptcy}
+              stagedAbandonedSectorIds={stagedBankruptcySectors}
+              onToggleAbandonSector={handleToggleAbandonSectorBankruptcy}
             />
           </div>
         )}
@@ -1625,6 +1666,11 @@ export const App: React.FC = () => {
           onEmergencyTrade={handleEmergencyTradeBankruptcy}
           onSelectSector={(s) => setSelectedSector(s)}
           selectedSectorId={selectedSector?.id || null}
+          stagedTrades={stagedBankruptcyTrades}
+          stagedAbandonedSectorIds={stagedBankruptcySectors}
+          onStageTrade={handleStageBankruptcyTrade}
+          onToggleAbandonSector={handleToggleAbandonSectorBankruptcy}
+          onResetPlan={handleResetBankruptcyPlan}
           onConfirmPlan={handleConfirmBankruptcyPlan}
         />
       )}

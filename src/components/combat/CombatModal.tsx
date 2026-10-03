@@ -120,8 +120,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   }
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-rose-600/60 rounded-xl w-full max-w-2xl shadow-2xl overflow-hidden text-slate-100 flex flex-col max-h-[85vh]">
+    <div className="fixed top-18 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] sm:w-130 max-w-2xl pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
+      <div className="bg-slate-900/95 border-2 border-rose-600/80 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden text-slate-100 flex flex-col max-h-[calc(100vh-90px)]">
         {/* Combat Header */}
         <div className="flex items-center justify-between p-4 border-b border-rose-950 bg-slate-950">
           <div className="flex items-center gap-3">
