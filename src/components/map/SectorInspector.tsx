@@ -20,6 +20,7 @@ import {
   Lock,
   Check,
   Globe,
+  RotateCcw,
 } from 'lucide-react';
 
 interface SectorInspectorProps {
@@ -415,7 +416,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
 
                 return (
                   <div
-                    key={planet.id}
+                    key={planet.id || `planet-${pIdx}`}
                     className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${resourceTheme.border}`}
                   >
                     <div className="flex items-center gap-2">

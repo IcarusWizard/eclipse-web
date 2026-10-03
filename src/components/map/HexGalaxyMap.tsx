@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { GameState } from '../../engine/types/state';
-import { SectorTile, HexCoord, HexEdge } from '../../engine/types/galaxy';
+import { SectorTile, SectorShip, HexCoord, HexEdge } from '../../engine/types/galaxy';
 import {
   hexToPixel,
   getHexCornerPoints,

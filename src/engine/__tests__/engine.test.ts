@@ -7671,6 +7671,44 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           expect(galleryHtml).toBeDefined();
           expect(galleryHtml.length).toBeGreaterThan(0);
         }
+
+        // 10. Verify SectorInspector renders properly with Orbital colonization and disc retrieval (no RotateCcw ReferenceError)
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        const inspectorGame = createInitialGame(2);
+        const pInspector = inspectorGame.players[0]!;
+        const testSectorWithOrbital: any = {
+          id: 'test-sec-orb',
+          sectorNumber: 201,
+          ring: 2,
+          coord: { q: 1, r: 0 },
+          discOwner: pInspector.id,
+          victoryPoints: 2,
+          wormholes: [true, false, true, false, false, false],
+          ships: [],
+          planets: [
+            {
+              resource: 'any',
+              isAdvanced: false,
+              isOrbital: true,
+              colonizedBy: undefined,
+            },
+          ],
+          structures: { orbital: true },
+        };
+
+        const inspectorHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: testSectorWithOrbital,
+            players: inspectorGame.players,
+            activePlayer: pInspector,
+            onColonizePlanet: () => {},
+            onAbandonInfluence: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(inspectorHtml).toBeDefined();
+        expect(inspectorHtml).toContain('Orbital');
+        expect(inspectorHtml).toContain('Retrieve Influence Disc');
       });
     });
   });

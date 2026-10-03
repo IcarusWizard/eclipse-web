@@ -3,6 +3,7 @@
  */
 
 import { PlayerState } from '../types/player';
+import { SectorTile } from '../types/galaxy';
 import { TECH_TRACK_DISCOUNT_TABLE } from './techData';
 
 export const INCOME_TABLE = [
