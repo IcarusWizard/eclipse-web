@@ -3,6 +3,7 @@ import {
   NANO_TECHS,
   GRID_TECHS,
   MILITARY_TECHS,
+  RARE_TECHS,
   ALL_RARE_TECHS,
   TECH_CATALOG,
 } from '../../engine/rules/techData';
@@ -275,7 +276,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   { id: 'military', label: 'Military (Red)', count: MILITARY_TECHS.length },
                   { id: 'grid', label: 'Grid (Green)', count: GRID_TECHS.length },
                   { id: 'nano', label: 'Nano (Blue)', count: NANO_TECHS.length },
-                  { id: 'rare', label: 'Rare Techs (Purple)', count: RARE_TECHS.length },
+                  { id: 'rare', label: 'Rare Techs (Purple)', count: ALL_RARE_TECHS.length },
                 ].map((chip) => (
                   <button
                     key={chip.id}

@@ -7368,7 +7368,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(pLabsFinal.keptDiscoveryTiles.some((d) => d.id === drawnDisc.id)).toBe(true);
       });
 
-      it('52. verifies Rift Cannon Expansion: purple dice rules, self-damage priority (largest to smallest), rare tech research, discovery tile, and lobby/modal selection', () => {
+      it('52. verifies Rift Cannon Expansion: purple dice rules, self-damage priority (largest to smallest), rare tech research, discovery tile, and lobby/modal selection', async () => {
         // 1. Expansion definitions & registry
         expect(AVAILABLE_EXPANSIONS.length).toBeGreaterThanOrEqual(1);
         const riftExp = AVAILABLE_EXPANSIONS.find((e) => e.id === 'rift_cannon');
@@ -7645,6 +7645,32 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(stepResult.updatedUnits.length).toBe(2);
         expect(stepResult.rolls.length).toBeGreaterThan(0);
         expect(stepResult.rolls.every((r: any) => r.dieColor === 'purple')).toBe(true);
+
+        // 9. Verify GalacticGalleryModal renders properly without ReferenceErrors across all tabs
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+
+        const tabs: ('techs' | 'parts' | 'sectors' | 'discoveries' | 'factions' | 'reputation')[] = [
+          'techs',
+          'parts',
+          'sectors',
+          'discoveries',
+          'factions',
+          'reputation',
+        ];
+
+        for (const tab of tabs) {
+          const galleryHtml = renderToString(
+            React.createElement(GalacticGalleryModal, {
+              isOpen: true,
+              onClose: () => {},
+              initialTab: tab,
+            })
+          );
+          expect(galleryHtml).toBeDefined();
+          expect(galleryHtml.length).toBeGreaterThan(0);
+        }
       });
     });
   });
