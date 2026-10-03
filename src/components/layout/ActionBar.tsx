@@ -154,9 +154,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   }
   const hasDiscs = activePlayer.influenceTrack.discsOnTrack > 0;
   const hasPassed = activePlayer.hasPassed;
-  const canActNormal = !isTurnGated && hasDiscs && !hasPassed;
-  const canActReaction = !isTurnGated && hasDiscs && hasPassed;
-  const canPass = !isTurnGated;
+  const hasPendingExplore = Boolean(pendingExploreActivations && pendingExploreActivations > 0);
+  const canExplore = (!isTurnGated && hasDiscs && !hasPassed) || (!isTurnGated && hasPendingExplore);
+  const canActNormal = !isTurnGated && hasDiscs && !hasPassed && !hasPendingExplore;
+  const canActReaction = !isTurnGated && hasDiscs && hasPassed && !hasPendingExplore;
+  const canPass = !isTurnGated && !hasPendingExplore;
 
   const maxExplore = getMaxExploreActivations(activePlayer);
   const maxResearch = getMaxResearchActivations(activePlayer);
@@ -196,27 +198,31 @@ export const ActionBar: React.FC<ActionBarProps> = ({
       <div className="grid grid-cols-7 gap-1 sm:gap-1.5 w-full">
         {/* Explore */}
         <button
-          disabled={!canActNormal}
+          disabled={!canExplore}
           onClick={onToggleExplore}
           title={
             isExploreMode
-              ? pendingExploreActivations && pendingExploreActivations > 0
+              ? hasPendingExplore
                 ? 'Cancel Explore & finish turn'
                 : 'Cancel Explore Target'
+              : hasPendingExplore
+              ? 'Finish Explore action & end turn'
               : `Explore (EXP) - Discover new sectors (${maxExplore} activation)`
           }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             isExploreMode
               ? 'bg-cyan-500 text-slate-950 ring-2 ring-cyan-300'
-              : canActNormal
+              : canExplore
               ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 hover:scale-105'
               : 'bg-slate-900/40 text-slate-600 border border-slate-900'
           }`}
         >
           <Compass className="w-4 h-4 shrink-0" />
-          <span className="leading-tight">{isExploreMode ? 'Cancel' : 'EXP'}</span>
+          <span className="leading-tight">{isExploreMode ? 'Cancel' : hasPendingExplore ? 'Finish' : 'EXP'}</span>
           {!isExploreMode ? (
-            <span className="text-[8.5px] opacity-80 leading-none">({maxExplore})</span>
+            <span className="text-[8.5px] opacity-80 leading-none">
+              ({hasPendingExplore ? pendingExploreActivations : maxExplore})
+            </span>
           ) : (
             <span className="text-[8.5px] opacity-0 leading-none">(-)</span>
           )}
@@ -306,7 +312,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           disabled={!canPass}
           onClick={onPass}
-          title={hasPassed ? 'Pass reaction turn' : 'Pass turn (receive 2 Credits for 1st pass)'}
+          title={
+            hasPendingExplore
+              ? 'Must finish exploration before passing'
+              : hasPassed
+              ? 'Pass reaction turn'
+              : 'Pass turn (receive 2 Credits for 1st pass)'
+          }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             canPass
               ? 'bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-300 border border-slate-700 hover:scale-105'

@@ -301,3 +301,52 @@ export function getHexEdgeCenter(
     angle: angleDeg,
   };
 }
+
+/**
+ * Calculates all legal, currently explorable hex targets for a given player.
+ * Checks presence, open wormhole / wormhole generator, ring bounds (1..3),
+ * unoccupied coordinates, and available tiles in sector decks.
+ */
+export function getExplorableHexes(
+  sectors: SectorTile[],
+  playerId: string,
+  hasWormholeGen: boolean,
+  sectorDecks?: { ring1?: SectorTile[]; ring2?: SectorTile[]; ring3?: SectorTile[] }
+): { from: HexCoord; target: HexCoord; ring: number }[] {
+  const targets: { from: HexCoord; target: HexCoord; ring: number }[] = [];
+
+  for (const sec of sectors) {
+    const hasPresence =
+      sec.discOwner === playerId ||
+      sec.ships?.some((s) => s.ownerId === playerId);
+    if (!hasPresence) continue;
+
+    for (let edge = 0; edge < 6; edge++) {
+      if (!hasWormholeOnEdge(sec, edge as HexEdge) && !hasWormholeGen) {
+        continue;
+      }
+
+      const dir = HEX_DIRECTIONS[edge as HexEdge];
+      const candidate: HexCoord = { q: sec.coord.q + dir.q, r: sec.coord.r + dir.r };
+      const ring = getRingFromCoord(candidate);
+      if (ring < 1 || ring > 3) continue; // Outside Galaxy or Center hex
+
+      if (sectorDecks) {
+        const deck =
+          ring === 1
+            ? sectorDecks.ring1
+            : ring === 2
+            ? sectorDecks.ring2
+            : sectorDecks.ring3;
+        if (!deck || deck.length === 0) continue;
+      }
+
+      const exists = sectors.some((s) => areCoordsEqual(s.coord, candidate));
+      if (!exists && !targets.some((t) => areCoordsEqual(t.target, candidate))) {
+        targets.push({ from: sec.coord, target: candidate, ring });
+      }
+    }
+  }
+  return targets;
+}
+

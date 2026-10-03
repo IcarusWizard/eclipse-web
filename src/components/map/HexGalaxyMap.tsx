@@ -11,6 +11,7 @@ import {
   hasWormholeOnEdge,
   HEX_DIRECTIONS,
   getRingFromCoord,
+  getExplorableHexes,
 } from '../../engine/rules/hexMath';
 import {
   Rocket,
@@ -236,35 +237,9 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   // Compute legal unexplored target hexes adjacent to explored sectors where active player has presence
   const explorableHexes = useMemo(() => {
     if (!isExploreMode || !activePlayer) return [];
-    const targets: { from: HexCoord; target: HexCoord; ring: number }[] = [];
     const hasWormholeGen = activePlayer.techTrack.researched.some((t) => t.id === 'wormhole_generator');
-
-    for (const sec of state.sectors) {
-      const hasPresence =
-        sec.discOwner === activePlayer.id ||
-        sec.ships.some((s) => s.ownerId === activePlayer.id);
-      if (!hasPresence) continue;
-
-      for (let edge = 0; edge < 6; edge++) {
-        // Player must have an open wormhole on this edge to explore through it
-        if (!hasWormholeOnEdge(sec, edge as HexEdge) && !hasWormholeGen) {
-          continue;
-        }
-
-        const dir = HEX_DIRECTIONS[edge as HexEdge];
-        const candidate: HexCoord = { q: sec.coord.q + dir.q, r: sec.coord.r + dir.r };
-        const ring = getRingFromCoord(candidate);
-        if (ring > 3) continue; // Outside Galaxy
-
-        // Check if already occupied
-        const exists = state.sectors.some((s) => areCoordsEqual(s.coord, candidate));
-        if (!exists && !targets.some((t) => areCoordsEqual(t.target, candidate))) {
-          targets.push({ from: sec.coord, target: candidate, ring });
-        }
-      }
-    }
-    return targets;
-  }, [state.sectors, activePlayer, isExploreMode]);
+    return getExplorableHexes(state.sectors, activePlayer.id, hasWormholeGen, state.sectorDecks);
+  }, [state.sectors, activePlayer, isExploreMode, state.sectorDecks]);
 
   return (
     <div

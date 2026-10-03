@@ -566,7 +566,7 @@ export const App: React.FC = () => {
   };
 
   const handleToggleExplore = () => {
-    if (isExploreMode && state.pendingExploreActivations && state.pendingExploreActivations > 0) {
+    if (state.pendingExploreActivations && state.pendingExploreActivations > 0) {
       handleFinishExplore();
       return;
     }
@@ -933,6 +933,10 @@ export const App: React.FC = () => {
 
   // Pass turn
   const handlePass = () => {
+    if (state.pendingExploreActivations && state.pendingExploreActivations > 0) {
+      showToast('Please finish or cancel exploration before passing.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'PASS',
       playerId: activePlayer.id,

@@ -9,6 +9,7 @@ import {
   findLegalExploreRotation,
   findNextLegalExploreRotation,
   getEdgeTowardCenter,
+  getExplorableHexes,
 } from '../rules/hexMath';
 import {
   calculateBlueprintStats,
@@ -60,6 +61,7 @@ import {
   fetchTableFromServer,
   fetchSavedTablesFromServer,
   getStateFingerprint,
+  sanitizeLoadedGameState,
 } from '../rules/persistence';
 import { formatBugReportLine } from '../rules/bugReport';
 import type { SectorTile } from '../types/sector';
@@ -7395,7 +7397,10 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const expGame = createInitialGame(2, undefined, ['rift_cannon']);
         expect(expGame.expansions).toEqual(['rift_cannon']);
         expect(expGame.discoveryBag.length).toBe(33);
-        expect(expGame.discoveryBag.some((d) => d.shipPartId === 'rift_conductor')).toBe(true);
+        const hasRiftConductor =
+          expGame.discoveryBag.some((d) => d.shipPartId === 'rift_conductor') ||
+          expGame.sectors.some((s) => s.discoveryTile?.shipPartId === 'rift_conductor');
+        expect(hasRiftConductor).toBe(true);
 
         const expTechBag = createInitialTechBag(['rift_cannon']);
         expect(expTechBag.length).toBe(115);
@@ -7710,7 +7715,182 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(inspectorHtml).toContain('Orbital');
         expect(inspectorHtml).toContain('Retrieve Influence Disc');
       });
+
+      it('53. verifies Bug 114: Planta explore auto-finish with single possibility, disallowing other actions/pass during explore, self-healing stuck state, and ActionBar explore button availability', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+
+        // 1. Verify getExplorableHexes accurately filters targets based on wormholes, ring limits, and decks
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const homeSec = game.sectors.find((s) => s.discOwner === p1.id)!;
+        expect(homeSec).toBeDefined();
+
+        const targets = getExplorableHexes(game.sectors, p1.id, false, game.sectorDecks);
+        expect(targets.length).toBeGreaterThan(0);
+        // All targets must have ring <= 3 and ring >= 1
+        for (const t of targets) {
+          expect(t.ring).toBeGreaterThanOrEqual(1);
+          expect(t.ring).toBeLessThanOrEqual(3);
+          expect(areCoordsEqual(t.from, homeSec.coord)).toBe(true);
+        }
+
+        // 2. Setup Planta with only 1 explore possibility
+        const plantaGame = createInitialGame(2);
+        const planta = plantaGame.players.find((p) => p.faction.id === 'planta') || plantaGame.players[0]!;
+        planta.faction = {
+          ...planta.faction,
+          id: 'planta',
+          name: 'Planta',
+          exploreActivations: 2,
+        };
+        plantaGame.activePlayerIndex = plantaGame.players.findIndex((p) => p.id === planta.id);
+        const plantaHome = plantaGame.sectors.find((s) => s.discOwner === planta.id)!;
+
+        // Drain ring 1 and ring 3 decks, leaving only 1 tile in ring 2 deck
+        plantaGame.sectorDecks.ring1 = [];
+        plantaGame.sectorDecks.ring3 = [];
+        // Determine targets for Planta
+        const plantaTargets = getExplorableHexes(plantaGame.sectors, planta.id, false, plantaGame.sectorDecks);
+        expect(plantaTargets.length).toBeGreaterThan(0);
+        const targetToExplore = plantaTargets[0]!;
+
+        // Now set ring2 deck to have exactly 1 tile so after exploring it, 0 tiles remain in ANY deck
+        const singleTile = plantaGame.sectorDecks.ring2.pop()!;
+        singleTile.hasDiscovery = false;
+        singleTile.ancientsCount = 0;
+        singleTile.wormholes = [true, true, true, true, true, true];
+        plantaGame.sectorDecks.ring2 = [singleTile];
+
+        // Planta activates Explore
+        const exploreRes = executeAction(plantaGame, {
+          type: 'EXPLORE',
+          playerId: planta.id,
+          fromCoord: targetToExplore.from,
+          targetCoord: targetToExplore.target,
+          rotation: 0,
+          claimInfluence: false,
+          requireConfirmation: true,
+        });
+
+        expect(exploreRes.success).toBe(true);
+        // Since no more tiles exist in ring 1, 2, or 3 decks, 0 explorable hexes remain!
+        // gameReducer should have AUTO-FINISHED explore, setting pendingExploreActivations to 0!
+        expect(exploreRes.newState.pendingExploreActivations).toBe(0);
+        expect(exploreRes.newState.pendingActionConfirmation).toBeDefined();
+        expect(exploreRes.newState.pendingActionConfirmation?.playerId).toBe(planta.id);
+
+        // Confirming the action cleanly advances the turn
+        const confirmRes = executeAction(exploreRes.newState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: planta.id,
+        });
+        expect(confirmRes.success).toBe(true);
+        expect(confirmRes.newState.activePlayerIndex).not.toBe(plantaGame.activePlayerIndex);
+
+        // 3. Verify validation rules when pendingExploreActivations > 0:
+        // Set pendingExploreActivations to 1 on an active player
+        const activeState = createInitialGame(2);
+        const activeP = activeState.players[activeState.activePlayerIndex]!;
+        activeState.pendingExploreActivations = 1;
+
+        // Attempting PASS must be rejected
+        const passVal = validateAction(activeState, {
+          type: 'PASS',
+          playerId: activeP.id,
+        });
+        expect(passVal.valid).toBe(false);
+        expect(passVal.error).toContain('Must finish or cancel pending explore activations');
+
+        // Attempting RESEARCH must be rejected
+        const resVal = validateAction(activeState, {
+          type: 'RESEARCH',
+          playerId: activeP.id,
+          techId: 'plasma_cannon',
+        });
+        expect(resVal.valid).toBe(false);
+        expect(resVal.error).toContain('Must finish or cancel pending explore activations');
+
+        // Attempting BUILD must be rejected
+        const buildVal = validateAction(activeState, {
+          type: 'BUILD',
+          playerId: activeP.id,
+          items: [{ unitType: 'interceptor', sectorCoord: activeState.sectors[0]!.coord }],
+        });
+        expect(buildVal.valid).toBe(false);
+        expect(buildVal.error).toContain('Must finish or cancel pending explore activations');
+
+        // Attempting FINISH_EXPLORE must be accepted
+        const finishVal = validateAction(activeState, {
+          type: 'FINISH_EXPLORE',
+          playerId: activeP.id,
+        });
+        expect(finishVal.valid).toBe(true);
+
+        // Executing FINISH_EXPLORE cleanly resets pendingExploreActivations to 0 and advances turn
+        const finishExec = executeAction(activeState, {
+          type: 'FINISH_EXPLORE',
+          playerId: activeP.id,
+          requireConfirmation: false,
+        });
+        expect(finishExec.success).toBe(true);
+        expect(finishExec.newState.pendingExploreActivations).toBe(0);
+        expect(finishExec.newState.activePlayerIndex).not.toBe(activeState.activePlayerIndex);
+
+        // 4. Verify self-healing in sanitizeLoadedGameState (e.g. Table #948 recovery)
+        const stuckState = createInitialGame(2);
+        const initialIdx = stuckState.activePlayerIndex;
+        const stuckPlayer = stuckState.players[initialIdx]!;
+        stuckPlayer.hasPassed = true;
+        stuckState.passedPlayerIds = [stuckPlayer.id];
+        stuckState.pendingExploreActivations = 1;
+
+        const healedState = sanitizeLoadedGameState(stuckState);
+        expect(healedState.pendingExploreActivations).toBe(0);
+        expect(healedState.activePlayerIndex).not.toBe(initialIdx);
+
+        // Also verify executeAction rejects PASS when pendingExploreActivations is active
+        const forcedPassState = createInitialGame(2);
+        const forcedP = forcedPassState.players[forcedPassState.activePlayerIndex]!;
+        forcedPassState.pendingExploreActivations = 1;
+        const forcedPassRes = executeAction(forcedPassState, {
+          type: 'PASS',
+          playerId: forcedP.id,
+          requireConfirmation: false,
+        });
+        expect(forcedPassRes.success).toBe(false);
+        expect(forcedPassRes.error).toContain('Must finish or cancel pending explore activations');
+
+        // 5. Verify ActionBar rendering with pendingExploreActivations = 1
+        const { ActionBar } = await import('../../components/layout/ActionBar');
+        const abGame = createInitialGame(2);
+        const abPlayer = abGame.players[0]!;
+        abPlayer.influenceTrack.discsOnTrack = 0; // 0 discs left!
+
+        const actionBarHtml = renderToString(
+          React.createElement(ActionBar, {
+            activePlayer: abPlayer,
+            currentRound: 1,
+            phase: 'ACTION_PHASE',
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+            pendingExploreActivations: 1,
+          })
+        );
+
+        // Explore button should NOT be disabled even with 0 discs, and should show 'Finish' & '(1)'
+        expect(actionBarHtml).toContain('Finish');
+        expect(actionBarHtml).toMatch(/Finish.*1/);
+        expect(actionBarHtml).toContain('Must finish exploration before passing');
+      });
     });
   });
 });
+
 

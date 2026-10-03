@@ -187,6 +187,33 @@ export function loadActiveGameState(): GameState | null {
 }
 
 /**
+ * Sanitizes game state upon load to resolve any corrupted/deadlocked edge cases (Bug 114).
+ * If a game was saved with pendingExploreActivations but the active player has already passed,
+ * clear pendingExploreActivations and advance activePlayerIndex if not all players have passed.
+ */
+export function sanitizeLoadedGameState(state: GameState): GameState {
+  if (!state || !state.players) return state;
+  if (state.phase === 'ACTION_PHASE' && state.pendingExploreActivations && state.pendingExploreActivations > 0) {
+    const activeP = state.players[state.activePlayerIndex];
+    if (activeP?.hasPassed || state.passedPlayerIds?.includes(activeP?.id)) {
+      state.pendingExploreActivations = 0;
+      const activePlayers = state.players.filter((p) => !p.isEliminated);
+      const allPassed = (state.consecutivePasses || 0) >= activePlayers.length;
+      if (!allPassed) {
+        let nextIdx = (state.activePlayerIndex + 1) % state.players.length;
+        let loops = 0;
+        while (state.players[nextIdx]!.isEliminated && loops < state.players.length) {
+          nextIdx = (nextIdx + 1) % state.players.length;
+          loops++;
+        }
+        state.activePlayerIndex = nextIdx;
+      }
+    }
+  }
+  return state;
+}
+
+/**
  * Retrieves a saved table by its ID or 3-digit table number.
  */
 export function loadTable(tableIdentifier: string | number): GameState | null {
@@ -204,7 +231,7 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
     if (entry && entry.stateJson) {
       const parsed: GameState = JSON.parse(entry.stateJson);
       (parsed as any).tableNumber = entry.tableNumber;
-      return parsed;
+      return sanitizeLoadedGameState(parsed);
     }
     return null;
   } catch (err) {
@@ -246,7 +273,7 @@ export async function fetchTableFromServer(tableIdentifier: string | number): Pr
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.success && data.table) {
-      return data.table as GameState;
+      return sanitizeLoadedGameState(data.table as GameState);
     }
   } catch {}
   return null;
@@ -339,7 +366,7 @@ export function subscribeToGameSync(
         data.tableId === targetIdStr ||
         (!isNaN(targetNum) && data.tableNumber === targetNum);
       if (matches && data.stateJson) {
-        const parsed: GameState = JSON.parse(data.stateJson);
+        const parsed: GameState = sanitizeLoadedGameState(JSON.parse(data.stateJson));
         const fp = getStateFingerprint(parsed);
         if (fp !== lastKnownFingerprint) {
           lastKnownFingerprint = fp;

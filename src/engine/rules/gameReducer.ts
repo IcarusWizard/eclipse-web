@@ -4,7 +4,7 @@
 
 import { GameState, GamePhase, GameLogEntry, CombatState } from '../types/state';
 import { GameAction, BuildAction, UpgradeAction, MoveAction, ResearchAction, ExploreAction } from '../types/actions';
-import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors } from './hexMath';
+import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors, getExplorableHexes } from './hexMath';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
@@ -221,14 +221,35 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
   }
 
+  // Pending explore activations (e.g. Planta multi-explore): must finish or cancel explore before taking another action or passing (Bug 114)
+  if (state.pendingExploreActivations && state.pendingExploreActivations > 0) {
+    if (
+      action.type !== 'EXPLORE' &&
+      action.type !== 'FINISH_EXPLORE' &&
+      action.type !== 'COLONIZE' &&
+      action.type !== 'TRADE' &&
+      action.type !== 'DISCOVERY_CHOICE' &&
+      action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
+      action.type !== 'CONFIRM_TURN_ACTION' &&
+      action.type !== 'REVERT_TURN_ACTION' &&
+      action.type !== 'DIPLOMACY_EXCHANGE' &&
+      action.type !== 'PROPOSE_DIPLOMACY' &&
+      action.type !== 'RESPOND_DIPLOMACY'
+    ) {
+      return {
+        valid: false,
+        error: 'Must finish or cancel pending explore activations before taking another action or passing.',
+      };
+    }
+  }
+
   // Reaction constraints for passed players: can only take Reaction actions (Build 1, Move 1, Upgrade 1) or Pass
   const isPassedPlayer = player.hasPassed || state.passedPlayerIds.includes(player.id);
   if (isPassedPlayer) {
     if (
       action.type === 'EXPLORE' ||
       action.type === 'RESEARCH' ||
-      action.type === 'INFLUENCE' ||
-      action.type === 'FINISH_EXPLORE'
+      action.type === 'INFLUENCE'
     ) {
       return {
         valid: false,
@@ -1293,6 +1314,16 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         addLog(`${player.name} discarded explored sector tile from Ring ${ring} to the bottom of the stack.`);
       }
 
+      // If player has pending explore activations remaining, verify if any valid target hexes exist on galaxy (Bug 114)
+      if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
+        const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+        const explorable = getExplorableHexes(newState.sectors, player.id, hasWormholeGen, newState.sectorDecks);
+        if (explorable.length === 0) {
+          newState.pendingExploreActivations = 0;
+          addLog(`${player.name} has no further valid sectors to explore; exploration finished.`);
+        }
+      }
+
       break;
     }
 
@@ -1830,6 +1861,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     case 'PASS': {
+      newState.pendingExploreActivations = 0; // Clear any pending explore activations when passing (Bug 114)
       newState.consecutivePasses = (newState.consecutivePasses || 0) + 1;
       if (!newState.passedPlayerIds.includes(player.id)) {
         newState.passedPlayerIds.push(player.id);
@@ -2541,6 +2573,10 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
   // Turn management during ACTION_PHASE
   if (newState.phase === 'ACTION_PHASE') {
+    // If the active player has passed, pending explore activations must be 0 (Bug 114)
+    if (player.hasPassed || newState.passedPlayerIds.includes(player.id)) {
+      newState.pendingExploreActivations = 0;
+    }
     if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
       // Multiple explore activations (e.g. Planta): do not advance turn yet!
       return { success: true, newState };
