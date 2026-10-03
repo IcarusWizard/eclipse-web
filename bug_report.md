@@ -111,3 +111,4 @@
 - [x] I think you misunderstand the confrom for bankcrupt mean. it is not for the abandon of each sector, it is about after the player make resolve the bankcrupt (potentially with multiple operations), he confirm that he will use these operations to resolve the bankcrupt. This is because the player can have many ways to resolve a bankcrupt (Round 8, ACTION_PHASE, Player: Mechanema, Table #633)
 - [x] the rare tech ancient lab is not resolved correctly, it should get a random discovery tile (Round 8, ACTION_PHASE, Player: Terran Republic, Table #633)
 
+- [ ] there is a bug when plant have only 1 explore possibility. it allows plant to choose anohter action like pass without finishing the explore, then the game stuck because plant didn't finish the explore, and it is not his turn anymore. (Round 4, ACTION_PHASE, Player: Planta, Table #948)
