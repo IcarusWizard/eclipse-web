@@ -433,11 +433,37 @@ export const RARE_TECHS: Technology[] = [
   },
 ];
 
+export const RIFT_CANNON_RARE_TECH: Technology = {
+  id: 'rift_cannon',
+  name: 'Rift Cannon',
+  category: 'rare',
+  tier: 0 as any,
+  baseCost: 9,
+  minCost: 7,
+  costByDiscount: [9, 8, 7, 7],
+  description: 'Unlocks the Rift Cannon ship component (consumes 2 Power, provides 1 Purple Rift die).',
+  unlocksPartId: 'rift_cannon',
+};
+
+export const EXPANSION_RARE_TECHS: Technology[] = [
+  RIFT_CANNON_RARE_TECH,
+];
+
+export const ALL_RARE_TECHS: Technology[] = [
+  ...RARE_TECHS,
+  ...EXPANSION_RARE_TECHS,
+];
+
 export const TECH_CATALOG: Technology[] = [
   ...NANO_TECHS,
   ...GRID_TECHS,
   ...MILITARY_TECHS,
   ...RARE_TECHS,
+];
+
+export const ALL_TECH_CATALOG: Technology[] = [
+  ...TECH_CATALOG,
+  ...EXPANSION_RARE_TECHS,
 ];
 
 /**
@@ -510,7 +536,7 @@ const REGULAR_TECH_COPIES: Record<number, number> = {
  * Creates the complete official Tech Tile Bag for Eclipse: Second Dawn.
  * 99 regular technologies + 15 Rare technologies = 114 tiles (39 unique).
  */
-export function createInitialTechBag(): Technology[] {
+export function createInitialTechBag(expansions?: string[]): Technology[] {
   const bag: Technology[] = [];
 
   const regularTechs = [...NANO_TECHS, ...GRID_TECHS, ...MILITARY_TECHS];
@@ -524,6 +550,11 @@ export function createInitialTechBag(): Technology[] {
   // 1 copy of each of the 15 authentic Rare technologies
   for (const tech of RARE_TECHS) {
     bag.push({ ...tech });
+  }
+
+  // Expansion Rare Techs
+  if (expansions?.includes('rift_cannon')) {
+    bag.push({ ...RIFT_CANNON_RARE_TECH });
   }
 
   // Shuffle bag with Fisher-Yates

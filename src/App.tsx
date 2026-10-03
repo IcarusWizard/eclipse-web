@@ -243,9 +243,10 @@ export const App: React.FC = () => {
     playerCount: number,
     factionIds: string[],
     tableId: string,
-    seat: number | 'all'
+    seat: number | 'all',
+    expansions?: string[]
   ) => {
-    const newGame = createInitialGame(playerCount, factionIds);
+    const newGame = createInitialGame(playerCount, factionIds, expansions);
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
     newGame.id = tableId;
@@ -453,8 +454,8 @@ export const App: React.FC = () => {
     setState(currentState);
   };
 
-  const handleStartNewGame = (playerCount: number, selectedFactionIds?: string[]) => {
-    const newGame = createInitialGame(playerCount, selectedFactionIds);
+  const handleStartNewGame = (playerCount: number, selectedFactionIds?: string[], expansions?: string[]) => {
+    const newGame = createInitialGame(playerCount, selectedFactionIds, expansions);
     setState(newGame);
     setSelectedViewIndex(0);
     setSelectedSector(null);

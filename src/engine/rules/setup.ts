@@ -6,7 +6,7 @@
 import { GameState } from '../types/state';
 import { FactionInfo, PlayerState, ReputationSlotType } from '../types/player';
 import { SectorTile, HexCoord } from '../types/galaxy';
-import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
+import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, RIFT_CONDUCTOR_DISCOVERY, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
 import { createDefaultHumanBlueprints, createFactionBlueprints } from './shipValidation';
 import { getEdgeTowardCenter } from './hexMath';
@@ -507,7 +507,8 @@ export function getPlayerReputationTrackSlots(
 
 export function createInitialGame(
   playerCount: number = 2,
-  selectedFactions?: (string | FactionInfo)[]
+  selectedFactions?: (string | FactionInfo)[],
+  expansions: string[] = []
 ): GameState {
   const count = Math.max(1, Math.min(6, playerCount));
   const startingCoords = STARTING_COORDS_BY_COUNT[count] ?? STARTING_COORDS_BY_COUNT[2]!;
@@ -692,6 +693,9 @@ export function createInitialGame(
   // Discovery bag setup
   const discoveryBag = (() => {
     const bag = [...DISCOVERY_TILES];
+    if (expansions?.includes('rift_cannon')) {
+      bag.push({ ...RIFT_CONDUCTOR_DISCOVERY });
+    }
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [bag[i], bag[j]] = [bag[j]!, bag[i]!];
@@ -748,8 +752,7 @@ export function createInitialGame(
   });
 
   // Official Eclipse: Second Dawn Tech Bag & Tray Setup
-  // 114 tiles: 99 regular (33 military, 33 grid, 33 nano) + 15 authentic rare techs
-  const fullBag = createInitialTechBag();
+  const fullBag = createInitialTechBag(expansions);
   const { drawn: techSupply, remainingBag: techBag, regularDrawn, rareDrawn } =
     drawTechTilesForSetup(fullBag, players.length);
 
@@ -757,6 +760,7 @@ export function createInitialGame(
 
   return {
     id: `game_${Date.now()}`,
+    expansions: expansions || [],
     round: 1,
     maxRounds: 8,
     phase: 'ACTION_PHASE',

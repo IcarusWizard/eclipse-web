@@ -3,14 +3,14 @@ import {
   NANO_TECHS,
   GRID_TECHS,
   MILITARY_TECHS,
-  RARE_TECHS,
+  ALL_RARE_TECHS,
   TECH_CATALOG,
 } from '../../engine/rules/techData';
 import { SHIP_PARTS } from '../../engine/rules/partData';
 import {
   getAllSectorsCatalog,
   SectorCatalogEntry,
-  DISCOVERY_TILES,
+  ALL_DISCOVERY_TILES,
 } from '../../engine/rules/sectorData';
 import { ALL_FACTIONS } from '../../engine/rules/setup';
 import { Technology } from '../../engine/types/tech';
@@ -71,7 +71,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
   // 1. Technologies Catalog
   const allTechs = useMemo<Technology[]>(() => {
-    return [...NANO_TECHS, ...GRID_TECHS, ...MILITARY_TECHS, ...RARE_TECHS];
+    return [...NANO_TECHS, ...GRID_TECHS, ...MILITARY_TECHS, ...ALL_RARE_TECHS];
   }, []);
 
   const filteredTechs = useMemo(() => {
@@ -128,10 +128,10 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
   }, [allSectors, sectorCategory, searchQuery]);
 
   // 4. Discovery Tiles Catalog
-  // Group 36 discovery tiles by unique name and count
+  // Group discovery tiles by unique name and count
   const groupedDiscoveries = useMemo(() => {
     const map = new Map<string, { tile: DiscoveryTile; count: number }>();
-    for (const t of DISCOVERY_TILES) {
+    for (const t of ALL_DISCOVERY_TILES) {
       if (!map.has(t.name)) {
         map.set(t.name, { tile: t, count: 1 });
       } else {
@@ -405,13 +405,14 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                     'ion_disruptor', 'ion_turret', 'plasma_turret', 'soliton_charger',
                     'ion_missile', 'axion_computer', 'antimatter_missile', 'muon_source',
                     'flux_shield', 'conformal_drive', 'nonlinear_drive', 'shard_hull',
-                    'hypergrid_source', 'inversion_shield', 'soliton_missile',
+                    'hypergrid_source', 'inversion_shield', 'soliton_missile', 'rift_conductor',
                   ];
                   const isStandard = STANDARD_IDS.includes(part.id);
                   const isAncient = ANCIENT_DISCOVERY_IDS.includes(part.id);
                   const isRareTech = [
                     'conifold_field', 'absorption_shield', 'sentient_hull',
                     'soliton_cannon', 'transition_drive', 'flux_missile', 'zero_point_source',
+                    'rift_cannon',
                   ].includes(part.id);
 
                   return (
@@ -464,7 +465,13 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         {part.dice && (
                           <div className="col-span-2 text-orange-400 flex items-center gap-1 font-semibold">
                             <Crosshair className="w-3 h-3" />
-                            {part.dice.map((d) => `${d.count} ${d.color} die (${d.damagePerHit} dmg)`).join(', ')}
+                            {part.dice
+                              .map((d) =>
+                                d.color === 'purple'
+                                  ? `${d.count} Purple Rift die`
+                                  : `${d.count} ${d.color} die (${d.damagePerHit} dmg)`
+                              )
+                              .join(', ')}
                           </div>
                         )}
                         {part.driveSpeed && (

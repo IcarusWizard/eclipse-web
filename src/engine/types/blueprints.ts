@@ -13,7 +13,7 @@ export type PartCategory =
   | 'reactor'
   | 'hull';
 
-export type DieColor = 'yellow' | 'orange' | 'blue' | 'red';
+export type DieColor = 'yellow' | 'orange' | 'blue' | 'red' | 'purple';
 
 export interface WeaponDice {
   readonly color: DieColor;

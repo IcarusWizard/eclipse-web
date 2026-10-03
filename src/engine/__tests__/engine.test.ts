@@ -19,13 +19,16 @@ import {
   createFactionBlueprints,
   isShipBlueprintValid,
 } from '../rules/shipValidation';
-import { SHIP_PARTS, ANCIENT_PART_IDS } from '../rules/partData';
+import { SHIP_PARTS, ANCIENT_PART_IDS, ALL_ANCIENT_PART_IDS } from '../rules/partData';
 import {
   sortUnitsByInitiative,
   getSectorDefenderOwnerId,
   buildCombatUnitsForSector,
   executeCombatStep,
+  rollPurpleDie,
+  applyRiftSelfDamage,
 } from '../rules/combatEngine';
+import { AVAILABLE_EXPANSIONS, isExpansionActive } from '../rules/expansions';
 import {
   createInitialGame,
   ALIEN_FACTIONS,
@@ -72,7 +75,7 @@ import {
   POPULATION_TRACK_SPACES,
   abandonSectorForUpkeep,
 } from '../rules/economyEngine';
-import { CENTER_SECTOR, generateSectorDecks, DISCOVERY_TILES, getAllSectorsCatalog } from '../rules/sectorData';
+import { CENTER_SECTOR, generateSectorDecks, DISCOVERY_TILES, getAllSectorsCatalog, RIFT_CONDUCTOR_DISCOVERY } from '../rules/sectorData';
 import {
   createInitialTechBag,
   drawTechTilesForSetup,
@@ -84,6 +87,8 @@ import {
   RARE_TECHS,
   TECH_CATALOG,
   OFFICIAL_TECH_DISCOUNTS,
+  RIFT_CANNON_RARE_TECH,
+  ALL_RARE_TECHS,
 } from '../rules/techData';
 
 describe('Hexagonal Galaxy Math & Wormholes', () => {
@@ -7361,6 +7366,285 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(choiceRes.newState.pendingDiscovery).toBeNull();
         const pLabsFinal = choiceRes.newState.players.find((p) => p.id === pLabs.id)!;
         expect(pLabsFinal.keptDiscoveryTiles.some((d) => d.id === drawnDisc.id)).toBe(true);
+      });
+
+      it('52. verifies Rift Cannon Expansion: purple dice rules, self-damage priority (largest to smallest), rare tech research, discovery tile, and lobby/modal selection', () => {
+        // 1. Expansion definitions & registry
+        expect(AVAILABLE_EXPANSIONS.length).toBeGreaterThanOrEqual(1);
+        const riftExp = AVAILABLE_EXPANSIONS.find((e) => e.id === 'rift_cannon');
+        expect(riftExp).toBeDefined();
+        expect(riftExp!.name).toBe('Rift Cannon');
+        expect(riftExp!.badge).toBe('Purple Dice');
+
+        expect(isExpansionActive(['rift_cannon'], 'rift_cannon')).toBe(true);
+        expect(isExpansionActive([], 'rift_cannon')).toBe(false);
+        expect(isExpansionActive(undefined, 'rift_cannon')).toBe(false);
+
+        // 2. Base Game vs Expansion Initial State
+        const baseGame = createInitialGame(2);
+        expect(baseGame.expansions).toEqual([]);
+        // Base game discovery bag excludes expansion tiles
+        expect(baseGame.discoveryBag.length).toBe(32);
+        expect(baseGame.discoveryBag.some((d) => d.shipPartId === 'rift_conductor')).toBe(false);
+
+        const baseTechBag = createInitialTechBag();
+        expect(baseTechBag.length).toBe(114);
+        expect(baseTechBag.some((t) => t.id === 'rift_cannon')).toBe(false);
+
+        // Expansion Game
+        const expGame = createInitialGame(2, undefined, ['rift_cannon']);
+        expect(expGame.expansions).toEqual(['rift_cannon']);
+        expect(expGame.discoveryBag.length).toBe(33);
+        expect(expGame.discoveryBag.some((d) => d.shipPartId === 'rift_conductor')).toBe(true);
+
+        const expTechBag = createInitialTechBag(['rift_cannon']);
+        expect(expTechBag.length).toBe(115);
+        expect(expTechBag.some((t) => t.id === 'rift_cannon')).toBe(true);
+
+        // 3. Rare Tech: Rift Cannon specs & cost calculation
+        expect(RIFT_CANNON_RARE_TECH.id).toBe('rift_cannon');
+        expect(RIFT_CANNON_RARE_TECH.category).toBe('rare');
+        expect(RIFT_CANNON_RARE_TECH.baseCost).toBe(9);
+        expect(RIFT_CANNON_RARE_TECH.minCost).toBe(7);
+        expect(RIFT_CANNON_RARE_TECH.costByDiscount).toEqual([9, 8, 7, 7]);
+        expect(RIFT_CANNON_RARE_TECH.unlocksPartId).toBe('rift_cannon');
+
+        // Discount progression: 0 on track -> 9, 1 on track -> 8, 2+ on track -> 7
+        expect(calculateTechCost(RIFT_CANNON_RARE_TECH, 0)).toBe(9);
+        expect(calculateTechCost(RIFT_CANNON_RARE_TECH, 1)).toBe(8);
+        expect(calculateTechCost(RIFT_CANNON_RARE_TECH, 2)).toBe(7);
+        expect(calculateTechCost(RIFT_CANNON_RARE_TECH, 3)).toBe(7);
+        expect(calculateTechCost(RIFT_CANNON_RARE_TECH, 5)).toBe(7);
+
+        // Researching Rift Cannon in game action flow
+        const activePlayer = expGame.players[expGame.activePlayerIndex]!;
+        activePlayer.resources.science = 15;
+        expGame.techSupply = [{ ...RIFT_CANNON_RARE_TECH }];
+
+        const researchRes = executeAction(expGame, {
+          type: 'RESEARCH',
+          playerId: activePlayer.id,
+          techId: 'rift_cannon',
+          targetTrack: 'military',
+        });
+
+        expect(researchRes.success).toBe(true);
+        const pAfterResearch = researchRes.newState.players.find((p) => p.id === activePlayer.id)!;
+        expect(pAfterResearch.resources.science).toBe(15 - 9);
+        expect(pAfterResearch.techTrack.researched.some((t) => t.id === 'rift_cannon')).toBe(true);
+        expect(pAfterResearch.techTrack.militaryCount).toBe(activePlayer.techTrack.militaryCount + 1);
+
+        // 4. Ship Part: Rift Cannon specs
+        const riftCannonPart = SHIP_PARTS['rift_cannon'];
+        expect(riftCannonPart).toBeDefined();
+        expect(riftCannonPart.category).toBe('cannon');
+        expect(riftCannonPart.powerConsumed).toBe(2);
+        expect(riftCannonPart.powerProduced).toBe(0);
+        expect(riftCannonPart.dice).toEqual([{ color: 'purple', count: 1, damagePerHit: 0 }]);
+
+        // 5. Discovery Tile & Ancient Part: Rift Conductor specs
+        expect(RIFT_CONDUCTOR_DISCOVERY.shipPartId).toBe('rift_conductor');
+        const riftConductorPart = SHIP_PARTS['rift_conductor'];
+        expect(riftConductorPart).toBeDefined();
+        expect(riftConductorPart.category).toBe('cannon');
+        expect(riftConductorPart.powerConsumed).toBe(1);
+        expect(riftConductorPart.hullBonus).toBe(1);
+        expect(riftConductorPart.dice).toEqual([{ color: 'purple', count: 1, damagePerHit: 0 }]);
+        expect(ALL_ANCIENT_PART_IDS.has('rift_conductor')).toBe(true);
+
+        // Blueprint stats integration
+        const baseCruiserBp = pAfterResearch.blueprints.cruiser;
+        const bpWithRift = {
+          ...baseCruiserBp,
+          slots: [...baseCruiserBp.slots, riftCannonPart, riftConductorPart],
+        };
+        const stats = calculateBlueprintStats(bpWithRift);
+        const baseStats = calculateBlueprintStats(baseCruiserBp);
+        expect(stats.totalPowerConsumed).toBe(baseStats.totalPowerConsumed + 2 + 1);
+        expect(stats.totalHull).toBe(baseStats.totalHull + 1);
+
+        // 6. Purple Dice Roll Outcomes: 6 specific faces
+        // 2 sides make no damage (faces 1, 2)
+        // 1 side makes 1 damage (face 3)
+        // 1 side makes 2 damage (face 4)
+        // 1 side makes 3 damage and 1 damage to itself (face 5)
+        // 1 side makes 1 damage to itself (face 6)
+        const rollOutputs = new Set<string>();
+        for (let i = 0; i < 200; i++) {
+          const r = rollPurpleDie();
+          expect([1, 2, 3, 4, 5, 6]).toContain(r.rawRoll);
+          if (r.rawRoll === 1 || r.rawRoll === 2) {
+            expect(r.targetDamage).toBe(0);
+            expect(r.selfDamage).toBe(0);
+            expect(r.isHit).toBe(false);
+          } else if (r.rawRoll === 3) {
+            expect(r.targetDamage).toBe(1);
+            expect(r.selfDamage).toBe(0);
+            expect(r.isHit).toBe(true);
+          } else if (r.rawRoll === 4) {
+            expect(r.targetDamage).toBe(2);
+            expect(r.selfDamage).toBe(0);
+            expect(r.isHit).toBe(true);
+          } else if (r.rawRoll === 5) {
+            expect(r.targetDamage).toBe(3);
+            expect(r.selfDamage).toBe(1);
+            expect(r.isHit).toBe(true);
+          } else if (r.rawRoll === 6) {
+            expect(r.targetDamage).toBe(0);
+            expect(r.selfDamage).toBe(1);
+            expect(r.isHit).toBe(false);
+          }
+          rollOutputs.add(`${r.rawRoll}:${r.targetDamage}:${r.selfDamage}`);
+        }
+        // Over 200 rolls, all 5 face categories should be witnessed
+        expect(rollOutputs.size).toBe(6);
+
+        // 7. Self-Damage Assignment Priority: Largest to Smallest Ship with Purple Dice
+        // Dreadnought (size 4) > Cruiser (size 3) > Starbase (size 2) > Interceptor (size 1)
+        const combatMockUnits = [
+          {
+            id: 'dread-1',
+            type: 'dreadnought' as const,
+            ownerId: 'player_1',
+            initiative: 1,
+            maxHull: 3,
+            currentDamage: 0,
+            shields: 0,
+            computers: 0,
+            weapons: [{ type: 'cannon' as const, color: 'purple' as const, diceCount: 1, damagePerHit: 0 }],
+          },
+          {
+            id: 'cruiser-1',
+            type: 'cruiser' as const,
+            ownerId: 'player_1',
+            initiative: 2,
+            maxHull: 2,
+            currentDamage: 0,
+            shields: 0,
+            computers: 0,
+            weapons: [{ type: 'cannon' as const, color: 'purple' as const, diceCount: 1, damagePerHit: 0 }],
+          },
+          {
+            id: 'starbase-1',
+            type: 'starbase' as const,
+            ownerId: 'player_1',
+            initiative: 4,
+            maxHull: 2,
+            currentDamage: 0,
+            shields: 0,
+            computers: 0,
+            weapons: [{ type: 'cannon' as const, color: 'purple' as const, diceCount: 1, damagePerHit: 0 }],
+          },
+          {
+            id: 'interceptor-purple',
+            type: 'interceptor' as const,
+            ownerId: 'player_1',
+            initiative: 3,
+            maxHull: 1,
+            currentDamage: 0,
+            shields: 0,
+            computers: 0,
+            weapons: [{ type: 'cannon' as const, color: 'purple' as const, diceCount: 1, damagePerHit: 0 }],
+          },
+          {
+            id: 'interceptor-yellow-only',
+            type: 'interceptor' as const,
+            ownerId: 'player_1',
+            initiative: 3,
+            maxHull: 1,
+            currentDamage: 0,
+            shields: 0,
+            computers: 0,
+            weapons: [{ type: 'cannon' as const, color: 'yellow' as const, diceCount: 1, damagePerHit: 1 }],
+          },
+        ];
+
+        const mockCombat: any = {
+          sectorId: 101,
+          round: 1,
+          step: 'cannons',
+          destroyedShips: [],
+          lastRolls: [],
+        };
+
+        // Step A: Assign 1 self-damage -> Dreadnought must take it
+        applyRiftSelfDamage(combatMockUnits, 'player_1', 1, mockCombat);
+        expect(combatMockUnits[0]!.currentDamage).toBe(1);
+        expect(combatMockUnits[1]!.currentDamage).toBe(0);
+        expect(combatMockUnits[2]!.currentDamage).toBe(0);
+        expect(combatMockUnits[3]!.currentDamage).toBe(0);
+        expect(combatMockUnits[4]!.currentDamage).toBe(0);
+
+        // Step B: Assign 2 self-damage -> Dreadnought takes both, gets destroyed (3/3)
+        applyRiftSelfDamage(combatMockUnits, 'player_1', 2, mockCombat);
+        expect(combatMockUnits[0]!.currentDamage).toBe(3);
+        expect(mockCombat.destroyedShips.some((d: any) => d.shipId === 'dread-1')).toBe(true);
+        expect(combatMockUnits[1]!.currentDamage).toBe(0);
+
+        // Step C: Assign 1 self-damage -> Next largest is Cruiser (size 3)
+        applyRiftSelfDamage(combatMockUnits, 'player_1', 1, mockCombat);
+        expect(combatMockUnits[1]!.currentDamage).toBe(1);
+        expect(combatMockUnits[2]!.currentDamage).toBe(0);
+
+        // Step D: Assign 2 self-damage -> Cruiser finishes 2/2 destroyed, remaining 1 goes to Starbase (size 2)
+        applyRiftSelfDamage(combatMockUnits, 'player_1', 2, mockCombat);
+        expect(combatMockUnits[1]!.currentDamage).toBe(2);
+        expect(mockCombat.destroyedShips.some((d: any) => d.shipId === 'cruiser-1')).toBe(true);
+        expect(combatMockUnits[2]!.currentDamage).toBe(1);
+
+        // Step E: Assign 2 self-damage -> Starbase finishes 2/2 destroyed, remaining 1 goes to Interceptor with purple die
+        applyRiftSelfDamage(combatMockUnits, 'player_1', 2, mockCombat);
+        expect(combatMockUnits[2]!.currentDamage).toBe(2);
+        expect(mockCombat.destroyedShips.some((d: any) => d.shipId === 'starbase-1')).toBe(true);
+        expect(combatMockUnits[3]!.currentDamage).toBe(1);
+        expect(mockCombat.destroyedShips.some((d: any) => d.shipId === 'interceptor-purple')).toBe(true);
+
+        // Step F: Assign 5 self-damage -> Interceptor with yellow cannon (no purple dice) is IMMUNE!
+        applyRiftSelfDamage(combatMockUnits, 'player_1', 5, mockCombat);
+        expect(combatMockUnits[4]!.currentDamage).toBe(0);
+
+        // 8. Full Combat Step with Purple Weapon Units
+        const combatUnitA = {
+          id: 'p1-rift-cruiser',
+          type: 'cruiser' as const,
+          ownerId: 'player_1',
+          initiative: 3,
+          maxHull: 2,
+          currentDamage: 0,
+          shieldBonus: 0,
+          computerBonus: 0,
+          weapons: [{ color: 'purple' as const, count: 2, damage: 0 }],
+        };
+        const combatUnitB = {
+          id: 'p2-defender-cruiser',
+          type: 'cruiser' as const,
+          ownerId: 'player_2',
+          initiative: 1,
+          maxHull: 2,
+          currentDamage: 0,
+          shieldBonus: 0,
+          computerBonus: 0,
+          weapons: [{ color: 'yellow' as const, count: 1, damage: 1 }],
+        };
+
+        const activeBattle: any = {
+          sectorId: 102,
+          defenderOwnerId: 'player_2',
+          invaderOwnerIds: ['player_1'],
+          round: 1,
+          roundNumber: 1,
+          stage: 'regular',
+          currentTurnIndex: 0,
+          activeInitiative: 3,
+          passedPlayerIds: [],
+          destroyedShips: [],
+          lastRolls: [],
+        };
+
+        const stepResult = executeCombatStep([combatUnitA, combatUnitB], activeBattle);
+        expect(stepResult.updatedUnits.length).toBe(2);
+        expect(stepResult.rolls.length).toBeGreaterThan(0);
+        expect(stepResult.rolls.every((r: any) => r.dieColor === 'purple')).toBe(true);
       });
     });
   });

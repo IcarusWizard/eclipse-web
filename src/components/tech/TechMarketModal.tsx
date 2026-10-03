@@ -5,7 +5,7 @@ import {
   MILITARY_TECHS,
   GRID_TECHS,
   NANO_TECHS,
-  RARE_TECHS,
+  ALL_RARE_TECHS,
   calculateTechCost,
 } from '../../engine/rules/techData';
 import {
@@ -104,7 +104,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   }, [selectedForResearch, commander.techTrack, techSupply]);
 
   // Rare techs in supply
-  const rareTechsInSupply = RARE_TECHS.filter((t) => supplyCountMap.has(t.id));
+  const rareTechsInSupply = ALL_RARE_TECHS.filter((t) => supplyCountMap.has(t.id));
 
   // Determine current discount counts for commander
   const getTrackCount = (cat: 'military' | 'grid' | 'nano'): number => {

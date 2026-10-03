@@ -335,21 +335,70 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 {isResolved ? 'Final Salvo Lethal Dice Results' : 'Recent Salvo Dice Results'}
               </h3>
               <div className="flex flex-wrap gap-2">
-                {combat.lastRolls.map((roll, idx) => (
-                  <div
-                    key={idx}
-                    className={`flex items-center gap-2 px-3 py-1.5 rounded border text-xs font-bold ${
-                      roll.isHit
-                        ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
-                        : 'bg-slate-900 border-slate-800 text-slate-500'
-                    }`}
-                  >
-                    <span className="font-mono text-sm">{roll.roll}</span>
-                    <span>
-                      {roll.isHit ? `HIT (+${roll.damage} dmg)` : 'MISS'}
-                    </span>
-                  </div>
-                ))}
+                {combat.lastRolls.map((roll, idx) => {
+                  const isPurple = roll.dieColor === 'purple';
+                  const hasSelfDmg = (roll.selfDamage || 0) > 0;
+
+                  return (
+                    <div
+                      key={idx}
+                      className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-bold transition shadow-sm ${
+                        isPurple
+                          ? hasSelfDmg && roll.damage > 0
+                            ? 'bg-purple-950/80 border-purple-500 text-purple-200 ring-1 ring-rose-500/50'
+                            : hasSelfDmg
+                            ? 'bg-rose-950/80 border-rose-500 text-rose-200'
+                            : roll.isHit
+                            ? 'bg-purple-950/80 border-purple-500 text-purple-200 ring-1 ring-purple-400/40'
+                            : 'bg-purple-950/40 border-purple-800 text-purple-400/60'
+                          : roll.isHit
+                          ? 'bg-emerald-950/60 border-emerald-700 text-emerald-300'
+                          : 'bg-slate-900 border-slate-800 text-slate-500'
+                      }`}
+                    >
+                      {isPurple ? (
+                        <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-900 border border-purple-400 text-purple-100">
+                          RIFT
+                        </span>
+                      ) : (
+                        <span
+                          className={`font-mono text-sm ${
+                            roll.dieColor === 'red'
+                              ? 'text-rose-400'
+                              : roll.dieColor === 'blue'
+                              ? 'text-sky-400'
+                              : roll.dieColor === 'orange'
+                              ? 'text-amber-400'
+                              : 'text-yellow-400'
+                          }`}
+                        >
+                          {roll.roll}
+                        </span>
+                      )}
+
+                      <span>
+                        {isPurple ? (
+                          roll.damage > 0 && hasSelfDmg ? (
+                            <span className="flex items-center gap-1">
+                              <span>HIT (+{roll.damage} dmg)</span>
+                              <span className="text-rose-400 font-extrabold">• 💥 1 Self</span>
+                            </span>
+                          ) : roll.damage > 0 ? (
+                            `HIT (+${roll.damage} dmg)`
+                          ) : hasSelfDmg ? (
+                            <span className="text-rose-400 font-extrabold">💥 1 Self Dmg</span>
+                          ) : (
+                            'NO DAMAGE'
+                          )
+                        ) : roll.isHit ? (
+                          `HIT (+${roll.damage} dmg)`
+                        ) : (
+                          'MISS'
+                        )}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
           )}

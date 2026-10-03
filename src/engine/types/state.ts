@@ -16,11 +16,13 @@ export type GamePhase =
 export interface CombatRoll {
   shipId: string;
   shipOwner: string;
-  dieColor: 'yellow' | 'orange' | 'blue' | 'red';
+  dieColor: 'yellow' | 'orange' | 'blue' | 'red' | 'purple';
   roll: number;
   modifiedRoll: number;
   isHit: boolean;
   damage: number;
+  selfDamage?: number;
+  symbol?: string;
 }
 
 export interface CombatState {
@@ -138,6 +140,8 @@ export interface PendingActionConfirmation {
 
 export interface GameState {
   id: string;
+  tableNumber?: number;
+  expansions?: string[];
   round: number;
   maxRounds: number;
   phase: GamePhase;

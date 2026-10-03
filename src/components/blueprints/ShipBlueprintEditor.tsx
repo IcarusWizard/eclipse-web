@@ -3,7 +3,7 @@ import { PlayerState } from '../../engine/types/player';
 import { ShipType } from '../../engine/types/galaxy';
 import { ShipPart } from '../../engine/types/blueprints';
 import { calculateBlueprintStats, SHIP_LIMITS } from '../../engine/rules/shipValidation';
-import { SHIP_PARTS, ANCIENT_PART_IDS } from '../../engine/rules/partData';
+import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS } from '../../engine/rules/partData';
 import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
 import {
   Zap,
@@ -448,8 +448,8 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                               <span className="text-amber-400">-{part.powerConsumed} Pwr</span>
                             )}
                             {part.dice && (
-                              <span className="text-orange-400">
-                                {part.dice.map((d) => `${d.count} ${d.color}`).join(', ')}
+                              <span className={part.dice.some((d) => d.color === 'purple') ? 'text-purple-400 font-semibold' : 'text-orange-400'}>
+                                {part.dice.map((d) => (d.color === 'purple' ? `${d.count} Purple (Rift)` : `${d.count} ${d.color}`)).join(', ')}
                               </span>
                             )}
                             {part.driveSpeed && (
@@ -632,8 +632,8 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                           <span className="text-amber-400 font-mono">-{part.powerConsumed} Pwr</span>
                         )}
                         {part.dice && (
-                          <span className="text-orange-400 font-mono">
-                            {part.dice.map((d) => `${d.count} ${d.color}`).join(', ')}
+                          <span className={part.dice.some((d) => d.color === 'purple') ? 'text-purple-400 font-semibold font-mono' : 'text-orange-400 font-mono'}>
+                            {part.dice.map((d) => (d.color === 'purple' ? `${d.count} Purple (Rift)` : `${d.count} ${d.color}`)).join(', ')}
                           </span>
                         )}
                         {part.driveSpeed && (

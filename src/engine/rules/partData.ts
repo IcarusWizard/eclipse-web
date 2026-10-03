@@ -471,10 +471,36 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     shieldBonus: 0,
     hullBonus: 0,
   },
+
+  // Expansion Components: Rift Cannon & Rift Conductor
+  rift_cannon: {
+    id: 'rift_cannon',
+    name: 'Rift Cannon',
+    category: 'cannon',
+    powerProduced: 0,
+    powerConsumed: 2,
+    initiativeBonus: 0,
+    computerBonus: 0,
+    shieldBonus: 0,
+    hullBonus: 0,
+    dice: [{ color: 'purple', count: 1, damagePerHit: 0 }],
+  },
+  rift_conductor: {
+    id: 'rift_conductor',
+    name: 'Rift Conductor',
+    category: 'cannon',
+    powerProduced: 0,
+    powerConsumed: 1,
+    initiativeBonus: 0,
+    computerBonus: 0,
+    shieldBonus: 0,
+    hullBonus: 1,
+    dice: [{ color: 'purple', count: 1, damagePerHit: 0 }],
+  },
 };
 
 /**
- * 15 Ancient Ship Parts obtained from Discovery Tiles in Eclipse: Second Dawn
+ * Ancient Ship Parts obtained from Discovery Tiles in Eclipse: Second Dawn
  * Once placed onto a ship blueprint, an Ancient part cannot be moved to another ship.
  */
 export const ANCIENT_PART_IDS = new Set<string>([
@@ -493,5 +519,10 @@ export const ANCIENT_PART_IDS = new Set<string>([
   'hypergrid_source',
   'inversion_shield',
   'soliton_missile',
+]);
+
+export const ALL_ANCIENT_PART_IDS = new Set<string>([
+  ...ANCIENT_PART_IDS,
+  'rift_conductor',
 ]);
 

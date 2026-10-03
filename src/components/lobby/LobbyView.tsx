@@ -9,6 +9,7 @@ import {
   fetchTableFromServer,
 } from '../../engine/rules/persistence';
 import { ALL_FACTIONS, areFactionsConflictingColor } from '../../engine/rules/setup';
+import { AVAILABLE_EXPANSIONS } from '../../engine/rules/expansions';
 import { FactionInfo } from '../../engine/types/player';
 import {
   Rocket,
@@ -27,7 +28,13 @@ import {
 } from 'lucide-react';
 
 interface LobbyViewProps {
-  onStartNewGame: (playerCount: number, factionIds: string[], tableId: string, seat: number | 'all') => void;
+  onStartNewGame: (
+    playerCount: number,
+    factionIds: string[],
+    tableId: string,
+    seat: number | 'all',
+    expansions?: string[]
+  ) => void;
   onJoinTable: (tableId: string, seat: number | 'all' | 'spectator') => void;
   onOpenGallery?: () => void;
 }
@@ -64,6 +71,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     'descendants_of_draco', // Yellow
   ]);
   const [mySeat, setMySeat] = useState<number | 'all'>(0);
+  const [selectedExpansions, setSelectedExpansions] = useState<string[]>(['rift_cannon']);
+
+  const toggleExpansion = (id: string) => {
+    setSelectedExpansions((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
   // Join Table State
   const [joinTableInput, setJoinTableInput] = useState<string>('');
@@ -91,7 +105,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         }
       }
     }
-    onStartNewGame(playerCount, activeFactions, customTableId.trim() || `galaxy-${Date.now() % 1000}`, mySeat);
+    onStartNewGame(playerCount, activeFactions, customTableId.trim() || `galaxy-${Date.now() % 1000}`, mySeat, selectedExpansions);
   };
 
   const handleConnectTable = async (e: React.FormEvent) => {
@@ -313,6 +327,51 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     <span>Seat {sIdx + 1} Only</span>
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* Expansion Modules */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Expansions & Modules
+                </label>
+                <span className="text-[11px] font-mono text-cyan-400">
+                  {selectedExpansions.length} Enabled
+                </span>
+              </div>
+              <div className="space-y-2">
+                {AVAILABLE_EXPANSIONS.map((exp) => {
+                  const isChecked = selectedExpansions.includes(exp.id);
+                  return (
+                    <label
+                      key={exp.id}
+                      className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
+                        isChecked
+                          ? 'bg-purple-950/40 border-purple-500/60 text-purple-100 shadow-sm shadow-purple-900/20'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={isChecked}
+                        onChange={() => toggleExpansion(exp.id)}
+                        className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-400 focus:ring-offset-0 cursor-pointer"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-100">{exp.name}</span>
+                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-900/80 text-purple-300 border border-purple-600/40">
+                            {exp.badge}
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                          {exp.description}
+                        </p>
+                      </div>
+                    </label>
+                  );
+                })}
               </div>
             </div>
 

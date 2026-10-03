@@ -498,6 +498,22 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
   },
 ];
 
+export const RIFT_CONDUCTOR_DISCOVERY: DiscoveryTile = {
+  id: 'disc_rift_conductor',
+  name: 'Rift Conductor',
+  description: 'Ancient module: 1 Purple Rift die, +1 Hull, consumes 1 Power.',
+  shipPartId: 'rift_conductor',
+};
+
+export const EXPANSION_DISCOVERY_TILES: DiscoveryTile[] = [
+  RIFT_CONDUCTOR_DISCOVERY,
+];
+
+export const ALL_DISCOVERY_TILES: DiscoveryTile[] = [
+  ...DISCOVERY_TILES,
+  ...EXPANSION_DISCOVERY_TILES,
+];
+
 
 // Official Ring 1 (Inner sectors: 101 to 110)
 export const RING_1_CONFIGS = [

@@ -17,7 +17,7 @@ export interface CombatUnit {
   computerBonus: number;
   shieldBonus: number;
   weapons: {
-    color: 'yellow' | 'orange' | 'blue' | 'red';
+    color: 'yellow' | 'orange' | 'blue' | 'red' | 'purple';
     damage: number;
     count: number;
     isMissile?: boolean;
@@ -150,6 +150,122 @@ export function rollD6(): number {
   return Math.floor(Math.random() * 6) + 1;
 }
 
+export const SHIP_SIZE_RANK: Record<string, number> = {
+  dreadnought: 4,
+  cruiser: 3,
+  starbase: 2,
+  interceptor: 1,
+};
+
+export interface PurpleDieRollResult {
+  rawRoll: number;
+  targetDamage: number;
+  selfDamage: number;
+  isHit: boolean;
+  symbol: string;
+}
+
+/**
+ * Purple Rift Die Roll (Eclipse: Second Dawn / Shadow of the Rift)
+ * 6 sides without numbers:
+ * - 2 sides make no damage (sides 1, 2)
+ * - 1 side makes 1 damage (side 3)
+ * - 1 side makes 2 damages (side 4)
+ * - 1 side makes 3 damage and 1 damage to itself (side 5)
+ * - 1 side makes 1 damage to itself (side 6)
+ * Computers and shields DO NOT modify purple dice rolls.
+ */
+export function rollPurpleDie(): PurpleDieRollResult {
+  const rawRoll = rollD6();
+  let targetDamage = 0;
+  let selfDamage = 0;
+  let symbol = '';
+
+  if (rawRoll === 1 || rawRoll === 2) {
+    targetDamage = 0;
+    selfDamage = 0;
+    symbol = 'miss';
+  } else if (rawRoll === 3) {
+    targetDamage = 1;
+    selfDamage = 0;
+    symbol = '1';
+  } else if (rawRoll === 4) {
+    targetDamage = 2;
+    selfDamage = 0;
+    symbol = '2';
+  } else if (rawRoll === 5) {
+    targetDamage = 3;
+    selfDamage = 1;
+    symbol = '3+💥';
+  } else if (rawRoll === 6) {
+    targetDamage = 0;
+    selfDamage = 1;
+    symbol = '💥';
+  }
+
+  return {
+    rawRoll,
+    targetDamage,
+    selfDamage,
+    isHit: targetDamage > 0,
+    symbol,
+  };
+}
+
+/**
+ * Assigns self-damage from purple Rift dice.
+ * Rule: Assigned to the player's own ships with purple dice, from largest to smallest.
+ */
+export function applyRiftSelfDamage(
+  units: CombatUnit[],
+  attackerOwnerId: string,
+  selfDamageToAssign: number,
+  activeCombat: CombatState
+): void {
+  let remainingSelfDmg = selfDamageToAssign;
+
+  // Filter player's own ships in the battle that have purple dice and are alive
+  const eligibleUnits = units.filter(
+    (u) =>
+      u.ownerId === attackerOwnerId &&
+      u.weapons.some((w) => w.color === 'purple') &&
+      u.currentDamage < u.maxHull
+  );
+
+  // Sort from largest to smallest ship (dreadnought > cruiser > starbase > interceptor)
+  eligibleUnits.sort((a, b) => {
+    const rankA = SHIP_SIZE_RANK[a.type] ?? 0;
+    const rankB = SHIP_SIZE_RANK[b.type] ?? 0;
+    if (rankB !== rankA) {
+      return rankB - rankA;
+    }
+    // If same ship type, concentrate damage on already damaged ship first
+    const remA = a.maxHull - a.currentDamage;
+    const remB = b.maxHull - b.currentDamage;
+    return remA - remB;
+  });
+
+  for (const unit of eligibleUnits) {
+    if (remainingSelfDmg <= 0) break;
+    const remainingHp = unit.maxHull - unit.currentDamage;
+    const dmg = Math.min(remainingSelfDmg, remainingHp);
+    unit.currentDamage += dmg;
+    remainingSelfDmg -= dmg;
+
+    if (unit.currentDamage >= unit.maxHull) {
+      activeCombat.destroyedShips = activeCombat.destroyedShips || [];
+      if (!activeCombat.destroyedShips.some((d) => d.shipId === unit.id)) {
+        activeCombat.destroyedShips.push({
+          shipId: unit.id,
+          type: unit.type,
+          ownerId: unit.ownerId,
+          killerId: unit.ownerId, // Self-inflicted rift damage
+        });
+      }
+    }
+  }
+}
+
 export interface CombatStepResult {
   updatedUnits: CombatUnit[];
   rolls: CombatRoll[];
@@ -244,40 +360,71 @@ export function executeCombatStep(
             target = nextTarget;
           }
 
-          const rawRoll = rollD6();
-          const modified = rawRoll + attacker.computerBonus - target.shieldBonus;
+          if (weapon.color === 'purple') {
+            const purpleResult = rollPurpleDie();
+            if (purpleResult.targetDamage > 0) {
+              target.currentDamage += purpleResult.targetDamage;
+              if (target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
+                activeCombat.destroyedShips.push({
+                  shipId: target.id,
+                  type: target.type,
+                  ownerId: target.ownerId,
+                  killerId: attacker.ownerId,
+                });
+              }
+            }
 
-          // Natural 6 always hits, Natural 1 always misses
-          let isHit = false;
-          if (rawRoll === 6) {
-            isHit = true;
-          } else if (rawRoll === 1) {
-            isHit = false;
+            if (purpleResult.selfDamage > 0) {
+              applyRiftSelfDamage(units, attacker.ownerId, purpleResult.selfDamage, activeCombat);
+            }
+
+            rolls.push({
+              shipId: attacker.id,
+              shipOwner: attacker.ownerId,
+              dieColor: 'purple',
+              roll: purpleResult.rawRoll,
+              modifiedRoll: purpleResult.rawRoll,
+              isHit: purpleResult.isHit,
+              damage: purpleResult.targetDamage,
+              selfDamage: purpleResult.selfDamage,
+              symbol: purpleResult.symbol,
+            });
           } else {
-            isHit = modified >= 6;
-          }
+            const rawRoll = rollD6();
+            const modified = rawRoll + attacker.computerBonus - target.shieldBonus;
 
-          const damageDealt = isHit ? weapon.damage : 0;
-          target.currentDamage += damageDealt;
+            // Natural 6 always hits, Natural 1 always misses
+            let isHit = false;
+            if (rawRoll === 6) {
+              isHit = true;
+            } else if (rawRoll === 1) {
+              isHit = false;
+            } else {
+              isHit = modified >= 6;
+            }
 
-          if (isHit && target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
-            activeCombat.destroyedShips.push({
-              shipId: target.id,
-              type: target.type,
-              ownerId: target.ownerId,
-              killerId: attacker.ownerId,
+            const damageDealt = isHit ? weapon.damage : 0;
+            target.currentDamage += damageDealt;
+
+            if (isHit && target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
+              activeCombat.destroyedShips.push({
+                shipId: target.id,
+                type: target.type,
+                ownerId: target.ownerId,
+                killerId: attacker.ownerId,
+              });
+            }
+
+            rolls.push({
+              shipId: attacker.id,
+              shipOwner: attacker.ownerId,
+              dieColor: weapon.color,
+              roll: rawRoll,
+              modifiedRoll: modified,
+              isHit,
+              damage: damageDealt,
             });
           }
-
-          rolls.push({
-            shipId: attacker.id,
-            shipOwner: attacker.ownerId,
-            dieColor: weapon.color,
-            roll: rawRoll,
-            modifiedRoll: modified,
-            isHit,
-            damage: damageDealt,
-          });
         }
       }
 
@@ -320,7 +467,7 @@ export function executeCombatStep(
   // Check Stalemate: If no alive unit on ANY side has non-missile cannons,
   // neither player can damage the other. Attacker must retreat or be destroyed (Rulebook p. 20).
   const hasAnyCannons = aliveUnits.some((u) =>
-    u.weapons.some((w) => !w.isMissile && w.count > 0 && w.damage > 0)
+    u.weapons.some((w) => !w.isMissile && w.count > 0 && (w.damage > 0 || w.color === 'purple'))
   );
 
   if (!hasAnyCannons) {
@@ -437,39 +584,70 @@ export function executeCombatStep(
         target = nextTarget;
       }
 
-      const rawRoll = rollD6();
-      const modified = rawRoll + attacker.computerBonus - target.shieldBonus;
+      if (weapon.color === 'purple') {
+        const purpleResult = rollPurpleDie();
+        if (purpleResult.targetDamage > 0) {
+          target.currentDamage += purpleResult.targetDamage;
+          if (target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
+            activeCombat.destroyedShips.push({
+              shipId: target.id,
+              type: target.type,
+              ownerId: target.ownerId,
+              killerId: attacker.ownerId,
+            });
+          }
+        }
 
-      let isHit = false;
-      if (rawRoll === 6) {
-        isHit = true;
-      } else if (rawRoll === 1) {
-        isHit = false;
+        if (purpleResult.selfDamage > 0) {
+          applyRiftSelfDamage(units, attacker.ownerId, purpleResult.selfDamage, activeCombat);
+        }
+
+        rolls.push({
+          shipId: attacker.id,
+          shipOwner: attacker.ownerId,
+          dieColor: 'purple',
+          roll: purpleResult.rawRoll,
+          modifiedRoll: purpleResult.rawRoll,
+          isHit: purpleResult.isHit,
+          damage: purpleResult.targetDamage,
+          selfDamage: purpleResult.selfDamage,
+          symbol: purpleResult.symbol,
+        });
       } else {
-        isHit = modified >= 6;
-      }
+        const rawRoll = rollD6();
+        const modified = rawRoll + attacker.computerBonus - target.shieldBonus;
 
-      const damageDealt = isHit ? weapon.damage : 0;
-      target.currentDamage += damageDealt;
+        let isHit = false;
+        if (rawRoll === 6) {
+          isHit = true;
+        } else if (rawRoll === 1) {
+          isHit = false;
+        } else {
+          isHit = modified >= 6;
+        }
 
-      if (isHit && target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
-        activeCombat.destroyedShips.push({
-          shipId: target.id,
-          type: target.type,
-          ownerId: target.ownerId,
-          killerId: attacker.ownerId,
+        const damageDealt = isHit ? weapon.damage : 0;
+        target.currentDamage += damageDealt;
+
+        if (isHit && target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
+          activeCombat.destroyedShips.push({
+            shipId: target.id,
+            type: target.type,
+            ownerId: target.ownerId,
+            killerId: attacker.ownerId,
+          });
+        }
+
+        rolls.push({
+          shipId: attacker.id,
+          shipOwner: attacker.ownerId,
+          dieColor: weapon.color,
+          roll: rawRoll,
+          modifiedRoll: modified,
+          isHit,
+          damage: damageDealt,
         });
       }
-
-      rolls.push({
-        shipId: attacker.id,
-        shipOwner: attacker.ownerId,
-        dieColor: weapon.color,
-        roll: rawRoll,
-        modifiedRoll: modified,
-        isHit,
-        damage: damageDealt,
-      });
     }
   }
 

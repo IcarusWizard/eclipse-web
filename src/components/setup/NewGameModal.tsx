@@ -24,9 +24,10 @@ import {
   CircleDot,
   Compass,
 } from 'lucide-react';
+import { AVAILABLE_EXPANSIONS } from '../../engine/rules/expansions';
 
 interface NewGameModalProps {
-  onStartGame: (playerCount: number, selectedFactionIds?: string[]) => void;
+  onStartGame: (playerCount: number, selectedFactionIds?: string[], expansions?: string[]) => void;
   onClose?: () => void;
 }
 
@@ -35,6 +36,13 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
   const [draftedFactions, setDraftedFactions] = useState<string[]>([]);
   const [currentDrafterIndex, setCurrentDrafterIndex] = useState<number>(0);
   const [filterCategory, setFilterCategory] = useState<'all' | 'alien' | 'human'>('all');
+  const [selectedExpansions, setSelectedExpansions] = useState<string[]>(['rift_cannon']);
+
+  const toggleExpansion = (id: string) => {
+    setSelectedExpansions((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
 
   // When player count changes, clamp / reset drafting
   useEffect(() => {
@@ -86,7 +94,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
 
   const handleLaunch = () => {
     if (draftedFactions.length === playerCount) {
-      onStartGame(playerCount, draftedFactions);
+      onStartGame(playerCount, draftedFactions, selectedExpansions);
     }
   };
 
@@ -197,6 +205,41 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
               })}
             </div>
           </div>
+        </div>
+
+        {/* Expansions Module Selector */}
+        <div className="flex items-center justify-between px-3 py-2 bg-purple-950/20 border border-purple-900/40 rounded-xl mb-2 text-xs">
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4 text-purple-400" />
+            <span className="font-bold text-purple-200 uppercase tracking-wide text-[11px]">
+              Expansions:
+            </span>
+            <div className="flex items-center gap-2">
+              {AVAILABLE_EXPANSIONS.map((exp) => {
+                const active = selectedExpansions.includes(exp.id);
+                return (
+                  <button
+                    key={exp.id}
+                    type="button"
+                    onClick={() => toggleExpansion(exp.id)}
+                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${
+                      active
+                        ? 'bg-purple-900/60 border-purple-500 text-purple-200 shadow-sm shadow-purple-950'
+                        : 'bg-slate-900 border-slate-800 text-slate-500 hover:border-slate-700'
+                    }`}
+                  >
+                    <span>{exp.name}</span>
+                    <span className="px-1 py-0.2 rounded text-[9px] font-mono font-bold bg-purple-950 border border-purple-600/40 text-purple-300">
+                      {exp.badge}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          <span className="text-[10px] text-slate-400">
+            {selectedExpansions.length} active
+          </span>
         </div>
 
         {/* Drafter Active Banner & Filter Tabs */}
