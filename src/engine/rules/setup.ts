@@ -10,6 +10,11 @@ import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, R
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
 import { createDefaultHumanBlueprints, createFactionBlueprints } from './shipValidation';
 import { getEdgeTowardCenter } from './hexMath';
+import {
+  NeutralShipConfig,
+  NeutralShipSelectionConfig,
+  resolveNeutralShipConfig,
+} from './neutralShips';
 
 export const ECLIPSE_COLOR_PALETTE = {
   red: '#dc2626',
@@ -510,10 +515,18 @@ export function getPlayerReputationTrackSlots(
 export function createInitialGame(
   playerCount: number = 2,
   selectedFactions?: (string | FactionInfo)[],
-  expansions: string[] = []
+  expansions: string[] = [],
+  neutralShipSelections?: Partial<NeutralShipSelectionConfig>
 ): GameState {
   const count = Math.max(1, Math.min(6, playerCount));
   const startingCoords = STARTING_COORDS_BY_COUNT[count] ?? STARTING_COORDS_BY_COUNT[2]!;
+
+  const resolvedNeutralBlueprints = resolveNeutralShipConfig(neutralShipSelections);
+  const storedNeutralSelections: NeutralShipSelectionConfig = {
+    ancient: neutralShipSelections?.ancient ?? 'default',
+    guardian: neutralShipSelections?.guardian ?? 'default',
+    gcds: neutralShipSelections?.gcds ?? 'default',
+  };
 
   // Official Eclipse: Second Dawn Reputation Bag: 33 tiles (16x 1 VP, 9x 2 VP, 5x 3 VP, 3x 4 VP)
   const reputationBag: number[] = [
@@ -763,6 +776,8 @@ export function createInitialGame(
   return {
     id: `game_${Date.now()}`,
     expansions: expansions || [],
+    neutralShipBlueprints: resolvedNeutralBlueprints,
+    neutralShipSelections: storedNeutralSelections,
     round: 1,
     maxRounds: 8,
     phase: 'ACTION_PHASE',

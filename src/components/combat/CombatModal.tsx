@@ -22,7 +22,12 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const sector = state.sectors.find((s) => s.id === combat.sectorId);
   if (!sector) return null;
 
-  const units = buildCombatUnitsForSector(sector, state.players, combat.participatingPlayerIds);
+  const units = buildCombatUnitsForSector(
+    sector,
+    state.players,
+    combat.participatingPlayerIds,
+    state.neutralShipBlueprints
+  );
   const defenderOwnerId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector);
   const aliveUnits = sortUnitsByInitiative(
     units.filter((u) => u.currentDamage < u.maxHull),

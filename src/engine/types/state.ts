@@ -5,6 +5,7 @@
 import { SectorTile, DiscoveryTile, HexCoord } from './galaxy';
 import { PlayerState } from './player';
 import { Technology } from './tech';
+import type { NeutralShipConfig, NeutralShipSelectionConfig } from '../rules/neutralShips';
 
 export type GamePhase =
   | 'ACTION_PHASE'
@@ -142,6 +143,8 @@ export interface GameState {
   id: string;
   tableNumber?: number;
   expansions?: string[];
+  neutralShipBlueprints?: NeutralShipConfig;
+  neutralShipSelections?: NeutralShipSelectionConfig;
   round: number;
   maxRounds: number;
   phase: GamePhase;

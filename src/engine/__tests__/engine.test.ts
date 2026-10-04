@@ -8038,6 +8038,236 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(galleryDiscHtml).toContain('Rift Cannon Expansion');
         expect(galleryDiscHtml).toContain('Expansions');
       });
+
+      it('55. verifies Neutral Ship Blueprints setup, advanced variants, combat resolution, and UI selections', async () => {
+        const {
+          NEUTRAL_SHIP_BLUEPRINTS,
+          getNeutralShipBlueprint,
+          getNeutralShipSummary,
+          resolveNeutralShipConfig,
+        } = await import('../rules/neutralShips');
+
+        // 1. Verify Blueprint Specs for Ancient, Guardian, and GCDS
+        // Ancient: Default vs Advanced
+        const ancDef = getNeutralShipBlueprint('ancient', 'default');
+        expect(ancDef.initiative).toBe(2);
+        expect(ancDef.maxHull).toBe(2);
+        expect(ancDef.computerBonus).toBe(1);
+        expect(ancDef.shieldBonus).toBe(0);
+        expect(ancDef.weapons).toEqual([{ color: 'yellow', damage: 1, count: 2 }]);
+
+        const ancAdv = getNeutralShipBlueprint('ancient', 'advanced');
+        expect(ancAdv.initiative).toBe(1);
+        expect(ancAdv.maxHull).toBe(2);
+        expect(ancAdv.computerBonus).toBe(1);
+        expect(ancAdv.shieldBonus).toBe(0);
+        expect(ancAdv.weapons).toEqual([{ color: 'orange', damage: 2, count: 1 }]);
+
+        // Guardian: Default vs Advanced
+        const guardDef = getNeutralShipBlueprint('guardian', 'default');
+        expect(guardDef.initiative).toBe(3);
+        expect(guardDef.maxHull).toBe(3);
+        expect(guardDef.computerBonus).toBe(2);
+        expect(guardDef.shieldBonus).toBe(1);
+        expect(guardDef.weapons).toEqual([{ color: 'yellow', damage: 1, count: 3 }]);
+
+        const guardAdv = getNeutralShipBlueprint('guardian', 'advanced');
+        expect(guardAdv.initiative).toBe(1);
+        expect(guardAdv.maxHull).toBe(3);
+        expect(guardAdv.computerBonus).toBe(1);
+        expect(guardAdv.shieldBonus).toBe(0);
+        expect(guardAdv.weapons).toEqual([
+          { color: 'orange', damage: 2, count: 2, isMissile: true },
+          { color: 'red', damage: 4, count: 1 },
+        ]);
+
+        // GCDS: Default vs Advanced
+        const gcdsDef = getNeutralShipBlueprint('gcds', 'default');
+        expect(gcdsDef.initiative).toBe(0);
+        expect(gcdsDef.maxHull).toBe(7);
+        expect(gcdsDef.computerBonus).toBe(2);
+        expect(gcdsDef.shieldBonus).toBe(0);
+        expect(gcdsDef.weapons).toEqual([{ color: 'yellow', damage: 1, count: 4 }]);
+
+        const gcdsAdv = getNeutralShipBlueprint('gcds', 'advanced');
+        expect(gcdsAdv.initiative).toBe(2);
+        expect(gcdsAdv.maxHull).toBe(3);
+        expect(gcdsAdv.computerBonus).toBe(2);
+        expect(gcdsAdv.shieldBonus).toBe(0);
+        expect(gcdsAdv.weapons).toEqual([
+          { color: 'yellow', damage: 1, count: 4, isMissile: true },
+          { color: 'red', damage: 4, count: 1 },
+        ]);
+
+        // Summaries
+        expect(getNeutralShipSummary('ancient', 'default')).toContain('2 Yellow Cannons');
+        expect(getNeutralShipSummary('ancient', 'advanced')).toContain('1 Orange Cannon');
+        expect(getNeutralShipSummary('guardian', 'advanced')).toContain('2 Orange Missiles');
+        expect(getNeutralShipSummary('gcds', 'advanced')).toContain('4 Yellow Missiles');
+
+        // 2. Selection Resolution Helper
+        const resolvedExplicit = resolveNeutralShipConfig({
+          ancient: 'advanced',
+          guardian: 'default',
+          gcds: 'advanced',
+        });
+        expect(resolvedExplicit.ancient).toBe('advanced');
+        expect(resolvedExplicit.guardian).toBe('default');
+        expect(resolvedExplicit.gcds).toBe('advanced');
+
+        // Random resolution resolves to either default or advanced
+        const resolvedRandom = resolveNeutralShipConfig({
+          ancient: 'random',
+          guardian: 'random',
+          gcds: 'random',
+        });
+        expect(['default', 'advanced']).toContain(resolvedRandom.ancient);
+        expect(['default', 'advanced']).toContain(resolvedRandom.guardian);
+        expect(['default', 'advanced']).toContain(resolvedRandom.gcds);
+
+        // Fallback when omitted
+        const resolvedEmpty = resolveNeutralShipConfig();
+        expect(resolvedEmpty).toEqual({ ancient: 'default', guardian: 'default', gcds: 'default' });
+
+        // 3. Game Creation with Neutral Ship Selections
+        const customGame = createInitialGame(2, undefined, [], {
+          ancient: 'advanced',
+          guardian: 'advanced',
+          gcds: 'advanced',
+        });
+        expect(customGame.neutralShipBlueprints).toEqual({
+          ancient: 'advanced',
+          guardian: 'advanced',
+          gcds: 'advanced',
+        });
+        expect(customGame.neutralShipSelections).toEqual({
+          ancient: 'advanced',
+          guardian: 'advanced',
+          gcds: 'advanced',
+        });
+
+        // 4. buildCombatUnitsForSector generates units with correct blueprints
+        const centerSector = customGame.sectors.find((s) => s.ships?.some((ship) => ship.type === 'gcds'))!;
+        const centerUnits = buildCombatUnitsForSector(
+          centerSector,
+          customGame.players,
+          undefined,
+          customGame.neutralShipBlueprints
+        );
+        expect(centerUnits.length).toBe(1);
+        const gcdsUnit = centerUnits[0]!;
+        expect(gcdsUnit.type).toBe('gcds');
+        expect(gcdsUnit.initiative).toBe(2);
+        expect(gcdsUnit.maxHull).toBe(3);
+        expect(gcdsUnit.weapons.some((w) => w.isMissile && w.color === 'yellow' && w.count === 4)).toBe(true);
+        expect(gcdsUnit.weapons.some((w) => !w.isMissile && w.color === 'red' && w.damage === 4)).toBe(true);
+
+        // Guardian sector
+        const guardianSec = customGame.sectors.find((s) => s.ships?.some((ship) => ship.type === 'guardian'))!;
+        const guardianUnits = buildCombatUnitsForSector(
+          guardianSec,
+          customGame.players,
+          undefined,
+          customGame.neutralShipBlueprints
+        );
+        expect(guardianUnits.length).toBe(1);
+        const gUnit = guardianUnits[0]!;
+        expect(gUnit.type).toBe('guardian');
+        expect(gUnit.initiative).toBe(1);
+        expect(gUnit.maxHull).toBe(3);
+        expect(gUnit.weapons.some((w) => w.isMissile && w.color === 'orange' && w.count === 2)).toBe(true);
+        expect(gUnit.weapons.some((w) => !w.isMissile && w.color === 'red' && w.damage === 4)).toBe(true);
+
+        // Ancient sector
+        const testAncientSector: SectorTile = {
+          id: 'test_sec_anc',
+          sectorNumber: 201,
+          ring: 2,
+          coord: { q: 1, r: -1 },
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [{ id: 'anc_ship_1', ownerId: 'ancient', type: 'ancient', damage: 0 }],
+        };
+        const ancUnits = buildCombatUnitsForSector(
+          testAncientSector,
+          customGame.players,
+          undefined,
+          customGame.neutralShipBlueprints
+        );
+        expect(ancUnits.length).toBe(1);
+        const aUnit = ancUnits[0]!;
+        expect(aUnit.type).toBe('ancient');
+        expect(aUnit.initiative).toBe(1);
+        expect(aUnit.maxHull).toBe(2);
+        expect(aUnit.weapons).toEqual([{ color: 'orange', damage: 2, count: 1 }]);
+
+        // 5. Combat Stage Initialization: Advanced Guardian triggers 'missile' stage
+        const combatTestSector: SectorTile = {
+          id: 'combat_test_sector',
+          sectorNumber: 202,
+          ring: 2,
+          coord: { q: 1, r: 0 },
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [
+            { id: 'guard_1', ownerId: 'guardian', type: 'guardian', damage: 0 },
+            { id: 'p1_int_1', ownerId: customGame.players[0]!.id, type: 'interceptor', damage: 0 },
+          ],
+          playerEntryOrder: ['guardian', customGame.players[0]!.id],
+        };
+        customGame.sectors.push(combatTestSector);
+
+        const combatDuelUnits = buildCombatUnitsForSector(
+          combatTestSector,
+          customGame.players,
+          ['guardian', customGame.players[0]!.id],
+          customGame.neutralShipBlueprints
+        );
+        expect(combatDuelUnits.some((u) => u.weapons.some((w) => w.isMissile))).toBe(true);
+
+        // 6. UI Rendering: LobbyView and NewGameModal
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { LobbyView } = await import('../../components/lobby/LobbyView');
+        const lobbyHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+        expect(lobbyHtml).toContain('Neutral Ship Blueprints (NPCs)');
+        expect(lobbyHtml).toContain('Ancient Ship');
+        expect(lobbyHtml).toContain('Guardian');
+        expect(lobbyHtml).toContain('Galactic Center Defense System (GCDS)');
+        expect(lobbyHtml).toContain('Default');
+        expect(lobbyHtml).toContain('Advanced');
+        expect(lobbyHtml).toContain('Random');
+
+        const { NewGameModal } = await import('../../components/setup/NewGameModal');
+        const modalHtml = renderToString(
+          React.createElement(NewGameModal, {
+            onStartGame: () => {},
+          })
+        );
+        expect(modalHtml).toContain('Neutral Ship Blueprints:');
+        expect(modalHtml).toContain('Ancient');
+        expect(modalHtml).toContain('Guardian');
+        expect(modalHtml).toContain('GCDS');
+
+        // SectorInspector renders [Advanced] badge and updated stats
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        const inspectorHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: combatTestSector,
+            players: customGame.players,
+            activePlayer: customGame.players[0]!,
+            neutralShipBlueprints: customGame.neutralShipBlueprints,
+            onClose: () => {},
+          })
+        );
+        expect(inspectorHtml).toContain('[Advanced]');
+        expect(inspectorHtml).toContain('2 Orange Missiles, 1 Red Cannon');
+      });
     });
   });
 });

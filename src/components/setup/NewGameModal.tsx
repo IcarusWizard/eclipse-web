@@ -23,11 +23,22 @@ import {
   Hammer,
   CircleDot,
   Compass,
+  Dices,
 } from 'lucide-react';
 import { AVAILABLE_EXPANSIONS } from '../../engine/rules/expansions';
+import {
+  NeutralShipType,
+  NeutralShipSelection,
+  NeutralShipSelectionConfig,
+} from '../../engine/rules/neutralShips';
 
 interface NewGameModalProps {
-  onStartGame: (playerCount: number, selectedFactionIds?: string[], expansions?: string[]) => void;
+  onStartGame: (
+    playerCount: number,
+    selectedFactionIds?: string[],
+    expansions?: string[],
+    neutralShips?: NeutralShipSelectionConfig
+  ) => void;
   onClose?: () => void;
 }
 
@@ -37,6 +48,11 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
   const [currentDrafterIndex, setCurrentDrafterIndex] = useState<number>(0);
   const [filterCategory, setFilterCategory] = useState<'all' | 'alien' | 'human'>('all');
   const [selectedExpansions, setSelectedExpansions] = useState<string[]>(['rift_cannon']);
+  const [neutralShipSelections, setNeutralShipSelections] = useState<NeutralShipSelectionConfig>({
+    ancient: 'default',
+    guardian: 'default',
+    gcds: 'default',
+  });
 
   const toggleExpansion = (id: string) => {
     setSelectedExpansions((prev) =>
@@ -94,7 +110,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
 
   const handleLaunch = () => {
     if (draftedFactions.length === playerCount) {
-      onStartGame(playerCount, draftedFactions, selectedExpansions);
+      onStartGame(playerCount, draftedFactions, selectedExpansions, neutralShipSelections);
     }
   };
 
@@ -240,6 +256,107 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
           <span className="text-[10px] text-slate-400">
             {selectedExpansions.length} active
           </span>
+        </div>
+
+        {/* Neutral Ship Blueprints (NPCs) Selector */}
+        <div className="p-2.5 bg-slate-900/60 border border-slate-800 rounded-xl mb-2 text-xs space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Shield className="w-4 h-4 text-cyan-400" />
+              <span className="font-bold text-slate-200 uppercase tracking-wide text-[11px]">
+                Neutral Ship Blueprints:
+              </span>
+            </div>
+            <span className="text-[10px] text-slate-400 font-mono">
+              Ancients • Guardians • GCDS
+            </span>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+            {(
+              [
+                {
+                  type: 'ancient' as const,
+                  label: 'Ancient',
+                  def: 'Init 2, 2H, 2Y (+1)',
+                  adv: 'Init 1, 2H, 1O (+1)',
+                },
+                {
+                  type: 'guardian' as const,
+                  label: 'Guardian',
+                  def: 'Init 3, 3H, 3Y (+2/-1)',
+                  adv: 'Init 1, 3H, 2O Msl + 1R (+1)',
+                },
+                {
+                  type: 'gcds' as const,
+                  label: 'GCDS',
+                  def: 'Init 0, 7H, 4Y (+2)',
+                  adv: 'Init 2, 3H, 4Y Msl + 1R (+2)',
+                },
+              ]
+            ).map(({ type, label, def, adv }) => {
+              const currentSel = neutralShipSelections[type];
+              return (
+                <div
+                  key={type}
+                  className="p-2 rounded-lg bg-slate-950/70 border border-slate-800/80 flex flex-col gap-1"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-slate-300">{label}</span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
+                        }
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                          currentSel === 'default'
+                            ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400'
+                            : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'
+                        }`}
+                      >
+                        Def
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
+                        }
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                          currentSel === 'advanced'
+                            ? 'bg-amber-500/25 text-amber-300 border border-amber-400'
+                            : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'
+                        }`}
+                      >
+                        Adv
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
+                        }
+                        title="Random (50% Default / 50% Advanced)"
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer flex items-center gap-0.5 ${
+                          currentSel === 'random'
+                            ? 'bg-purple-500/25 text-purple-300 border border-purple-400'
+                            : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'
+                        }`}
+                      >
+                        <Dices className="w-2.5 h-2.5" />
+                        <span>Rnd</span>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="text-[10px] font-mono text-slate-400 truncate">
+                    {currentSel === 'default' && <span className="text-slate-400">{def}</span>}
+                    {currentSel === 'advanced' && <span className="text-amber-300">{adv}</span>}
+                    {currentSel === 'random' && (
+                      <span className="text-purple-300 italic">🎲 Random (50/50)</span>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         {/* Drafter Active Banner & Filter Tabs */}

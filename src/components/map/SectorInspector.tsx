@@ -23,10 +23,18 @@ import {
   RotateCcw,
 } from 'lucide-react';
 
+import {
+  NeutralShipConfig,
+  NeutralShipType,
+  getNeutralShipBlueprint,
+  getNeutralShipSummary,
+} from '../../engine/rules/neutralShips';
+
 interface SectorInspectorProps {
   sector: SectorTile;
   players: PlayerState[];
   activePlayer: PlayerState;
+  neutralShipBlueprints?: Partial<NeutralShipConfig>;
   onColonizePlanet?: (
     sectorId: string,
     planetIndex: number,
@@ -43,6 +51,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   sector,
   players,
   activePlayer,
+  neutralShipBlueprints,
   onColonizePlanet,
   onAbandonInfluence,
   onClose,
@@ -275,17 +284,12 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                                   {stats.computerBonus > 0 && <span>• +{stats.computerBonus} Hit</span>}
                                   {stats.shieldBonus > 0 && <span>• -{stats.shieldBonus} Shield</span>}
                                 </div>
-                              ) : isNpc && type === 'ancient' ? (
-                                <div className="text-[10px] text-rose-300/80 font-mono mt-0.5">
-                                  Hull: 2 • Init: 2 • 2 Yellow Cannons (+1 Hit)
-                                </div>
-                              ) : isNpc && type === 'gcds' ? (
-                                <div className="text-[10px] text-rose-300/80 font-mono mt-0.5">
-                                  Hull: 7 • Init: 0 • 4 Orange Cannons (+2 Hit)
-                                </div>
-                              ) : isNpc && type === 'guardian' ? (
-                                <div className="text-[10px] text-pink-300/80 font-mono mt-0.5">
-                                  Hull: 3 • Init: 3 • 3 Yellow Cannons (+2 Hit, -1 Shield) • 2 VP
+                              ) : isNpc && (type === 'ancient' || type === 'guardian' || type === 'gcds') ? (
+                                <div className={`text-[10px] font-mono mt-0.5 ${type === 'guardian' ? 'text-pink-300/80' : 'text-rose-300/80'}`}>
+                                  {neutralShipBlueprints?.[type as NeutralShipType] === 'advanced' && (
+                                    <span className="text-amber-400 font-bold mr-1.5">[Advanced]</span>
+                                  )}
+                                  {getNeutralShipSummary(type as NeutralShipType, neutralShipBlueprints?.[type as NeutralShipType])}
                                 </div>
                               ) : null}
                             </div>

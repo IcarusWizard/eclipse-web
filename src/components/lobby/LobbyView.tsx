@@ -25,7 +25,13 @@ import {
   PlusCircle,
   LogIn,
   BookOpen,
+  Dices,
 } from 'lucide-react';
+import {
+  NeutralShipType,
+  NeutralShipSelection,
+  NeutralShipSelectionConfig,
+} from '../../engine/rules/neutralShips';
 
 interface LobbyViewProps {
   onStartNewGame: (
@@ -33,7 +39,8 @@ interface LobbyViewProps {
     factionIds: string[],
     tableId: string,
     seat: number | 'all',
-    expansions?: string[]
+    expansions?: string[],
+    neutralShips?: NeutralShipSelectionConfig
   ) => void;
   onJoinTable: (tableId: string, seat: number | 'all' | 'spectator') => void;
   onOpenGallery?: () => void;
@@ -72,6 +79,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   ]);
   const [mySeat, setMySeat] = useState<number | 'all'>(0);
   const [selectedExpansions, setSelectedExpansions] = useState<string[]>(['rift_cannon']);
+  const [neutralShipSelections, setNeutralShipSelections] = useState<NeutralShipSelectionConfig>({
+    ancient: 'default',
+    guardian: 'default',
+    gcds: 'default',
+  });
 
   const toggleExpansion = (id: string) => {
     setSelectedExpansions((prev) =>
@@ -105,7 +117,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         }
       }
     }
-    onStartNewGame(playerCount, activeFactions, customTableId.trim() || `galaxy-${Date.now() % 1000}`, mySeat, selectedExpansions);
+    onStartNewGame(
+      playerCount,
+      activeFactions,
+      customTableId.trim() || `galaxy-${Date.now() % 1000}`,
+      mySeat,
+      selectedExpansions,
+      neutralShipSelections
+    );
   };
 
   const handleConnectTable = async (e: React.FormEvent) => {
@@ -370,6 +389,126 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         </p>
                       </div>
                     </label>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Neutral Ship Blueprints (NPCs) */}
+            <div>
+              <div className="flex items-center justify-between mb-2">
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                  Neutral Ship Blueprints (NPCs)
+                </label>
+                <span className="text-[11px] font-mono text-cyan-400">
+                  Ancients • Guardians • GCDS
+                </span>
+              </div>
+              <div className="space-y-2.5">
+                {(
+                  [
+                    {
+                      type: 'ancient' as const,
+                      label: 'Ancient Ship',
+                      badge: 'Outer & Middle Sectors',
+                      defaultDesc: '2 Yellow Cannons (+1 Hit) • 2 Hull • Init 2',
+                      advDesc: '1 Orange Cannon (+1 Hit) • 2 Hull • Init 1',
+                    },
+                    {
+                      type: 'guardian' as const,
+                      label: 'Guardian',
+                      badge: 'Guardian Sectors',
+                      defaultDesc: '3 Yellow Cannons (+2 Hit, -1 Shield) • 3 Hull • Init 3 • 2 VP',
+                      advDesc: '2 Orange Missiles, 1 Red Cannon (+1 Hit) • 3 Hull • Init 1 • 2 VP',
+                    },
+                    {
+                      type: 'gcds' as const,
+                      label: 'Galactic Center Defense System (GCDS)',
+                      badge: 'Center Sector 001',
+                      defaultDesc: '4 Yellow Cannons (+2 Hit) • 7 Hull • Init 0 • 4 VP',
+                      advDesc: '4 Yellow Missiles, 1 Red Cannon (+2 Hit) • 3 Hull • Init 2 • 4 VP',
+                    },
+                  ]
+                ).map(({ type, label, badge, defaultDesc, advDesc }) => {
+                  const currentSel = neutralShipSelections[type];
+                  return (
+                    <div
+                      key={type}
+                      className="p-3 rounded-xl border bg-slate-950/60 border-slate-800 space-y-2"
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-100">{label}</span>
+                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-400 bg-slate-900 border border-slate-800">
+                            {badge}
+                          </span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
+                            }
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                              currentSel === 'default'
+                                ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400 shadow-sm shadow-cyan-500/20'
+                                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                            }`}
+                          >
+                            Default
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
+                            }
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                              currentSel === 'advanced'
+                                ? 'bg-amber-500/25 text-amber-200 border border-amber-400 shadow-sm shadow-amber-500/20'
+                                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                            }`}
+                          >
+                            Advanced
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
+                            }
+                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                              currentSel === 'random'
+                                ? 'bg-purple-500/25 text-purple-200 border border-purple-400 shadow-sm shadow-purple-500/20'
+                                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                            }`}
+                          >
+                            <Dices className="w-3 h-3" />
+                            <span>Random</span>
+                          </button>
+                        </div>
+                      </div>
+                      <div className="text-[11px] font-mono pl-0.5">
+                        {currentSel === 'default' && (
+                          <div className="text-slate-400 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                            <span>{defaultDesc}</span>
+                          </div>
+                        )}
+                        {currentSel === 'advanced' && (
+                          <div className="text-amber-300 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                            <span>{advDesc}</span>
+                          </div>
+                        )}
+                        {currentSel === 'random' && (
+                          <div className="text-purple-300 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
+                            <span className="italic">
+                              Random: 50% chance Default or Advanced upon game start
+                            </span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   );
                 })}
               </div>

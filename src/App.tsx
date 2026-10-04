@@ -7,6 +7,7 @@ import { executeAction, getMaxMoveActivations, computePinningState } from './eng
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative } from './engine/rules/combatEngine';
+import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X } from 'lucide-react';
 
 // UI Components
@@ -244,9 +245,10 @@ export const App: React.FC = () => {
     factionIds: string[],
     tableId: string,
     seat: number | 'all',
-    expansions?: string[]
+    expansions?: string[],
+    neutralShips?: NeutralShipSelectionConfig
   ) => {
-    const newGame = createInitialGame(playerCount, factionIds, expansions);
+    const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips);
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
     newGame.id = tableId;
@@ -454,8 +456,13 @@ export const App: React.FC = () => {
     setState(currentState);
   };
 
-  const handleStartNewGame = (playerCount: number, selectedFactionIds?: string[], expansions?: string[]) => {
-    const newGame = createInitialGame(playerCount, selectedFactionIds, expansions);
+  const handleStartNewGame = (
+    playerCount: number,
+    selectedFactionIds?: string[],
+    expansions?: string[],
+    neutralShips?: NeutralShipSelectionConfig
+  ) => {
+    const newGame = createInitialGame(playerCount, selectedFactionIds, expansions, neutralShips);
     setState(newGame);
     setSelectedViewIndex(0);
     setSelectedSector(null);
@@ -1153,7 +1160,12 @@ export const App: React.FC = () => {
       // In 'all' mode: automatically use the active ship's owner (or activePlayer if neutral)
       const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
       if (sec) {
-        const units = buildCombatUnitsForSector(sec, state.players, state.activeCombat.participatingPlayerIds);
+        const units = buildCombatUnitsForSector(
+          sec,
+          state.players,
+          state.activeCombat.participatingPlayerIds,
+          state.neutralShipBlueprints
+        );
         const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec);
         const aliveUnits = sortUnitsByInitiative(
           units.filter((u) => u.currentDamage < u.maxHull),
@@ -1452,6 +1464,7 @@ export const App: React.FC = () => {
               sector={state.sectors.find((s) => s.id === selectedSector.id) || selectedSector}
               players={state.players}
               activePlayer={activePlayer}
+              neutralShipBlueprints={state.neutralShipBlueprints}
               onColonizePlanet={handleColonizePlanet}
               onAbandonInfluence={handleAbandonInfluence}
               onClose={() => setSelectedSector(null)}

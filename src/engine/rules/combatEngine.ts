@@ -6,6 +6,7 @@ import { CombatRoll, CombatState } from '../types/state';
 import { SectorShip, SectorTile } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import { calculateBlueprintStats } from './shipValidation';
+import { getNeutralShipBlueprint, NeutralShipConfig, NeutralShipType } from './neutralShips';
 
 export interface CombatUnit {
   id: string;
@@ -27,7 +28,8 @@ export interface CombatUnit {
 export function buildCombatUnitsForSector(
   sector: SectorTile,
   players: PlayerState[],
-  filterOwnerIds?: string[]
+  filterOwnerIds?: string[],
+  neutralShipBlueprints?: Partial<NeutralShipConfig>
 ): CombatUnit[] {
   const units: CombatUnit[] = [];
 
@@ -35,41 +37,21 @@ export function buildCombatUnitsForSector(
     if (filterOwnerIds && !filterOwnerIds.includes(ship.ownerId)) {
       continue;
     }
-    if (ship.type === 'ancient') {
+    if (ship.type === 'ancient' || ship.type === 'guardian' || ship.type === 'gcds') {
+      const bp = getNeutralShipBlueprint(
+        ship.type as NeutralShipType,
+        neutralShipBlueprints?.[ship.type as NeutralShipType]
+      );
       units.push({
         id: ship.id,
-        ownerId: 'ancient',
-        type: 'ancient',
-        initiative: 2,
-        maxHull: 2,
+        ownerId: ship.ownerId,
+        type: ship.type,
+        initiative: bp.initiative,
+        maxHull: bp.maxHull,
         currentDamage: ship.damage,
-        computerBonus: 1,
-        shieldBonus: 0,
-        weapons: [{ color: 'yellow', damage: 1, count: 2 }],
-      });
-    } else if (ship.type === 'guardian') {
-      units.push({
-        id: ship.id,
-        ownerId: 'guardian',
-        type: 'guardian',
-        initiative: 3,
-        maxHull: 3,
-        currentDamage: ship.damage,
-        computerBonus: 2,
-        shieldBonus: 1,
-        weapons: [{ color: 'yellow', damage: 1, count: 3 }],
-      });
-    } else if (ship.type === 'gcds') {
-      units.push({
-        id: ship.id,
-        ownerId: 'gcds',
-        type: 'gcds',
-        initiative: 0,
-        maxHull: 7,
-        currentDamage: ship.damage,
-        computerBonus: 2,
-        shieldBonus: 0,
-        weapons: [{ color: 'yellow', damage: 1, count: 4 }],
+        computerBonus: bp.computerBonus,
+        shieldBonus: bp.shieldBonus,
+        weapons: bp.weapons.map((w) => ({ ...w })),
       });
     } else {
       const player = players.find((p) => p.id === ship.ownerId);

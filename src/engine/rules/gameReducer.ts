@@ -1097,7 +1097,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (state.activeCombat.stage === 'resolved' || (action as any).concludeCombat) {
         return { valid: true };
       }
-      const units = buildCombatUnitsForSector(sector, state.players);
+      const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints);
       const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector);
       const aliveUnits = sortUnitsByInitiative(
         units.filter((u) => u.currentDamage < u.maxHull),
@@ -2209,7 +2209,12 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             }
           };
 
-          const units = buildCombatUnitsForSector(sector, newState.players, newState.activeCombat.participatingPlayerIds);
+          const units = buildCombatUnitsForSector(
+            sector,
+            newState.players,
+            newState.activeCombat.participatingPlayerIds,
+            newState.neutralShipBlueprints
+          );
 
           // If combat is already in 'resolved' stage or explicitly flagged to conclude:
           if (newState.activeCombat.stage === 'resolved' || action.concludeCombat) {
@@ -3063,7 +3068,7 @@ export function checkAndTriggerCombat(state: GameState): void {
     }
 
     const duelParticipants = [attackerOwnerId, defenderOwnerId].filter(Boolean) as string[];
-    const combatUnits = buildCombatUnitsForSector(sector, state.players, duelParticipants);
+    const combatUnits = buildCombatUnitsForSector(sector, state.players, duelParticipants, state.neutralShipBlueprints);
     const hasMissiles = combatUnits.some((u) => u.weapons.some((w) => w.isMissile));
 
     state.activeCombat = {
