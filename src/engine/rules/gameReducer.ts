@@ -167,6 +167,38 @@ export function canExchangeAmbassadors(
   return { canExchange: true };
 }
 
+/**
+ * Computes the index in state.players of the next active player during ACTION_PHASE.
+ * If the 'turn_order' expansion is enabled, turn progression strictly follows state.turnOrder
+ * (which represents the physical Turn Order Track).
+ * In base game, turns advance clockwise according to the order of state.players.
+ */
+export function getNextActivePlayerIndex(state: GameState): number {
+  if (state.expansions?.includes('turn_order') && state.turnOrder && state.turnOrder.length > 0) {
+    const currentActivePlayer = state.players[state.activePlayerIndex];
+    const currentIdxInTurnOrder = currentActivePlayer ? state.turnOrder.indexOf(currentActivePlayer.id) : -1;
+    const startIndex = currentIdxInTurnOrder !== -1 ? currentIdxInTurnOrder : 0;
+
+    for (let step = 1; step <= state.turnOrder.length; step++) {
+      const nextOrderIdx = (startIndex + step) % state.turnOrder.length;
+      const nextPlayerId = state.turnOrder[nextOrderIdx];
+      const playerIdx = state.players.findIndex((p) => p.id === nextPlayerId);
+      if (playerIdx !== -1 && !state.players[playerIdx].isEliminated) {
+        return playerIdx;
+      }
+    }
+  }
+
+  // Base game fallback: clockwise rotation along state.players
+  let nextIdx = (state.activePlayerIndex + 1) % state.players.length;
+  let loops = 0;
+  while (state.players[nextIdx]!.isEliminated && loops < state.players.length) {
+    nextIdx = (nextIdx + 1) % state.players.length;
+    loops++;
+  }
+  return nextIdx;
+}
+
 export function validateAction(state: GameState, action: GameAction): { valid: boolean; error?: string } {
   if (state.phase === 'GAME_OVER') {
     return { valid: false, error: 'The game has ended.' };
@@ -1886,12 +1918,29 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         newState.passedPlayerIds.push(player.id);
         player.hasPassed = true;
 
-        if (newState.passedPlayerIds.length === 1) {
-          player.isFirstPasser = true;
-          player.resources.money += 2; // First to pass gets +2 Credits bonus!
-          addLog(`${player.name} was FIRST to PASS and received 2 Credits bonus!`, 'system');
+        const tileNum = newState.passedPlayerIds.length;
+        if (newState.expansions?.includes('turn_order')) {
+          if (tileNum === 1) {
+            player.isFirstPasser = true;
+            player.resources.money += 2; // First to pass gets +2 Credits bonus!
+            addLog(
+              `${player.name} was FIRST to PASS, took Next Turn Order Tile #1 (Start Player next round), and received 2 Credits bonus!`,
+              'system'
+            );
+          } else {
+            addLog(
+              `${player.name} passed and took Next Turn Order Tile #${tileNum}.`,
+              'system'
+            );
+          }
         } else {
-          addLog(`${player.name} passed for the round.`);
+          if (tileNum === 1) {
+            player.isFirstPasser = true;
+            player.resources.money += 2; // First to pass gets +2 Credits bonus!
+            addLog(`${player.name} was FIRST to PASS and received 2 Credits bonus!`, 'system');
+          } else {
+            addLog(`${player.name} passed for the round.`);
+          }
         }
       } else {
         addLog(`${player.name} passed.`);
@@ -2585,13 +2634,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         newState.resolvedCombatSectorIds = [];
         checkAndTriggerCombat(newState);
       } else {
-        let nextIdx = (newState.activePlayerIndex + 1) % newState.players.length;
-        let loops = 0;
-        while (newState.players[nextIdx]!.isEliminated && loops < newState.players.length) {
-          nextIdx = (nextIdx + 1) % newState.players.length;
-          loops++;
-        }
-        newState.activePlayerIndex = nextIdx;
+        newState.activePlayerIndex = getNextActivePlayerIndex(newState);
       }
       return { success: true, newState };
     }
@@ -2698,13 +2741,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       newState.resolvedCombatSectorIds = [];
       checkAndTriggerCombat(newState);
     } else {
-      let nextIdx = (newState.activePlayerIndex + 1) % newState.players.length;
-      let loops = 0;
-      while (newState.players[nextIdx]!.isEliminated && loops < newState.players.length) {
-        nextIdx = (nextIdx + 1) % newState.players.length;
-        loops++;
-      }
-      newState.activePlayerIndex = nextIdx;
+      newState.activePlayerIndex = getNextActivePlayerIndex(newState);
     }
   }
 
@@ -3352,6 +3389,8 @@ export function transitionToCleanup(state: GameState): void {
     return;
   }
 
+  const previousRoundPassedPlayerIds = [...(state.passedPlayerIds || [])];
+
   // Advance round
   state.round += 1;
   state.phase = 'ACTION_PHASE';
@@ -3403,12 +3442,68 @@ export function transitionToCleanup(state: GameState): void {
     type: 'system',
   });
 
-  // First passer becomes first player
-  const firstPasserIndex = state.players.findIndex((p) => p.isFirstPasser);
-  if (firstPasserIndex !== -1) {
-    state.firstPlayerIndex = firstPasserIndex;
-    state.activePlayerIndex = firstPasserIndex;
+  if (state.expansions?.includes('turn_order')) {
+    const newTurnOrder: string[] = [];
+    // 1. Players in ascending Next Turn Order Tile sequence (the order they passed)
+    for (const pid of previousRoundPassedPlayerIds) {
+      const pl = state.players.find((p) => p.id === pid);
+      if (pl && !pl.isEliminated && !newTurnOrder.includes(pid)) {
+        newTurnOrder.push(pid);
+      }
+    }
+    // 2. Any active players from previous turnOrder who didn't pass (fallback)
+    for (const pid of state.turnOrder || []) {
+      const pl = state.players.find((p) => p.id === pid);
+      if (pl && !pl.isEliminated && !newTurnOrder.includes(pid)) {
+        newTurnOrder.push(pid);
+      }
+    }
+    // 3. Any active players in state.players
+    for (const pl of state.players) {
+      if (!pl.isEliminated && !newTurnOrder.includes(pl.id)) {
+        newTurnOrder.push(pl.id);
+      }
+    }
+
+    if (newTurnOrder.length > 0) {
+      state.turnOrder = newTurnOrder;
+      const firstPlayerId = newTurnOrder[0];
+      const firstIdx = state.players.findIndex((p) => p.id === firstPlayerId);
+      state.firstPlayerIndex = firstIdx !== -1 ? firstIdx : 0;
+      state.activePlayerIndex = state.firstPlayerIndex;
+
+      const orderNames = newTurnOrder
+        .map((pid) => state.players.find((p) => p.id === pid)?.name || pid)
+        .join(' ➔ ');
+      state.log.unshift({
+        id: `log_${Date.now()}_turn_order_round_${state.round}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: 'ACTION_PHASE',
+        message: `Turn Order Track updated for Round ${state.round}: ${orderNames}`,
+        type: 'system',
+      });
+    }
     for (const p of state.players) p.isFirstPasser = false;
+  } else {
+    // Base game: first passer becomes first player, rotation is clockwise
+    const firstPasserIndex = state.players.findIndex((p) => p.isFirstPasser);
+    if (firstPasserIndex !== -1) {
+      state.firstPlayerIndex = firstPasserIndex;
+      state.activePlayerIndex = firstPasserIndex;
+      for (const p of state.players) p.isFirstPasser = false;
+    }
+    // Update base game turnOrder clockwise from firstPlayerIndex
+    const baseTurnOrder: string[] = [];
+    const n = state.players.length;
+    const startIdx = state.firstPlayerIndex >= 0 ? state.firstPlayerIndex : 0;
+    for (let i = 0; i < n; i++) {
+      const idx = (startIdx + i) % n;
+      if (!state.players[idx].isEliminated) {
+        baseTurnOrder.push(state.players[idx].id);
+      }
+    }
+    state.turnOrder = baseTurnOrder;
   }
 }
 

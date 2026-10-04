@@ -17,6 +17,7 @@ import {
   X,
   SlidersHorizontal,
   ChevronRight,
+  ListOrdered,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -31,6 +32,7 @@ interface HeaderProps {
   onOpenGallery?: () => void;
   onReturnToLobby?: () => void;
   onOpenBugReport?: () => void;
+  onOpenTurnOrder?: () => void;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
 }
@@ -47,6 +49,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenGallery,
   onReturnToLobby,
   onOpenBugReport,
+  onOpenTurnOrder,
   currentSeat = 'all',
   onChangeSeat,
 }) => {
@@ -119,6 +122,18 @@ export const Header: React.FC<HeaderProps> = ({
               </span>
             </button>
           )}
+
+          {/* Turn Order Track Button (Turn Order Variant) */}
+          {onOpenTurnOrder && state.expansions?.includes('turn_order') && (
+            <button
+              onClick={onOpenTurnOrder}
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-purple-950/70 hover:bg-purple-900 border border-purple-600/60 text-purple-200 text-xs font-bold transition-all shadow cursor-pointer shrink-0"
+              title="Inspect Turn Order Track (Turn Order Variant)"
+            >
+              <ListOrdered className="w-3.5 h-3.5 text-purple-400" />
+              <span className="hidden md:inline">Turn Order</span>
+            </button>
+          )}
         </div>
 
         {/* Right Section: Player Switcher + Player Board + Slider Menu Toggle */}
@@ -140,9 +155,11 @@ export const Header: React.FC<HeaderProps> = ({
                 p.reputationTiles.length > 0;
               const knownVP = (b?.total ?? 0) - (b?.reputation ?? 0);
               const displayVP = isSecretRep ? `${knownVP}★+?` : `${b?.total ?? 0}★`;
+              const passIdx = state.passedPlayerIds?.indexOf(p.id) ?? -1;
+              const nextTile = passIdx !== -1 ? passIdx + 1 : null;
               const titleText = isSecretRep
-                ? `${p.name} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))`
-                : `${p.name} (${b?.total ?? 0} VP)`;
+                ? `${p.name} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
+                : `${p.name} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
 
               return (
                 <button
@@ -163,6 +180,14 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="text-[10px] text-amber-400 font-mono font-bold">
                     {displayVP}
                   </span>
+                  {state.expansions?.includes('turn_order') && nextTile && (
+                    <span
+                      className="text-[9px] px-1 py-0.2 rounded font-mono font-bold bg-purple-950 border border-purple-500/60 text-purple-300"
+                      title={`Claimed Next Turn Order Tile #${nextTile}`}
+                    >
+                      #{nextTile}
+                    </span>
+                  )}
                   {isTurn && (
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
                   )}
@@ -379,6 +404,33 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-pink-400 transition" />
+                      </button>
+                    )}
+
+                    {/* Turn Order Track (Variant Expansion) */}
+                    {onOpenTurnOrder && state.expansions?.includes('turn_order') && (
+                      <button
+                        onClick={() => {
+                          setIsDrawerOpen(false);
+                          onOpenTurnOrder();
+                        }}
+                        className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800 border border-slate-800 hover:border-purple-600/50 text-slate-200 transition group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-purple-950/60 border border-purple-600/40 flex items-center justify-center text-purple-400">
+                            <ListOrdered className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="text-left">
+                            <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
+                              <span>Turn Order Track</span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-purple-950 text-purple-300 border border-purple-700/60">
+                                Variant
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400">Round action order & pass sequence</div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-purple-400 transition" />
                       </button>
                     )}
 

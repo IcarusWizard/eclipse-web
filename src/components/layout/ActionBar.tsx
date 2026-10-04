@@ -40,6 +40,8 @@ interface ActionBarProps {
   pendingExploreActivations?: number;
   onConfirmAction?: () => void;
   onRevertAction?: () => void;
+  nextPassTileNum?: number;
+  isTurnOrderVariant?: boolean;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -57,6 +59,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   pendingExploreActivations,
   onConfirmAction,
   onRevertAction,
+  nextPassTileNum,
+  isTurnOrderVariant = false,
 }) => {
   if (pendingConfirmation) {
     const isMyAction = !isTurnGated;
@@ -317,6 +321,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               ? 'Must finish exploration before passing'
               : hasPassed
               ? 'Pass reaction turn'
+              : isTurnOrderVariant && nextPassTileNum
+              ? `Pass turn (claims Next Turn Order Tile #${nextPassTileNum}${nextPassTileNum === 1 ? ' & +2 Credits bonus' : ''})`
               : 'Pass turn (receive 2 Credits for 1st pass)'
           }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
@@ -327,7 +333,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         >
           <CircleOff className="w-4 h-4 shrink-0" />
           <span className="leading-tight">PASS</span>
-          <span className="text-[8.5px] opacity-0 leading-none">(-)</span>
+          {isTurnOrderVariant && nextPassTileNum && !hasPassed ? (
+            <span className="text-[8.5px] text-purple-400 font-mono font-bold leading-none">
+              #{nextPassTileNum}
+            </span>
+          ) : (
+            <span className="text-[8.5px] opacity-0 leading-none">(-)</span>
+          )}
         </button>
       </div>
     </div>

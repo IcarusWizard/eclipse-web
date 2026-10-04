@@ -8790,6 +8790,212 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(galleryHtml).toContain('Morph Shield');
         expect(galleryHtml).toContain('Remnants of Worlds Afar Expansion');
       });
+
+      it('57. verifies Turn Order Variant Expansion: Turn Order Track, action sequence following turnOrder, Next Turn Order Tiles upon passing, round transition reordering, and UI track modal', async () => {
+        // 1. Expansion Registry
+        expect(AVAILABLE_EXPANSIONS.some((e) => e.id === 'turn_order')).toBe(true);
+        const toDef = AVAILABLE_EXPANSIONS.find((e) => e.id === 'turn_order')!;
+        expect(toDef.name).toBe('Turn Order');
+        expect(toDef.badge).toBe('Variable Turn Order');
+        expect(toDef.features.length).toBeGreaterThanOrEqual(4);
+        expect(isExpansionActive(['turn_order'], 'turn_order')).toBe(true);
+        expect(isExpansionActive([], 'turn_order')).toBe(false);
+
+        // 2. Setup 3-player game with turn_order expansion
+        const game = createInitialGame(3, undefined, ['turn_order']);
+        expect(game.expansions).toContain('turn_order');
+        expect(game.players.length).toBe(3);
+        const [p0, p1, p2] = game.players;
+        expect(game.turnOrder).toEqual([p0.id, p1.id, p2.id]);
+        expect(game.activePlayerIndex).toBe(0);
+        expect(game.passedPlayerIds).toEqual([]);
+
+        // Give players resources so they can perform actions
+        p0.resources.money = 20;
+        p0.resources.science = 20;
+        p0.resources.materials = 20;
+        p1.resources.money = 20;
+        p1.resources.science = 20;
+        p1.resources.materials = 20;
+        p2.resources.money = 20;
+        p2.resources.science = 20;
+        p2.resources.materials = 20;
+
+        // 3. Round 1 Action Phase order follows turnOrder: p0 -> p1 -> p2 -> p0
+        // P0 takes Research action
+        const techToResearch = game.techSupply[0];
+        const res0 = executeAction(game, {
+          type: 'RESEARCH',
+          playerId: p0.id,
+          researches: [{ techId: techToResearch.id, cost: 2 }],
+        });
+        expect(res0.success).toBe(true);
+        // Turn must advance to P1 (index 1)
+        expect(res0.newState.activePlayerIndex).toBe(1);
+
+        // P1 takes Research action
+        const tech2 = res0.newState.techSupply[0];
+        const res1 = executeAction(res0.newState, {
+          type: 'RESEARCH',
+          playerId: p1.id,
+          researches: [{ techId: tech2.id, cost: 2 }],
+        });
+        expect(res1.success).toBe(true);
+        // Turn must advance to P2 (index 2)
+        expect(res1.newState.activePlayerIndex).toBe(2);
+
+        // 4. Passing in specific sequence: P2 passes 1st, P0 passes 2nd, P1 passes 3rd!
+        const p2InitialMoney = res1.newState.players[2].resources.money;
+        const passP2 = executeAction(res1.newState, {
+          type: 'PASS',
+          playerId: p2.id,
+        });
+        expect(passP2.success).toBe(true);
+        // P2 is FIRST to pass: receives Next Turn Order Tile #1 and +2 Credits bonus!
+        expect(passP2.newState.passedPlayerIds).toEqual([p2.id]);
+        expect(passP2.newState.players[2].hasPassed).toBe(true);
+        expect(passP2.newState.players[2].isFirstPasser).toBe(true);
+        expect(passP2.newState.players[2].resources.money).toBe(p2InitialMoney + 2);
+        // Log confirms Next Turn Order Tile #1
+        expect(passP2.newState.log.some((l) => l.message.includes('Next Turn Order Tile #1'))).toBe(true);
+
+        // Turn wraps back to P0 (next in turnOrder)
+        expect(passP2.newState.activePlayerIndex).toBe(0);
+
+        // P0 passes 2nd!
+        const passP0 = executeAction(passP2.newState, {
+          type: 'PASS',
+          playerId: p0.id,
+        });
+        expect(passP0.success).toBe(true);
+        expect(passP0.newState.passedPlayerIds).toEqual([p2.id, p0.id]);
+        expect(passP0.newState.log.some((l) => l.message.includes('Next Turn Order Tile #2'))).toBe(true);
+
+        // Turn advances to P1
+        expect(passP0.newState.activePlayerIndex).toBe(1);
+
+        // P1 passes 3rd! All 3 commanders have passed consecutively, automatically triggering Combat -> Upkeep -> Cleanup -> Round 2!
+        const passP1 = executeAction(passP0.newState, {
+          type: 'PASS',
+          playerId: p1.id,
+        });
+        expect(passP1.success).toBe(true);
+        expect(passP1.newState.log.some((l) => l.message.includes('Next Turn Order Tile #3'))).toBe(true);
+
+        // 5. Cleanup Phase auto-transition: reordered Turn Order Markers in ascending Next Turn Order Tile sequence!
+        // Pass sequence was: P2 (#1), P0 (#2), P1 (#3).
+        expect(passP1.newState.round).toBe(2);
+        expect(passP1.newState.phase).toBe('ACTION_PHASE');
+        // Round 2 Turn Order Track must strictly be: [P2, P0, P1]!
+        expect(passP1.newState.turnOrder).toEqual([p2.id, p0.id, p1.id]);
+        // Start player and active player is P2 (index 2 in players array)
+        expect(passP1.newState.firstPlayerIndex).toBe(2);
+        expect(passP1.newState.activePlayerIndex).toBe(2);
+        expect(passP1.newState.passedPlayerIds).toEqual([]);
+
+        // 6. Round 2 Turn Progression follows the new Turn Order Track: P2 -> P0 -> P1 -> P2
+        const r2State = passP1.newState;
+        r2State.players[2].resources.money = 20;
+        r2State.players[2].resources.science = 20;
+        r2State.players[0].resources.money = 20;
+        r2State.players[0].resources.science = 20;
+        r2State.players[1].resources.money = 20;
+        r2State.players[1].resources.science = 20;
+
+        // P2 acts
+        const r2Tech0 = r2State.techSupply[0];
+        const r2Act1 = executeAction(r2State, {
+          type: 'RESEARCH',
+          playerId: p2.id,
+          researches: [{ techId: r2Tech0.id, cost: 2 }],
+        });
+        expect(r2Act1.success).toBe(true);
+        // After P2, next is P0 (index 0) per turnOrder! (NOT P0 or P1 clockwise from 2 in seating)
+        expect(r2Act1.newState.activePlayerIndex).toBe(0);
+
+        // P0 acts
+        const r2Tech1 = r2Act1.newState.techSupply[0];
+        const r2Act2 = executeAction(r2Act1.newState, {
+          type: 'RESEARCH',
+          playerId: p0.id,
+          researches: [{ techId: r2Tech1.id, cost: 2 }],
+        });
+        expect(r2Act2.success).toBe(true);
+        // After P0, next is P1 (index 1) per turnOrder!
+        expect(r2Act2.newState.activePlayerIndex).toBe(1);
+
+        // P1 acts
+        const r2Tech2 = r2Act2.newState.techSupply[0];
+        const r2Act3 = executeAction(r2Act2.newState, {
+          type: 'RESEARCH',
+          playerId: p1.id,
+          researches: [{ techId: r2Tech2.id, cost: 2 }],
+        });
+        expect(r2Act3.success).toBe(true);
+        // After P1, wraps back to P2 (index 2)!
+        expect(r2Act3.newState.activePlayerIndex).toBe(2);
+
+        // 7. Base game without turn_order expansion operates with clockwise rotation
+        const baseGame = createInitialGame(3);
+        expect(baseGame.expansions).toEqual([]);
+        baseGame.players[1].isFirstPasser = true;
+        baseGame.passedPlayerIds = [baseGame.players[1].id, baseGame.players[0].id, baseGame.players[2].id];
+        transitionToCleanup(baseGame);
+        expect(baseGame.round).toBe(2);
+        expect(baseGame.firstPlayerIndex).toBe(1);
+        expect(baseGame.activePlayerIndex).toBe(1);
+        // In base game, turnOrder is clockwise starting at seat 1: [1, 2, 0]
+        expect(baseGame.turnOrder).toEqual([baseGame.players[1].id, baseGame.players[2].id, baseGame.players[0].id]);
+
+        // 8. UI Rendering: TurnOrderTrackModal, Header, ActionBar
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+
+        const { TurnOrderTrackModal } = await import('../../components/turnOrder/TurnOrderTrackModal');
+        const modalHtml = renderToString(
+          React.createElement(TurnOrderTrackModal, {
+            isOpen: true,
+            onClose: () => {},
+            state: r2State,
+          })
+        );
+        expect(modalHtml).toContain('Turn Order Track');
+        expect(modalHtml).toContain('Start Player Space');
+        expect(modalHtml).toContain('Projected Round 3 Turn Order');
+        expect(modalHtml).toContain('Turn Order Variant Rules Reference');
+
+        // Header with Turn Order button
+        const { Header } = await import('../../components/layout/Header');
+        const headerHtml = renderToString(
+          React.createElement(Header, {
+            state: r2State,
+            selectedViewIndex: 0,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onOpenTurnOrder: () => {},
+          })
+        );
+        expect(headerHtml).toContain('Turn Order');
+
+        // ActionBar with Next Turn Order Tile indicator
+        const { ActionBar } = await import('../../components/layout/ActionBar');
+        const barHtml = renderToString(
+          React.createElement(ActionBar, {
+            activePlayer: r2State.players[r2State.activePlayerIndex],
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+            isTurnOrderVariant: true,
+            nextPassTileNum: 1,
+          })
+        );
+        expect(barHtml).toContain('#1');
+      });
     });
   });
 });

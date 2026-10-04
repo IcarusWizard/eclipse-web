@@ -2,7 +2,7 @@
  * Official Expansion Modules & Configuration for Eclipse: Second Dawn
  */
 
-export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar';
+export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order';
 
 export interface ExpansionDefinition {
   readonly id: ExpansionId;
@@ -40,6 +40,19 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'Artifact Codex: +1 VP per controlled artifact at game end',
       'Ancient Might: +1 VP per 3 VP in reputation tiles at game end',
       'Expert Neutral Ship Blueprints for Ancients, Guardians, and GCDS',
+    ],
+  },
+  {
+    id: 'turn_order',
+    name: 'Turn Order',
+    shortName: 'Turn Order',
+    badge: 'Variable Turn Order',
+    description: 'Player order is determined by the order in which players Passed in the previous Round instead of following clockwise rotation.',
+    features: [
+      'Turn Order Track with Turn Order Markers for each player',
+      'Players take actions in the order displayed on the Turn Order Track',
+      'Passing awards the lowest available Next Turn Order Tile (1st passer gets #1, 2nd gets #2, etc.)',
+      'During Cleanup, Turn Order Markers are reordered according to the Next Turn Order Tiles',
     ],
   },
 ];

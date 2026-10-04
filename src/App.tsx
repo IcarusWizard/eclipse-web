@@ -40,6 +40,7 @@ import { GalacticGalleryModal } from './components/gallery/GalacticGalleryModal'
 import { BugReportModal } from './components/feedback/BugReportModal';
 import { BugReportCornerButton } from './components/feedback/BugReportCornerButton';
 import { DiplomacyModal, PopulationResourceType } from './components/diplomacy/DiplomacyModal';
+import { TurnOrderTrackModal } from './components/turnOrder/TurnOrderTrackModal';
 import {
   loadActiveGameState,
   saveGameState,
@@ -95,6 +96,7 @@ export const App: React.FC = () => {
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
   const [isNewGameOpen, setIsNewGameOpen] = useState<boolean>(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState<boolean>(false);
+  const [isTurnOrderOpen, setIsTurnOrderOpen] = useState<boolean>(false);
   const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
@@ -1385,6 +1387,7 @@ export const App: React.FC = () => {
         onOpenTableSession={() => setIsTableSessionOpen(true)}
         onOpenGallery={() => setIsGalleryOpen(true)}
         onOpenBugReport={() => setIsBugReportOpen(true)}
+        onOpenTurnOrder={() => setIsTurnOrderOpen(true)}
         onReturnToLobby={handleReturnToLobby}
         currentSeat={currentSeat}
         onChangeSeat={handleChangeSeat}
@@ -1522,6 +1525,8 @@ export const App: React.FC = () => {
             pendingExploreActivations={state.pendingExploreActivations}
             onConfirmAction={handleConfirmTurnAction}
             onRevertAction={handleRevertTurnAction}
+            nextPassTileNum={(state.passedPlayerIds?.length || 0) + 1}
+            isTurnOrderVariant={Boolean(state.expansions?.includes('turn_order'))}
           />
         )}
 
@@ -1790,6 +1795,12 @@ export const App: React.FC = () => {
       <GalacticGalleryModal
         isOpen={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
+      />
+
+      <TurnOrderTrackModal
+        isOpen={isTurnOrderOpen}
+        onClose={() => setIsTurnOrderOpen(false)}
+        state={state}
       />
 
       <BugReportModal
