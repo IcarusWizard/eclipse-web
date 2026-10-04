@@ -80,7 +80,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
 
   const handleRandomize = () => {
     // Pick N factions with distinct colors randomly across all available factions
-    const colorGroups: FactionColorGroup[] = ['red', 'blue', 'green', 'yellow', 'purple', 'orange'];
+    const colorGroups: FactionColorGroup[] = ['red', 'blue', 'green', 'yellow', 'white', 'black'];
     const shuffledColors = [...colorGroups].sort(() => Math.random() - 0.5).slice(0, playerCount);
     const selected: string[] = [];
     for (const color of shuffledColors) {

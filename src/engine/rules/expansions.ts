@@ -32,3 +32,20 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
 export function isExpansionActive(expansions: string[] | undefined, id: ExpansionId): boolean {
   return Boolean(expansions && expansions.includes(id));
 }
+
+/**
+ * Returns the expansion definition that an item (tech, ship part, discovery tile, etc.) belongs to, or null if base game.
+ */
+export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition | null {
+  const norm = itemIdOrName.toLowerCase();
+  if (
+    norm === 'rift_cannon' ||
+    norm === 'rift cannon' ||
+    norm === 'rift_conductor' ||
+    norm === 'rift conductor' ||
+    norm === 'disc_rift_conductor'
+  ) {
+    return AVAILABLE_EXPANSIONS.find((e) => e.id === 'rift_cannon') || null;
+  }
+  return null;
+}

@@ -29,13 +29,16 @@ import {
   rollPurpleDie,
   applyRiftSelfDamage,
 } from '../rules/combatEngine';
-import { AVAILABLE_EXPANSIONS, isExpansionActive } from '../rules/expansions';
+import { AVAILABLE_EXPANSIONS, isExpansionActive, getExpansionForItem } from '../rules/expansions';
 import {
   createInitialGame,
   ALIEN_FACTIONS,
+  HUMAN_FACTIONS,
   areFactionsConflictingColor,
   ECLIPSE_COLOR_PALETTE,
   FACTION_COLOR_GROUP,
+  FACTION_COLOR_MAP,
+  getPlayerReputationTrackSlots,
 } from '../rules/setup';
 import {
   executeAction,
@@ -7888,6 +7891,152 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(actionBarHtml).toContain('Finish');
         expect(actionBarHtml).toMatch(/Finish.*1/);
         expect(actionBarHtml).toContain('Must finish exploration before passing');
+      });
+
+      it('54. verifies Bug Fixes 115-117: Reputation track ambassador slots in PlayerBoard, Orion Black & Mechanema White colors, and Galactic Gallery expansion badges', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+
+        // -------------------------------------------------------------
+        // Bug 115: Upper left window (PlayerBoard) shows reputation track slots occupied by ambassadors
+        // -------------------------------------------------------------
+        const eridaniState = createInitialGame(2, ['eridani_empire', 'terran_federation']);
+        const eridaniPlayer = eridaniState.players[0]!;
+        const terranPlayer = eridaniState.players[1]!;
+
+        // Eridani has 4 reputation slots: ['both', 'both', 'rep_only', 'rep_only']
+        expect(eridaniPlayer.faction.reputationSlots).toBe(4);
+        expect(eridaniPlayer.faction.reputationSlotTypes).toEqual(['both', 'both', 'rep_only', 'rep_only']);
+
+        // Give Eridani an ambassador from Terran Federation
+        eridaniPlayer.ambassadorTiles = [terranPlayer.id];
+        // Give Eridani a 2 VP reputation tile
+        eridaniPlayer.reputationTiles = [2];
+
+        // getPlayerReputationTrackSlots places ambassador into Slot 0 ('both') and reputation tile into Slot 1 ('both')
+        const trackSlots = getPlayerReputationTrackSlots(eridaniPlayer, eridaniState.players);
+        expect(trackSlots.length).toBe(4);
+        expect(trackSlots[0]!.tile?.type).toBe('ambassador');
+        if (trackSlots[0]!.tile?.type === 'ambassador') {
+          expect(trackSlots[0]!.tile.allyId).toBe(terranPlayer.id);
+          expect(trackSlots[0]!.tile.allyName).toBe(terranPlayer.name);
+          expect(trackSlots[0]!.tile.vp).toBe(1);
+        }
+        expect(trackSlots[1]!.tile?.type).toBe('reputation');
+        if (trackSlots[1]!.tile?.type === 'reputation') {
+          expect(trackSlots[1]!.tile.vp).toBe(2);
+        }
+        expect(trackSlots[2]!.tile).toBeUndefined();
+        expect(trackSlots[3]!.tile).toBeUndefined();
+
+        // Render PlayerBoard (the upper-left floating window)
+        const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+        const playerBoardHtml = renderToString(
+          React.createElement(PlayerBoard, {
+            player: eridaniPlayer,
+            isActive: true,
+            sectors: eridaniState.sectors,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+            onOpenPhysicalBoard: () => {},
+            hideOpponentReputation: false,
+            allPlayers: eridaniState.players,
+            traitorPlayerId: null,
+            gamePhase: 'ACTION_PHASE',
+          })
+        );
+
+        // PlayerBoard should render the ambassador icon (🤝) in the reputation section
+        expect(playerBoardHtml).toContain('🤝');
+        expect(playerBoardHtml).toContain(`Ambassador (${terranPlayer.name})`);
+        expect(playerBoardHtml).toContain('Reputation Slot #1');
+        expect(playerBoardHtml).toContain('Reputation Tile: +2 VP (Slot #2)');
+        expect(playerBoardHtml).toContain('Empty Slot #3');
+        // Reputation total score & slot count
+        expect(playerBoardHtml).toContain('2 VP');
+        expect(playerBoardHtml).toContain('Rep');
+
+        // -------------------------------------------------------------
+        // Bug 116: Align colors with physical Eclipse: Orion = Black, Mechanema = White
+        // -------------------------------------------------------------
+        expect(ECLIPSE_COLOR_PALETTE.white).toBe('#f8fafc');
+        expect(ECLIPSE_COLOR_PALETTE.black).toBe('#18181b');
+
+        // Color groups
+        expect(FACTION_COLOR_GROUP['orion_hegemony']).toBe('black');
+        expect(FACTION_COLOR_GROUP['terran_alliance']).toBe('black');
+        expect(FACTION_COLOR_GROUP['mechanema']).toBe('white');
+        expect(FACTION_COLOR_GROUP['terran_union']).toBe('white');
+
+        // Color maps
+        expect(FACTION_COLOR_MAP['orion_hegemony']).toBe('#18181b');
+        expect(FACTION_COLOR_MAP['terran_alliance']).toBe('#18181b');
+        expect(FACTION_COLOR_MAP['mechanema']).toBe('#f8fafc');
+        expect(FACTION_COLOR_MAP['terran_union']).toBe('#f8fafc');
+
+        // Faction definitions defaultColor
+        const orionAlien = ALIEN_FACTIONS.find((f) => f.id === 'orion_hegemony')!;
+        const mechAlien = ALIEN_FACTIONS.find((f) => f.id === 'mechanema')!;
+        const allianceHuman = HUMAN_FACTIONS.find((f) => f.id === 'terran_alliance')!;
+        const unionHuman = HUMAN_FACTIONS.find((f) => f.id === 'terran_union')!;
+
+        expect(orionAlien.defaultColor).toBe('#18181b');
+        expect(allianceHuman.defaultColor).toBe('#18181b');
+        expect(mechAlien.defaultColor).toBe('#f8fafc');
+        expect(unionHuman.defaultColor).toBe('#f8fafc');
+
+        // Color conflict detection
+        expect(areFactionsConflictingColor('orion_hegemony', 'terran_alliance')).toBe(true);
+        expect(areFactionsConflictingColor('mechanema', 'terran_union')).toBe(true);
+        expect(areFactionsConflictingColor('orion_hegemony', 'mechanema')).toBe(false);
+
+        // -------------------------------------------------------------
+        // Bug 117: Tiles from expansions marked in Galactic Gallery
+        // -------------------------------------------------------------
+        // getExpansionForItem helper
+        expect(getExpansionForItem('rift_cannon')?.id).toBe('rift_cannon');
+        expect(getExpansionForItem('Rift Cannon')?.id).toBe('rift_cannon');
+        expect(getExpansionForItem('rift_conductor')?.id).toBe('rift_cannon');
+        expect(getExpansionForItem('disc_rift_conductor')?.id).toBe('rift_cannon');
+        expect(getExpansionForItem('gauss_shield')).toBeNull();
+        expect(getExpansionForItem('ion_cannon')).toBeNull();
+
+        // Render GalacticGalleryModal for Techs
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+        const galleryTechHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'techs',
+          })
+        );
+
+        // Should display Rift Cannon Expansion badge and Expansions category chip
+        expect(galleryTechHtml).toContain('Rift Cannon Expansion');
+        expect(galleryTechHtml).toContain('Expansions');
+
+        // Render GalacticGalleryModal for Ship Parts
+        const galleryPartsHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'parts',
+          })
+        );
+        expect(galleryPartsHtml).toContain('Rift Cannon Expansion');
+        expect(galleryPartsHtml).toContain('Expansions');
+
+        // Render GalacticGalleryModal for Discoveries
+        const galleryDiscHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'discoveries',
+          })
+        );
+        expect(galleryDiscHtml).toContain('Rift Cannon Expansion');
+        expect(galleryDiscHtml).toContain('Expansions');
       });
     });
   });

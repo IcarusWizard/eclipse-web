@@ -23,6 +23,7 @@ import {
   Handshake,
 } from 'lucide-react';
 import { canExchangeAmbassadors } from '../../engine/rules/gameReducer';
+import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 
 interface PlayerBoardProps {
   player: PlayerState;
@@ -70,6 +71,8 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   const matForecast = getIncomeForecast(player.population.material.cubesOnBoard);
 
   const reputationVP = player.reputationTiles.reduce((a, b) => a + b, 0);
+  const trackSlots = getPlayerReputationTrackSlots(player, allPlayers);
+  const occupiedSlotCount = trackSlots.filter((s) => Boolean(s.tile)).length;
   const totalShipsDeployed = deployed.interceptor + deployed.cruiser + deployed.dreadnought + deployed.starbase;
 
   // Collapsed compact mini-HUD
@@ -265,8 +268,8 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-600/50 text-amber-300 ml-auto"
             title={
               hideOpponentReputation
-                ? `Reputation: ? VP (${player.reputationTiles.length}/${player.faction.reputationSlots ?? 5} tiles, secret)`
-                : `Reputation: ${reputationVP} VP (${player.reputationTiles.length}/${player.faction.reputationSlots ?? 5} tiles)`
+                ? `Reputation Track: ? VP (${occupiedSlotCount}/${trackSlots.length} slots occupied, secret)`
+                : `Reputation Track: ${reputationVP} VP (${occupiedSlotCount}/${trackSlots.length} slots occupied)`
             }
           >
             <Trophy className="w-3 h-3 text-amber-400" />
@@ -484,25 +487,51 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             </span>
           </div>
           <div className="flex items-center gap-1 mt-0.5 overflow-x-auto">
-            {Array.from({ length: player.faction.reputationSlots ?? 5 }).map((_, rIdx) => {
-              const val = player.reputationTiles[rIdx];
+            {trackSlots.map((slot) => {
+              const isAmbassador = slot.tile?.type === 'ambassador';
+              const isRep = slot.tile?.type === 'reputation';
+              const repVal = isRep ? slot.tile.vp : undefined;
+
+              if (isAmbassador) {
+                const allyId = slot.tile?.allyId;
+                const ally = allPlayers?.find((p) => p.id === allyId);
+                const allyName = slot.tile?.allyName || ally?.name || allyId || 'Ally';
+                const allyColor = slot.tile?.allyColor || ally?.color || '#818cf8';
+                return (
+                  <span
+                    key={`hud_rep_slot_${slot.slotIndex}`}
+                    className="w-3.5 h-3.5 rounded-sm border text-[8px] font-bold flex items-center justify-center font-mono bg-indigo-950/80 text-indigo-200 shrink-0 cursor-help"
+                    style={{ borderColor: allyColor }}
+                    title={`Ambassador (${allyName}): +1 VP (occupying Reputation Slot #${slot.slotIndex + 1})`}
+                  >
+                    🤝
+                  </span>
+                );
+              }
+
               return (
                 <span
-                  key={`hud_rep_${rIdx}`}
-                  className={`w-3.5 h-3.5 rounded-sm border text-[8px] font-bold flex items-center justify-center font-mono ${
-                    val !== undefined
+                  key={`hud_rep_slot_${slot.slotIndex}`}
+                  className={`w-3.5 h-3.5 rounded-sm border text-[8px] font-bold flex items-center justify-center font-mono shrink-0 ${
+                    isRep
                       ? 'bg-amber-500/20 border-amber-400 text-amber-300'
                       : 'border-dashed border-slate-800 text-slate-700'
                   }`}
                   title={
-                    val !== undefined
+                    isRep
                       ? hideOpponentReputation
                         ? 'Facedown Reputation Tile (Secret)'
-                        : `Reputation Tile: +${val} VP`
-                      : `Empty Reputation Slot ${rIdx + 1}`
+                        : `Reputation Tile: +${repVal} VP (Slot #${slot.slotIndex + 1})`
+                      : `Empty Slot #${slot.slotIndex + 1} (${
+                          slot.slotType === 'amb_only'
+                            ? 'Ambassador Only'
+                            : slot.slotType === 'both'
+                            ? 'Ambassador or Reputation'
+                            : 'Reputation Only'
+                        })`
                   }
                 >
-                  {val !== undefined ? (hideOpponentReputation ? '?' : val) : ''}
+                  {isRep ? (hideOpponentReputation ? '?' : repVal) : ''}
                 </span>
               );
             })}

@@ -16,11 +16,13 @@ export const ECLIPSE_COLOR_PALETTE = {
   blue: '#0284c7',
   green: '#16a34a',
   yellow: '#eab308',
-  purple: '#9333ea',
-  orange: '#ea580c',
+  white: '#f8fafc',
+  black: '#18181b',
+  purple: '#9333ea', // legacy fallback
+  orange: '#ea580c', // legacy fallback
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'purple' | 'orange';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -35,12 +37,12 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Yellow
   descendants_of_draco: 'yellow',
   terran_republic: 'yellow',
-  // Purple
-  mechanema: 'purple',
-  terran_union: 'purple',
-  // Orange
-  orion_hegemony: 'orange',
-  terran_alliance: 'orange',
+  // White
+  mechanema: 'white',
+  terran_union: 'white',
+  // Black
+  orion_hegemony: 'black',
+  terran_alliance: 'black',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -52,10 +54,10 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   terran_conglomerate: ECLIPSE_COLOR_PALETTE.green,
   descendants_of_draco: ECLIPSE_COLOR_PALETTE.yellow,
   terran_republic: ECLIPSE_COLOR_PALETTE.yellow,
-  mechanema: ECLIPSE_COLOR_PALETTE.purple,
-  terran_union: ECLIPSE_COLOR_PALETTE.purple,
-  orion_hegemony: ECLIPSE_COLOR_PALETTE.orange,
-  terran_alliance: ECLIPSE_COLOR_PALETTE.orange,
+  mechanema: ECLIPSE_COLOR_PALETTE.white,
+  terran_union: ECLIPSE_COLOR_PALETTE.white,
+  orion_hegemony: ECLIPSE_COLOR_PALETTE.black,
+  terran_alliance: ECLIPSE_COLOR_PALETTE.black,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -162,7 +164,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     id: 'terran_union',
     name: 'Terran Union',
     isHuman: true,
-    defaultColor: ECLIPSE_COLOR_PALETTE.purple, // Purple (Paired with Mechanema)
+    defaultColor: ECLIPSE_COLOR_PALETTE.white, // White (Paired with Mechanema)
     startingSectorNumber: 225,
     startingResources: { money: 3, science: 4, materials: 3 },
     startingDiscs: 13,
@@ -184,7 +186,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     id: 'terran_alliance',
     name: 'Terran Alliance',
     isHuman: true,
-    defaultColor: ECLIPSE_COLOR_PALETTE.orange, // Orange (Paired with Orion Hegemony)
+    defaultColor: ECLIPSE_COLOR_PALETTE.black, // Black (Paired with Orion Hegemony)
     startingSectorNumber: 226,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
@@ -332,7 +334,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     id: 'mechanema',
     name: 'Mechanema',
     isHuman: false,
-    defaultColor: ECLIPSE_COLOR_PALETTE.purple, // Purple
+    defaultColor: ECLIPSE_COLOR_PALETTE.white, // White
     startingSectorNumber: 230,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
@@ -354,7 +356,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     id: 'orion_hegemony',
     name: 'Orion Hegemony',
     isHuman: false,
-    defaultColor: ECLIPSE_COLOR_PALETTE.orange, // Orange
+    defaultColor: ECLIPSE_COLOR_PALETTE.black, // Black
     startingSectorNumber: 232,
     startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,

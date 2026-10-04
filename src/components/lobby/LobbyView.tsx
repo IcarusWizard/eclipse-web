@@ -64,9 +64,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const [customTableId, setCustomTableId] = useState<string>(() => `galaxy-${Math.floor(100 + Math.random() * 900)}`);
   const [selectedFactions, setSelectedFactions] = useState<string[]>([
     'terran_federation', // Blue
-    'orion_hegemony',    // Orange
+    'orion_hegemony',    // Black
     'planta',            // Green
-    'mechanema',         // Purple
+    'mechanema',         // White
     'eridani_empire',    // Red
     'descendants_of_draco', // Yellow
   ]);

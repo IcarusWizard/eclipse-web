@@ -666,7 +666,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               : isCenter
               ? 'rgba(15, 23, 42, 0.98)'
               : owner
-              ? `${owner.color}15`
+              ? (owner.color === '#18181b' || owner.color === '#000000' ? 'rgba(255, 255, 255, 0.04)' : `${owner.color}15`)
               : 'rgba(15, 23, 42, 0.95)';
 
             let hexStroke = isCombatSector
@@ -680,7 +680,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               : isStagedAbandon
               ? '#f43f5e'
               : owner
-              ? owner.color
+              ? (owner.color === '#18181b' || owner.color === '#000000' ? '#71717a' : owner.color)
               : isCenter
               ? '#cbd5e1'
               : '#334155';
@@ -1355,7 +1355,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                               height="16"
                               rx="4"
                               fill="rgba(10, 15, 30, 0.94)"
-                              stroke={group.ownerColor}
+                              stroke={group.ownerColor === '#18181b' || group.ownerColor === '#000000' ? '#71717a' : group.ownerColor}
                               strokeWidth={isContested ? "1.6" : "1.2"}
                               className={isContested ? "animate-pulse" : ""}
                             />
@@ -1384,7 +1384,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                                 <tspan key={t.type}>
                                   {tIdx > 0 ? ' ' : ''}
                                   <tspan fill="#ffffff">{t.count}</tspan>
-                                  <tspan fill={group.ownerColor} fontSize="8">{t.label}</tspan>
+                                  <tspan fill={group.ownerColor === '#18181b' || group.ownerColor === '#000000' ? '#e2e8f0' : group.ownerColor} fontSize="8">{t.label}</tspan>
                                 </tspan>
                               ))}
                             </text>
@@ -1414,7 +1414,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     cy={y + HEX_RADIUS - 18}
                     r="8"
                     fill={owner.color}
-                    stroke="#ffffff"
+                    stroke={owner.color === '#f8fafc' || owner.color === '#ffffff' ? '#475569' : '#ffffff'}
                     strokeWidth="1.5"
                     className="shadow-lg"
                   />

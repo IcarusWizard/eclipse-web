@@ -14,6 +14,7 @@ import {
   ALL_DISCOVERY_TILES,
 } from '../../engine/rules/sectorData';
 import { ALL_FACTIONS } from '../../engine/rules/setup';
+import { getExpansionForItem } from '../../engine/rules/expansions';
 import { Technology } from '../../engine/types/tech';
 import { ShipPart } from '../../engine/types/blueprints';
 import { DiscoveryTile } from '../../engine/types/galaxy';
@@ -77,8 +78,10 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
   const filteredTechs = useMemo(() => {
     return allTechs.filter((tech) => {
+      const exp = getExpansionForItem(tech.id);
       const matchesCat =
-        techCategory === 'all' || tech.category === techCategory;
+        techCategory === 'all' ||
+        (techCategory === 'expansion' ? Boolean(exp) : tech.category === techCategory);
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !q ||
@@ -86,7 +89,8 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
         tech.description.toLowerCase().includes(q) ||
         (tech.unlocksPartId && tech.unlocksPartId.toLowerCase().includes(q)) ||
         (tech.unlocksStructure && tech.unlocksStructure.toLowerCase().includes(q)) ||
-        (tech.unlocksAbility && tech.unlocksAbility.toLowerCase().includes(q));
+        (tech.unlocksAbility && tech.unlocksAbility.toLowerCase().includes(q)) ||
+        (exp && (exp.name.toLowerCase().includes(q) || 'expansion'.includes(q)));
       return matchesCat && matchesSearch;
     });
   }, [allTechs, techCategory, searchQuery]);
@@ -98,13 +102,16 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
   const filteredParts = useMemo(() => {
     return allParts.filter((part) => {
+      const exp = getExpansionForItem(part.id);
       const matchesCat =
-        partCategory === 'all' || part.category === partCategory;
+        partCategory === 'all' ||
+        (partCategory === 'expansion' ? Boolean(exp) : part.category === partCategory);
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !q ||
         part.name.toLowerCase().includes(q) ||
-        part.category.toLowerCase().includes(q);
+        part.category.toLowerCase().includes(q) ||
+        (exp && (exp.name.toLowerCase().includes(q) || 'expansion'.includes(q)));
       return matchesCat && matchesSearch;
     });
   }, [allParts, partCategory, searchQuery]);
@@ -144,6 +151,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
   const filteredDiscoveries = useMemo(() => {
     return groupedDiscoveries.filter(({ tile }) => {
+      const exp = getExpansionForItem(tile.id) || getExpansionForItem(tile.name);
       let cat = 'special';
       if (tile.immediateReward?.materials || tile.immediateReward?.science || tile.immediateReward?.money) {
         cat = 'resources';
@@ -151,12 +159,14 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
         cat = 'modules';
       }
       const matchesCat =
-        discoveryCategory === 'all' || discoveryCategory === cat;
+        discoveryCategory === 'all' ||
+        (discoveryCategory === 'expansion' ? Boolean(exp) : discoveryCategory === cat);
       const q = searchQuery.toLowerCase().trim();
       const matchesSearch =
         !q ||
         tile.name.toLowerCase().includes(q) ||
-        tile.description.toLowerCase().includes(q);
+        tile.description.toLowerCase().includes(q) ||
+        (exp && (exp.name.toLowerCase().includes(q) || 'expansion'.includes(q)));
       return matchesCat && matchesSearch;
     });
   }, [groupedDiscoveries, discoveryCategory, searchQuery]);
@@ -277,6 +287,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   { id: 'grid', label: 'Grid (Green)', count: GRID_TECHS.length },
                   { id: 'nano', label: 'Nano (Blue)', count: NANO_TECHS.length },
                   { id: 'rare', label: 'Rare Techs (Purple)', count: ALL_RARE_TECHS.length },
+                  { id: 'expansion', label: 'Expansions', count: allTechs.filter((t) => Boolean(getExpansionForItem(t.id))).length },
                 ].map((chip) => (
                   <button
                     key={chip.id}
@@ -296,6 +307,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filteredTechs.map((tech) => {
                   const isRare = tech.category === 'rare';
+                  const exp = getExpansionForItem(tech.id);
                   const catColor =
                     tech.category === 'military'
                       ? 'border-rose-500/40 bg-rose-950/10 text-rose-300'
@@ -308,8 +320,12 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   return (
                     <div
                       key={tech.id}
-                      className={`p-4 rounded-xl border bg-slate-950/80 flex flex-col justify-between hover:border-slate-600 transition-all ${
-                        isRare ? 'border-purple-500/40' : 'border-slate-800'
+                      className={`p-4 rounded-xl border flex flex-col justify-between hover:border-slate-600 transition-all ${
+                        exp
+                          ? 'border-purple-500/60 bg-purple-950/20 shadow-md shadow-purple-950/30 ring-1 ring-purple-500/40'
+                          : isRare
+                          ? 'border-purple-500/40 bg-slate-950/80'
+                          : 'border-slate-800 bg-slate-950/80'
                       }`}
                     >
                       <div>
@@ -322,11 +338,22 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                               </span>
                             ) : null}
                           </h4>
-                          <span
-                            className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded border font-semibold shrink-0 ${catColor}`}
-                          >
-                            {tech.category} {tech.tier ? `T${tech.tier}` : 'Rare'}
-                          </span>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {exp && (
+                              <span
+                                className="text-[9px] px-2 py-0.5 rounded font-mono font-bold uppercase bg-purple-900/80 border border-purple-400 text-purple-200 flex items-center gap-1 shadow-sm"
+                                title={`Expansion: ${exp.name}`}
+                              >
+                                <Sparkles className="w-2.5 h-2.5 text-purple-300" />
+                                {`${exp.name} Expansion`}
+                              </span>
+                            )}
+                            <span
+                              className={`text-[10px] uppercase font-mono px-2 py-0.5 rounded border font-semibold shrink-0 ${catColor}`}
+                            >
+                              {tech.category} {tech.tier ? `T${tech.tier}` : 'Rare'}
+                            </span>
+                          </div>
                         </div>
 
                         <p className="text-xs text-slate-300 leading-relaxed mb-3">
@@ -377,10 +404,13 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   { id: 'drive', label: 'Drives' },
                   { id: 'reactor', label: 'Power Sources' },
                   { id: 'hull', label: 'Hulls' },
+                  { id: 'expansion', label: 'Expansions' },
                 ].map((chip) => {
                   const count =
                     chip.id === 'all'
                       ? allParts.length
+                      : chip.id === 'expansion'
+                      ? allParts.filter((p) => Boolean(getExpansionForItem(p.id))).length
                       : allParts.filter((p) => p.category === chip.id).length;
                   return (
                     <button
@@ -415,16 +445,19 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                     'soliton_cannon', 'transition_drive', 'flux_missile', 'zero_point_source',
                     'rift_cannon',
                   ].includes(part.id);
+                  const exp = getExpansionForItem(part.id);
 
                   return (
                     <div
                       key={part.id}
-                      className={`p-3.5 rounded-xl border bg-slate-950/90 flex flex-col justify-between hover:border-slate-600 transition-all ${
-                        isAncient
+                      className={`p-3.5 rounded-xl border flex flex-col justify-between hover:border-slate-600 transition-all ${
+                        exp
+                          ? 'border-purple-500/60 bg-purple-950/20 shadow-md shadow-purple-950/30 ring-1 ring-purple-500/40'
+                          : isAncient
                           ? 'border-amber-500/40 bg-amber-950/10'
                           : isRareTech
                           ? 'border-purple-500/40 bg-purple-950/10'
-                          : 'border-slate-800'
+                          : 'border-slate-800 bg-slate-950/90'
                       }`}
                     >
                       <div>
@@ -432,19 +465,30 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                           <h4 className="text-xs font-bold text-slate-100 flex items-center gap-1">
                             <span>{part.name}</span>
                           </h4>
-                          <span
-                            className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded border font-semibold shrink-0 ${
-                              isAncient
-                                ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
-                                : isRareTech
-                                ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
-                                : isStandard
-                                ? 'bg-slate-800 text-slate-300 border-slate-700'
-                                : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
-                            }`}
-                          >
-                            {isAncient ? 'Ancient' : isRareTech ? 'Rare Tech' : isStandard ? 'Standard' : 'Research'}
-                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            {exp && (
+                              <span
+                                className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase bg-purple-900/80 border border-purple-400 text-purple-200 flex items-center gap-1 shadow-sm"
+                                title={`Expansion: ${exp.name}`}
+                              >
+                                <Sparkles className="w-2.5 h-2.5 text-purple-300" />
+                                {`${exp.name} Expansion`}
+                              </span>
+                            )}
+                            <span
+                              className={`text-[9px] uppercase font-mono px-1.5 py-0.5 rounded border font-semibold shrink-0 ${
+                                isAncient
+                                  ? 'bg-amber-500/20 text-amber-300 border-amber-500/40'
+                                  : isRareTech
+                                  ? 'bg-purple-500/20 text-purple-300 border-purple-500/40'
+                                  : isStandard
+                                  ? 'bg-slate-800 text-slate-300 border-slate-700'
+                                  : 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40'
+                              }`}
+                            >
+                              {isAncient ? 'Ancient' : isRareTech ? 'Rare Tech' : isStandard ? 'Standard' : 'Research'}
+                            </span>
+                          </div>
                         </div>
 
                         <div className="text-[10px] text-slate-400 uppercase font-mono mb-2">
@@ -665,9 +709,9 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
             <div>
               <div className="p-3 mb-4 rounded-xl bg-cyan-950/30 border border-cyan-500/30 text-xs text-cyan-300 flex items-center justify-between">
                 <span>
-                  Official Eclipse: Second Dawn Discovery Tile Bag contains exactly <strong>36 tiles</strong> across <strong>24 distinct types</strong>.
+                  Official Eclipse: Second Dawn Discovery Tile Bag contains <strong>36 base tiles</strong> across <strong>24 distinct types</strong>, plus active expansion modules.
                 </span>
-                <span className="font-mono font-bold">Total: 36 Tiles</span>
+                <span className="font-mono font-bold">Catalog: {groupedDiscoveries.length} Types</span>
               </div>
 
               {/* Category Filter Chips */}
@@ -677,6 +721,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   { id: 'resources', label: 'Resource Caches' },
                   { id: 'modules', label: 'Ancient Ship Modules' },
                   { id: 'special', label: 'Ancient Tech & Structures' },
+                  { id: 'expansion', label: 'Expansions' },
                 ].map((chip) => (
                   <button
                     key={chip.id}
@@ -694,21 +739,38 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
               {/* Grid of Discovery Tiles */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-                {filteredDiscoveries.map(({ tile, count }) => (
-                  <div
-                    key={tile.name}
-                    className="p-4 rounded-xl border border-cyan-500/30 bg-slate-950/90 flex flex-col justify-between hover:border-cyan-400/60 transition-all"
-                  >
-                    <div>
-                      <div className="flex items-start justify-between gap-2 mb-2">
-                        <h4 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
-                          <Award className="w-4 h-4 text-cyan-400 shrink-0" />
-                          <span>{tile.name}</span>
-                        </h4>
-                        <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold border border-cyan-500/40">
-                          {count} {count > 1 ? 'copies' : 'copy'} in bag
-                        </span>
-                      </div>
+                {filteredDiscoveries.map(({ tile, count }) => {
+                  const exp = getExpansionForItem(tile.id) || getExpansionForItem(tile.name);
+                  return (
+                    <div
+                      key={tile.name}
+                      className={`p-4 rounded-xl border flex flex-col justify-between hover:border-cyan-400/60 transition-all ${
+                        exp
+                          ? 'border-purple-500/60 bg-purple-950/20 shadow-md shadow-purple-950/30 ring-1 ring-purple-500/40'
+                          : 'border-cyan-500/30 bg-slate-950/90'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-2">
+                          <h4 className="text-sm font-bold text-slate-100 flex items-center gap-1.5">
+                            <Award className={`w-4 h-4 shrink-0 ${exp ? 'text-purple-400' : 'text-cyan-400'}`} />
+                            <span>{tile.name}</span>
+                          </h4>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            {exp && (
+                              <span
+                                className="text-[9px] px-2 py-0.5 rounded font-mono font-bold uppercase bg-purple-900/80 border border-purple-400 text-purple-200 flex items-center gap-1 shadow-sm"
+                                title={`Expansion: ${exp.name}`}
+                              >
+                                <Sparkles className="w-2.5 h-2.5 text-purple-300" />
+                                {`${exp.name} Expansion`}
+                              </span>
+                            )}
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 font-mono font-bold border border-cyan-500/40">
+                              {count} {count > 1 ? 'copies' : 'copy'} in bag
+                            </span>
+                          </div>
+                        </div>
 
                       <p className="text-xs text-slate-300 leading-relaxed mb-3">
                         {tile.description}
@@ -728,7 +790,8 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                       )}
                     </div>
                   </div>
-                ))}
+                );
+              })}
               </div>
             </div>
           )}
