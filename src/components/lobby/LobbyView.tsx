@@ -26,6 +26,11 @@ import {
   LogIn,
   BookOpen,
   Dices,
+  ChevronDown,
+  ChevronUp,
+  SlidersHorizontal,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 import {
   NeutralShipType,
@@ -84,6 +89,45 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     guardian: 'default',
     gcds: 'default',
   });
+
+  // Adaptive Display & Scrolling Options
+  const [displayMode, setDisplayMode] = useState<'compact' | 'detailed'>(() => {
+    if (typeof window !== 'undefined') {
+      return (localStorage.getItem('eclipse_lobby_display_mode') as 'compact' | 'detailed') || 'compact';
+    }
+    return 'compact';
+  });
+
+  const [isScrollableMode, setIsScrollableMode] = useState<boolean>(() => {
+    if (typeof window !== 'undefined') {
+      const saved = localStorage.getItem('eclipse_lobby_scrollable_mode');
+      return saved !== null ? saved === 'true' : true;
+    }
+    return true;
+  });
+
+  const [isExpansionsOpen, setIsExpansionsOpen] = useState<boolean>(true);
+  const [isBlueprintsOpen, setIsBlueprintsOpen] = useState<boolean>(true);
+
+  const toggleDisplayMode = () => {
+    setDisplayMode((prev) => {
+      const next = prev === 'compact' ? 'detailed' : 'compact';
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('eclipse_lobby_display_mode', next);
+      }
+      return next;
+    });
+  };
+
+  const toggleScrollableMode = () => {
+    setIsScrollableMode((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        localStorage.setItem('eclipse_lobby_scrollable_mode', String(next));
+      }
+      return next;
+    });
+  };
 
   const toggleExpansion = (id: string) => {
     setSelectedExpansions((prev) =>
@@ -172,7 +216,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-start p-4 sm:p-6 lg:p-10 relative overflow-x-hidden selection:bg-cyan-500 selection:text-slate-950">
+    <div className="min-h-screen h-full w-full bg-slate-950 text-slate-100 flex flex-col items-center justify-start p-3 sm:p-5 lg:p-8 relative overflow-x-hidden overflow-y-auto selection:bg-cyan-500 selection:text-slate-950">
       {/* Background Starfield and Nebula Glow */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(56,189,248,0.15),transparent_50%)] pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_60%,rgba(168,85,247,0.10),transparent_40%)] pointer-events-none" />
@@ -207,321 +251,539 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       {/* Main Grid */}
       <div className="relative z-10 w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
         {/* Left Column: Create New Table (7 cols) */}
-        <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 sm:p-7 shadow-2xl shadow-cyan-950/20">
-          <div className="flex items-center gap-3 border-b border-slate-800 pb-4 mb-5">
-            <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-              <PlusCircle className="w-6 h-6" />
+        <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-4 sm:p-6 shadow-2xl shadow-cyan-950/20 flex flex-col">
+          <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 mb-4 gap-2.5">
+            <div className="flex items-center gap-3">
+              <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                <PlusCircle className="w-5 h-5" />
+              </div>
+              <div>
+                <h2 className="text-lg font-display font-bold text-slate-100">
+                  Establish New Sector Table
+                </h2>
+                <p className="text-[11px] text-slate-400">
+                  Configure species factions, player count, and assign your starting seat.
+                </p>
+              </div>
             </div>
-            <div>
-              <h2 className="text-xl font-display font-bold text-slate-100">
-                Establish New Sector Table
-              </h2>
-              <p className="text-xs text-slate-400">
-                Configure species factions, player count, and assign your starting seat.
-              </p>
+
+            {/* Adaptive Display & Scrolling Controls */}
+            <div className="flex items-center gap-1.5 bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs shrink-0">
+              <button
+                type="button"
+                onClick={toggleDisplayMode}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer text-xs ${
+                  displayMode === 'compact'
+                    ? 'bg-cyan-500/25 border border-cyan-500/50 text-cyan-200'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Toggle between Compact adaptive layout and Detailed layout"
+              >
+                {displayMode === 'compact' ? (
+                  <Minimize2 className="w-3.5 h-3.5 text-cyan-400" />
+                ) : (
+                  <Maximize2 className="w-3.5 h-3.5" />
+                )}
+                <span>{displayMode === 'compact' ? 'Compact' : 'Detailed'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={toggleScrollableMode}
+                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer text-xs ${
+                  isScrollableMode
+                    ? 'bg-purple-500/25 border border-purple-500/50 text-purple-200'
+                    : 'text-slate-400 hover:text-slate-200'
+                }`}
+                title="Toggle internal scrollable container with fixed docked launch button"
+              >
+                <SlidersHorizontal className="w-3.5 h-3.5" />
+                <span>{isScrollableMode ? 'Scrollable' : 'Expanded'}</span>
+              </button>
             </div>
           </div>
 
-          <form onSubmit={handleLaunchGame} className="space-y-5">
-            {/* Table Name & Player Count */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Table ID / Code
-                </label>
-                <input
-                  type="text"
-                  value={customTableId}
-                  onChange={(e) => setCustomTableId(e.target.value)}
-                  placeholder="e.g. galaxy-101"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-sm font-mono text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
-                  required
-                />
+          <form onSubmit={handleLaunchGame} className="flex flex-col flex-1">
+            {/* Scrollable Form Body Container */}
+            <div
+              className={`space-y-4 ${
+                isScrollableMode
+                  ? 'max-h-[min(540px,calc(100vh-280px))] overflow-y-auto pr-1.5 scrollbar-thin'
+                  : ''
+              }`}
+            >
+              {/* Table Name & Player Count */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
+                    Table ID / Code
+                  </label>
+                  <input
+                    type="text"
+                    value={customTableId}
+                    onChange={(e) => setCustomTableId(e.target.value)}
+                    placeholder="e.g. galaxy-101"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
+                    required
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
+                    Player Count: <span className="text-cyan-400 font-bold">{playerCount} Commanders</span>
+                  </label>
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700">
+                    {[2, 3, 4, 5, 6].map((num) => (
+                      <button
+                        key={num}
+                        type="button"
+                        onClick={() => setPlayerCount(num)}
+                        className={`flex-1 py-1 rounded-lg text-xs font-bold font-mono transition-all ${
+                          playerCount === num
+                            ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
+                            : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                        }`}
+                      >
+                        {num}P
+                      </button>
+                    ))}
+                  </div>
+                </div>
               </div>
 
+              {/* Faction Assignment Per Seat */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Player Count: <span className="text-cyan-400 font-bold">{playerCount} Commanders</span>
+                  Faction Roster by Seat
                 </label>
-                <div className="flex items-center gap-1.5 bg-slate-950 p-1 rounded-xl border border-slate-700">
-                  {[2, 3, 4, 5, 6].map((num) => (
+                <div
+                  className={`grid grid-cols-1 sm:grid-cols-2 gap-2 ${
+                    displayMode === 'compact' ? 'max-h-48' : 'max-h-64'
+                  } overflow-y-auto pr-1 scrollbar-thin`}
+                >
+                  {Array.from({ length: playerCount }).map((_, idx) => {
+                    const currentFactionId = selectedFactions[idx] || 'terran_federation';
+                    const faction = ALL_FACTIONS.find((f) => f.id === currentFactionId);
+
+                    return (
+                      <div
+                        key={idx}
+                        className="p-2 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2"
+                      >
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-300 text-[11px] font-bold font-mono flex items-center justify-center shrink-0">
+                            {idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <div className="text-xs font-semibold text-slate-200 truncate">
+                              Seat {idx + 1}
+                            </div>
+                            <div className="text-[10px] text-slate-400 truncate">
+                              {faction?.isHuman ? 'Terran' : 'Alien'} ({faction?.reputationSlots ?? 5} Rep)
+                            </div>
+                          </div>
+                        </div>
+
+                        <select
+                          value={currentFactionId}
+                          onChange={(e) => handleFactionChange(idx, e.target.value)}
+                          className="bg-slate-900 border border-slate-700 text-xs font-medium rounded-lg px-2 py-1 text-slate-200 focus:outline-none focus:border-cyan-400 max-w-[130px]"
+                        >
+                          {ALL_FACTIONS.map((f) => {
+                            const conflictSeat = selectedFactions.slice(0, playerCount).findIndex(
+                              (otherId, otherIdx) => otherIdx !== idx && areFactionsConflictingColor(otherId, f.id)
+                            );
+                            const isDisabled = conflictSeat !== -1;
+                            return (
+                              <option key={f.id} value={f.id} disabled={isDisabled}>
+                                {f.name}{isDisabled ? ` (Color: S${conflictSeat + 1})` : ''}
+                              </option>
+                            );
+                          })}
+                        </select>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Your Starting Control Mode / Seat */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
+                  Your Control Mode on this Device
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setMySeat('all')}
+                    className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                      mySeat === 'all'
+                        ? 'bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    <Users className="w-3.5 h-3.5" />
+                    <span>Hotseat (All)</span>
+                  </button>
+                  {Array.from({ length: Math.min(3, playerCount) }).map((_, sIdx) => (
                     <button
-                      key={num}
+                      key={sIdx}
                       type="button"
-                      onClick={() => setPlayerCount(num)}
-                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold font-mono transition-all ${
-                        playerCount === num
-                          ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
+                      onClick={() => setMySeat(sIdx)}
+                      className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                        mySeat === sIdx
+                          ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-500/20'
+                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      {num}P
+                      <span>Seat {sIdx + 1} Only</span>
                     </button>
                   ))}
                 </div>
               </div>
-            </div>
 
-            {/* Faction Assignment Per Seat */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-2">
-                Faction Roster by Seat
-              </label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 max-h-64 overflow-y-auto pr-1">
-                {Array.from({ length: playerCount }).map((_, idx) => {
-                  const currentFactionId = selectedFactions[idx] || 'terran_federation';
-                  const faction = ALL_FACTIONS.find((f) => f.id === currentFactionId);
-
-                  return (
-                    <div
-                      key={idx}
-                      className="p-2.5 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2"
-                    >
-                      <div className="flex items-center gap-2 min-w-0">
-                        <span className="w-6 h-6 rounded-lg bg-slate-800 text-slate-300 text-xs font-bold font-mono flex items-center justify-center shrink-0">
-                          {idx + 1}
-                        </span>
-                        <div className="min-w-0">
-                          <div className="text-xs font-semibold text-slate-200 truncate">
-                            Seat {idx + 1}
-                          </div>
-                          <div className="text-[10px] text-slate-400 truncate">
-                            {faction?.isHuman ? 'Terran' : 'Alien'} ({faction?.reputationSlots ?? 5} Rep slots)
-                          </div>
-                        </div>
-                      </div>
-
-                      <select
-                        value={currentFactionId}
-                        onChange={(e) => handleFactionChange(idx, e.target.value)}
-                        className="bg-slate-900 border border-slate-700 text-xs font-medium rounded-lg px-2 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400"
-                      >
-                        {ALL_FACTIONS.map((f) => {
-                          const conflictSeat = selectedFactions.slice(0, playerCount).findIndex(
-                            (otherId, otherIdx) => otherIdx !== idx && areFactionsConflictingColor(otherId, f.id)
-                          );
-                          const isDisabled = conflictSeat !== -1;
-                          return (
-                            <option key={f.id} value={f.id} disabled={isDisabled}>
-                              {f.name}{isDisabled ? ` (Color in use: Seat ${conflictSeat + 1})` : ''}
-                            </option>
-                          );
-                        })}
-                      </select>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Your Starting Control Mode / Seat */}
-            <div>
-              <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                Your Control Mode on this Device
-              </label>
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setMySeat('all')}
-                  className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                    mySeat === 'all'
-                      ? 'bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20'
-                      : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
+              {/* Expansion Modules */}
+              <div>
+                <div
+                  onClick={() => setIsExpansionsOpen(!isExpansionsOpen)}
+                  className="flex items-center justify-between mb-1.5 cursor-pointer select-none group"
                 >
-                  <Users className="w-3.5 h-3.5" />
-                  <span>Hotseat (All)</span>
-                </button>
-                {Array.from({ length: Math.min(3, playerCount) }).map((_, sIdx) => (
-                  <button
-                    key={sIdx}
-                    type="button"
-                    onClick={() => setMySeat(sIdx)}
-                    className={`py-2 px-3 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      mySeat === sIdx
-                        ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-500/20'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    <span>Seat {sIdx + 1} Only</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            {/* Expansion Modules */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Expansions & Modules
-                </label>
-                <span className="text-[11px] font-mono text-cyan-400">
-                  {selectedExpansions.length} Enabled
-                </span>
-              </div>
-              <div className="space-y-2">
-                {AVAILABLE_EXPANSIONS.map((exp) => {
-                  const isChecked = selectedExpansions.includes(exp.id);
-                  return (
-                    <label
-                      key={exp.id}
-                      className={`flex items-start gap-3 p-3 rounded-xl border transition-all cursor-pointer ${
-                        isChecked
-                          ? 'bg-purple-950/40 border-purple-500/60 text-purple-100 shadow-sm shadow-purple-900/20'
-                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={isChecked}
-                        onChange={() => toggleExpansion(exp.id)}
-                        className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-400 focus:ring-offset-0 cursor-pointer"
-                      />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-100">{exp.name}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-900/80 text-purple-300 border border-purple-600/40">
-                            {exp.badge}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                          {exp.description}
-                        </p>
-                      </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400 group-hover:text-slate-200 transition">
+                      {isExpansionsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                    </span>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 group-hover:text-slate-100 transition cursor-pointer">
+                      Expansions & Modules
                     </label>
-                  );
-                })}
-              </div>
-            </div>
+                  </div>
+                  <span className="text-[11px] font-mono text-cyan-400">
+                    {selectedExpansions.length} Enabled
+                  </span>
+                </div>
 
-            {/* Neutral Ship Blueprints (NPCs) */}
-            <div>
-              <div className="flex items-center justify-between mb-2">
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                  Neutral Ship Blueprints (NPCs)
-                </label>
-                <span className="text-[11px] font-mono text-cyan-400">
-                  Ancients • Guardians • GCDS
-                </span>
-              </div>
-              <div className="space-y-2.5">
-                {(
-                  [
-                    {
-                      type: 'ancient' as const,
-                      label: 'Ancient Ship',
-                      badge: 'Outer & Middle Sectors',
-                      defaultDesc: '2 Yellow Cannons (+1 Hit) • 2 Hull • Init 2',
-                      advDesc: '1 Orange Cannon (+1 Hit) • 2 Hull • Init 1',
-                    },
-                    {
-                      type: 'guardian' as const,
-                      label: 'Guardian',
-                      badge: 'Guardian Sectors',
-                      defaultDesc: '3 Yellow Cannons (+2 Hit, -1 Shield) • 3 Hull • Init 3 • 2 VP',
-                      advDesc: '2 Orange Missiles, 1 Red Cannon (+1 Hit) • 3 Hull • Init 1 • 2 VP',
-                    },
-                    {
-                      type: 'gcds' as const,
-                      label: 'Galactic Center Defense System (GCDS)',
-                      badge: 'Center Sector 001',
-                      defaultDesc: '4 Yellow Cannons (+2 Hit) • 7 Hull • Init 0 • 4 VP',
-                      advDesc: '4 Yellow Missiles, 1 Red Cannon (+2 Hit) • 3 Hull • Init 2 • 4 VP',
-                    },
-                  ]
-                ).map(({ type, label, badge, defaultDesc, advDesc }) => {
-                  const currentSel = neutralShipSelections[type];
-                  return (
-                    <div
-                      key={type}
-                      className="p-3 rounded-xl border bg-slate-950/60 border-slate-800 space-y-2"
-                    >
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-bold text-slate-100">{label}</span>
-                          <span className="px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-400 bg-slate-900 border border-slate-800">
-                            {badge}
-                          </span>
-                        </div>
-                        <div className="flex items-center gap-1">
+                {isExpansionsOpen ? (
+                  displayMode === 'compact' ? (
+                    <div className="flex flex-wrap gap-2">
+                      {AVAILABLE_EXPANSIONS.map((exp) => {
+                        const isChecked = selectedExpansions.includes(exp.id);
+                        return (
                           <button
+                            key={exp.id}
                             type="button"
-                            onClick={() =>
-                              setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
-                            }
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                              currentSel === 'default'
-                                ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400 shadow-sm shadow-cyan-500/20'
-                                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                            onClick={() => toggleExpansion(exp.id)}
+                            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
+                              isChecked
+                                ? 'bg-purple-900/50 border-purple-500 text-purple-200 shadow-sm shadow-purple-950'
+                                : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
                             }`}
                           >
-                            Default
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
-                            }
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                              currentSel === 'advanced'
-                                ? 'bg-amber-500/25 text-amber-200 border border-amber-400 shadow-sm shadow-amber-500/20'
-                                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                            }`}
-                          >
-                            Advanced
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() =>
-                              setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
-                            }
-                            className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                              currentSel === 'random'
-                                ? 'bg-purple-500/25 text-purple-200 border border-purple-400 shadow-sm shadow-purple-500/20'
-                                : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                            }`}
-                          >
-                            <Dices className="w-3 h-3" />
-                            <span>Random</span>
-                          </button>
-                        </div>
-                      </div>
-                      <div className="text-[11px] font-mono pl-0.5">
-                        {currentSel === 'default' && (
-                          <div className="text-slate-400 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-                            <span>{defaultDesc}</span>
-                          </div>
-                        )}
-                        {currentSel === 'advanced' && (
-                          <div className="text-amber-300 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                            <span>{advDesc}</span>
-                          </div>
-                        )}
-                        {currentSel === 'random' && (
-                          <div className="text-purple-300 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
-                            <span className="italic">
-                              Random: 50% chance Default or Advanced upon game start
+                            <span
+                              className={`w-2 h-2 rounded-full ${
+                                isChecked ? 'bg-purple-400' : 'bg-slate-600'
+                              }`}
+                            />
+                            <span>{exp.name}</span>
+                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-purple-950 border border-purple-600/40 text-purple-300">
+                              {exp.badge}
                             </span>
-                          </div>
-                        )}
-                      </div>
+                          </button>
+                        );
+                      })}
                     </div>
-                  );
-                })}
+                  ) : (
+                    <div className="space-y-2">
+                      {AVAILABLE_EXPANSIONS.map((exp) => {
+                        const isChecked = selectedExpansions.includes(exp.id);
+                        return (
+                          <label
+                            key={exp.id}
+                            className={`flex items-start gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
+                              isChecked
+                                ? 'bg-purple-950/40 border-purple-500/60 text-purple-100 shadow-sm shadow-purple-900/20'
+                                : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                            }`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked}
+                              onChange={() => toggleExpansion(exp.id)}
+                              className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-400 focus:ring-offset-0 cursor-pointer"
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-100">{exp.name}</span>
+                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-900/80 text-purple-300 border border-purple-600/40">
+                                  {exp.badge}
+                                </span>
+                              </div>
+                              <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
+                                {exp.description}
+                              </p>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : (
+                  <div className="p-2 rounded-xl bg-slate-950/50 border border-slate-800/80 text-[11px] font-mono text-slate-400">
+                    {selectedExpansions.length > 0 ? (
+                      <span>
+                        Active:{' '}
+                        {selectedExpansions
+                          .map((id) => AVAILABLE_EXPANSIONS.find((e) => e.id === id)?.name || id)
+                          .join(', ')}
+                      </span>
+                    ) : (
+                      <span>No expansions enabled (Base Game only)</span>
+                    )}
+                  </div>
+                )}
+              </div>
+
+              {/* Neutral Ship Blueprints (NPCs) */}
+              <div>
+                <div
+                  onClick={() => setIsBlueprintsOpen(!isBlueprintsOpen)}
+                  className="flex items-center justify-between mb-1.5 cursor-pointer select-none group"
+                >
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-slate-400 group-hover:text-slate-200 transition">
+                      {isBlueprintsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+                    </span>
+                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 group-hover:text-slate-100 transition cursor-pointer">
+                      Neutral Ship Blueprints (NPCs)
+                    </label>
+                  </div>
+                  <span className="text-[11px] font-mono text-cyan-400">
+                    Ancients • Guardians • GCDS
+                  </span>
+                </div>
+
+                {isBlueprintsOpen ? (
+                  displayMode === 'compact' ? (
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                      {(
+                        [
+                          {
+                            type: 'ancient' as const,
+                            label: 'Ancient Ship',
+                            defaultDesc: 'Init 2, 2H, 2Y (+1)',
+                            advDesc: 'Init 1, 2H, 1O (+1)',
+                          },
+                          {
+                            type: 'guardian' as const,
+                            label: 'Guardian',
+                            defaultDesc: 'Init 3, 3H, 3Y (+2/-1)',
+                            advDesc: 'Init 1, 3H, 2O Msl + 1R (+1)',
+                          },
+                          {
+                            type: 'gcds' as const,
+                            label: 'Galactic Center Defense System (GCDS)',
+                            defaultDesc: 'Init 0, 7H, 4Y (+2)',
+                            advDesc: 'Init 2, 3H, 4Y Msl + 1R (+2)',
+                          },
+                        ]
+                      ).map(({ type, label, defaultDesc, advDesc }) => {
+                        const currentSel = neutralShipSelections[type];
+                        return (
+                          <div
+                            key={type}
+                            className="p-2 rounded-xl border bg-slate-950/60 border-slate-800 flex flex-col justify-between gap-1.5"
+                          >
+                            <div className="flex items-center justify-between gap-1">
+                              <span className="text-xs font-bold text-slate-200 truncate">{label}</span>
+                            </div>
+                            <div className="flex items-center gap-1">
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
+                                }
+                                className={`flex-1 py-1 rounded text-[10px] font-bold transition cursor-pointer text-center ${
+                                  currentSel === 'default'
+                                    ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400 shadow-sm'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                }`}
+                              >
+                                Default
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
+                                }
+                                className={`flex-1 py-1 rounded text-[10px] font-bold transition cursor-pointer text-center ${
+                                  currentSel === 'advanced'
+                                    ? 'bg-amber-500/25 text-amber-200 border border-amber-400 shadow-sm'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                }`}
+                              >
+                                Advanced
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
+                                }
+                                title="Random (50% Default / 50% Advanced)"
+                                className={`px-1.5 py-1 rounded text-[10px] font-bold transition cursor-pointer flex items-center justify-center gap-0.5 ${
+                                  currentSel === 'random'
+                                    ? 'bg-purple-500/25 text-purple-200 border border-purple-400 shadow-sm'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                }`}
+                              >
+                                <Dices className="w-2.5 h-2.5" />
+                                <span>Random</span>
+                              </button>
+                            </div>
+                            <div className="text-[10px] font-mono truncate pt-0.5">
+                              {currentSel === 'default' && (
+                                <span className="text-slate-400">{defaultDesc}</span>
+                              )}
+                              {currentSel === 'advanced' && (
+                                <span className="text-amber-300 font-medium">{advDesc}</span>
+                              )}
+                              {currentSel === 'random' && (
+                                <span className="text-purple-300 italic">🎲 Random (50/50)</span>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <div className="space-y-2.5">
+                      {(
+                        [
+                          {
+                            type: 'ancient' as const,
+                            label: 'Ancient Ship',
+                            badge: 'Outer & Middle Sectors',
+                            defaultDesc: '2 Yellow Cannons (+1 Hit) • 2 Hull • Init 2',
+                            advDesc: '1 Orange Cannon (+1 Hit) • 2 Hull • Init 1',
+                          },
+                          {
+                            type: 'guardian' as const,
+                            label: 'Guardian',
+                            badge: 'Guardian Sectors',
+                            defaultDesc: '3 Yellow Cannons (+2 Hit, -1 Shield) • 3 Hull • Init 3 • 2 VP',
+                            advDesc: '2 Orange Missiles, 1 Red Cannon (+1 Hit) • 3 Hull • Init 1 • 2 VP',
+                          },
+                          {
+                            type: 'gcds' as const,
+                            label: 'Galactic Center Defense System (GCDS)',
+                            badge: 'Center Sector 001',
+                            defaultDesc: '4 Yellow Cannons (+2 Hit) • 7 Hull • Init 0 • 4 VP',
+                            advDesc: '4 Yellow Missiles, 1 Red Cannon (+2 Hit) • 3 Hull • Init 2 • 4 VP',
+                          },
+                        ]
+                      ).map(({ type, label, badge, defaultDesc, advDesc }) => {
+                        const currentSel = neutralShipSelections[type];
+                        return (
+                          <div
+                            key={type}
+                            className="p-3 rounded-xl border bg-slate-950/60 border-slate-800 space-y-2"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-100">{label}</span>
+                                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-400 bg-slate-900 border border-slate-800">
+                                  {badge}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
+                                  }
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                    currentSel === 'default'
+                                      ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400 shadow-sm shadow-cyan-500/20'
+                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                  }`}
+                                >
+                                  Default
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
+                                  }
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                    currentSel === 'advanced'
+                                      ? 'bg-amber-500/25 text-amber-200 border border-amber-400 shadow-sm shadow-amber-500/20'
+                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                  }`}
+                                >
+                                  Advanced
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
+                                  }
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
+                                    currentSel === 'random'
+                                      ? 'bg-purple-500/25 text-purple-200 border border-purple-400 shadow-sm shadow-purple-500/20'
+                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                  }`}
+                                >
+                                  <Dices className="w-3 h-3" />
+                                  <span>Random</span>
+                                </button>
+                              </div>
+                            </div>
+                            <div className="text-[11px] font-mono pl-0.5">
+                              {currentSel === 'default' && (
+                                <div className="text-slate-400 flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
+                                  <span>{defaultDesc}</span>
+                                </div>
+                              )}
+                              {currentSel === 'advanced' && (
+                                <div className="text-amber-300 flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
+                                  <span>{advDesc}</span>
+                                </div>
+                              )}
+                              {currentSel === 'random' && (
+                                <div className="text-purple-300 flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
+                                  <span className="italic">
+                                    Random: 50% chance Default or Advanced upon game start
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )
+                ) : (
+                  <div className="p-2 rounded-xl bg-slate-950/50 border border-slate-800/80 text-[11px] font-mono text-slate-400">
+                    <span>
+                      Ancients: <strong className="text-slate-200 capitalize">{neutralShipSelections.ancient}</strong> •{' '}
+                      Guardians: <strong className="text-slate-200 capitalize">{neutralShipSelections.guardian}</strong> •{' '}
+                      GCDS: <strong className="text-slate-200 capitalize">{neutralShipSelections.gcds}</strong>
+                    </span>
+                  </div>
+                )}
               </div>
             </div>
 
-            {/* Submit Button */}
-            <button
-              type="submit"
-              className="w-full py-3.5 rounded-xl font-display font-bold uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2"
-            >
-              <Rocket className="w-5 h-5" />
-              <span>Launch Galactic Conflict</span>
-            </button>
+            {/* Sticky / Docked Launch Button */}
+            <div className="pt-3.5 mt-3 border-t border-slate-800 sticky bottom-0 bg-slate-900/95 backdrop-blur-md z-10">
+              <button
+                type="submit"
+                className="w-full py-3 sm:py-3.5 rounded-xl font-display font-bold uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              >
+                <Rocket className="w-5 h-5" />
+                <span>Launch Galactic Conflict</span>
+              </button>
+            </div>
           </form>
         </div>
 

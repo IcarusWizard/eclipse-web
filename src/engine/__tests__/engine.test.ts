@@ -8242,6 +8242,10 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(lobbyHtml).toContain('Default');
         expect(lobbyHtml).toContain('Advanced');
         expect(lobbyHtml).toContain('Random');
+        expect(lobbyHtml).toContain('Compact');
+        expect(lobbyHtml).toContain('Scrollable');
+        expect(lobbyHtml).toContain('Launch Galactic Conflict');
+        expect(lobbyHtml).toContain('sticky bottom-0');
 
         const { NewGameModal } = await import('../../components/setup/NewGameModal');
         const modalHtml = renderToString(
