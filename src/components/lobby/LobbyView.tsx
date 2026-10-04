@@ -89,6 +89,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     guardian: 'default',
     gcds: 'default',
   });
+  const hasRemnants = selectedExpansions.includes('remnants_of_worlds_afar');
 
   // Adaptive Display & Scrolling Options
   const [displayMode, setDisplayMode] = useState<'compact' | 'detailed'>(() => {
@@ -130,9 +131,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const toggleExpansion = (id: string) => {
-    setSelectedExpansions((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedExpansions((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      if (!next.includes('remnants_of_worlds_afar')) {
+        setNeutralShipSelections((cur) => ({
+          ancient: cur.ancient === 'expert' ? 'default' : cur.ancient,
+          guardian: cur.guardian === 'expert' ? 'default' : cur.guardian,
+          gcds: cur.gcds === 'expert' ? 'default' : cur.gcds,
+        }));
+      }
+      return next;
+    });
   };
 
   // Join Table State
@@ -161,13 +170,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         }
       }
     }
+    const hasRemnants = selectedExpansions.includes('remnants_of_worlds_afar');
+    const sanitizedNeutralShips: NeutralShipSelectionConfig = {
+      ancient: !hasRemnants && neutralShipSelections.ancient === 'expert' ? 'default' : neutralShipSelections.ancient,
+      guardian: !hasRemnants && neutralShipSelections.guardian === 'expert' ? 'default' : neutralShipSelections.guardian,
+      gcds: !hasRemnants && neutralShipSelections.gcds === 'expert' ? 'default' : neutralShipSelections.gcds,
+    };
     onStartNewGame(
       playerCount,
       activeFactions,
       customTableId.trim() || `galaxy-${Date.now() % 1000}`,
       mySeat,
       selectedExpansions,
-      neutralShipSelections
+      sanitizedNeutralShips
     );
   };
 
@@ -628,14 +643,23 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               </button>
                               <button
                                 type="button"
-                                onClick={() =>
-                                  setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }))
+                                disabled={!hasRemnants}
+                                onClick={() => {
+                                  if (hasRemnants) {
+                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }));
+                                  }
+                                }}
+                                title={
+                                  hasRemnants
+                                    ? 'Expert Blueprint (Remnants)'
+                                    : 'Expert Blueprint requires Remnants of Worlds Afar expansion'
                                 }
-                                title="Expert Blueprint"
-                                className={`flex-1 py-1 rounded text-[10px] font-bold transition cursor-pointer text-center ${
-                                  currentSel === 'expert'
-                                    ? 'bg-rose-500/25 text-rose-200 border border-rose-400 shadow-sm'
-                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                className={`flex-1 py-1 rounded text-[10px] font-bold transition text-center ${
+                                  !hasRemnants
+                                    ? 'bg-slate-950 text-slate-600 border border-slate-900 cursor-not-allowed opacity-40'
+                                    : currentSel === 'expert'
+                                    ? 'bg-rose-500/25 text-rose-200 border border-rose-400 shadow-sm cursor-pointer'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 cursor-pointer'
                                 }`}
                               >
                                 Exp
@@ -645,7 +669,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 onClick={() =>
                                   setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
                                 }
-                                title="Random Blueprint"
+                                title={
+                                  hasRemnants
+                                    ? 'Random Blueprint (Default / Advanced / Expert)'
+                                    : 'Random Blueprint (50% Default / 50% Advanced)'
+                                }
                                 className={`px-1.5 py-1 rounded text-[10px] font-bold transition cursor-pointer flex items-center justify-center gap-0.5 ${
                                   currentSel === 'random'
                                     ? 'bg-purple-500/25 text-purple-200 border border-purple-400 shadow-sm'
@@ -667,7 +695,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 <span className="text-rose-300 font-medium">{expertDesc}</span>
                               )}
                               {currentSel === 'random' && (
-                                <span className="text-purple-300 italic">🎲 Random Blueprint</span>
+                                <span className="text-purple-300 italic">
+                                  🎲 Random {hasRemnants ? '(Def/Adv/Exp)' : '(50/50)'}
+                                </span>
                               )}
                             </div>
                           </div>
@@ -746,13 +776,23 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 </button>
                                 <button
                                   type="button"
-                                  onClick={() =>
-                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }))
+                                  disabled={!hasRemnants}
+                                  onClick={() => {
+                                    if (hasRemnants) {
+                                      setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }));
+                                    }
+                                  }}
+                                  title={
+                                    hasRemnants
+                                      ? 'Expert Blueprint (Remnants of Worlds Afar)'
+                                      : 'Expert Blueprint requires Remnants of Worlds Afar expansion'
                                   }
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                    currentSel === 'expert'
-                                      ? 'bg-rose-500/25 text-rose-200 border border-rose-400 shadow-sm shadow-rose-500/20'
-                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
+                                    !hasRemnants
+                                      ? 'bg-slate-950 text-slate-600 border border-slate-900 cursor-not-allowed opacity-40'
+                                      : currentSel === 'expert'
+                                      ? 'bg-rose-500/25 text-rose-200 border border-rose-400 shadow-sm shadow-rose-500/20 cursor-pointer'
+                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 cursor-pointer'
                                   }`}
                                 >
                                   Expert
@@ -761,6 +801,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                   type="button"
                                   onClick={() =>
                                     setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
+                                  }
+                                  title={
+                                    hasRemnants
+                                      ? 'Random Blueprint (Default / Advanced / Expert)'
+                                      : 'Random Blueprint (50% Default / 50% Advanced)'
                                   }
                                   className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
                                     currentSel === 'random'
@@ -796,7 +841,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 <div className="text-purple-300 flex items-center gap-1.5">
                                   <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
                                   <span className="italic">
-                                    Random: Selects among Default, Advanced, and Expert variants
+                                    {hasRemnants
+                                      ? 'Random: Selects among Default, Advanced, and Expert variants'
+                                      : 'Random: 50% chance Default or Advanced upon game start'}
                                   </span>
                                 </div>
                               )}

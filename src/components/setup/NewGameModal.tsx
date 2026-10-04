@@ -55,9 +55,17 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
   });
 
   const toggleExpansion = (id: string) => {
-    setSelectedExpansions((prev) =>
-      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
-    );
+    setSelectedExpansions((prev) => {
+      const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
+      if (!next.includes('remnants_of_worlds_afar')) {
+        setNeutralShipSelections((cur) => ({
+          ancient: cur.ancient === 'expert' ? 'default' : cur.ancient,
+          guardian: cur.guardian === 'expert' ? 'default' : cur.guardian,
+          gcds: cur.gcds === 'expert' ? 'default' : cur.gcds,
+        }));
+      }
+      return next;
+    });
   };
 
   // When player count changes, clamp / reset drafting
@@ -110,7 +118,13 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
 
   const handleLaunch = () => {
     if (draftedFactions.length === playerCount) {
-      onStartGame(playerCount, draftedFactions, selectedExpansions, neutralShipSelections);
+      const hasRemnants = selectedExpansions.includes('remnants_of_worlds_afar');
+      const sanitizedNeutralShips: NeutralShipSelectionConfig = {
+        ancient: !hasRemnants && neutralShipSelections.ancient === 'expert' ? 'default' : neutralShipSelections.ancient,
+        guardian: !hasRemnants && neutralShipSelections.guardian === 'expert' ? 'default' : neutralShipSelections.guardian,
+        gcds: !hasRemnants && neutralShipSelections.gcds === 'expert' ? 'default' : neutralShipSelections.gcds,
+      };
+      onStartGame(playerCount, draftedFactions, selectedExpansions, sanitizedNeutralShips);
     }
   };
 
@@ -336,14 +350,23 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                       </button>
                       <button
                         type="button"
-                        onClick={() =>
-                          setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }))
+                        disabled={!selectedExpansions.includes('remnants_of_worlds_afar')}
+                        onClick={() => {
+                          if (selectedExpansions.includes('remnants_of_worlds_afar')) {
+                            setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }));
+                          }
+                        }}
+                        title={
+                          selectedExpansions.includes('remnants_of_worlds_afar')
+                            ? `Expert (${exp})`
+                            : 'Expert Blueprint requires Remnants of Worlds Afar expansion'
                         }
-                        title={`Expert (${exp})`}
-                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                          currentSel === 'expert'
-                            ? 'bg-rose-500/25 text-rose-300 border border-rose-400'
-                            : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${
+                          !selectedExpansions.includes('remnants_of_worlds_afar')
+                            ? 'bg-slate-950 text-slate-600 border border-slate-900 cursor-not-allowed opacity-40'
+                            : currentSel === 'expert'
+                            ? 'bg-rose-500/25 text-rose-300 border border-rose-400 cursor-pointer'
+                            : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800 cursor-pointer'
                         }`}
                       >
                         Exp
@@ -370,7 +393,9 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                     {currentSel === 'advanced' && <span className="text-amber-300">{adv}</span>}
                     {currentSel === 'expert' && <span className="text-rose-300">{exp}</span>}
                     {currentSel === 'random' && (
-                      <span className="text-purple-300 italic">🎲 Random</span>
+                      <span className="text-purple-300 italic">
+                        🎲 Random {selectedExpansions.includes('remnants_of_worlds_afar') ? '(Def/Adv/Exp)' : '(50/50)'}
+                      </span>
                     )}
                   </div>
                 </div>

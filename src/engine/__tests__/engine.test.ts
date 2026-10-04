@@ -8315,11 +8315,40 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(getNeutralShipSummary('gcds', 'expert')).toContain('-2 Shield');
 
         // 2. Selection Resolution with Remnants Expansion
+        // When Remnants of Worlds Afar is active, expert resolution succeeds
         const resolvedExpert = resolveNeutralShipConfig(
           { ancient: 'expert', guardian: 'expert', gcds: 'expert' },
           ['remnants_of_worlds_afar']
         );
         expect(resolvedExpert).toEqual({ ancient: 'expert', guardian: 'expert', gcds: 'expert' });
+
+        // When Remnants of Worlds Afar is NOT active, selecting 'expert' strictly falls back to 'default'
+        const resolvedWithoutRemnants = resolveNeutralShipConfig(
+          { ancient: 'expert', guardian: 'expert', gcds: 'expert' },
+          []
+        );
+        expect(resolvedWithoutRemnants).toEqual({
+          ancient: 'default',
+          guardian: 'default',
+          gcds: 'default',
+        });
+
+        // Setup without Remnants strictly sanitizes neutral blueprints and selections
+        const nonRemnantsGame = createInitialGame(2, undefined, [], {
+          ancient: 'expert',
+          guardian: 'expert',
+          gcds: 'expert',
+        });
+        expect(nonRemnantsGame.neutralShipBlueprints).toEqual({
+          ancient: 'default',
+          guardian: 'default',
+          gcds: 'default',
+        });
+        expect(nonRemnantsGame.neutralShipSelections).toEqual({
+          ancient: 'default',
+          guardian: 'default',
+          gcds: 'default',
+        });
 
         // Random resolution with Remnants includes expert variant in pool
         const variantsObserved = new Set<string>();
@@ -8331,6 +8360,17 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           variantsObserved.add(res.ancient);
         }
         expect(variantsObserved.has('expert')).toBe(true);
+
+        // Random resolution without Remnants never includes expert
+        for (let i = 0; i < 30; i++) {
+          const res = resolveNeutralShipConfig(
+            { ancient: 'random', guardian: 'random', gcds: 'random' },
+            []
+          );
+          expect(['default', 'advanced']).toContain(res.ancient);
+          expect(['default', 'advanced']).toContain(res.guardian);
+          expect(['default', 'advanced']).toContain(res.gcds);
+        }
 
         // 3. Game Creation with Remnants of Worlds Afar
         const remnantsGame = createInitialGame(2, undefined, ['remnants_of_worlds_afar'], {
@@ -8709,7 +8749,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           })
         );
         expect(modalHtml).toContain('Exp');
-        expect(modalHtml).toContain('Init 3, 1H, 1Y (+2)');
+        expect(modalHtml).toContain('Expert Blueprint requires Remnants of Worlds Afar expansion');
 
         // LobbyView renders Exp buttons and Remnants descriptors
         const { LobbyView } = await import('../../components/lobby/LobbyView');
@@ -8721,6 +8761,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(lobbyHtml).toContain('Exp');
         expect(lobbyHtml).toContain('Remnants of Worlds Afar');
+        expect(lobbyHtml).toContain('Expert Blueprint requires Remnants of Worlds Afar expansion');
 
         // SectorInspector renders [Expert] badge
         const { SectorInspector } = await import('../../components/map/SectorInspector');

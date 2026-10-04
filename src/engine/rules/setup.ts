@@ -521,11 +521,12 @@ export function createInitialGame(
   const count = Math.max(1, Math.min(6, playerCount));
   const startingCoords = STARTING_COORDS_BY_COUNT[count] ?? STARTING_COORDS_BY_COUNT[2]!;
 
+  const hasRemnants = Boolean(expansions && expansions.includes('remnants_of_worlds_afar'));
   const resolvedNeutralBlueprints = resolveNeutralShipConfig(neutralShipSelections, expansions);
   const storedNeutralSelections: NeutralShipSelectionConfig = {
-    ancient: neutralShipSelections?.ancient ?? 'default',
-    guardian: neutralShipSelections?.guardian ?? 'default',
-    gcds: neutralShipSelections?.gcds ?? 'default',
+    ancient: !hasRemnants && neutralShipSelections?.ancient === 'expert' ? 'default' : (neutralShipSelections?.ancient ?? 'default'),
+    guardian: !hasRemnants && neutralShipSelections?.guardian === 'expert' ? 'default' : (neutralShipSelections?.guardian ?? 'default'),
+    gcds: !hasRemnants && neutralShipSelections?.gcds === 'expert' ? 'default' : (neutralShipSelections?.gcds ?? 'default'),
   };
 
   // Official Eclipse: Second Dawn Reputation Bag: 33 tiles (16x 1 VP, 9x 2 VP, 5x 3 VP, 3x 4 VP)

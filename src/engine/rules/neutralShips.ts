@@ -187,7 +187,7 @@ export function resolveNeutralShipConfig(
     if (sel === 'advanced') {
       config[t] = 'advanced';
     } else if (sel === 'expert') {
-      config[t] = 'expert';
+      config[t] = hasRemnants ? 'expert' : 'default';
     } else if (sel === 'random') {
       if (hasRemnants) {
         const roll = Math.random();
