@@ -48,6 +48,8 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
   let totalDriveSpeed = 0;
   let computerBonus = blueprint.preprintedComputer ?? 0;
   let shieldBonus = 0;
+  let hasJumpDrive = false;
+  let hasMorphShield = false;
   const errors: string[] = [];
 
   for (const part of blueprint.slots) {
@@ -58,6 +60,12 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
     bonusInitiative += part.initiativeBonus;
     if (part.driveSpeed) {
       totalDriveSpeed += part.driveSpeed;
+    }
+    if (part.id === 'jump_drive' || part.isJumpDrive) {
+      hasJumpDrive = true;
+    }
+    if (part.id === 'morph_shield' || part.morphShield) {
+      hasMorphShield = true;
     }
     computerBonus += part.computerBonus;
     shieldBonus += part.shieldBonus;
@@ -77,8 +85,8 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
     );
   }
 
-  // 2. Drive requirement: Interceptor, Cruiser, and Dreadnought MUST have at least 1 drive
-  if (blueprint.type !== 'starbase' && totalDriveSpeed <= 0) {
+  // 2. Drive requirement: Interceptor, Cruiser, and Dreadnought MUST have at least 1 drive (or Jump Drive)
+  if (blueprint.type !== 'starbase' && totalDriveSpeed <= 0 && !hasJumpDrive) {
     errors.push(`${blueprint.type.toUpperCase()} must have at least one drive to move.`);
   }
 
@@ -91,6 +99,8 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
     totalDriveSpeed,
     computerBonus,
     shieldBonus,
+    hasJumpDrive,
+    hasMorphShield,
     errors,
   };
 }

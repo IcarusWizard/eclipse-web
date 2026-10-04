@@ -570,21 +570,24 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             label: 'Ancient Ship',
                             defaultDesc: 'Init 2, 2H, 2Y (+1)',
                             advDesc: 'Init 1, 2H, 1O (+1)',
+                            expertDesc: 'Init 3, 1H, 1Y (+2)',
                           },
                           {
                             type: 'guardian' as const,
                             label: 'Guardian',
                             defaultDesc: 'Init 3, 3H, 3Y (+2/-1)',
                             advDesc: 'Init 1, 3H, 2O Msl + 1R (+1)',
+                            expertDesc: 'Init 3, 3H, 2O (+1/-1)',
                           },
                           {
                             type: 'gcds' as const,
                             label: 'Galactic Center Defense System (GCDS)',
                             defaultDesc: 'Init 0, 7H, 4Y (+2)',
                             advDesc: 'Init 2, 3H, 4Y Msl + 1R (+2)',
+                            expertDesc: 'Init 3, 4H, 2O (+2/-2)',
                           },
                         ]
-                      ).map(({ type, label, defaultDesc, advDesc }) => {
+                      ).map(({ type, label, defaultDesc, advDesc, expertDesc }) => {
                         const currentSel = neutralShipSelections[type];
                         return (
                           <div
@@ -600,33 +603,49 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 onClick={() =>
                                   setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
                                 }
+                                title="Default Blueprint"
                                 className={`flex-1 py-1 rounded text-[10px] font-bold transition cursor-pointer text-center ${
                                   currentSel === 'default'
                                     ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400 shadow-sm'
                                     : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
                                 }`}
                               >
-                                Default
+                                Def
                               </button>
                               <button
                                 type="button"
                                 onClick={() =>
                                   setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
                                 }
+                                title="Advanced Blueprint"
                                 className={`flex-1 py-1 rounded text-[10px] font-bold transition cursor-pointer text-center ${
                                   currentSel === 'advanced'
                                     ? 'bg-amber-500/25 text-amber-200 border border-amber-400 shadow-sm'
                                     : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
                                 }`}
                               >
-                                Advanced
+                                Adv
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() =>
+                                  setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }))
+                                }
+                                title="Expert Blueprint"
+                                className={`flex-1 py-1 rounded text-[10px] font-bold transition cursor-pointer text-center ${
+                                  currentSel === 'expert'
+                                    ? 'bg-rose-500/25 text-rose-200 border border-rose-400 shadow-sm'
+                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                }`}
+                              >
+                                Exp
                               </button>
                               <button
                                 type="button"
                                 onClick={() =>
                                   setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
                                 }
-                                title="Random (50% Default / 50% Advanced)"
+                                title="Random Blueprint"
                                 className={`px-1.5 py-1 rounded text-[10px] font-bold transition cursor-pointer flex items-center justify-center gap-0.5 ${
                                   currentSel === 'random'
                                     ? 'bg-purple-500/25 text-purple-200 border border-purple-400 shadow-sm'
@@ -634,7 +653,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 }`}
                               >
                                 <Dices className="w-2.5 h-2.5" />
-                                <span>Random</span>
+                                <span>Rnd</span>
                               </button>
                             </div>
                             <div className="text-[10px] font-mono truncate pt-0.5">
@@ -644,8 +663,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               {currentSel === 'advanced' && (
                                 <span className="text-amber-300 font-medium">{advDesc}</span>
                               )}
+                              {currentSel === 'expert' && (
+                                <span className="text-rose-300 font-medium">{expertDesc}</span>
+                              )}
                               {currentSel === 'random' && (
-                                <span className="text-purple-300 italic">🎲 Random (50/50)</span>
+                                <span className="text-purple-300 italic">🎲 Random Blueprint</span>
                               )}
                             </div>
                           </div>
@@ -662,6 +684,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             badge: 'Outer & Middle Sectors',
                             defaultDesc: '2 Yellow Cannons (+1 Hit) • 2 Hull • Init 2',
                             advDesc: '1 Orange Cannon (+1 Hit) • 2 Hull • Init 1',
+                            expertDesc: '1 Yellow Cannon (+2 Hit) • 1 Hull • Init 3',
                           },
                           {
                             type: 'guardian' as const,
@@ -669,6 +692,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             badge: 'Guardian Sectors',
                             defaultDesc: '3 Yellow Cannons (+2 Hit, -1 Shield) • 3 Hull • Init 3 • 2 VP',
                             advDesc: '2 Orange Missiles, 1 Red Cannon (+1 Hit) • 3 Hull • Init 1 • 2 VP',
+                            expertDesc: '2 Orange Cannons (+1 Hit, -1 Shield) • 3 Hull • Init 3 • 2 VP',
                           },
                           {
                             type: 'gcds' as const,
@@ -676,9 +700,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             badge: 'Center Sector 001',
                             defaultDesc: '4 Yellow Cannons (+2 Hit) • 7 Hull • Init 0 • 4 VP',
                             advDesc: '4 Yellow Missiles, 1 Red Cannon (+2 Hit) • 3 Hull • Init 2 • 4 VP',
+                            expertDesc: '2 Orange Cannons (+2 Hit, -2 Shield) • 4 Hull • Init 3 • 4 VP',
                           },
                         ]
-                      ).map(({ type, label, badge, defaultDesc, advDesc }) => {
+                      ).map(({ type, label, badge, defaultDesc, advDesc, expertDesc }) => {
                         const currentSel = neutralShipSelections[type];
                         return (
                           <div
@@ -722,6 +747,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 <button
                                   type="button"
                                   onClick={() =>
+                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }))
+                                  }
+                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                                    currentSel === 'expert'
+                                      ? 'bg-rose-500/25 text-rose-200 border border-rose-400 shadow-sm shadow-rose-500/20'
+                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
+                                  }`}
+                                >
+                                  Expert
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
                                     setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
                                   }
                                   className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
@@ -748,11 +786,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                   <span>{advDesc}</span>
                                 </div>
                               )}
+                              {currentSel === 'expert' && (
+                                <div className="text-rose-300 flex items-center gap-1.5">
+                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
+                                  <span>{expertDesc}</span>
+                                </div>
+                              )}
                               {currentSel === 'random' && (
                                 <div className="text-purple-300 flex items-center gap-1.5">
                                   <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
                                   <span className="italic">
-                                    Random: 50% chance Default or Advanced upon game start
+                                    Random: Selects among Default, Advanced, and Expert variants
                                   </span>
                                 </div>
                               )}

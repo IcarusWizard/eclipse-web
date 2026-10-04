@@ -15,7 +15,8 @@ interface DiscoveryChoiceModalProps {
     equipShipType?: ShipType,
     equipSlotIndex?: number,
     chosenTechId?: string,
-    colonizeOrbitalResource?: 'money' | 'science'
+    colonizeOrbitalResource?: 'money' | 'science',
+    chosenResource?: 'money' | 'science' | 'material'
   ) => void;
 }
 
@@ -31,6 +32,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number>(0);
   const [selectedTechId, setSelectedTechId] = React.useState<string>('');
   const [colonizeOrbitalResource, setColonizeOrbitalResource] = React.useState<'money' | 'science' | null>(null);
+  const [chosenBonusResource, setChosenBonusResource] = React.useState<'money' | 'science' | 'material'>('money');
 
   const hasColonyShipReady = player.colonyShips.ready > 0;
 
@@ -127,6 +129,8 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   {part.powerProduced > 0 && `Power Produced: +${part.powerProduced} | `}
                   {part.initiativeBonus > 0 && `Initiative: +${part.initiativeBonus} | `}
                   {part.driveSpeed && `Drive Speed: ${part.driveSpeed} | `}
+                  {part.isJumpDrive && 'Jump: 1 adjacent sector regardless of wormholes | '}
+                  {part.morphShield && 'Morph Shield: -1 Shield, heals 1 dmg/round | '}
                   {part.hullBonus > 0 && `Hull: +${part.hullBonus} | `}
                   {part.shieldBonus > 0 && `Shield: -${part.shieldBonus} | `}
                   {part.computerBonus > 0 && `Computer: +${part.computerBonus} | `}
@@ -284,6 +288,64 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   Ancient Warp Portal (Connects all Warp Portals, 2 VP)
                 </span>
               )}
+              {discovery.immediateReward.artifactCodex && (
+                <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  Artifact Codex (+1 VP per Controlled Artifact at Game End)
+                </span>
+              )}
+              {discovery.immediateReward.ancientMight && (
+                <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5">
+                  <Trophy className="w-3.5 h-3.5 text-amber-400" />
+                  Ancient Might (+1 VP per 3 VP in Reputation Tiles at Game End)
+                </span>
+              )}
+              {discovery.immediateReward.choose3Resource && (
+                <div className="w-full mt-2 p-2.5 rounded-lg bg-amber-950/60 border border-amber-500/40 text-left">
+                  <div className="text-xs font-bold text-amber-300 mb-1.5 flex items-center gap-1.5">
+                    <Zap className="w-3.5 h-3.5 text-amber-400" />
+                    Gain +3 Money plus 3 additional Resources of your choice:
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setChosenBonusResource('money')}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                        chosenBonusResource === 'money'
+                          ? 'bg-amber-500/30 border-amber-400 text-amber-200 font-bold shadow'
+                          : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
+                      +3 Money (🪙 Total +6)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChosenBonusResource('science')}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                        chosenBonusResource === 'science'
+                          ? 'bg-pink-500/30 border-pink-400 text-pink-200 font-bold shadow'
+                          : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-pink-400 inline-block" />
+                      +3 Science (🔬 3 Money + 3 Science)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setChosenBonusResource('material')}
+                      className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition cursor-pointer ${
+                        chosenBonusResource === 'material'
+                          ? 'bg-amber-700/30 border-amber-600 text-amber-300 font-bold shadow'
+                          : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" />
+                      +3 Materials (⚙️ 3 Money + 3 Materials)
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -423,7 +485,8 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   undefined,
                   undefined,
                   selectedTechId || tiedTechs[0]?.id,
-                  colonizeOrbitalResource || undefined
+                  colonizeOrbitalResource || undefined,
+                  chosenBonusResource
                 )
               }
               className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25 transition group cursor-pointer"
@@ -436,6 +499,12 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   ? `Deploy free ${discovery.immediateReward.grantShipType} to sector`
                   : discovery.immediateReward?.ancientTech
                   ? `Claim ${(selectedTechId && tiedTechs.find((t) => t.id === selectedTechId)?.name) || tiedTechs[0]?.name || 'Tech'}`
+                  : discovery.immediateReward?.artifactCodex
+                  ? 'Activate Artifact Codex (+1 VP per Artifact)'
+                  : discovery.immediateReward?.ancientMight
+                  ? 'Activate Ancient Might (+1 VP per 3 VP Reputation)'
+                  : discovery.immediateReward?.choose3Resource
+                  ? `Collect +3 Money and +3 ${chosenBonusResource.toUpperCase()}`
                   : 'Collect resources immediately'}
               </span>
             </button>

@@ -577,10 +577,10 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       const maxMoveActivations = isPassed ? 1 : getMaxMoveActivations(player);
       const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
 
-      // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed
+      // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed and Jump Drive
       const shipMap = new Map<
         string,
-        { ship: SectorShip; currentSectorId: string; driveSpeed: number }
+        { ship: SectorShip; currentSectorId: string; driveSpeed: number; hasJumpDrive: boolean }
       >();
       for (const s of state.sectors) {
         for (const ship of s.ships) {
@@ -588,7 +588,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             const bp = player.blueprints[ship.type];
             const stats = bp ? calculateBlueprintStats(bp) : null;
             const driveSpeed = stats ? stats.totalDriveSpeed : 1;
-            shipMap.set(ship.id, { ship, currentSectorId: s.id, driveSpeed });
+            const hasJumpDrive = Boolean(stats?.hasJumpDrive || bp?.slots.some((sl) => sl?.id === 'jump_drive' || sl?.isJumpDrive));
+            shipMap.set(ship.id, { ship, currentSectorId: s.id, driveSpeed, hasJumpDrive });
           }
         }
       }
@@ -617,11 +618,11 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           activations.push({ activationIndex: idx, shipId: firstShip, steps });
         }
       } else {
-        // Automatic grouping for consecutive steps of the same ship up to driveSpeed
+        // Automatic grouping for consecutive steps of the same ship up to driveSpeed + jump
         let currentAct: MoveActivationGroup | null = null;
         for (const m of action.moves) {
           const shipInfo = shipMap.get(m.shipId);
-          const maxSpeed = shipInfo ? shipInfo.driveSpeed : 1;
+          const maxSpeed = shipInfo ? shipInfo.driveSpeed + (shipInfo.hasJumpDrive ? 1 : 0) : 1;
           if (currentAct && currentAct.shipId === m.shipId && currentAct.steps.length < maxSpeed) {
             currentAct.steps.push(m);
           } else {
@@ -674,10 +675,11 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (!shipInfo) {
           return { valid: false, error: `Ship ${act.shipId} not found or not owned by player.` };
         }
-        if (shipInfo.driveSpeed <= 0) {
+        const maxMoves = shipInfo.driveSpeed + (shipInfo.hasJumpDrive ? 1 : 0);
+        if (maxMoves <= 0) {
           return { valid: false, error: `${shipInfo.ship.type} has Drive Speed 0 and cannot move.` };
         }
-        if (act.steps.length > shipInfo.driveSpeed) {
+        if (act.steps.length > maxMoves) {
           return {
             valid: false,
             error: `Ship ${shipInfo.ship.type} attempted to move ${act.steps.length} hexes in one activation, but its engine only has Drive Speed ${shipInfo.driveSpeed}.`,
@@ -709,6 +711,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
         }
 
+        let usedJumpInAct = false;
         for (let sIdx = 0; sIdx < act.steps.length; sIdx++) {
           const step = act.steps[sIdx]!;
           if (pinnedShips.has(act.shipId)) {
@@ -726,11 +729,27 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (!fromSec || !toSec) {
             return { valid: false, error: 'Sector not found for movement.' };
           }
-          if (!areSectorsConnected(fromSec, toSec, hasWormholeGen)) {
-            return {
-              valid: false,
-              error: `Wormhole does not connect Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber}.`,
-            };
+          const isConnected = areSectorsConnected(fromSec, toSec, hasWormholeGen);
+          if (!isConnected) {
+            const areAdjacent = getEdgeBetween(fromSec.coord, toSec.coord) !== null;
+            if (shipInfo.hasJumpDrive && !usedJumpInAct && areAdjacent) {
+              usedJumpInAct = true;
+            } else if (shipInfo.hasJumpDrive && usedJumpInAct && areAdjacent) {
+              return {
+                valid: false,
+                error: `Ship ${shipInfo.ship.type} already used its 1 Jump Drive move in this activation. Further movement requires connected wormholes.`,
+              };
+            } else if (!areAdjacent) {
+              return {
+                valid: false,
+                error: `Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber} are not adjacent.`,
+              };
+            } else {
+              return {
+                valid: false,
+                error: `Wormhole does not connect Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber}.`,
+              };
+            }
           }
 
           // Advance ship's simulated location in simSectorShips
@@ -1937,6 +1956,27 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           sector.hasWarpPortal = true;
           sector.hasDiscoveryWarpPortal = true;
           addLog(`${player.name} discovered and placed an Ancient Warp Portal in Sector ${sector.sectorNumber}!`);
+        }
+        if (disc.immediateReward?.artifactCodex) {
+          player.hasArtifactCodex = true;
+          addLog(`${player.name} activated Artifact Codex: will gain +1 VP for each controlled Artifact at game end!`);
+        }
+        if (disc.immediateReward?.ancientMight) {
+          player.hasAncientMight = true;
+          addLog(`${player.name} activated Ancient Might: will gain +1 VP for each 3 VP in Reputation Tile value at game end!`);
+        }
+        if (disc.immediateReward?.choose3Resource) {
+          const res = action.chosenResource || 'money';
+          if (res === 'science') {
+            player.resources.science += 3;
+            addLog(`${player.name} gained +3 Money and +3 Science from Discovery Tile!`);
+          } else if (res === 'materials' || res === 'material') {
+            player.resources.materials += 3;
+            addLog(`${player.name} gained +3 Money and +3 Materials from Discovery Tile!`);
+          } else {
+            player.resources.money += 3;
+            addLog(`${player.name} gained +3 Money and +3 Money (+6 Money total) from Discovery Tile!`);
+          }
         }
         if (disc.immediateReward?.ancientTech) {
           const eligibleTechs = newState.techSupply
@@ -3450,6 +3490,19 @@ export function computeCurrentScores(state: GameState): {
       }
     }
 
+    // 7b. Remnants of Worlds Afar Discoveries:
+    // Artifact Codex: +1 VP per controlled artifact
+    let artifactCodexVP = 0;
+    if (p.hasArtifactCodex) {
+      artifactCodexVP = controlledSectors.filter((s) => s.hasArtifact).length * 1;
+    }
+
+    // Ancient Might: +1 VP per 3 VP in reputation tiles
+    let ancientMightVP = 0;
+    if (p.hasAncientMight) {
+      ancientMightVP = Math.floor(repVP / 3);
+    }
+
     // 8. Species Bonus VP
     let speciesBonus = 0;
     if (p.faction.id === 'planta') {
@@ -3465,7 +3518,7 @@ export function computeCurrentScores(state: GameState): {
     // 9. Traitor Tile Penalty (-2 VP)
     const traitorVP = state.traitorPlayerId === p.id ? -2 : 0;
 
-    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP + speciesBonus + traitorVP;
+    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP + artifactCodexVP + ancientMightVP + speciesBonus + traitorVP;
 
     scores[p.id] = {
       sectors: sectorVP,
@@ -3473,7 +3526,7 @@ export function computeCurrentScores(state: GameState): {
       reputation: repVP,
       techs: techVP,
       ambassadors: ambassadorVP,
-      discoveries: discoveryVP + warpPortalVP,
+      discoveries: discoveryVP + warpPortalVP + artifactCodexVP + ancientMightVP,
       speciesBonus,
       traitor: traitorVP,
       total,

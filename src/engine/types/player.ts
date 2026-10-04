@@ -88,6 +88,8 @@ export interface PlayerState {
   ambassadorCubes?: Record<string, 'money' | 'science' | 'material'>; // Population cube assigned to each alliance
   keptDiscoveryTiles: DiscoveryTile[]; // 2 VP each at game end
   unlockedAncientParts: string[]; // Ancient ship parts unlocked from discoveries
+  hasArtifactCodex?: boolean; // Remnants of Worlds Afar: +1 VP per controlled artifact at game end
+  hasAncientMight?: boolean; // Remnants of Worlds Afar: +1 VP per 3 VP in reputation tiles at game end
   hasPassed: boolean;
   isFirstPasser: boolean;
   actionsTakenThisRound: number;

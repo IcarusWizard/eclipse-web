@@ -8272,6 +8272,483 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(inspectorHtml).toContain('[Advanced]');
         expect(inspectorHtml).toContain('2 Orange Missiles, 1 Red Cannon');
       });
+
+      it('56. verifies Remnants of Worlds Afar expansion: Expert neutral blueprints, 6 Discovery tiles, Jump Drive movement, Morph Shield healing, Artifact Codex & Ancient Might scoring, and UI integration', async () => {
+        const {
+          getNeutralShipBlueprint,
+          getNeutralShipSummary,
+          resolveNeutralShipConfig,
+        } = await import('../rules/neutralShips');
+        const { SHIP_PARTS } = await import('../rules/partData');
+        const { REMNANTS_DISCOVERY_TILES } = await import('../rules/sectorData');
+        const { executeCombatStep } = await import('../rules/combatEngine');
+
+        // 1. Expert Neutral Ship Blueprints Specifications
+        // Ancient Expert: 1 yellow dice, +2 computer, 1 hull, 3 init
+        const ancExp = getNeutralShipBlueprint('ancient', 'expert');
+        expect(ancExp.initiative).toBe(3);
+        expect(ancExp.maxHull).toBe(1);
+        expect(ancExp.computerBonus).toBe(2);
+        expect(ancExp.shieldBonus).toBe(0);
+        expect(ancExp.weapons).toEqual([{ color: 'yellow', damage: 1, count: 1 }]);
+        expect(getNeutralShipSummary('ancient', 'expert')).toContain('1 Yellow Cannon');
+        expect(getNeutralShipSummary('ancient', 'expert')).toContain('+2 Hit');
+
+        // Guardian Expert: 2 orange dice, +1 computer, -1 shield, 3 hulls, 3 init
+        const guardExp = getNeutralShipBlueprint('guardian', 'expert');
+        expect(guardExp.initiative).toBe(3);
+        expect(guardExp.maxHull).toBe(3);
+        expect(guardExp.computerBonus).toBe(1);
+        expect(guardExp.shieldBonus).toBe(1);
+        expect(guardExp.weapons).toEqual([{ color: 'orange', damage: 2, count: 2 }]);
+        expect(getNeutralShipSummary('guardian', 'expert')).toContain('2 Orange Cannons');
+        expect(getNeutralShipSummary('guardian', 'expert')).toContain('-1 Shield');
+
+        // GCDS Expert: 2 orange dice, +2 computer, -2 shield, 4 hulls, 3 init
+        const gcdsExp = getNeutralShipBlueprint('gcds', 'expert');
+        expect(gcdsExp.initiative).toBe(3);
+        expect(gcdsExp.maxHull).toBe(4);
+        expect(gcdsExp.computerBonus).toBe(2);
+        expect(gcdsExp.shieldBonus).toBe(2);
+        expect(gcdsExp.weapons).toEqual([{ color: 'orange', damage: 2, count: 2 }]);
+        expect(getNeutralShipSummary('gcds', 'expert')).toContain('2 Orange Cannons');
+        expect(getNeutralShipSummary('gcds', 'expert')).toContain('-2 Shield');
+
+        // 2. Selection Resolution with Remnants Expansion
+        const resolvedExpert = resolveNeutralShipConfig(
+          { ancient: 'expert', guardian: 'expert', gcds: 'expert' },
+          ['remnants_of_worlds_afar']
+        );
+        expect(resolvedExpert).toEqual({ ancient: 'expert', guardian: 'expert', gcds: 'expert' });
+
+        // Random resolution with Remnants includes expert variant in pool
+        const variantsObserved = new Set<string>();
+        for (let i = 0; i < 50; i++) {
+          const res = resolveNeutralShipConfig(
+            { ancient: 'random', guardian: 'random', gcds: 'random' },
+            ['remnants_of_worlds_afar']
+          );
+          variantsObserved.add(res.ancient);
+        }
+        expect(variantsObserved.has('expert')).toBe(true);
+
+        // 3. Game Creation with Remnants of Worlds Afar
+        const remnantsGame = createInitialGame(2, undefined, ['remnants_of_worlds_afar'], {
+          ancient: 'expert',
+          guardian: 'expert',
+          gcds: 'expert',
+        });
+        expect(remnantsGame.neutralShipBlueprints).toEqual({
+          ancient: 'expert',
+          guardian: 'expert',
+          gcds: 'expert',
+        });
+        expect(remnantsGame.neutralShipSelections).toEqual({
+          ancient: 'expert',
+          guardian: 'expert',
+          gcds: 'expert',
+        });
+
+        // Verify all 6 Remnants discovery tiles are added into the game (bag or guardian sectors)
+        expect(REMNANTS_DISCOVERY_TILES.length).toBe(6);
+        for (const remTile of REMNANTS_DISCOVERY_TILES) {
+          const inBagOrBoard =
+            remnantsGame.discoveryBag.some((t) => t.id === remTile.id) ||
+            remnantsGame.sectors.some((s) => s.discoveryTile?.id === remTile.id);
+          expect(inBagOrBoard).toBe(true);
+        }
+
+        // 4. Combat Units Generation for Expert Variants
+        const centerSector = remnantsGame.sectors.find((s) => s.ships?.some((ship) => ship.type === 'gcds'))!;
+        const centerUnits = buildCombatUnitsForSector(
+          centerSector,
+          remnantsGame.players,
+          undefined,
+          remnantsGame.neutralShipBlueprints
+        );
+        const expertGcds = centerUnits[0]!;
+        expect(expertGcds.type).toBe('gcds');
+        expect(expertGcds.initiative).toBe(3);
+        expect(expertGcds.maxHull).toBe(4);
+        expect(expertGcds.shieldBonus).toBe(2);
+        expect(expertGcds.computerBonus).toBe(2);
+        expect(expertGcds.weapons).toEqual([{ color: 'orange', damage: 2, count: 2 }]);
+
+        const guardianSector = remnantsGame.sectors.find((s) => s.ships?.some((ship) => ship.type === 'guardian'))!;
+        const guardianUnits = buildCombatUnitsForSector(
+          guardianSector,
+          remnantsGame.players,
+          undefined,
+          remnantsGame.neutralShipBlueprints
+        );
+        const expertGuardian = guardianUnits[0]!;
+        expect(expertGuardian.type).toBe('guardian');
+        expect(expertGuardian.initiative).toBe(3);
+        expect(expertGuardian.maxHull).toBe(3);
+        expect(expertGuardian.shieldBonus).toBe(1);
+        expect(expertGuardian.computerBonus).toBe(1);
+        expect(expertGuardian.weapons).toEqual([{ color: 'orange', damage: 2, count: 2 }]);
+
+        const ancientSector: SectorTile = {
+          id: 'test_sec_anc_expert',
+          sectorNumber: 205,
+          ring: 2,
+          coord: { q: 1, r: -2 },
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [{ id: 'anc_exp_1', ownerId: 'ancient', type: 'ancient', damage: 0 }],
+        };
+        const ancUnits = buildCombatUnitsForSector(
+          ancientSector,
+          remnantsGame.players,
+          undefined,
+          remnantsGame.neutralShipBlueprints
+        );
+        const expertAncient = ancUnits[0]!;
+        expect(expertAncient.type).toBe('ancient');
+        expect(expertAncient.initiative).toBe(3);
+        expect(expertAncient.maxHull).toBe(1);
+        expect(expertAncient.computerBonus).toBe(2);
+        expect(expertAncient.shieldBonus).toBe(0);
+        expect(expertAncient.weapons).toEqual([{ color: 'yellow', damage: 1, count: 1 }]);
+
+        // 5. Morph Shield in Combat: Removes 1 damage cube after each engagement round
+        const p1 = remnantsGame.players[0]!;
+        p1.blueprints.cruiser.slots = [
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_drive,
+          SHIP_PARTS.morph_shield,
+          SHIP_PARTS.hull,
+          SHIP_PARTS.hull,
+          SHIP_PARTS.ion_cannon,
+        ];
+
+        const morphCombatSector: SectorTile = {
+          id: 'morph_combat_sec',
+          sectorNumber: 206,
+          ring: 2,
+          coord: { q: 2, r: -1 },
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [
+            { id: 'p1_morph_cruiser', ownerId: p1.id, type: 'cruiser', damage: 2 },
+            { id: 'dummy_ancient', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          ],
+        };
+
+        const combatUnits = buildCombatUnitsForSector(
+          morphCombatSector,
+          remnantsGame.players,
+          [p1.id, 'ancient'],
+          remnantsGame.neutralShipBlueprints
+        );
+        const cruiserUnit = combatUnits.find((u) => u.id === 'p1_morph_cruiser')!;
+        const dummyUnit = combatUnits.find((u) => u.id === 'dummy_ancient')!;
+        dummyUnit.weapons = [];
+        expect(cruiserUnit.hasMorphShield).toBe(true);
+        expect(cruiserUnit.currentDamage).toBe(2);
+
+        // Run combat round to completion of alive units cycle
+        const activeCombatState = {
+          sectorId: morphCombatSector.id,
+          participants: [p1.id, 'ancient'],
+          stage: 'regular' as const,
+          roundNumber: 1,
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          retreatDeclared: {},
+          lastRolls: [],
+          destroyedShips: [],
+        };
+        // Step 1: unit 0 fires
+        executeCombatStep(combatUnits, activeCombatState);
+        activeCombatState.currentTurnIndex = 1;
+        // Step 2: unit 1 fires, completing engagement round and triggering Morph Shield damage removal
+        executeCombatStep(combatUnits, activeCombatState);
+        expect(cruiserUnit.currentDamage).toBe(1);
+
+        // 6. Jump Drive Validation & Movement across sectors WITHOUT wormholes
+        p1.blueprints.interceptor.slots = [
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.jump_drive,
+          SHIP_PARTS.ion_cannon,
+        ];
+        const valStats = calculateBlueprintStats(p1.blueprints.interceptor);
+        expect(valStats.isValid).toBe(true);
+        expect(valStats.hasJumpDrive).toBe(true);
+        expect(valStats.totalDriveSpeed).toBe(0); // 0 conventional drive speed, 1 jump allowed
+
+        // Create adjacent sectors without connecting wormholes
+        const secOrigin: SectorTile = {
+          id: 'sec_origin',
+          sectorNumber: 301,
+          ring: 3,
+          coord: { q: 2, r: 0 },
+          wormholes: [false, false, false, false, false, false], // NO wormholes
+          planets: [],
+          ships: [
+            { id: 'jump_ship_1', ownerId: p1.id, type: 'interceptor', damage: 0 },
+            { id: 'standard_ship_1', ownerId: p1.id, type: 'cruiser', damage: 0 }, // No jump drive
+          ],
+        };
+        const secDest: SectorTile = {
+          id: 'sec_dest',
+          sectorNumber: 302,
+          ring: 3,
+          coord: { q: 3, r: 0 }, // Adjacent to (2, 0)
+          wormholes: [false, false, false, false, false, false], // NO wormholes
+          planets: [],
+          ships: [],
+        };
+        remnantsGame.sectors.push(secOrigin, secDest);
+
+        // Standard ship fails to move across non-wormhole edge
+        p1.blueprints.cruiser.slots[1] = SHIP_PARTS.nuclear_drive;
+        const invalidMove = validateAction(remnantsGame, {
+          type: 'MOVE',
+          playerId: p1.id,
+          moves: [
+            {
+              shipId: 'standard_ship_1',
+              shipType: 'cruiser',
+              fromSectorId: secOrigin.id,
+              toSectorId: secDest.id,
+            },
+          ],
+        });
+        expect(invalidMove.valid).toBe(false);
+
+        // Jump Drive ship SUCCEEDS to jump across non-wormhole edge
+        const validJumpMove = validateAction(remnantsGame, {
+          type: 'MOVE',
+          playerId: p1.id,
+          moves: [
+            {
+              shipId: 'jump_ship_1',
+              shipType: 'interceptor',
+              fromSectorId: secOrigin.id,
+              toSectorId: secDest.id,
+            },
+          ],
+        });
+        expect(validJumpMove.valid).toBe(true);
+
+        const moveExecRes = executeAction(remnantsGame, {
+          type: 'MOVE',
+          playerId: p1.id,
+          moves: [
+            {
+              shipId: 'jump_ship_1',
+              shipType: 'interceptor',
+              fromSectorId: secOrigin.id,
+              toSectorId: secDest.id,
+            },
+          ],
+        });
+        expect(moveExecRes.success).toBe(true);
+        expect(
+          moveExecRes.newState.sectors
+            .find((s) => s.id === secDest.id)
+            ?.ships.some((s) => s.id === 'jump_ship_1')
+        ).toBe(true);
+
+        // Only 1 jump allowed per activation: 2nd jump move in same activation is rejected
+        p1.blueprints.cruiser.slots = [
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_drive,
+          SHIP_PARTS.jump_drive,
+          SHIP_PARTS.hull,
+          SHIP_PARTS.ion_cannon,
+        ];
+        secOrigin.ships.push({ id: 'jump_cruiser_1', ownerId: p1.id, type: 'cruiser', damage: 0 });
+
+        const secDest2: SectorTile = {
+          id: 'sec_dest_2',
+          sectorNumber: 303,
+          ring: 3,
+          coord: { q: 4, r: 0 }, // Adjacent to (3, 0)
+          wormholes: [false, false, false, false, false, false],
+          planets: [],
+          ships: [],
+        };
+        remnantsGame.sectors.push(secDest2);
+        const doubleJumpMove = validateAction(remnantsGame, {
+          type: 'MOVE',
+          playerId: p1.id,
+          moves: [
+            {
+              activationIndex: 0,
+              shipId: 'jump_cruiser_1',
+              shipType: 'cruiser',
+              fromSectorId: secOrigin.id,
+              toSectorId: secDest.id,
+            },
+            {
+              activationIndex: 0,
+              shipId: 'jump_cruiser_1',
+              shipType: 'cruiser',
+              fromSectorId: secDest.id,
+              toSectorId: secDest2.id,
+            },
+          ],
+        });
+        expect(doubleJumpMove.valid).toBe(false);
+        expect(doubleJumpMove.error).toContain('already used its 1 Jump Drive move');
+
+        // 7. Discovery Tiles: Rewards & Choices
+        // A. +3 Money +3 Resource
+        const moneyBefore = p1.resources.money;
+        const sciBefore = p1.resources.science;
+        const discSector1: SectorTile = {
+          id: 'disc_sec_1',
+          sectorNumber: 211,
+          ring: 2,
+          coord: { q: -2, r: 2 },
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [],
+          discoveryTile: REMNANTS_DISCOVERY_TILES.find((t) => t.id === 'disc_money_3_gray_1')!,
+          hasDiscovery: true,
+        };
+        remnantsGame.sectors.push(discSector1);
+        remnantsGame.pendingDiscovery = {
+          playerId: p1.id,
+          sectorId: discSector1.id,
+          discovery: discSector1.discoveryTile,
+        };
+
+        const resChoiceResult = executeAction(remnantsGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          keepForVictoryPoints: false,
+          chosenResource: 'science',
+        });
+        expect(resChoiceResult.success).toBe(true);
+        expect(resChoiceResult.newState.players[0]!.resources.money).toBe(moneyBefore + 3);
+        expect(resChoiceResult.newState.players[0]!.resources.science).toBe(sciBefore + 3);
+
+        // B. Artifact Codex: Gives +1 VP per Artifact at endgame
+        const codexTile = REMNANTS_DISCOVERY_TILES.find((t) => t.id === 'disc_artifact_codex')!;
+        discSector1.discoveryTile = codexTile;
+        resChoiceResult.newState.pendingDiscovery = {
+          playerId: p1.id,
+          sectorId: discSector1.id,
+          discovery: codexTile,
+        };
+        const codexRes = executeAction(resChoiceResult.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          keepForVictoryPoints: false,
+        });
+        expect(codexRes.success).toBe(true);
+        expect(codexRes.newState.players[0]!.hasArtifactCodex).toBe(true);
+
+        // C. Ancient Might: Gives +1 VP per 3 VP in Reputation tiles
+        const mightTile = REMNANTS_DISCOVERY_TILES.find((t) => t.id === 'disc_ancient_might')!;
+        discSector1.discoveryTile = mightTile;
+        codexRes.newState.pendingDiscovery = {
+          playerId: p1.id,
+          sectorId: discSector1.id,
+          discovery: mightTile,
+        };
+        const mightRes = executeAction(codexRes.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          keepForVictoryPoints: false,
+        });
+        expect(mightRes.success).toBe(true);
+        expect(mightRes.newState.players[0]!.hasAncientMight).toBe(true);
+
+        // 8. Endgame Scoring for Artifact Codex and Ancient Might
+        const scoringPlayer = mightRes.newState.players[0]!;
+        // Control 2 sectors with Artifacts
+        const artSec1: SectorTile = {
+          id: 'art_sec_1',
+          sectorNumber: 108,
+          ring: 1,
+          coord: { q: 0, r: 1 },
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [],
+          discOwner: scoringPlayer.id,
+          hasArtifact: true,
+        };
+        const artSec2: SectorTile = {
+          id: 'art_sec_2',
+          sectorNumber: 109,
+          ring: 1,
+          coord: { q: -1, r: 1 },
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [],
+          discOwner: scoringPlayer.id,
+          hasArtifact: true,
+        };
+        mightRes.newState.sectors.push(artSec1, artSec2);
+
+        // Set reputation tiles totaling 7 VP (4 + 3) -> should give Math.floor(7 / 3) = 2 VP
+        scoringPlayer.reputationTiles = [4, 3];
+
+        const { scores } = computeCurrentScores(mightRes.newState);
+        const p1Score = scores[scoringPlayer.id]!;
+        // discoveries VP includes 3 VP from Artifact Codex (Sol + 2 controlled sectors) + 2 VP from Ancient Might = 5 VP
+        expect(p1Score.discoveries).toBe(5);
+        expect(p1Score.reputation).toBe(7);
+
+        // 9. UI Rendering Verification
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+
+        // NewGameModal renders Exp buttons
+        const { NewGameModal } = await import('../../components/setup/NewGameModal');
+        const modalHtml = renderToString(
+          React.createElement(NewGameModal, {
+            onStartGame: () => {},
+          })
+        );
+        expect(modalHtml).toContain('Exp');
+        expect(modalHtml).toContain('Init 3, 1H, 1Y (+2)');
+
+        // LobbyView renders Exp buttons and Remnants descriptors
+        const { LobbyView } = await import('../../components/lobby/LobbyView');
+        const lobbyHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+        expect(lobbyHtml).toContain('Exp');
+        expect(lobbyHtml).toContain('Remnants of Worlds Afar');
+
+        // SectorInspector renders [Expert] badge
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        const inspectorHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: ancientSector,
+            players: mightRes.newState.players,
+            activePlayer: mightRes.newState.players[0]!,
+            neutralShipBlueprints: { ancient: 'expert', guardian: 'expert', gcds: 'expert' },
+            onClose: () => {},
+          })
+        );
+        expect(inspectorHtml).toContain('[Expert]');
+        expect(inspectorHtml).toContain('1 Yellow Cannon');
+
+        // GalacticGalleryModal renders Remnants expansion badges for Jump Drive and Morph Shield
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+        const galleryHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'parts',
+          })
+        );
+        expect(galleryHtml).toContain('Jump Drive');
+        expect(galleryHtml).toContain('Morph Shield');
+        expect(galleryHtml).toContain('Remnants of Worlds Afar Expansion');
+      });
     });
   });
 });

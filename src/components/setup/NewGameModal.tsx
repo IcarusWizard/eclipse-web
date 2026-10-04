@@ -279,21 +279,24 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                   label: 'Ancient',
                   def: 'Init 2, 2H, 2Y (+1)',
                   adv: 'Init 1, 2H, 1O (+1)',
+                  exp: 'Init 3, 1H, 1Y (+2)',
                 },
                 {
                   type: 'guardian' as const,
                   label: 'Guardian',
                   def: 'Init 3, 3H, 3Y (+2/-1)',
                   adv: 'Init 1, 3H, 2O Msl + 1R (+1)',
+                  exp: 'Init 3, 3H, 2O (+1/-1)',
                 },
                 {
                   type: 'gcds' as const,
                   label: 'GCDS',
                   def: 'Init 0, 7H, 4Y (+2)',
                   adv: 'Init 2, 3H, 4Y Msl + 1R (+2)',
+                  exp: 'Init 3, 4H, 2O (+2/-2)',
                 },
               ]
-            ).map(({ type, label, def, adv }) => {
+            ).map(({ type, label, def, adv, exp }) => {
               const currentSel = neutralShipSelections[type];
               return (
                 <div
@@ -308,6 +311,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                         onClick={() =>
                           setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
                         }
+                        title={`Default (${def})`}
                         className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
                           currentSel === 'default'
                             ? 'bg-cyan-500/25 text-cyan-300 border border-cyan-400'
@@ -321,6 +325,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                         onClick={() =>
                           setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
                         }
+                        title={`Advanced (${adv})`}
                         className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
                           currentSel === 'advanced'
                             ? 'bg-amber-500/25 text-amber-300 border border-amber-400'
@@ -332,9 +337,23 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                       <button
                         type="button"
                         onClick={() =>
+                          setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }))
+                        }
+                        title={`Expert (${exp})`}
+                        className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                          currentSel === 'expert'
+                            ? 'bg-rose-500/25 text-rose-300 border border-rose-400'
+                            : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800'
+                        }`}
+                      >
+                        Exp
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() =>
                           setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
                         }
-                        title="Random (50% Default / 50% Advanced)"
+                        title={selectedExpansions.includes('remnants_of_worlds_afar') ? "Random (Default / Advanced / Expert)" : "Random (50% Default / 50% Advanced)"}
                         className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer flex items-center gap-0.5 ${
                           currentSel === 'random'
                             ? 'bg-purple-500/25 text-purple-300 border border-purple-400'
@@ -349,8 +368,9 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                   <div className="text-[10px] font-mono text-slate-400 truncate">
                     {currentSel === 'default' && <span className="text-slate-400">{def}</span>}
                     {currentSel === 'advanced' && <span className="text-amber-300">{adv}</span>}
+                    {currentSel === 'expert' && <span className="text-rose-300">{exp}</span>}
                     {currentSel === 'random' && (
-                      <span className="text-purple-300 italic">🎲 Random (50/50)</span>
+                      <span className="text-purple-300 italic">🎲 Random</span>
                     )}
                   </div>
                 </div>

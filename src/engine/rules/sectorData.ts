@@ -505,8 +505,75 @@ export const RIFT_CONDUCTOR_DISCOVERY: DiscoveryTile = {
   shipPartId: 'rift_conductor',
 };
 
+// Remnants of Worlds Afar Expansion Discovery Tiles
+export const JUMP_DRIVE_DISCOVERY: DiscoveryTile = {
+  id: 'disc_jump_drive',
+  name: 'Jump Drive',
+  description: 'Ancient drive: Once per Move Activation, ships with Jump Drive may move to any adjacent sector regardless of wormholes. Consumes 2 power.',
+  shipPartId: 'jump_drive',
+};
+
+export const MORPH_SHIELD_DISCOVERY: DiscoveryTile = {
+  id: 'disc_morph_shield',
+  name: 'Morph Shield',
+  description: 'Ancient shield: -1 Shield (opponent needs +1 to hit). Remove 1 damage cube from ship after each Engagement Round. Consumes 0 power.',
+  shipPartId: 'morph_shield',
+};
+
+export const ARTIFACT_CODEX_DISCOVERY: DiscoveryTile = {
+  id: 'disc_artifact_codex',
+  name: 'Artifact Codex',
+  description: 'Special Discovery: At the end of the game, gain 1 VP for each Artifact you control (or keep for 2 VP).',
+  immediateReward: {
+    victoryPoints: 2,
+    artifactCodex: true,
+  },
+};
+
+export const ANCIENT_MIGHT_DISCOVERY: DiscoveryTile = {
+  id: 'disc_ancient_might',
+  name: 'Ancient Might',
+  description: 'Special Discovery: At the end of the game, gain 1 VP for each 3 VP in Reputation Tile value (or keep for 2 VP).',
+  immediateReward: {
+    victoryPoints: 2,
+    ancientMight: true,
+  },
+};
+
+export const MONEY_3_GRAY_DISCOVERY_1: DiscoveryTile = {
+  id: 'disc_money_3_gray_1',
+  name: '+3 Money +3 Resource',
+  description: 'Gain 3 Money immediately plus 3 additional Resources of your choice (3 Materials, 3 Science, or 3 Money), or keep for 2 VP.',
+  immediateReward: {
+    money: 3,
+    victoryPoints: 2,
+    choose3Resource: true,
+  },
+};
+
+export const MONEY_3_GRAY_DISCOVERY_2: DiscoveryTile = {
+  id: 'disc_money_3_gray_2',
+  name: '+3 Money +3 Resource',
+  description: 'Gain 3 Money immediately plus 3 additional Resources of your choice (3 Materials, 3 Science, or 3 Money), or keep for 2 VP.',
+  immediateReward: {
+    money: 3,
+    victoryPoints: 2,
+    choose3Resource: true,
+  },
+};
+
+export const REMNANTS_DISCOVERY_TILES: DiscoveryTile[] = [
+  JUMP_DRIVE_DISCOVERY,
+  MORPH_SHIELD_DISCOVERY,
+  ARTIFACT_CODEX_DISCOVERY,
+  ANCIENT_MIGHT_DISCOVERY,
+  MONEY_3_GRAY_DISCOVERY_1,
+  MONEY_3_GRAY_DISCOVERY_2,
+];
+
 export const EXPANSION_DISCOVERY_TILES: DiscoveryTile[] = [
   RIFT_CONDUCTOR_DISCOVERY,
+  ...REMNANTS_DISCOVERY_TILES,
 ];
 
 export const ALL_DISCOVERY_TILES: DiscoveryTile[] = [

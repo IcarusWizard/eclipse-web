@@ -124,6 +124,7 @@ export interface DiscoveryChoiceAction extends BaseAction {
   equipSlotIndex?: number;
   chosenTechId?: string; // For Ancient Tech discovery when multiple lowest-cost regular techs available
   colonizeOrbitalResource?: 'money' | 'science'; // For Ancient Orbital discovery when colonizing with ready colony ship
+  chosenResource?: 'money' | 'science' | 'material'; // For +3 Money +3 Resource discovery tile
 }
 
 export interface DiplomacyExchangeAction extends BaseAction {

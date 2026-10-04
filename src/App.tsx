@@ -5,7 +5,7 @@ import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
 import { executeAction, getMaxMoveActivations, computePinningState } from './engine/rules/gameReducer';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
-import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
+import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative } from './engine/rules/combatEngine';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X } from 'lucide-react';
@@ -727,6 +727,11 @@ export const App: React.FC = () => {
   const currentShipBlueprint = currentMoveShip ? activePlayer.blueprints[currentMoveShip.type] : null;
   const currentShipStats = currentShipBlueprint ? calculateBlueprintStats(currentShipBlueprint) : null;
   const currentShipDriveSpeed = currentShipStats ? currentShipStats.totalDriveSpeed : 0;
+  const currentShipHasJumpDrive = Boolean(
+    currentShipStats?.hasJumpDrive ||
+      currentShipBlueprint?.slots.some((s) => s?.id === 'jump_drive' || s?.isJumpDrive)
+  );
+  const currentShipMaxSteps = currentShipDriveSpeed + (currentShipHasJumpDrive ? 1 : 0);
 
   const currentActivationMoves = useMemo(
     () => plannedMoves.filter((m) => m.activationIndex === activeActivationIndex),
@@ -734,11 +739,23 @@ export const App: React.FC = () => {
   );
   const movePointsUsedInCurrentActivation = currentActivationMoves.length;
 
-  // Destinations connected to the ship's current simulated sector via wormholes
+  const jumpUsedInCurrentActivation = useMemo(() => {
+    if (!currentShipHasJumpDrive) return false;
+    for (const m of currentActivationMoves) {
+      const fromSec = state.sectors.find((s) => s.id === m.fromSectorId);
+      const toSec = state.sectors.find((s) => s.id === m.toSectorId);
+      if (fromSec && toSec && !areSectorsConnected(fromSec, toSec, hasWormholeGen)) {
+        return true;
+      }
+    }
+    return false;
+  }, [currentShipHasJumpDrive, currentActivationMoves, state.sectors, hasWormholeGen]);
+
+  // Destinations connected to the ship's current simulated sector via wormholes or Jump Drive
   const connectedDestinations = useMemo(() => {
     if (!currentMoveShip || !currentSimSector) return [];
     if (activeActivationIndex >= maxMoves) return [];
-    if (currentShipDriveSpeed <= 0) return [];
+    if (currentShipMaxSteps <= 0) return [];
     if (pinningState.isShipPinned(currentMoveShip.id)) return [];
 
     // If this activation already started with another ship:
@@ -746,20 +763,28 @@ export const App: React.FC = () => {
       return [];
     }
 
-    // If current activation has already used all drive speed steps:
-    if (currentActivationMoves.length >= currentShipDriveSpeed) {
+    // If current activation has already used all allowed steps:
+    if (currentActivationMoves.length >= currentShipMaxSteps) {
       return [];
     }
 
-    return state.sectors.filter(
-      (s) => s.id !== currentSimSector.id && areSectorsConnected(currentSimSector, s, hasWormholeGen)
-    );
+    return state.sectors.filter((s) => {
+      if (s.id === currentSimSector.id) return false;
+      const isConnected = areSectorsConnected(currentSimSector, s, hasWormholeGen);
+      if (isConnected) return true;
+      if (currentShipHasJumpDrive && !jumpUsedInCurrentActivation) {
+        return getEdgeBetween(currentSimSector.coord, s.coord) !== null;
+      }
+      return false;
+    });
   }, [
     currentMoveShip,
     currentSimSector,
     activeActivationIndex,
     maxMoves,
-    currentShipDriveSpeed,
+    currentShipMaxSteps,
+    currentShipHasJumpDrive,
+    jumpUsedInCurrentActivation,
     currentActivationMoves,
     plannedMoves,
     pinningState,
@@ -770,10 +795,10 @@ export const App: React.FC = () => {
   const handleAddMoveDestination = (destSectorId: string) => {
     if (!currentMoveShip || !currentSimSector) return;
     if (activeActivationIndex >= maxMoves) return;
-    if (currentShipDriveSpeed <= 0) return;
+    if (currentShipMaxSteps <= 0) return;
     if (isShipPinned(currentMoveShip.id)) return;
     if (currentActivationMoves.length > 0 && currentActivationMoves[0].shipId !== currentMoveShip.id) return;
-    if (currentActivationMoves.length >= currentShipDriveSpeed) return;
+    if (currentActivationMoves.length >= currentShipMaxSteps) return;
 
     const destSec = state.sectors.find((s) => s.id === destSectorId);
     if (!destSec) return;
@@ -789,7 +814,7 @@ export const App: React.FC = () => {
       toSectorNumber: destSec.sectorNumber,
       activationIndex: activeActivationIndex,
       stepInActivation: stepNumber,
-      driveSpeed: currentShipDriveSpeed,
+      driveSpeed: currentShipMaxSteps,
     };
 
     setPlannedMoves((prev) => [...prev, newMove]);
@@ -800,7 +825,7 @@ export const App: React.FC = () => {
       destSec.hasGCDS ||
       destSec.ships.some((sh) => sh.ownerId !== activePlayer.id);
 
-    if (isHostile || stepNumber >= currentShipDriveSpeed) {
+    if (isHostile || stepNumber >= currentShipMaxSteps) {
       setActiveActivationIndex((prev) => prev + 1);
     }
   };
@@ -1070,7 +1095,8 @@ export const App: React.FC = () => {
     equipShipType?: ShipType,
     equipSlotIndex?: number,
     chosenTechId?: string,
-    colonizeOrbitalResource?: 'money' | 'science'
+    colonizeOrbitalResource?: 'money' | 'science',
+    chosenResource?: 'money' | 'science' | 'material'
   ) => {
     if (!state.pendingDiscovery) return;
     const res = executeAction(state, {
@@ -1082,6 +1108,7 @@ export const App: React.FC = () => {
       equipSlotIndex,
       chosenTechId,
       colonizeOrbitalResource,
+      chosenResource,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -1091,6 +1118,9 @@ export const App: React.FC = () => {
       }
       if (colonizeOrbitalResource) {
         showToast(`Ancient Orbital colonized with ${colonizeOrbitalResource.toUpperCase()}!`);
+      }
+      if (chosenResource) {
+        showToast(`Gained +3 Money and +3 ${chosenResource.toUpperCase()}!`);
       }
     } else {
       showToast(res.error || 'Failed to claim discovery.');

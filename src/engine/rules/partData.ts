@@ -497,6 +497,33 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     hullBonus: 1,
     dice: [{ color: 'purple', count: 1, damagePerHit: 0 }],
   },
+
+  // Expansion Components: Remnants of Worlds Afar
+  jump_drive: {
+    id: 'jump_drive',
+    name: 'Jump Drive',
+    category: 'drive',
+    powerProduced: 0,
+    powerConsumed: 2,
+    initiativeBonus: 0,
+    computerBonus: 0,
+    shieldBonus: 0,
+    hullBonus: 0,
+    driveSpeed: 0,
+    isJumpDrive: true,
+  },
+  morph_shield: {
+    id: 'morph_shield',
+    name: 'Morph Shield',
+    category: 'shield',
+    powerProduced: 0,
+    powerConsumed: 0,
+    initiativeBonus: 0,
+    computerBonus: 0,
+    shieldBonus: 1,
+    hullBonus: 0,
+    morphShield: true,
+  },
 };
 
 /**
@@ -524,5 +551,7 @@ export const ANCIENT_PART_IDS = new Set<string>([
 export const ALL_ANCIENT_PART_IDS = new Set<string>([
   ...ANCIENT_PART_IDS,
   'rift_conductor',
+  'jump_drive',
+  'morph_shield',
 ]);
 

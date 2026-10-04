@@ -82,6 +82,9 @@ export interface DiscoveryTile {
     grantStructure?: 'orbital' | 'monolith';
     ancientTech?: boolean;
     warpPortal?: boolean;
+    artifactCodex?: boolean;
+    ancientMight?: boolean;
+    choose3Resource?: boolean;
   };
   readonly shipPartId?: string; // Ancient part like Ion Turret, Flux Shield, etc.
 }

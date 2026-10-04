@@ -4,8 +4,8 @@
  */
 
 export type NeutralShipType = 'ancient' | 'guardian' | 'gcds';
-export type NeutralShipVariant = 'default' | 'advanced';
-export type NeutralShipSelection = 'default' | 'advanced' | 'random';
+export type NeutralShipVariant = 'default' | 'advanced' | 'expert';
+export type NeutralShipSelection = 'default' | 'advanced' | 'expert' | 'random';
 
 export interface NeutralShipWeapon {
   color: 'yellow' | 'orange' | 'blue' | 'red' | 'purple';
@@ -65,6 +65,17 @@ export const NEUTRAL_SHIP_BLUEPRINTS: Record<NeutralShipType, Record<NeutralShip
       weapons: [{ color: 'orange', damage: 2, count: 1 }],
       summary: 'Hull: 2 • Init: 1 • 1 Orange Cannon (+1 Hit)',
     },
+    expert: {
+      type: 'ancient',
+      variant: 'expert',
+      name: 'Ancient Cruiser (Remnants)',
+      initiative: 3,
+      maxHull: 1,
+      computerBonus: 2,
+      shieldBonus: 0,
+      weapons: [{ color: 'yellow', damage: 1, count: 1 }],
+      summary: 'Hull: 1 • Init: 3 • 1 Yellow Cannon (+2 Hit)',
+    },
   },
   guardian: {
     default: {
@@ -91,6 +102,17 @@ export const NEUTRAL_SHIP_BLUEPRINTS: Record<NeutralShipType, Record<NeutralShip
         { color: 'red', damage: 4, count: 1 },
       ],
       summary: 'Hull: 3 • Init: 1 • 2 Orange Missiles, 1 Red Cannon (+1 Hit) • 2 VP',
+    },
+    expert: {
+      type: 'guardian',
+      variant: 'expert',
+      name: 'Guardian (Remnants)',
+      initiative: 3,
+      maxHull: 3,
+      computerBonus: 1,
+      shieldBonus: 1,
+      weapons: [{ color: 'orange', damage: 2, count: 2 }],
+      summary: 'Hull: 3 • Init: 3 • 2 Orange Cannons (+1 Hit, -1 Shield) • 2 VP',
     },
   },
   gcds: {
@@ -119,6 +141,17 @@ export const NEUTRAL_SHIP_BLUEPRINTS: Record<NeutralShipType, Record<NeutralShip
       ],
       summary: 'Hull: 3 • Init: 2 • 4 Yellow Missiles, 1 Red Cannon (+2 Hit) • 4 VP',
     },
+    expert: {
+      type: 'gcds',
+      variant: 'expert',
+      name: 'Galactic Center Defense System (Remnants)',
+      initiative: 3,
+      maxHull: 4,
+      computerBonus: 2,
+      shieldBonus: 2,
+      weapons: [{ color: 'orange', damage: 2, count: 2 }],
+      summary: 'Hull: 4 • Init: 3 • 2 Orange Cannons (+2 Hit, -2 Shield) • 4 VP',
+    },
   },
 };
 
@@ -142,17 +175,26 @@ export function getNeutralShipSummary(
 }
 
 export function resolveNeutralShipConfig(
-  selections?: Partial<NeutralShipSelectionConfig>
+  selections?: Partial<NeutralShipSelectionConfig>,
+  expansions?: string[]
 ): NeutralShipConfig {
   const types: NeutralShipType[] = ['ancient', 'guardian', 'gcds'];
   const config: NeutralShipConfig = { ...DEFAULT_NEUTRAL_SHIP_CONFIG };
+  const hasRemnants = Boolean(expansions && expansions.includes('remnants_of_worlds_afar'));
 
   for (const t of types) {
     const sel = selections?.[t];
     if (sel === 'advanced') {
       config[t] = 'advanced';
+    } else if (sel === 'expert') {
+      config[t] = 'expert';
     } else if (sel === 'random') {
-      config[t] = Math.random() < 0.5 ? 'default' : 'advanced';
+      if (hasRemnants) {
+        const roll = Math.random();
+        config[t] = roll < 1 / 3 ? 'default' : roll < 2 / 3 ? 'advanced' : 'expert';
+      } else {
+        config[t] = Math.random() < 0.5 ? 'default' : 'advanced';
+      }
     } else {
       config[t] = 'default';
     }

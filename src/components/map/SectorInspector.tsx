@@ -289,6 +289,9 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                                   {neutralShipBlueprints?.[type as NeutralShipType] === 'advanced' && (
                                     <span className="text-amber-400 font-bold mr-1.5">[Advanced]</span>
                                   )}
+                                  {neutralShipBlueprints?.[type as NeutralShipType] === 'expert' && (
+                                    <span className="text-rose-400 font-bold mr-1.5">[Expert]</span>
+                                  )}
                                   {getNeutralShipSummary(type as NeutralShipType, neutralShipBlueprints?.[type as NeutralShipType])}
                                 </div>
                               ) : null}

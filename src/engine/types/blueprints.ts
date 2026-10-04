@@ -34,6 +34,8 @@ export interface ShipPart {
   readonly hullBonus: number; // +1, +2, +3 hit points
   readonly dice?: WeaponDice[];
   readonly driveSpeed?: number; // Movement points (e.g. 1, 2, 3)
+  readonly isJumpDrive?: boolean; // Remnants of Worlds Afar: Jump Drive (1 jump/activation)
+  readonly morphShield?: boolean; // Remnants of Worlds Afar: Morph Shield (heals 1 dmg/round)
 }
 
 export interface ShipBlueprint {
@@ -55,5 +57,7 @@ export interface BlueprintValidationResult {
   totalDriveSpeed: number;
   computerBonus: number;
   shieldBonus: number;
+  hasJumpDrive?: boolean;
+  hasMorphShield?: boolean;
   errors: string[];
 }

@@ -6,7 +6,7 @@
 import { GameState } from '../types/state';
 import { FactionInfo, PlayerState, ReputationSlotType } from '../types/player';
 import { SectorTile, HexCoord } from '../types/galaxy';
-import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, RIFT_CONDUCTOR_DISCOVERY, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
+import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, RIFT_CONDUCTOR_DISCOVERY, REMNANTS_DISCOVERY_TILES, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
 import { createDefaultHumanBlueprints, createFactionBlueprints } from './shipValidation';
 import { getEdgeTowardCenter } from './hexMath';
@@ -521,7 +521,7 @@ export function createInitialGame(
   const count = Math.max(1, Math.min(6, playerCount));
   const startingCoords = STARTING_COORDS_BY_COUNT[count] ?? STARTING_COORDS_BY_COUNT[2]!;
 
-  const resolvedNeutralBlueprints = resolveNeutralShipConfig(neutralShipSelections);
+  const resolvedNeutralBlueprints = resolveNeutralShipConfig(neutralShipSelections, expansions);
   const storedNeutralSelections: NeutralShipSelectionConfig = {
     ancient: neutralShipSelections?.ancient ?? 'default',
     guardian: neutralShipSelections?.guardian ?? 'default',
@@ -710,6 +710,9 @@ export function createInitialGame(
     const bag = [...DISCOVERY_TILES];
     if (expansions?.includes('rift_cannon')) {
       bag.push({ ...RIFT_CONDUCTOR_DISCOVERY });
+    }
+    if (expansions?.includes('remnants_of_worlds_afar')) {
+      bag.push(...REMNANTS_DISCOVERY_TILES.map((d) => ({ ...d })));
     }
     for (let i = bag.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));

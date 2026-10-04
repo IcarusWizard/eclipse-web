@@ -23,6 +23,7 @@ export interface CombatUnit {
     count: number;
     isMissile?: boolean;
   }[];
+  hasMorphShield?: boolean;
 }
 
 export function buildCombatUnitsForSector(
@@ -74,6 +75,8 @@ export function buildCombatUnitsForSector(
         }
       }
 
+      const hasMorphShield = bp.slots.some((s) => s?.id === 'morph_shield' || s?.morphShield);
+
       units.push({
         id: ship.id,
         ownerId: ship.ownerId,
@@ -84,6 +87,7 @@ export function buildCombatUnitsForSector(
         computerBonus: stats.computerBonus,
         shieldBonus: stats.shieldBonus,
         weapons,
+        hasMorphShield,
       });
     }
   }
@@ -636,6 +640,14 @@ export function executeCombatStep(
   // Check if engagement round completes a full cycle of alive units
   if (unitIndex + 1 >= aliveUnits.length) {
     activeCombat.roundNumber += 1;
+
+    // Remnants of Worlds Afar: Morph Shield
+    // Remove one Damage Cube from each Ship with this Ship Part after each Engagement Round.
+    for (const u of aliveUnits) {
+      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
+        u.currentDamage = Math.max(0, u.currentDamage - 1);
+      }
+    }
   }
 
   const remainingOwners = Array.from(

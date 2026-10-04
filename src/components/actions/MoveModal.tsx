@@ -3,6 +3,7 @@ import { PlayerState } from '../../engine/types/player';
 import { SectorTile, SectorShip } from '../../engine/types/galaxy';
 import { getMaxMoveActivations } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
+import { areSectorsConnected } from '../../engine/rules/hexMath';
 import {
   Rocket,
   ArrowRight,
@@ -80,8 +81,19 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   const currentSimSector = simulatedShipSector.get(selectedShipId);
 
   const currentBlueprint = currentShipObj ? player.blueprints[currentShipObj.type] : null;
+  const currentShipStats = currentBlueprint ? calculateBlueprintStats(currentBlueprint) : null;
+  const currentShipHasJumpDrive = Boolean(
+    currentShipStats?.hasJumpDrive ||
+      currentBlueprint?.slots.some((p) => p && (p.id === 'jump_drive' || p.isJumpDrive))
+  );
   const enginePart = currentBlueprint?.slots.find((p) => p && p.category === 'drive');
-  const engineName = enginePart ? enginePart.name : 'No Engine';
+  const engineName = enginePart
+    ? currentShipHasJumpDrive && enginePart.id !== 'jump_drive'
+      ? `${enginePart.name} + Jump Drive`
+      : enginePart.name
+    : currentShipHasJumpDrive
+    ? 'Jump Drive'
+    : 'No Engine';
 
   // Group planned moves by activation index
   const activationGroups = useMemo(() => {
@@ -321,26 +333,34 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                       <ShieldAlert className="w-3.5 h-3.5" />
                       <span>This fleet is pinned by hostile forces and cannot move further!</span>
                     </div>
-                  ) : currentShipDriveSpeed <= 0 ? (
+                  ) : currentShipDriveSpeed <= 0 && !currentShipHasJumpDrive ? (
                     <div className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
                       <CircleAlert className="w-3.5 h-3.5" />
                       <span>This unit has Drive Speed 0 and cannot move.</span>
                     </div>
                   ) : connectedDestinations.length > 0 ? (
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {connectedDestinations.map((sec) => (
-                        <button
-                          key={sec.id}
-                          type="button"
-                          onClick={() => onAddMove(sec.id)}
-                          className="px-2.5 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/90 border border-emerald-700/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-all group shadow-sm"
-                        >
-                          <ArrowRight className="w-3 h-3 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
-                          <span>
-                            Sector {sec.sectorNumber} ({sec.name || `Ring ${sec.ring}`})
-                          </span>
-                        </button>
-                      ))}
+                      {connectedDestinations.map((sec) => {
+                        const hasWormhole = currentSimSector ? areSectorsConnected(currentSimSector, sec, hasWormholeGen) : true;
+                        return (
+                          <button
+                            key={sec.id}
+                            type="button"
+                            onClick={() => onAddMove(sec.id)}
+                            className="px-2.5 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/90 border border-emerald-700/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-all group shadow-sm"
+                          >
+                            <ArrowRight className="w-3 h-3 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+                            <span>
+                              Sector {sec.sectorNumber} ({sec.name || `Ring ${sec.ring}`})
+                            </span>
+                            {!hasWormhole && (
+                              <span className="text-[9px] px-1 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono">
+                                Jump ⚡
+                              </span>
+                            )}
+                          </button>
+                        );
+                      })}
                     </div>
                   ) : (
                     <div className="text-[11px] text-amber-400 flex items-center gap-1.5">

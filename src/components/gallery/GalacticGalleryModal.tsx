@@ -437,6 +437,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                     'ion_missile', 'axion_computer', 'antimatter_missile', 'muon_source',
                     'flux_shield', 'conformal_drive', 'nonlinear_drive', 'shard_hull',
                     'hypergrid_source', 'inversion_shield', 'soliton_missile', 'rift_conductor',
+                    'jump_drive', 'morph_shield',
                   ];
                   const isStandard = STANDARD_IDS.includes(part.id);
                   const isAncient = ANCIENT_DISCOVERY_IDS.includes(part.id);
