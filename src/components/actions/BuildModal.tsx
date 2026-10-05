@@ -54,6 +54,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     cruiser: 0,
     dreadnought: 0,
     starbase: 0,
+    orbital: 0,
   };
   slots.forEach((s, idx) => {
     if (idx !== activeSlotIndex && s.itemType in stagedInOtherSlots) {
@@ -64,24 +65,36 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const currentSlot = slots[activeSlotIndex] || slots[0];
   const currentSector = sectors.find((s) => s.id === currentSlot?.sectorId);
 
+  const isMechanema = player.faction.id === 'mechanema';
+  const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
+  const isExiles = player.faction.id === 'the_exiles';
+
   const getAvailableSupply = (type: ShipType): number => {
+    if (isRhoIndi && type === 'dreadnought') return 0;
+    if (isExiles && type === 'starbase') return 0;
     return Math.max(0, SHIP_LIMITS[type] - deployedShips[type] - stagedInOtherSlots[type]);
   };
-
-  const isMechanema = player.faction.id === 'mechanema';
 
   const getItemCost = (type: ShipType | 'orbital' | 'monolith') => {
     switch (type) {
       case 'interceptor':
-        return isMechanema ? 2 : 3;
+        if (isMechanema) return 2;
+        if (isRhoIndi) return 4;
+        return 3;
       case 'cruiser':
-        return isMechanema ? 4 : 5;
+        if (isMechanema) return 4;
+        if (isRhoIndi) return 6;
+        return 5;
       case 'dreadnought':
         return isMechanema ? 7 : 8;
       case 'starbase':
-        return isMechanema ? 2 : 3;
+        if (isMechanema) return 2;
+        if (isRhoIndi) return 4;
+        return 3;
       case 'orbital':
-        return isMechanema ? 3 : 4;
+        if (isMechanema) return 3;
+        if (isExiles) return 5;
+        return 4;
       case 'monolith':
         return isMechanema ? 8 : 10;
     }
@@ -121,31 +134,39 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       type: 'dreadnought',
       name: 'Dreadnought',
       cost: getItemCost('dreadnought'),
-      limit: SHIP_LIMITS.dreadnought,
+      limit: isRhoIndi ? 0 : SHIP_LIMITS.dreadnought,
       supplyLeft: getAvailableSupply('dreadnought'),
       unlocked: getAvailableSupply('dreadnought') > 0,
-      disabledReason: getAvailableSupply('dreadnought') <= 0 ? `Max limit of ${SHIP_LIMITS.dreadnought} reached` : undefined,
+      disabledReason: isRhoIndi
+        ? 'Rho Indi Syndicate cannot construct Dreadnoughts.'
+        : getAvailableSupply('dreadnought') <= 0
+        ? `Max limit of ${SHIP_LIMITS.dreadnought} reached`
+        : undefined,
       description: `Heavily armored capital flagship capable of carrying superweapons (Limit 2, Cost ${getItemCost('dreadnought')} Mats).`,
     },
     {
       type: 'starbase',
       name: 'Starbase',
       cost: getItemCost('starbase'),
-      limit: SHIP_LIMITS.starbase,
+      limit: isExiles ? 0 : SHIP_LIMITS.starbase,
       supplyLeft: getAvailableSupply('starbase'),
       unlocked: getAvailableSupply('starbase') > 0,
-      disabledReason: getAvailableSupply('starbase') <= 0
+      disabledReason: isExiles
+        ? 'The Exiles cannot construct Starbases.'
+        : getAvailableSupply('starbase') <= 0
         ? `Max limit of ${SHIP_LIMITS.starbase} reached`
         : undefined,
       description: `Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats).`,
     },
     {
       type: 'orbital',
-      name: 'Orbital Structure',
+      name: isExiles ? 'Exiles Orbital' : 'Orbital Structure',
       cost: getItemCost('orbital'),
       unlocked: hasOrbitalTech,
       disabledReason: !hasOrbitalTech ? 'Requires Orbital tech' : undefined,
-      description: `Artificial satellite providing a Money or Science population slot (Cost ${getItemCost('orbital')} Mats, max 1 per sector).`,
+      description: isExiles
+        ? `Armed orbital station acting as a combat ship when colonized (Cost 5 Mats, max 1 per sector).`
+        : `Artificial satellite providing a Money or Science population slot (Cost ${getItemCost('orbital')} Mats, max 1 per sector).`,
     },
     {
       type: 'monolith',
@@ -174,6 +195,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     cruiser: 0,
     dreadnought: 0,
     starbase: 0,
+    orbital: 0,
   };
 
   for (const s of slots) {
@@ -183,7 +205,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   }
 
   const exceedsShipLimits = (['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).some(
-    (t) => deployedShips[t] + overallQueuedShips[t] > SHIP_LIMITS[t]
+    (t) => {
+      const maxLimit = isRhoIndi && t === 'dreadnought' ? 0 : isExiles && t === 'starbase' ? 0 : SHIP_LIMITS[t];
+      return deployedShips[t] + overallQueuedShips[t] > maxLimit;
+    }
   );
 
   const canBuild =
@@ -196,7 +221,8 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     if (slots.length < maxBuild) {
       let defaultType: ShipType | 'orbital' | 'monolith' = 'interceptor';
       for (const st of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]) {
-        if (deployedShips[st] + overallQueuedShips[st] < SHIP_LIMITS[st]) {
+        const maxLimit = isRhoIndi && st === 'dreadnought' ? 0 : isExiles && st === 'starbase' ? 0 : SHIP_LIMITS[st];
+        if (deployedShips[st] + overallQueuedShips[st] < maxLimit) {
           defaultType = st;
           break;
         }

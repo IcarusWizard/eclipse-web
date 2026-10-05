@@ -800,26 +800,39 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
           {/* ===================== TAB 5: FACTIONS ===================== */}
           {activeTab === 'factions' && (
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {filteredFactions.map((f: FactionInfo) => (
-                <div
-                  key={f.id}
-                  className="p-5 rounded-xl border border-slate-800 bg-slate-950/90 flex flex-col justify-between hover:border-slate-600 transition-all"
-                >
-                  <div>
-                    <div className="flex items-center justify-between mb-3">
-                      <div className="flex items-center gap-2.5">
-                        <div
-                          className="w-4 h-4 rounded-full border border-white/20 shadow shrink-0"
-                          style={{ backgroundColor: f.defaultColor }}
-                        />
-                        <h3 className="text-base font-bold text-slate-100 font-display">
-                          {f.name}
-                        </h3>
+              {filteredFactions.map((f: FactionInfo) => {
+                const exp = getExpansionForItem(f.id);
+                return (
+                  <div
+                    key={f.id}
+                    className={`p-5 rounded-xl border flex flex-col justify-between transition-all ${
+                      exp
+                        ? 'border-purple-500/50 bg-purple-950/20 shadow-md shadow-purple-950/20 hover:border-purple-400/80'
+                        : 'border-slate-800 bg-slate-950/90 hover:border-slate-600'
+                    }`}
+                  >
+                    <div>
+                      <div className="flex items-center justify-between mb-3">
+                        <div className="flex items-center gap-2.5">
+                          <div
+                            className="w-4 h-4 rounded-full border border-white/20 shadow shrink-0"
+                            style={{ backgroundColor: f.defaultColor }}
+                          />
+                          <h3 className="text-base font-bold text-slate-100 font-display">
+                            {f.name}
+                          </h3>
+                        </div>
+                        <div className="flex items-center gap-1.5">
+                          {exp && (
+                            <span className="text-[11px] px-2 py-0.5 rounded bg-purple-900/80 border border-purple-500/60 text-purple-200 font-mono font-semibold">
+                              {exp.name}
+                            </span>
+                          )}
+                          <span className="text-xs px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-semibold">
+                            {f.isHuman ? 'Human Civilization' : 'Alien Species'}
+                          </span>
+                        </div>
                       </div>
-                      <span className="text-xs px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-semibold">
-                        {f.isHuman ? 'Human Civilization' : 'Alien Species'}
-                      </span>
-                    </div>
 
                     <p className="text-xs text-slate-300 leading-relaxed mb-4 italic">
                       "{f.traitDescription}"
@@ -886,7 +899,8 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                     )}
                   </div>
                 </div>
-              ))}
+              );
+            })}
             </div>
           )}
 

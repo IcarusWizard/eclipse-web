@@ -3,7 +3,12 @@ import { GameState } from './engine/types/state';
 import { SectorTile, HexCoord, ShipType, SectorShip } from './engine/types/galaxy';
 import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
-import { executeAction, getMaxMoveActivations, computePinningState } from './engine/rules/gameReducer';
+import {
+  executeAction,
+  getMaxMoveActivations,
+  computePinningState,
+  playerHasWormholeGenerator,
+} from './engine/rules/gameReducer';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative } from './engine/rules/combatEngine';
@@ -28,6 +33,7 @@ import { CombatConquestModal } from './components/combat/CombatConquestModal';
 import { ReputationTileModal } from './components/combat/ReputationTileModal';
 import { GameOverModal } from './components/gameover/GameOverModal';
 import { NewGameModal } from './components/setup/NewGameModal';
+import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { SectorInspector } from './components/map/SectorInspector';
 import { PhysicalPlayerBoardModal } from './components/dashboard/PhysicalPlayerBoardModal';
@@ -488,9 +494,7 @@ export const App: React.FC = () => {
     setPendingExploreCoords({ from: fromCoord, target: targetCoord });
     const candidate = deck[deck.length - 1];
     const source = state.sectors.find((s) => areCoordsEqual(s.coord, fromCoord));
-    const hasWormholeGen = activePlayer.techTrack.researched.some(
-      (t) => t.id === 'wormhole_generator'
-    );
+    const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
 
     const defaultRotation = (source && candidate)
       ? findLegalExploreRotation(source, candidate, targetCoord, hasWormholeGen, state.sectors)
@@ -757,7 +761,7 @@ export const App: React.FC = () => {
   };
 
   const maxMoves = getMaxMoveActivations(activePlayer);
-  const hasWormholeGen = activePlayer.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+  const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
 
   const currentMoveShip = playerShips.find((p) => p.ship.id === selectedMoveShipId)?.ship;
   const currentSimSector = simulatedShipSector.get(selectedMoveShipId);
@@ -1287,6 +1291,22 @@ export const App: React.FC = () => {
     }
   };
 
+  // Exiles Starting Orbital Population Cube Selection
+  const handleChooseExilesOrbitalCube = (resource: 'money' | 'science') => {
+    if (!state.pendingExilesOrbitalSetup) return;
+    const res = executeAction(state, {
+      type: 'CHOOSE_EXILES_ORBITAL_CUBE',
+      playerId: state.pendingExilesOrbitalSetup.playerId,
+      resource,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(`Exiles starting Orbital populated with a ${resource.toUpperCase()} cube.`);
+    } else {
+      showToast(res.error || 'Failed to place orbital population cube.');
+    }
+  };
+
   // Auto-Resolve Combat
   const handleAutoResolveCombat = () => {
     if (!state.activeCombat) return;
@@ -1706,6 +1726,31 @@ export const App: React.FC = () => {
                 {state.players.find((p) => p.id === state.pendingReputationDraw!.playerId)?.name || 'Player'}
               </strong>{' '}
               is selecting a secret Reputation Tile from the bag...
+            </span>
+          </div>
+        )
+      )}
+
+      {state.pendingExilesOrbitalSetup && (
+        currentSeat === 'all' ||
+        (typeof currentSeat === 'number' &&
+          state.players[currentSeat]?.id === state.pendingExilesOrbitalSetup.playerId) ? (
+          <ExilesOrbitalSetupModal
+            player={
+              state.players.find((p) => p.id === state.pendingExilesOrbitalSetup!.playerId) ||
+              activePlayer
+            }
+            onChooseCube={handleChooseExilesOrbitalCube}
+          />
+        ) : (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-teal-700/80 px-4 py-2 rounded-xl text-xs text-slate-300 shadow-xl backdrop-blur-md flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-teal-400 animate-pulse" />
+            <span>
+              Commander{' '}
+              <strong className="text-teal-300">
+                {state.players.find((p) => p.id === state.pendingExilesOrbitalSetup!.playerId)?.name || 'The Exiles'}
+              </strong>{' '}
+              is choosing starting Orbital population cube...
             </span>
           </div>
         )

@@ -6,6 +6,8 @@ import {
   areFactionsConflictingColor,
   FACTION_COLOR_GROUP,
   FactionColorGroup,
+  isFactionAvailable,
+  getAvailableFactions,
 } from '../../engine/rules/setup';
 import { FactionInfo } from '../../engine/types/player';
 import {
@@ -64,11 +66,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
           gcds: cur.gcds === 'expert' ? 'default' : cur.gcds,
         }));
       }
-      if (!next.includes('seekers')) {
-        setDraftedFactions((cur) =>
-          cur.filter((fid) => fid !== 'wardens_of_magellan' && fid !== 'enlightened_of_lyra')
-        );
-      }
+      setDraftedFactions((cur) => cur.filter((fid) => isFactionAvailable(fid, next)));
       return next;
     });
   };
@@ -79,9 +77,14 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
     setCurrentDrafterIndex((prev) => Math.min(prev, playerCount - 1));
   }, [playerCount]);
 
+  useEffect(() => {
+    setCurrentDrafterIndex((prev) => Math.min(prev, Math.max(0, Math.min(draftedFactions.length, playerCount - 1))));
+  }, [draftedFactions.length, playerCount]);
+
   const allDrafted = draftedFactions.length === playerCount;
 
   const handleSelectFaction = (factionId: string) => {
+    if (!availableFactions.some((f) => f.id === factionId)) return;
     const conflictingPlayerIndex = draftedFactions.findIndex(
       (id, idx) => idx !== currentDrafterIndex && areFactionsConflictingColor(id, factionId)
     );
@@ -107,18 +110,16 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
     setCurrentDrafterIndex(0);
   };
 
-  const availableFactions = ALL_FACTIONS.filter((f) => {
-    if (f.id === 'wardens_of_magellan' || f.id === 'enlightened_of_lyra') {
-      return selectedExpansions.includes('seekers');
-    }
-    return true;
-  });
+  const availableFactions = getAvailableFactions(selectedExpansions);
 
   const handleRandomize = () => {
     // Pick N factions with distinct colors randomly across all available factions
     const colorGroups: FactionColorGroup[] = ['red', 'blue', 'green', 'yellow', 'white', 'black'];
     if (selectedExpansions.includes('seekers')) {
       colorGroups.push('purple', 'orange');
+    }
+    if (selectedExpansions.includes('outcasts')) {
+      colorGroups.push('teal', 'amber');
     }
     const shuffledColors = [...colorGroups].sort(() => Math.random() - 0.5).slice(0, playerCount);
     const selected: string[] = [];
@@ -135,6 +136,9 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
 
   const handleLaunch = () => {
     if (draftedFactions.length === playerCount) {
+      if (draftedFactions.some((fid) => !availableFactions.some((f) => f.id === fid))) {
+        return;
+      }
       const hasRemnants = selectedExpansions.includes('remnants_of_worlds_afar');
       const sanitizedNeutralShips: NeutralShipSelectionConfig = {
         ancient: !hasRemnants && neutralShipSelections.ancient === 'expert' ? 'default' : neutralShipSelections.ancient,

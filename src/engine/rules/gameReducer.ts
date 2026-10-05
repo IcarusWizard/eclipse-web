@@ -226,6 +226,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return { valid: false, error: 'Player not found.' };
   }
 
+  // Pending Exiles orbital starting setup must be chosen before taking normal actions
+  if (state.pendingExilesOrbitalSetup && action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE') {
+    return {
+      valid: false,
+      error: 'The Exiles commander must select their starting Orbital population cube before taking actions.',
+    };
+  }
+
   // If an action is pending confirmation, only CONFIRM_TURN_ACTION, REVERT_TURN_ACTION, or intermediate choices (like COLONIZE) are permitted
   if (state.pendingActionConfirmation) {
     if (
@@ -240,7 +248,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'PROPOSE_DIPLOMACY' &&
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'CONVERT_COLONY_SHIP' &&
-      action.type !== 'REROLL_COMBAT_DIE'
+      action.type !== 'REROLL_COMBAT_DIE' &&
+      action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE'
     ) {
       return {
         valid: false,
@@ -268,7 +277,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'PROPOSE_DIPLOMACY' &&
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'CONVERT_COLONY_SHIP' &&
-      action.type !== 'REROLL_COMBAT_DIE'
+      action.type !== 'REROLL_COMBAT_DIE' &&
+      action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -592,10 +602,18 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         cruiser: 0,
         dreadnought: 0,
         starbase: 0,
+        orbital: 0,
       };
 
       let totalMaterialsCost = 0;
       for (const item of action.items) {
+        if (player.faction.id === 'the_exiles' && item.itemType === 'starbase') {
+          return { valid: false, error: 'The Exiles cannot construct Starbases.' };
+        }
+        if (player.faction.id === 'rho_indi_syndicate' && item.itemType === 'dreadnought') {
+          return { valid: false, error: 'Rho Indi Syndicate cannot construct Dreadnoughts.' };
+        }
+
         const sector = state.sectors.find((s) => s.id === item.sectorId);
         if (!sector) {
           return { valid: false, error: `Sector ${item.sectorId} not found.` };
@@ -614,7 +632,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           return { valid: false, error: `Cannot build structures (${item.itemType}) in sector ${item.sectorId} while enemy ships are present.` };
         }
 
-        // Validate Ship Supply Limits (8 Interceptors, 4 Cruisers, 2 Dreadnoughts, 4 Starbases)
+        // Validate Ship Supply Limits (8 Interceptors, 4 Cruisers, 2 Dreadnoughts, 4 Starbases, 10 Orbitals)
         if (item.itemType in queuedShips) {
           const st = item.itemType as ShipType;
           queuedShips[st]++;
@@ -651,11 +669,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         }
 
         const isMechanema = player.faction.id === 'mechanema';
-        let cost = isMechanema ? 2 : 3;
-        if (item.itemType === 'cruiser') cost = isMechanema ? 4 : 5;
+        const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
+        const isExiles = player.faction.id === 'the_exiles';
+        let cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
+        if (item.itemType === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
         else if (item.itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
-        else if (item.itemType === 'starbase') cost = isMechanema ? 2 : 3;
-        else if (item.itemType === 'orbital') cost = isMechanema ? 3 : 4;
+        else if (item.itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
+        else if (item.itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
         else if (item.itemType === 'monolith') cost = isMechanema ? 8 : 10;
 
         totalMaterialsCost += cost;
@@ -808,7 +828,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
           const friendlyCount = shipsInOrigin.filter((s) => s.ownerId === action.playerId).length;
           const hostiles = getHostilesInSec(originSec, shipsInOrigin);
-          if (hostiles > 0 && friendlyCount <= hostiles) {
+          const hasCloaking = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
+          const pinningThreshold = hasCloaking ? friendlyCount * 2 : friendlyCount;
+          if (hostiles > 0 && hostiles >= pinningThreshold) {
             return {
               valid: false,
               error: `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`,
@@ -868,12 +890,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
           shipInfo.currentSectorId = step.toSectorId;
 
-          // Check if destination has hostiles -> GCDS pins all; other hostiles pin 1:1 if friendly <= hostile
+          // Check if destination has hostiles -> GCDS pins all; other hostiles pin 1:1 (or 2:1 with Cloaking Device)
           const shipsInTo = simSectorShips.get(toSec.id) || [];
           const hasLiveGcdsInTo = toSec.hasGCDS || shipsInTo.some((s) => s.ownerId === 'gcds' || s.type === 'gcds');
           const friendlyInTo = shipsInTo.filter((s) => s.ownerId === action.playerId).length;
           const hostilesInTo = getHostilesInSec(toSec, shipsInTo);
-          if (hasLiveGcdsInTo || (hostilesInTo > 0 && friendlyInTo <= hostilesInTo)) {
+          const hasCloakingInTo = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
+          const pinningThresholdInTo = hasCloakingInTo ? friendlyInTo * 2 : friendlyInTo;
+          if (hasLiveGcdsInTo || (hostilesInTo > 0 && hostilesInTo >= pinningThresholdInTo)) {
             pinnedShips.add(act.shipId);
             if (sIdx < act.steps.length - 1) {
               return {
@@ -1039,7 +1063,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
 
     case 'TRADE': {
-      const ratio = player.faction.tradeRatio || 2;
+      const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
+      const ratio = isRhoIndi ? 3 : (player.faction.tradeRatio || 2);
       const toRes = action.toResource || 'money';
       if (action.fromResource === toRes) {
         return { valid: false, error: 'Cannot trade a resource for itself.' };
@@ -1377,6 +1402,19 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'CHOOSE_EXILES_ORBITAL_CUBE': {
+      if (!state.pendingExilesOrbitalSetup) {
+        return { valid: false, error: 'No pending Exiles orbital setup.' };
+      }
+      if (state.pendingExilesOrbitalSetup.playerId !== action.playerId) {
+        return { valid: false, error: 'Only The Exiles commander can make this choice.' };
+      }
+      if (action.resource !== 'money' && action.resource !== 'science') {
+        return { valid: false, error: 'Must choose either money or science cube.' };
+      }
+      return { valid: true };
+    }
+
     default:
       return { valid: true };
   }
@@ -1610,6 +1648,21 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
             killerId: player.id,
           });
         }
+        if (targetShip.type === 'orbital') {
+          const victimOwner = state.players.find((p) => p.id === targetShip.ownerId);
+          if (victimOwner && victimOwner.faction.id === 'the_exiles') {
+            const orbitalPlanet = sector.planets.find((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
+            if (orbitalPlanet) {
+              const res = orbitalPlanet.colonizedResource || 'science';
+              if (!victimOwner.graveyardCubes) {
+                victimOwner.graveyardCubes = { money: 0, science: 0, material: 0 };
+              }
+              victimOwner.graveyardCubes[res] = (victimOwner.graveyardCubes[res] || 0) + 1;
+              orbitalPlanet.colonizedBy = undefined;
+              orbitalPlanet.colonizedResource = undefined;
+            }
+          }
+        }
         sector.ships = sector.ships.filter((s) => s.id !== targetShip.id);
       }
     }
@@ -1654,7 +1707,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     action.type !== 'PROPOSE_DIPLOMACY' &&
     action.type !== 'RESPOND_DIPLOMACY' &&
     action.type !== 'CONVERT_COLONY_SHIP' &&
-    action.type !== 'REROLL_COMBAT_DIE'
+    action.type !== 'REROLL_COMBAT_DIE' &&
+    action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE'
   ) {
     newState.consecutivePasses = 0;
   }
@@ -1972,11 +2026,13 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       for (const item of action.items) {
         const sector = newState.sectors.find((s) => s.id === item.sectorId)!;
         const isMechanema = player.faction.id === 'mechanema';
-        let cost = isMechanema ? 2 : 3;
-        if (item.itemType === 'cruiser') cost = isMechanema ? 4 : 5;
+        const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
+        const isExiles = player.faction.id === 'the_exiles';
+        let cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
+        if (item.itemType === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
         else if (item.itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
-        else if (item.itemType === 'starbase') cost = isMechanema ? 2 : 3;
-        else if (item.itemType === 'orbital') cost = isMechanema ? 3 : 4;
+        else if (item.itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
+        else if (item.itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
         else if (item.itemType === 'monolith') cost = isMechanema ? 8 : 10;
 
         player.resources.materials -= cost;
@@ -2211,6 +2267,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 p.colonizedResource = undefined;
               }
             }
+            if (player.faction.id === 'the_exiles') {
+              sec.ships = sec.ships.filter((s) => !(s.ownerId === player.id && s.type === 'orbital'));
+            }
             // If player is resolving bankruptcy, calculate upkeep savings and apply to deficit
             if (newState.pendingBankruptcy && newState.pendingBankruptcy.playerId === player.id) {
               const oldUpkeep = UPKEEP_TABLE[discsBefore] ?? 30;
@@ -2273,6 +2332,18 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       player.population[placedRes].cubesOnBoard = Math.max(0, player.population[placedRes].cubesOnBoard - 1);
       addLog(`${player.name} colonized a ${placedRes.toUpperCase()} slot in Sector ${sector.sectorNumber}.`);
 
+      if (planet.isOrbital && player.faction.id === 'the_exiles') {
+        const hasOrbitalShip = sector.ships.some((s) => s.ownerId === player.id && s.type === 'orbital');
+        if (!hasOrbitalShip) {
+          sector.ships.push({
+            id: `ship_${player.id}_orbital_${planet.id}`,
+            ownerId: player.id,
+            type: 'orbital',
+            damage: 0,
+          });
+        }
+      }
+
       // Bug 96: If an Influence action is pending confirmation and has remaining colony ship refreshes,
       // flip the used colony ship back face-up (or apply unused refresh)
       if (
@@ -2293,9 +2364,12 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     case 'TRADE': {
-      const ratio = player.faction.tradeRatio || 2;
+      const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
+      const ratio = isRhoIndi ? 3 : (player.faction.tradeRatio || 2);
       const toRes = action.toResource || 'money';
-      const gained = action.amount / ratio;
+      const gained = isRhoIndi && action.fromResource === 'money'
+        ? (action.amount / 3) * 2
+        : action.amount / ratio;
 
       if (action.fromResource === 'money') {
         player.resources.money -= action.amount;
@@ -2584,6 +2658,18 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             planet.colonizedResource = placedRes;
             player.population[placedRes].cubesOnBoard = Math.max(0, player.population[placedRes].cubesOnBoard - 1);
             addLog(`${player.name} colonized a ${placedRes.toUpperCase()} habitat in Sector ${sector.sectorNumber} using a Colony Ship!`, 'action');
+
+            if (planet.isOrbital && player.faction.id === 'the_exiles') {
+              const hasOrbitalShip = sector.ships.some((s) => s.ownerId === player.id && s.type === 'orbital');
+              if (!hasOrbitalShip) {
+                sector.ships.push({
+                  id: `ship_${player.id}_orbital_${planet.id}`,
+                  ownerId: player.id,
+                  type: 'orbital',
+                  damage: 0,
+                });
+              }
+            }
           }
         }
       }
@@ -2611,6 +2697,25 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         const sector = newState.sectors.find((s) => s.id === newState.activeCombat!.sectorId);
         if (sector) {
           const concludeEngagement = (winnerId: string | undefined, currentUnits: ReturnType<typeof buildCombatUnitsForSector>) => {
+            // Return population cubes for any destroyed Exiles orbitals
+            for (const casualty of (newState.activeCombat?.destroyedShips || [])) {
+              if (casualty.type === 'orbital') {
+                const victimOwner = newState.players.find((p) => p.id === casualty.ownerId);
+                if (victimOwner && victimOwner.faction.id === 'the_exiles') {
+                  const orbitalPlanet = sector.planets.find((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
+                  if (orbitalPlanet) {
+                    const res = orbitalPlanet.colonizedResource || 'science';
+                    if (!victimOwner.graveyardCubes) {
+                      victimOwner.graveyardCubes = { money: 0, science: 0, material: 0 };
+                    }
+                    victimOwner.graveyardCubes[res] = (victimOwner.graveyardCubes[res] || 0) + 1;
+                    orbitalPlanet.colonizedBy = undefined;
+                    orbitalPlanet.colonizedResource = undefined;
+                  }
+                }
+              }
+            }
+
             // Identify duel participants (Bug 57: even if ships destroyed, player participated)
             const duelPlayerIds = (newState.activeCombat?.participatingPlayerIds || Array.from(new Set(currentUnits.map((u) => u.ownerId)))).filter((id) => id.startsWith('player_'));
 
@@ -2635,7 +2740,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               } else {
                 // Kills tiles
                 for (const casualty of playerKills) {
-                  if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient') {
+                  if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient' || casualty.type === 'orbital') {
                     tilesCount += 1;
                   } else if (casualty.type === 'cruiser' || casualty.type === 'guardian') {
                     tilesCount += 2;
@@ -2658,6 +2763,14 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                     drawnTiles: drawn,
                     sectorId: sector.id,
                   });
+                  const participant = newState.players.find((p) => p.id === pId);
+                  if (participant?.faction.id === 'rho_indi_syndicate') {
+                    const bountyMoney = Math.max(0, drawn.length - 1);
+                    if (bountyMoney > 0) {
+                      participant.resources.money += bountyMoney;
+                      addLog(`💰 Rho Indi Syndicate gained ${bountyMoney} Money from drawing ${drawn.length} Reputation Tiles!`, 'economy');
+                    }
+                  }
                 }
               }
             }
@@ -2817,6 +2930,22 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               `💥 ${victimLabel} ${des.type.toUpperCase()} was destroyed in Sector ${sector.sectorNumber}!`,
               'combat'
             );
+            if (des.type === 'orbital' && victimOwner && victimOwner.faction.id === 'the_exiles') {
+              const orbitalPlanet = sector.planets.find((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
+              if (orbitalPlanet) {
+                const res = orbitalPlanet.colonizedResource || 'science';
+                if (!victimOwner.graveyardCubes) {
+                  victimOwner.graveyardCubes = { money: 0, science: 0, material: 0 };
+                }
+                victimOwner.graveyardCubes[res] = (victimOwner.graveyardCubes[res] || 0) + 1;
+                orbitalPlanet.colonizedBy = undefined;
+                orbitalPlanet.colonizedResource = undefined;
+                addLog(
+                  `🏛️ The Exiles Population Cube on the destroyed Orbital in Sector ${sector.sectorNumber} was returned to the ${res.toUpperCase()} graveyard!`,
+                  'combat'
+                );
+              }
+            }
           }
 
           if (combatRes.isCombatOver) {
@@ -3099,6 +3228,30 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
     case 'REROLL_COMBAT_DIE': {
       applyCombatDieReroll(newState, player, action.rollIndex);
+      return { success: true, newState };
+    }
+
+    case 'CHOOSE_EXILES_ORBITAL_CUBE': {
+      if (!newState.pendingExilesOrbitalSetup) {
+        return { success: false, newState: state, error: 'No pending Exiles orbital setup.' };
+      }
+      const sector = newState.sectors.find((s) => s.id === newState.pendingExilesOrbitalSetup!.sectorId);
+      const planet = sector?.planets.find((p) => p.id === newState.pendingExilesOrbitalSetup!.planetId);
+      if (planet) {
+        const oldRes = planet.colonizedResource;
+        planet.colonizedResource = action.resource;
+        if (oldRes !== action.resource) {
+          if (action.resource === 'money') {
+            player.population.science.cubesOnBoard = Math.min(11, player.population.science.cubesOnBoard + 1);
+            player.population.money.cubesOnBoard = Math.max(0, player.population.money.cubesOnBoard - 1);
+          } else {
+            player.population.money.cubesOnBoard = Math.min(11, player.population.money.cubesOnBoard + 1);
+            player.population.science.cubesOnBoard = Math.max(0, player.population.science.cubesOnBoard - 1);
+          }
+        }
+      }
+      newState.pendingExilesOrbitalSetup = null;
+      addLog(`🛰️ ${player.name} placed a ${action.resource.toUpperCase()} population cube on starting Orbital in Sector ${sector?.sectorNumber || 234}.`, 'action');
       return { success: true, newState };
     }
   }
@@ -3483,7 +3636,9 @@ export function computePinningState(
       const hasLiveGcdsInTo = toSec.hasGCDS || toList.some((s) => s.ownerId === 'gcds' || s.type === 'gcds');
       const friendlyInTo = toList.filter((s) => s.ownerId === playerId).length;
       const hostilesInTo = getHostilesInSec(toSec, toList);
-      if (hasLiveGcdsInTo || (hostilesInTo > 0 && friendlyInTo <= hostilesInTo)) {
+      const hasCloakingInTo = player?.techTrack.researched.some((t) => t.id === 'cloaking_device');
+      const pinningThresholdInTo = hasCloakingInTo ? friendlyInTo * 2 : friendlyInTo;
+      if (hasLiveGcdsInTo || (hostilesInTo > 0 && hostilesInTo >= pinningThresholdInTo)) {
         pinnedShipIds.add(m.shipId);
       }
     }
@@ -3501,7 +3656,9 @@ export function computePinningState(
       }
     } else {
       const hostiles = getHostilesInSec(s, shipsInSec);
-      if (hostiles > 0 && friendlyShips.length <= hostiles) {
+      const hasCloaking = player?.techTrack.researched.some((t) => t.id === 'cloaking_device');
+      const pinningThreshold = hasCloaking ? friendlyShips.length * 2 : friendlyShips.length;
+      if (hostiles > 0 && hostiles >= pinningThreshold) {
         for (const sh of friendlyShips) {
           pinnedShipIds.add(sh.id);
         }
@@ -4066,10 +4223,22 @@ export function computeCurrentScores(state: GameState): {
         }
       }
       speciesBonus += controlledShrines;
+    } else if (p.faction.id === 'the_exiles') {
+      // 1 VP per Orbital with your Population Cube at the end of the game
+      let orbitalsWithCube = 0;
+      for (const s of state.sectors) {
+        for (const pl of s.planets || []) {
+          if (pl.isOrbital && pl.colonizedBy === p.id) {
+            orbitalsWithCube += 1;
+          }
+        }
+      }
+      speciesBonus += orbitalsWithCube;
     }
 
     // 9. Traitor Tile Penalty (-2 VP)
-    const traitorVP = state.traitorPlayerId === p.id ? -2 : 0;
+    const isRhoIndi = p.faction.id === 'rho_indi_syndicate';
+    const traitorVP = state.traitorPlayerId === p.id && !isRhoIndi ? -2 : 0;
 
     const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP + artifactCodexVP + ancientMightVP + speciesBonus + traitorVP;
 

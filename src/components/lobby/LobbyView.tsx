@@ -8,7 +8,12 @@ import {
   loadTableByNumber,
   fetchTableFromServer,
 } from '../../engine/rules/persistence';
-import { ALL_FACTIONS, areFactionsConflictingColor } from '../../engine/rules/setup';
+import {
+  ALL_FACTIONS,
+  areFactionsConflictingColor,
+  isFactionAvailable,
+  getAvailableFactions,
+} from '../../engine/rules/setup';
 import { AVAILABLE_EXPANSIONS } from '../../engine/rules/expansions';
 import { FactionInfo } from '../../engine/types/player';
 import {
@@ -90,6 +95,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     gcds: 'default',
   });
   const hasRemnants = selectedExpansions.includes('remnants_of_worlds_afar');
+  const availableFactions = getAvailableFactions(selectedExpansions);
 
   // Adaptive Display & Scrolling Options
   const [displayMode, setDisplayMode] = useState<'compact' | 'detailed'>(() => {
@@ -140,6 +146,28 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           gcds: cur.gcds === 'expert' ? 'default' : cur.gcds,
         }));
       }
+
+      // If any selected faction requires an expansion that is no longer active, replace it
+      const nextAvailable = getAvailableFactions(next);
+      setSelectedFactions((currentFactions) => {
+        const updated = [...currentFactions];
+        for (let i = 0; i < updated.length; i++) {
+          if (!isFactionAvailable(updated[i]!, next)) {
+            const replacement =
+              nextAvailable.find(
+                (cand) =>
+                  !updated
+                    .slice(0, playerCount)
+                    .some((otherId, otherIdx) => otherIdx !== i && areFactionsConflictingColor(otherId, cand.id))
+              ) || nextAvailable.find((cand) => cand.id !== updated[i]) || nextAvailable[0];
+            if (replacement) {
+              updated[i] = replacement.id;
+            }
+          }
+        }
+        return updated;
+      });
+
       return next;
     });
   };
@@ -152,6 +180,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const [copiedLinkTableId, setCopiedLinkTableId] = useState<string | null>(null);
 
   const handleFactionChange = (playerIdx: number, factionId: string) => {
+    if (!availableFactions.some((f) => f.id === factionId)) return;
     setSelectedFactions((prev) => {
       const next = [...prev];
       next[playerIdx] = factionId;
@@ -163,6 +192,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     e.preventDefault();
     const activeFactions = selectedFactions.slice(0, playerCount);
     for (let i = 0; i < activeFactions.length; i++) {
+      if (!isFactionAvailable(activeFactions[i]!, selectedExpansions)) {
+        alert('One or more selected factions require an unselected expansion module.');
+        return;
+      }
       for (let j = i + 1; j < activeFactions.length; j++) {
         if (areFactionsConflictingColor(activeFactions[i]!, activeFactions[j]!)) {
           alert('Each player must select a faction with a distinct color.');
@@ -404,7 +437,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                           onChange={(e) => handleFactionChange(idx, e.target.value)}
                           className="bg-slate-900 border border-slate-700 text-xs font-medium rounded-lg px-2 py-1 text-slate-200 focus:outline-none focus:border-cyan-400 max-w-[130px]"
                         >
-                          {ALL_FACTIONS.map((f) => {
+                          {availableFactions.map((f) => {
                             const conflictSeat = selectedFactions.slice(0, playerCount).findIndex(
                               (otherId, otherIdx) => otherIdx !== idx && areFactionsConflictingColor(otherId, f.id)
                             );

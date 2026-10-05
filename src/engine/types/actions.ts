@@ -219,6 +219,11 @@ export interface RerollCombatDieAction extends BaseAction {
   rollIndex: number;
 }
 
+export interface ChooseExilesOrbitalCubeAction extends BaseAction {
+  type: 'CHOOSE_EXILES_ORBITAL_CUBE';
+  resource: 'money' | 'science';
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -243,4 +248,5 @@ export type GameAction =
   | RevertTurnAction
   | ConvertColonyShipAction
   | PlaceShrineAction
-  | RerollCombatDieAction;
+  | RerollCombatDieAction
+  | ChooseExilesOrbitalCubeAction;

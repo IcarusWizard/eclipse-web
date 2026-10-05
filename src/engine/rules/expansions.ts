@@ -2,7 +2,7 @@
  * Official Expansion Modules & Configuration for Eclipse: Second Dawn
  */
 
-export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers';
+export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts';
 
 export interface ExpansionDefinition {
   readonly id: ExpansionId;
@@ -67,6 +67,18 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'Home Sectors: Sector 233 (47 Ursae Majoris) and Sector 238 (Beta Lyrae).',
     ],
   },
+  {
+    id: 'outcasts',
+    name: 'Outcasts',
+    shortName: 'Outcasts',
+    badge: '2 Outcast Factions',
+    description: 'Introduces two new Alien Species from the galactic fringe: The Exiles and Rho Indi Syndicate.',
+    features: [
+      'The Exiles: Orbitals with cubes act as armed ships with 3-slot blueprints (Ion Turret, Computer, Hull, outside 2 Hulls + 4 Power). Cannot construct Starbases. +1 VP per Orbital with cube.',
+      'Rho Indi Syndicate: Ruthless raiders with 4 Move activations, 2 starting Interceptors, preprinted Gauss Shields, Traitor Card immunity, reputation tile money bounties, and 3:2 Money trade.',
+      'Home Sectors: Sector 234 (Outer Rim) and Sector 236 (The Desolation).',
+    ],
+  },
 ];
 
 export function isExpansionActive(expansions: string[] | undefined, id: ExpansionId): boolean {
@@ -118,6 +130,16 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'shrine'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'seekers') || null;
+  }
+  if (
+    norm === 'outcasts' ||
+    norm === 'the_exiles' ||
+    norm === 'exiles' ||
+    norm === 'rho_indi_syndicate' ||
+    norm === 'rho_indi' ||
+    norm === 'rho indi'
+  ) {
+    return AVAILABLE_EXPANSIONS.find((e) => e.id === 'outcasts') || null;
   }
   return null;
 }

@@ -43,8 +43,11 @@ export interface ShipBlueprint {
   readonly maxSlots: number;
   readonly baseInitiative: number;
   readonly baseBuildCost: number; // Materials
-  readonly preprintedPower?: number; // Pre-printed additional energy (Eridani +1, Planta +2/+5, Orion +1/+2/+3)
+  readonly preprintedPower?: number; // Pre-printed additional energy (Eridani +1, Planta +2/+5, Orion +1/+2/+3, Exiles Orbital +4)
   readonly preprintedComputer?: number; // Pre-printed computer bonus (Planta +1)
+  readonly preprintedShield?: number; // Pre-printed shield bonus (Rho Indi Syndicate -1 to enemy hit rolls)
+  readonly preprintedHull?: number; // Pre-printed chassis hull points (Exiles Orbital 2 HP outside slots)
+  readonly noDrives?: boolean; // Cannot equip Drive ship parts (Exiles Orbital)
   slots: (ShipPart | null)[];
 }
 

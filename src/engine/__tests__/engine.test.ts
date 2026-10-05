@@ -39,6 +39,8 @@ import {
   FACTION_COLOR_GROUP,
   FACTION_COLOR_MAP,
   getPlayerReputationTrackSlots,
+  isFactionAvailable,
+  getAvailableFactions,
 } from '../rules/setup';
 import {
   executeAction,
@@ -55,6 +57,7 @@ import {
   getInfluenceColonyShipRefreshes,
   playerHasWormholeGenerator,
   applyShrinePlacement,
+  getMaxMoveActivations,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -83,7 +86,16 @@ import {
   POPULATION_TRACK_SPACES,
   abandonSectorForUpkeep,
 } from '../rules/economyEngine';
-import { CENTER_SECTOR, generateSectorDecks, DISCOVERY_TILES, getAllSectorsCatalog, RIFT_CONDUCTOR_DISCOVERY } from '../rules/sectorData';
+import {
+  CENTER_SECTOR,
+  generateSectorDecks,
+  DISCOVERY_TILES,
+  getAllSectorsCatalog,
+  RIFT_CONDUCTOR_DISCOVERY,
+  ALIEN_HOME_SECTORS,
+  HUMAN_HOME_SECTORS,
+  ALL_HOME_SECTORS,
+} from '../rules/sectorData';
 import {
   createInitialTechBag,
   drawTechTilesForSetup,
@@ -8980,39 +8992,51 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         r2State.players[1].resources.science = 20;
 
         // P2 acts
-        const regularTechs = r2State.techSupply.filter(
+        const p2Tech = r2State.techSupply.find(
           (t) =>
             (t.category === 'military' || t.category === 'grid' || t.category === 'nano') &&
-            t.id !== 'ancient_labs' &&
-            t.id !== 'artifact_key'
-        );
-        const r2Tech0 = regularTechs[0]!;
+            !p2.techTrack.researched.some((rt) => rt.id === t.id)
+        )!;
         const r2Act1 = executeAction(r2State, {
           type: 'RESEARCH',
           playerId: p2.id,
-          researches: [{ techId: r2Tech0.id, cost: 2 }],
+          researches: [{ techId: p2Tech.id, cost: 2 }],
         });
         expect(r2Act1.success).toBe(true);
         // After P2, next is P0 (index 0) per turnOrder! (NOT P0 or P1 clockwise from 2 in seating)
         expect(r2Act1.newState.activePlayerIndex).toBe(0);
 
         // P0 acts
-        const r2Tech1 = regularTechs[1]!;
+        const curP0 = r2Act1.newState.players[0]!;
+        const p0Tech = r2Act1.newState.techSupply.find(
+          (t) =>
+            t.id !== 'ancient_labs' &&
+            t.id !== 'artifact_key' &&
+            (t.category === 'military' || t.category === 'grid' || t.category === 'nano') &&
+            !curP0.techTrack.researched.some((rt) => rt.id === t.id)
+        )!;
         const r2Act2 = executeAction(r2Act1.newState, {
           type: 'RESEARCH',
           playerId: p0.id,
-          researches: [{ techId: r2Tech1.id, cost: 2 }],
+          researches: [{ techId: p0Tech.id, cost: 2 }],
         });
         expect(r2Act2.success).toBe(true);
         // After P0, next is P1 (index 1) per turnOrder!
         expect(r2Act2.newState.activePlayerIndex).toBe(1);
 
         // P1 acts
-        const r2Tech2 = regularTechs[2]!;
+        const curP1 = r2Act2.newState.players[1]!;
+        const p1Tech = r2Act2.newState.techSupply.find(
+          (t) =>
+            t.id !== 'ancient_labs' &&
+            t.id !== 'artifact_key' &&
+            (t.category === 'military' || t.category === 'grid' || t.category === 'nano') &&
+            !curP1.techTrack.researched.some((rt) => rt.id === t.id)
+        )!;
         const r2Act3 = executeAction(r2Act2.newState, {
           type: 'RESEARCH',
           playerId: p1.id,
-          researches: [{ techId: r2Tech2.id, cost: 2 }],
+          researches: [{ techId: p1Tech.id, cost: 2 }],
         });
         expect(r2Act3.success).toBe(true);
         // After P1, wraps back to P2 (index 2)!
@@ -9575,6 +9599,570 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           })
         );
         expect(mapHtml).toContain('Shrine of Enlightened of Lyra');
+      });
+
+      test('60. verifies Outcasts Expansion: The Exiles setup, starting orbital cube selection, orbital combat stats and destruction, tech placement, build restrictions, and scoring', async () => {
+        const game = createInitialGame(2, ['the_exiles', 'terran_federation']);
+        const exiles = game.players[0]!;
+        expect(exiles.faction.id).toBe('the_exiles');
+        expect(exiles.faction.name).toBe('The Exiles');
+
+        // 1. Initial Setup:
+        // Sector 234
+        const homeSec = game.sectors.find((s) => s.sectorNumber === 234)!;
+        expect(homeSec).toBeDefined();
+        expect(homeSec.discOwner).toBe(exiles.id);
+        expect(homeSec.structures?.orbital).toBe(true);
+        expect(homeSec.planets.some((p) => p.isOrbital)).toBe(true);
+
+        // Starting ships: 1 Interceptor, 1 Orbital
+        const interceptors = homeSec.ships.filter((s) => s.ownerId === exiles.id && s.type === 'interceptor');
+        const orbitals = homeSec.ships.filter((s) => s.ownerId === exiles.id && s.type === 'orbital');
+        expect(interceptors.length).toBe(1);
+        expect(orbitals.length).toBe(1);
+
+        // Starting Techs: orbital (Nano) and cloaking_device (Military, Row 1, printed)
+        expect(exiles.techTrack.researched.some((t) => t.id === 'orbital')).toBe(true);
+        const cloaking = exiles.techTrack.researched.find((t) => t.id === 'cloaking_device');
+        expect(cloaking).toBeDefined();
+        expect(cloaking?.placedTrack).toBe('military');
+        // Tech should not be taken from the tech bag / supply (printed tech on player board)
+        const inBag = game.techBag.concat(game.techSupply).some((t) => t.id === 'cloaking_device');
+        expect(inBag).toBe(true);
+
+        // Pending Orbital Setup initialized
+        expect(game.pendingExilesOrbitalSetup).toBeDefined();
+        expect(game.pendingExilesOrbitalSetup?.playerId).toBe(exiles.id);
+        expect(game.pendingExilesOrbitalSetup?.sectorId).toBe(homeSec.id);
+
+        // 2. Action: CHOOSE_EXILES_ORBITAL_CUBE
+        // Invalid player
+        const failPlayer = executeAction(game, {
+          type: 'CHOOSE_EXILES_ORBITAL_CUBE',
+          playerId: 'terran_federation',
+          resource: 'money',
+        });
+        expect(failPlayer.success).toBe(false);
+
+        // Valid: choose money
+        const chooseRes = executeAction(game, {
+          type: 'CHOOSE_EXILES_ORBITAL_CUBE',
+          playerId: exiles.id,
+          resource: 'money',
+        });
+        expect(chooseRes.success).toBe(true);
+        expect(chooseRes.newState.pendingExilesOrbitalSetup).toBeNull();
+        expect(chooseRes.newState.players[0]!.population.money.cubesOnBoard).toBe(10);
+        expect(chooseRes.newState.players[0]!.population.science.cubesOnBoard).toBe(11);
+        const updatedOrbitalPlanet = chooseRes.newState.sectors.find((s) => s.id === homeSec.id)!.planets.find((p) => p.isOrbital)!;
+        expect(updatedOrbitalPlanet.colonizedResource).toBe('money');
+
+        // Test science option setup as well
+        const gameSci = createInitialGame(2, ['the_exiles', 'terran_federation']);
+        const chooseSciRes = executeAction(gameSci, {
+          type: 'CHOOSE_EXILES_ORBITAL_CUBE',
+          playerId: gameSci.players[0]!.id,
+          resource: 'science',
+        });
+        expect(chooseSciRes.success).toBe(true);
+        expect(chooseSciRes.newState.players[0]!.population.science.cubesOnBoard).toBe(10);
+        expect(chooseSciRes.newState.players[0]!.population.money.cubesOnBoard).toBe(11);
+        const updatedSciPlanet = chooseSciRes.newState.sectors.find((s) => s.sectorNumber === 234)!.planets.find((p) => p.isOrbital)!;
+        expect(updatedSciPlanet.colonizedResource).toBe('science');
+
+        // 3. Orbital Blueprint & Chassis:
+        const orbitalBp = exiles.blueprints.orbital;
+        expect(orbitalBp).toBeDefined();
+        expect(orbitalBp.noDrives).toBe(true);
+        expect(orbitalBp.preprintedHull).toBe(2);
+        expect(orbitalBp.preprintedPower).toBe(4);
+        expect(orbitalBp.slots.length).toBe(3);
+        const stats = calculateBlueprintStats(orbitalBp);
+        expect(stats.isValid).toBe(true);
+        expect(stats.totalInitiative).toBe(0);
+        expect(stats.totalHull).toBe(3); // 2 preprinted + 1 slot hull
+        expect(stats.totalPowerProduced - stats.totalPowerConsumed).toBe(3); // 4 preprinted - 1 ion_turret
+        expect(stats.computerBonus).toBe(1);
+
+        // Cannot equip drive to orbital
+        const ionDrive = SHIP_PARTS.nuclear_drive;
+        const invalidOrbitalBp = { ...orbitalBp, slots: [...orbitalBp.slots.slice(0, 2), ionDrive] };
+        const invalidStats = calculateBlueprintStats(invalidOrbitalBp);
+        expect(invalidStats.isValid).toBe(false);
+        expect(invalidStats.errors.some((e) => e.toLowerCase().includes('cannot equip drive'))).toBe(true);
+
+        // 4. Build Restrictions & Costs:
+        let curState = chooseRes.newState;
+        curState.players[0]!.resources.materials = 20;
+
+        // Exiles cannot build Starbases
+        const buildSb = executeAction(curState, {
+          type: 'BUILD',
+          playerId: exiles.id,
+          items: [{ sectorId: homeSec.id, itemType: 'starbase' }],
+        });
+        expect(buildSb.success).toBe(false);
+        expect(buildSb.error).toContain('The Exiles cannot construct Starbases');
+
+        // Exiles can build Orbital for 5 materials
+        const targetSec = curState.sectors.find(
+          (s) => s.id !== homeSec.id && !s.structures?.orbital && !s.planets.some((p) => p.isOrbital) && s.ring > 0
+        )!;
+        targetSec.discOwner = exiles.id;
+        targetSec.ships = [];
+        targetSec.ancientsCount = 0;
+        const initialMat = curState.players[0]!.resources.materials;
+        const buildOrb = executeAction(curState, {
+          type: 'BUILD',
+          playerId: exiles.id,
+          items: [{ sectorId: targetSec.id, itemType: 'orbital' }],
+        });
+        expect(buildOrb.success).toBe(true);
+        expect(buildOrb.newState.players[0]!.resources.materials).toBe(initialMat - 5);
+        const newSecWithOrb = buildOrb.newState.sectors.find((s) => s.id === targetSec.id)!;
+        expect(newSecWithOrb.structures?.orbital).toBe(true);
+
+        // 5. Cloaking Device Pinning Check:
+        // 1 friendly with Cloaking Device vs 1 enemy -> pinning threshold is 2, so NOT pinned
+        const terran = curState.players[1]!;
+        const testPinSec = curState.sectors[2]!;
+        testPinSec.ships = [
+          { id: 'exile_ship1', type: 'interceptor', ownerId: exiles.id, damage: 0 },
+          { id: 'terran_ship1', type: 'interceptor', ownerId: terran.id, damage: 0 },
+        ];
+        const pinState1v1 = computePinningState(curState, exiles.id);
+        expect(pinState1v1.isShipPinned('exile_ship1')).toBe(false);
+
+        // 1 friendly vs 2 enemies -> pinned!
+        testPinSec.ships.push({ id: 'terran_ship2', type: 'interceptor', ownerId: terran.id, damage: 0 });
+        const pinState1v2 = computePinningState(curState, exiles.id);
+        expect(pinState1v2.isShipPinned('exile_ship1')).toBe(true);
+
+        // 6. Orbital in Combat & Destruction:
+        // When colonized orbital is destroyed, cube returns to graveyard, miniature remains, opponent gains +1 rep tile draw
+        const combatSec = curState.sectors[3]!;
+        combatSec.discOwner = exiles.id;
+        combatSec.structures = { orbital: true };
+        combatSec.planets = [{ id: 'combat_orb_planet', resource: 'money', colonizedResource: 'money', isOrbital: true, colonizedBy: exiles.id }];
+        combatSec.ships = [
+          { id: 'exile_orb_ship', type: 'orbital', ownerId: exiles.id, damage: 0 },
+          { id: 'terran_cruiser', type: 'cruiser', ownerId: terran.id, damage: 0 },
+        ];
+        curState.reputationBag = [2, 3, 1];
+        curState.activeCombat = {
+          sectorId: combatSec.id,
+          participants: [terran.id, exiles.id],
+          roundNumber: 1,
+          stage: 'resolved',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          retreatDeclared: {},
+          destroyedShips: [
+            { shipId: 'exile_orb_ship', type: 'orbital', ownerId: exiles.id, killerId: terran.id },
+          ],
+        };
+        // Remove destroyed ship from sector
+        combatSec.ships = [{ id: 'terran_cruiser', type: 'cruiser', ownerId: terran.id, damage: 0 }];
+
+        const combatRes = executeAction(curState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: terran.id,
+          sectorId: combatSec.id,
+          concludeCombat: true,
+        });
+        expect(combatRes.success).toBe(true);
+        expect(combatRes.newState.pendingReputationDraw?.playerId).toBe(terran.id);
+        expect(combatRes.newState.pendingReputationDraw?.drawnTiles.length).toBe(2); // 1 participation + 1 orbital casualty
+
+        // 7. End of Game Scoring:
+        // After combat destroys 1 orbital, only the starting sector orbital remains populated (+1 VP)
+        const score = computeCurrentScores(combatRes.newState).scores[exiles.id]!;
+        expect(score.speciesBonus).toBe(1); // Home sector orbital populated with money cube
+      });
+
+      test('61. verifies Outcasts Expansion: Rho Indi Syndicate setup, Gauss Shield blueprints, asymmetric trade, build costs & dreadnought restrictions, reputation bounty, and Traitor tile immunity', async () => {
+        const game = createInitialGame(2, ['rho_indi_syndicate', 'terran_federation']);
+        const rho = game.players[0]!;
+        expect(rho.faction.id).toBe('rho_indi_syndicate');
+        expect(rho.faction.name).toBe('Rho Indi Syndicate');
+
+        // 1. Initial Setup:
+        // Sector 236
+        const homeSec = game.sectors.find((s) => s.sectorNumber === 236)!;
+        expect(homeSec).toBeDefined();
+        expect(homeSec.discOwner).toBe(rho.id);
+
+        // Starting ships: 2 Interceptors
+        const interceptors = homeSec.ships.filter((s) => s.ownerId === rho.id && s.type === 'interceptor');
+        expect(interceptors.length).toBe(2);
+
+        // Reputation track: 2 both + 3 rep_only
+        expect(getPlayerReputationTrackSlots(rho).map((s) => s.slotType)).toEqual(['both', 'both', 'rep_only', 'rep_only', 'rep_only']);
+        expect(rho.faction.reputationSlotTypes).toEqual(['both', 'both', 'rep_only', 'rep_only', 'rep_only']);
+
+        // Move activations: 4
+        expect(getMaxMoveActivations(rho)).toBe(4);
+
+        // 2. Blueprint Stats & Gauss Shield:
+        // Interceptor base initiative 3, Cruiser 2, Starbase 4. All have preprintedShield: 1
+        expect(rho.blueprints.interceptor.preprintedShield).toBe(1);
+        expect(rho.blueprints.cruiser.preprintedShield).toBe(1);
+        expect(rho.blueprints.starbase.preprintedShield).toBe(1);
+        expect(rho.blueprints.interceptor.baseInitiative).toBe(3);
+        expect(rho.blueprints.cruiser.baseInitiative).toBe(2);
+        expect(rho.blueprints.starbase.baseInitiative).toBe(4);
+
+        const intStats = calculateBlueprintStats(rho.blueprints.interceptor);
+        expect(intStats.shieldBonus).toBe(1);
+        expect(intStats.totalInitiative).toBe(3 + 1); // 3 base + 1 from nuclear_drive
+
+        const crStats = calculateBlueprintStats(rho.blueprints.cruiser);
+        expect(crStats.shieldBonus).toBe(1);
+        expect(crStats.totalInitiative).toBe(2 + 1); // 2 base + 1 from nuclear_drive
+
+        const sbStats = calculateBlueprintStats(rho.blueprints.starbase);
+        expect(sbStats.shieldBonus).toBe(1);
+        expect(sbStats.totalInitiative).toBe(4);
+
+        // 3. Build Restrictions & Costs:
+        let curState = game;
+        curState.players[0]!.resources.materials = 30;
+
+        // Cannot build Dreadnoughts
+        const buildDn = executeAction(curState, {
+          type: 'BUILD',
+          playerId: rho.id,
+          items: [{ sectorId: homeSec.id, itemType: 'dreadnought' }],
+        });
+        expect(buildDn.success).toBe(false);
+        expect(buildDn.error).toContain('Rho Indi Syndicate cannot construct Dreadnoughts');
+
+        // Building costs: Interceptor 4, Cruiser 6, Starbase 4
+        const prevMat = curState.players[0]!.resources.materials;
+        const buildItemsRes = executeAction(curState, {
+          type: 'BUILD',
+          playerId: rho.id,
+          items: [
+            { sectorId: homeSec.id, itemType: 'interceptor' },
+            { sectorId: homeSec.id, itemType: 'cruiser' },
+          ],
+        });
+        expect(buildItemsRes.success).toBe(true);
+        // Cost: 4 (interceptor) + 6 (cruiser) = 10
+        expect(buildItemsRes.newState.players[0]!.resources.materials).toBe(prevMat - 10);
+
+        // 4. Asymmetric Trade:
+        curState = buildItemsRes.newState;
+        curState.players[0]!.resources.money = 12;
+        curState.players[0]!.resources.materials = 12;
+        curState.players[0]!.resources.science = 12;
+
+        // Pay 3 Money -> Gain 2 Materials (3:2)
+        const tradeMoneyRes = executeAction(curState, {
+          type: 'TRADE',
+          playerId: rho.id,
+          fromResource: 'money',
+          amount: 6,
+          toResource: 'materials',
+        });
+        expect(tradeMoneyRes.success).toBe(true);
+        expect(tradeMoneyRes.newState.players[0]!.resources.money).toBe(12 - 6);
+        expect(tradeMoneyRes.newState.players[0]!.resources.materials).toBe(12 + 4); // (6 / 3) * 2 = 4
+
+        // Pay 3 Materials -> Gain 1 Science (3:1)
+        const tradeMatRes = executeAction(tradeMoneyRes.newState, {
+          type: 'TRADE',
+          playerId: rho.id,
+          fromResource: 'materials',
+          amount: 6,
+          toResource: 'science',
+        });
+        expect(tradeMatRes.success).toBe(true);
+        expect(tradeMatRes.newState.players[0]!.resources.materials).toBe(16 - 6);
+        expect(tradeMatRes.newState.players[0]!.resources.science).toBe(12 + 2); // 6 / 3 = 2
+
+        // 5. Reputation Bounty:
+        // Gains Money = Math.max(0, drawn.length - 1)
+        const repState = tradeMatRes.newState;
+        const prevMoneyBeforeRep = repState.players[0]!.resources.money;
+        repState.reputationBag = [2, 3, 4];
+        repState.activeCombat = {
+          sectorId: homeSec.id,
+          participants: [rho.id, repState.players[1]!.id],
+          roundNumber: 1,
+          stage: 'resolved',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          retreatDeclared: {},
+          destroyedShips: [
+            { shipId: 'target_1', type: 'interceptor', ownerId: repState.players[1]!.id, killerId: rho.id },
+            { shipId: 'target_2', type: 'cruiser', ownerId: repState.players[1]!.id, killerId: rho.id },
+          ],
+        };
+
+        const concludeCombatRes = executeAction(repState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: rho.id,
+          sectorId: homeSec.id,
+          concludeCombat: true,
+        });
+        expect(concludeCombatRes.success).toBe(true);
+        // Rho killed interceptor (1 tile) + cruiser (2 tiles) = 3 tiles drawn
+        // Bounty is drawn - 1 = 3 - 1 = 2 money!
+        expect(concludeCombatRes.newState.players[0]!.resources.money).toBe(prevMoneyBeforeRep + 2);
+
+        // 6. Traitor Card Immunity:
+        const traitorState = concludeCombatRes.newState;
+        traitorState.traitorPlayerId = rho.id;
+        const scores = computeCurrentScores(traitorState).scores;
+        expect(scores[rho.id]!.traitor).toBe(0); // Immune to -2 VP penalty!
+
+        // If terran holds traitor card, penalty is -2
+        traitorState.traitorPlayerId = traitorState.players[1]!.id;
+        const scoresTerran = computeCurrentScores(traitorState).scores;
+        expect(scoresTerran[traitorState.players[1]!.id]!.traitor).toBe(-2);
+
+        // 7. UI Rendering:
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+        const boardHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: traitorState.players[0]!,
+            players: traitorState.players,
+            activePlayerId: rho.id,
+            sectors: traitorState.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        );
+        expect(boardHtml).toContain('Rho Indi Syndicate');
+        expect(boardHtml).toContain('Gauss Shield');
+
+        // Exiles modal rendering
+        const { ExilesOrbitalSetupModal } = await import('../../components/setup/ExilesOrbitalSetupModal');
+        const exilesModalHtml = renderToString(
+          React.createElement(ExilesOrbitalSetupModal, {
+            player: game.players[0]!,
+            onChooseCube: () => {},
+          })
+        );
+        expect(exilesModalHtml).toContain('The Exiles — Starting Orbital Colony');
+        expect(exilesModalHtml).toContain('Credits (Money)');
+        expect(exilesModalHtml).toContain('Science');
+
+        // MoveModal rendering for Rho Indi (ensuring hasWormholeGen is defined and functional)
+        const { MoveModal } = await import('../../components/actions/MoveModal');
+        const rhoHomeSector = game.sectors.find((s) => s.sectorNumber === 236)!;
+        const rhoShip = rhoHomeSector.ships[0]!;
+        const simMap = new Map();
+        simMap.set(rhoShip.id, rhoHomeSector);
+
+        const moveModalHtml = renderToString(
+          React.createElement(MoveModal, {
+            player: game.players[0]!,
+            sectors: game.sectors,
+            playerShips: [{ ship: rhoShip, initialSector: rhoHomeSector }],
+            simulatedShipSector: simMap,
+            connectedDestinations: [rhoHomeSector],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 1,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: rhoShip.id,
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(moveModalHtml).toContain('FLEET MANEUVERS');
+        expect(moveModalHtml).toContain('Activations');
+        expect(moveModalHtml).toContain('Sector 236');
+      });
+
+      test('62. verifies Expansion Alien Faction selection rules: available only when expansion is active, sanitized upon expansion deselection, and UI dropdown filtering', async () => {
+        // 1. isFactionAvailable for Base Game vs Seekers vs Outcasts
+        const baseFactions = [
+          'terran_federation',
+          'terran_directorate',
+          'terran_union',
+          'terran_conglomerate',
+          'terran_republic',
+          'terran_alliance',
+          'eridani_empire',
+          'hydran_progress',
+          'planta',
+          'descendants_of_draco',
+          'mechanema',
+          'orion_hegemony',
+        ];
+
+        // Without any expansions: all 12 base factions must be available
+        for (const fid of baseFactions) {
+          expect(isFactionAvailable(fid, [])).toBe(true);
+          expect(isFactionAvailable(fid, ['rift_cannon'])).toBe(true);
+        }
+
+        // Expansion aliens must NOT be available without their expansion
+        expect(isFactionAvailable('wardens_of_magellan', [])).toBe(false);
+        expect(isFactionAvailable('enlightened_of_lyra', [])).toBe(false);
+        expect(isFactionAvailable('the_exiles', [])).toBe(false);
+        expect(isFactionAvailable('rho_indi_syndicate', [])).toBe(false);
+
+        // When only Seekers is enabled:
+        expect(isFactionAvailable('wardens_of_magellan', ['seekers'])).toBe(true);
+        expect(isFactionAvailable('enlightened_of_lyra', ['seekers'])).toBe(true);
+        expect(isFactionAvailable('the_exiles', ['seekers'])).toBe(false);
+        expect(isFactionAvailable('rho_indi_syndicate', ['seekers'])).toBe(false);
+
+        // When only Outcasts is enabled:
+        expect(isFactionAvailable('wardens_of_magellan', ['outcasts'])).toBe(false);
+        expect(isFactionAvailable('enlightened_of_lyra', ['outcasts'])).toBe(false);
+        expect(isFactionAvailable('the_exiles', ['outcasts'])).toBe(true);
+        expect(isFactionAvailable('rho_indi_syndicate', ['outcasts'])).toBe(true);
+
+        // When both Seekers and Outcasts are enabled:
+        const allExp = ['seekers', 'outcasts'];
+        expect(isFactionAvailable('wardens_of_magellan', allExp)).toBe(true);
+        expect(isFactionAvailable('enlightened_of_lyra', allExp)).toBe(true);
+        expect(isFactionAvailable('the_exiles', allExp)).toBe(true);
+        expect(isFactionAvailable('rho_indi_syndicate', allExp)).toBe(true);
+
+        // 2. getAvailableFactions counts and composition
+        const baseAvailable = getAvailableFactions([]);
+        expect(baseAvailable.length).toBe(12);
+        expect(baseAvailable.some((f) => f.id === 'the_exiles')).toBe(false);
+        expect(baseAvailable.some((f) => f.id === 'rho_indi_syndicate')).toBe(false);
+        expect(baseAvailable.some((f) => f.id === 'wardens_of_magellan')).toBe(false);
+        expect(baseAvailable.some((f) => f.id === 'enlightened_of_lyra')).toBe(false);
+
+        const seekersAvailable = getAvailableFactions(['seekers']);
+        expect(seekersAvailable.length).toBe(14);
+        expect(seekersAvailable.some((f) => f.id === 'wardens_of_magellan')).toBe(true);
+        expect(seekersAvailable.some((f) => f.id === 'enlightened_of_lyra')).toBe(true);
+        expect(seekersAvailable.some((f) => f.id === 'the_exiles')).toBe(false);
+
+        const outcastsAvailable = getAvailableFactions(['outcasts']);
+        expect(outcastsAvailable.length).toBe(14);
+        expect(outcastsAvailable.some((f) => f.id === 'the_exiles')).toBe(true);
+        expect(outcastsAvailable.some((f) => f.id === 'rho_indi_syndicate')).toBe(true);
+        expect(outcastsAvailable.some((f) => f.id === 'wardens_of_magellan')).toBe(false);
+
+        const bothAvailable = getAvailableFactions(['seekers', 'outcasts']);
+        expect(bothAvailable.length).toBe(16);
+
+        // 3. Deselection Sanitization simulation (as in LobbyView toggleExpansion)
+        // Suppose seat 0 selected the_exiles, seat 1 selected planta
+        const currentFactions = ['the_exiles', 'planta'];
+        const nextExp: string[] = []; // user unchecks outcasts
+        const nextAvailable = getAvailableFactions(nextExp);
+        const updated = [...currentFactions];
+        for (let i = 0; i < updated.length; i++) {
+          if (!isFactionAvailable(updated[i]!, nextExp)) {
+            const replacement = nextAvailable.find(
+              (cand) =>
+                !updated
+                  .slice(0, 2)
+                  .some((otherId, otherIdx) => otherIdx !== i && areFactionsConflictingColor(otherId, cand.id))
+            );
+            if (replacement) {
+              updated[i] = replacement.id;
+            }
+          }
+        }
+        // Seat 0 must no longer be the_exiles, must be a valid base faction not conflicting with planta (green)
+        expect(updated[0]).not.toBe('the_exiles');
+        expect(isFactionAvailable(updated[0]!, nextExp)).toBe(true);
+        expect(areFactionsConflictingColor(updated[0]!, updated[1]!)).toBe(false);
+
+        // 4. UI Rendering in NewGameModal and GalacticGalleryModal
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { NewGameModal } = await import('../../components/setup/NewGameModal');
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+
+        // By default NewGameModal has ['rift_cannon'], so no Seekers or Outcasts
+        const modalHtml = renderToString(
+          React.createElement(NewGameModal, {
+            onStartGame: () => {},
+          })
+        );
+        // Expansion aliens should not be shown in the faction cards grid
+        expect(modalHtml).not.toContain('The Exiles');
+        expect(modalHtml).not.toContain('Rho Indi Syndicate');
+        expect(modalHtml).not.toContain('Wardens of Magellan');
+        expect(modalHtml).not.toContain('Enlightened of Lyra');
+
+        // Gallery Modal displays all factions, but expansion factions show their expansion badge
+        const galleryHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'factions',
+          })
+        );
+        expect(galleryHtml).toContain('The Exiles');
+        expect(galleryHtml).toContain('Rho Indi Syndicate');
+        expect(galleryHtml).toContain('Outcasts');
+        expect(galleryHtml).toContain('Seekers');
+      });
+
+      test('63. verifies Starting Sectors 234 and 236 (and all home sectors) have the authentic X-shape 4-wormhole layout [true, false, true, true, false, true]', () => {
+        const AUTHENTIC_HOME_WORMHOLES = [true, false, true, true, false, true];
+
+        // 1. Definition check in ALIEN_HOME_SECTORS
+        expect(ALIEN_HOME_SECTORS.the_exiles.sectorNumber).toBe(234);
+        expect(ALIEN_HOME_SECTORS.the_exiles.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
+        expect(ALIEN_HOME_SECTORS.the_exiles.wormholes!.filter(Boolean).length).toBe(4);
+
+        expect(ALIEN_HOME_SECTORS.rho_indi_syndicate.sectorNumber).toBe(236);
+        expect(ALIEN_HOME_SECTORS.rho_indi_syndicate.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
+        expect(ALIEN_HOME_SECTORS.rho_indi_syndicate.wormholes!.filter(Boolean).length).toBe(4);
+
+        expect(ALIEN_HOME_SECTORS.wardens_of_magellan.sectorNumber).toBe(233);
+        expect(ALIEN_HOME_SECTORS.wardens_of_magellan.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
+        expect(ALIEN_HOME_SECTORS.wardens_of_magellan.wormholes!.filter(Boolean).length).toBe(4);
+
+        expect(ALIEN_HOME_SECTORS.enlightened_of_lyra.sectorNumber).toBe(238);
+        expect(ALIEN_HOME_SECTORS.enlightened_of_lyra.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
+        expect(ALIEN_HOME_SECTORS.enlightened_of_lyra.wormholes!.filter(Boolean).length).toBe(4);
+
+        // 2. All 16 home sectors in ALL_HOME_SECTORS must share identical 4-wormhole X-shape layout
+        for (const [factionKey, homeConfig] of Object.entries(ALL_HOME_SECTORS)) {
+          expect(homeConfig.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
+          expect(homeConfig.wormholes!.filter(Boolean).length).toBe(4);
+        }
+
+        // 3. In-game initialized home sectors for The Exiles and Rho Indi
+        const game = createInitialGame(2, ['the_exiles', 'rho_indi_syndicate'], ['outcasts']);
+        const exileHome = game.sectors.find((s) => s.sectorNumber === 234)!;
+        expect(exileHome).toBeDefined();
+        expect(exileHome.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
+        expect(exileHome.wormholes.filter(Boolean).length).toBe(4);
+
+        const rhoHome = game.sectors.find((s) => s.sectorNumber === 236)!;
+        expect(rhoHome).toBeDefined();
+        expect(rhoHome.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
+        expect(rhoHome.wormholes.filter(Boolean).length).toBe(4);
+
+        // 4. Sector catalog in Galactic Gallery contains base home sectors with 4 wormholes
+        const catalog = getAllSectorsCatalog();
+        const homeEntries = catalog.filter((e) => e.ring === 'Home');
+        expect(homeEntries.length).toBe(12);
+        for (const entry of homeEntries) {
+          expect(entry.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
+          expect(entry.wormholes.filter(Boolean).length).toBe(4);
+        }
       });
     });
   });

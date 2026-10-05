@@ -32,17 +32,24 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   onSaveBlueprint,
   onClose,
 }) => {
-  const [activeShipType, setActiveShipType] = useState<ShipType>('interceptor');
+  const availableShipTypes = useMemo(
+    () => Object.keys(player.blueprints) as ShipType[],
+    [player.blueprints]
+  );
+  const [activeShipType, setActiveShipType] = useState<ShipType>(() => availableShipTypes[0] || 'interceptor');
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
   // Local draft of blueprints
-  const [draftBlueprints, setDraftBlueprints] = useState<Record<ShipType, (ShipPart | null)[]>>(() => ({
-    interceptor: [...player.blueprints.interceptor.slots],
-    cruiser: [...player.blueprints.cruiser.slots],
-    dreadnought: [...player.blueprints.dreadnought.slots],
-    starbase: [...player.blueprints.starbase.slots],
-  }));
+  const [draftBlueprints, setDraftBlueprints] = useState<Record<ShipType, (ShipPart | null)[]>>(() => {
+    const drafts: Partial<Record<ShipType, (ShipPart | null)[]>> = {};
+    for (const [st, bp] of Object.entries(player.blueprints)) {
+      if (bp) {
+        drafts[st as ShipType] = [...bp.slots];
+      }
+    }
+    return drafts as Record<ShipType, (ShipPart | null)[]>;
+  });
 
   const maxUpgrades = player.hasPassed ? 1 : getMaxUpgradeActivations(player);
 
@@ -157,6 +164,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
   const handleInstallPart = (part: ShipPart) => {
     if (selectedSlotIndex === null) return;
+    if (baseBp.noDrives && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
+      return;
+    }
     const isSlotCurrentlyModified = modifiedSlots.some(
       (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex
     );
@@ -248,7 +258,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
         {/* Ship Class Tabs with Per-Ship Upgrade Badges */}
         <div className="flex border-b border-slate-800 bg-slate-950/60 px-4 pt-2 gap-2">
-          {(['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).map((type) => {
+          {availableShipTypes.map((type) => {
             const isActive = activeShipType === type;
             const bp = { ...player.blueprints[type], slots: draftBlueprints[type] || [] };
             const bpStats = calculateBlueprintStats(bp);
@@ -320,7 +330,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 </span>
                 <span
                   className={`text-base font-bold mt-1 ${
-                    activeShipType === 'starbase' || stats.totalDriveSpeed > 0
+                    activeShipType === 'starbase' || activeShipType === 'orbital' || stats.totalDriveSpeed > 0
                       ? 'text-cyan-400'
                       : 'text-rose-400'
                   }`}
@@ -358,7 +368,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                  Modular Component Slots ({currentSlots.length} Modular{(baseBp.preprintedPower || baseBp.preprintedComputer) ? ' + 1 Integrated' : ''})
+                  Modular Component Slots ({currentSlots.length} Modular{(baseBp.preprintedPower || baseBp.preprintedComputer || baseBp.preprintedShield || baseBp.preprintedHull) ? ' + 1 Integrated' : ''})
                 </h3>
                 <span className="text-[11px] text-slate-400 font-mono">
                   {remainingActivations > 0
@@ -480,7 +490,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 })}
 
                 {/* Integrated / Non-replaceable Species Component Slot */}
-                {(baseBp.preprintedPower || baseBp.preprintedComputer) && (
+                {(baseBp.preprintedPower || baseBp.preprintedComputer || baseBp.preprintedShield || baseBp.preprintedHull) && (
                   <div
                     className="relative min-h-[100px] rounded-lg border-2 border-dashed border-emerald-600/70 bg-emerald-950/20 p-2.5 flex flex-col justify-between select-none shadow-sm"
                     title="Inherent species component pre-printed on the hull chassis. Cannot be removed or replaced."
@@ -501,6 +511,10 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                           ? player.faction.id === 'planta'
                             ? 'Planta Defense Core'
                             : 'Starbase Power Core'
+                          : activeShipType === 'orbital'
+                          ? 'Exiles Orbital Chassis'
+                          : player.faction.id === 'rho_indi_syndicate'
+                          ? 'Gauss Shield System'
                           : player.faction.id === 'planta'
                           ? 'Planta Bio-Computer'
                           : player.faction.id === 'orion_hegemony'
@@ -516,9 +530,19 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                         {baseBp.preprintedComputer !== undefined && baseBp.preprintedComputer > 0 && (
                           <span className="text-indigo-400 font-semibold">+{baseBp.preprintedComputer} Hit</span>
                         )}
+                        {baseBp.preprintedShield !== undefined && baseBp.preprintedShield > 0 && (
+                          <span className="text-cyan-400 font-semibold">-{baseBp.preprintedShield} Gauss Shield</span>
+                        )}
+                        {baseBp.preprintedHull !== undefined && baseBp.preprintedHull > 0 && (
+                          <span className="text-rose-400 font-semibold">+{baseBp.preprintedHull} Hull</span>
+                        )}
                       </div>
                       <div className="text-[9px] text-slate-400 mt-1 italic">
-                        {activeShipType === 'starbase'
+                        {activeShipType === 'orbital'
+                          ? 'Fixed outside module (2 Hull + 4 Power)'
+                          : player.faction.id === 'rho_indi_syndicate'
+                          ? 'Preprinted Gauss Shield on all ships'
+                          : activeShipType === 'starbase'
                           ? 'Fixed starbase chassis power'
                           : 'Inherent species chassis bonus'}
                       </div>

@@ -149,6 +149,10 @@ export function abandonSectorForUpkeep(
     }
   }
 
+  if (updatedPlayer.faction.id === 'the_exiles') {
+    sector.ships = sector.ships.filter((s) => !(s.ownerId === updatedPlayer.id && s.type === 'orbital'));
+  }
+
   const newMoneyIncome = getIncomeForTrack(updatedPlayer.population.money.cubesOnBoard);
   const lostMoneyIncome = oldMoneyIncome - newMoneyIncome;
 

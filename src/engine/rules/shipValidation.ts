@@ -11,6 +11,7 @@ export const SHIP_LIMITS: Record<ShipType, number> = {
   cruiser: 4,
   dreadnought: 2,
   starbase: 4,
+  orbital: 10,
 };
 
 export function countPlayerShips(sectors: SectorTile[], playerId: string): Record<ShipType, number> {
@@ -19,6 +20,7 @@ export function countPlayerShips(sectors: SectorTile[], playerId: string): Recor
     cruiser: 0,
     dreadnought: 0,
     starbase: 0,
+    orbital: 0,
   };
   for (const s of sectors) {
     for (const ship of s.ships) {
@@ -30,13 +32,14 @@ export function countPlayerShips(sectors: SectorTile[], playerId: string): Recor
   return counts;
 }
 
-export function getRemainingShipSupply(sectors: SectorTile[], playerId: string): Record<ShipType, number> {
+export function getRemainingShipSupply(sectors: SectorTile[], playerId: string, factionId?: string): Record<ShipType, number> {
   const built = countPlayerShips(sectors, playerId);
   return {
     interceptor: Math.max(0, SHIP_LIMITS.interceptor - built.interceptor),
     cruiser: Math.max(0, SHIP_LIMITS.cruiser - built.cruiser),
-    dreadnought: Math.max(0, SHIP_LIMITS.dreadnought - built.dreadnought),
-    starbase: Math.max(0, SHIP_LIMITS.starbase - built.starbase),
+    dreadnought: factionId === 'rho_indi_syndicate' ? 0 : Math.max(0, SHIP_LIMITS.dreadnought - built.dreadnought),
+    starbase: factionId === 'the_exiles' ? 0 : Math.max(0, SHIP_LIMITS.starbase - built.starbase),
+    orbital: Math.max(0, SHIP_LIMITS.orbital - built.orbital),
   };
 }
 
@@ -47,13 +50,16 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
   let bonusInitiative = 0;
   let totalDriveSpeed = 0;
   let computerBonus = blueprint.preprintedComputer ?? 0;
-  let shieldBonus = 0;
+  let shieldBonus = blueprint.preprintedShield ?? 0;
   let hasJumpDrive = false;
   let hasMorphShield = false;
   const errors: string[] = [];
 
   for (const part of blueprint.slots) {
     if (!part) continue;
+    if (blueprint.noDrives && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
+      errors.push(`${blueprint.type.toUpperCase()} cannot equip Drive Ship Parts.`);
+    }
     totalPowerProduced += part.powerProduced;
     totalPowerConsumed += part.powerConsumed;
     bonusHull += part.hullBonus;
@@ -71,9 +77,9 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
     shieldBonus += part.shieldBonus;
   }
 
-  // Base hull: in Eclipse, all ships have a base damage capacity of 1 (destroyed with 1 hit if no hull).
-  // Each Hull component adds +1 damage capacity (e.g. Interceptor 1 HP, Cruiser 2 HP, Dreadnought 3 HP).
-  const baseHull = 1;
+  // Base hull: in Eclipse, all standard ships have a base damage capacity of 1.
+  // Modules like Exiles Orbital chassis specify preprintedHull (2 HP outside slots).
+  const baseHull = blueprint.preprintedHull !== undefined ? blueprint.preprintedHull : 1;
   const totalHull = baseHull + bonusHull;
   const totalInitiative = blueprint.baseInitiative + bonusInitiative;
 
@@ -85,8 +91,9 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
     );
   }
 
-  // 2. Drive requirement: Interceptor, Cruiser, and Dreadnought MUST have at least 1 drive (or Jump Drive)
-  if (blueprint.type !== 'starbase' && totalDriveSpeed <= 0 && !hasJumpDrive) {
+  // 2. Drive requirement: Interceptor, Cruiser, and Dreadnought MUST have at least 1 drive (or Jump Drive).
+  // Starbases and Orbitals cannot move and do not require drives.
+  if (blueprint.type !== 'starbase' && blueprint.type !== 'orbital' && totalDriveSpeed <= 0 && !hasJumpDrive) {
     errors.push(`${blueprint.type.toUpperCase()} must have at least one drive to move.`);
   }
 
@@ -475,6 +482,113 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
             SHIP_PARTS.ion_cannon,
             SHIP_PARTS.electron_computer,
             SHIP_PARTS.gauss_shield,
+            SHIP_PARTS.hull,
+            null,
+          ],
+        },
+      };
+
+    case 'the_exiles':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 4,
+          baseInitiative: 2,
+          baseBuildCost: 3,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 6,
+          baseInitiative: 1,
+          baseBuildCost: 5,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        dreadnought: {
+          type: 'dreadnought',
+          maxSlots: 8,
+          baseInitiative: 0,
+          baseBuildCost: 8,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        orbital: {
+          type: 'orbital',
+          maxSlots: 3,
+          baseInitiative: 0,
+          baseBuildCost: 5,
+          preprintedPower: 4,
+          preprintedHull: 2,
+          noDrives: true,
+          slots: [
+            SHIP_PARTS.hull,
+            SHIP_PARTS.ion_turret,
+            SHIP_PARTS.electron_computer,
+          ],
+        },
+      };
+
+    case 'rho_indi_syndicate':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 4,
+          baseInitiative: 3, // +1 increased initiative bonus (3 before drive; +1 nuclear drive = 4 total in combat)
+          baseBuildCost: 4,  // Increased build cost 4 (instead of 3)
+          preprintedShield: 1, // Preprinted Gauss Shield (-1 to opponent hit rolls)
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 6,
+          baseInitiative: 2, // +1 increased initiative bonus (2 before drive; +1 nuclear drive = 3 total in combat)
+          baseBuildCost: 6,  // Increased build cost 6 (instead of 5)
+          preprintedShield: 1, // Preprinted Gauss Shield (-1 to opponent hit rolls)
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+        starbase: {
+          type: 'starbase',
+          maxSlots: 5,
+          baseInitiative: 4,
+          baseBuildCost: 4,  // Increased build cost 4 (instead of 3)
+          preprintedPower: 3,
+          preprintedShield: 1, // Preprinted Gauss Shield (-1 to opponent hit rolls)
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.hull,
             SHIP_PARTS.hull,
             null,
           ],

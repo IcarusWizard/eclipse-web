@@ -30,7 +30,7 @@ export interface PlanetSlot {
   shrineOwner?: string; // Player ID who built a shrine next to this planet (Enlightened of Lyra)
 }
 
-export type ShipType = 'interceptor' | 'cruiser' | 'dreadnought' | 'starbase';
+export type ShipType = 'interceptor' | 'cruiser' | 'dreadnought' | 'starbase' | 'orbital';
 
 export interface SectorShip {
   readonly id: string;

@@ -5,7 +5,7 @@
 
 import { GameState } from '../types/state';
 import { FactionInfo, PlayerState, ReputationSlotType, ShrineBoardState } from '../types/player';
-import { SectorTile, HexCoord } from '../types/galaxy';
+import { SectorTile, HexCoord, SectorShip } from '../types/galaxy';
 import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, RIFT_CONDUCTOR_DISCOVERY, REMNANTS_DISCOVERY_TILES, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
 import { createDefaultHumanBlueprints, createFactionBlueprints } from './shipValidation';
@@ -25,9 +25,11 @@ export const ECLIPSE_COLOR_PALETTE = {
   black: '#18181b',
   purple: '#9333ea', // legacy fallback
   orange: '#ea580c', // legacy fallback
+  teal: '#0d9488', // The Exiles
+  amber: '#d97706', // Rho Indi Syndicate
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -51,6 +53,9 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Seekers
   wardens_of_magellan: 'purple',
   enlightened_of_lyra: 'orange',
+  // Outcasts
+  the_exiles: 'teal',
+  rho_indi_syndicate: 'amber',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -68,6 +73,8 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   terran_alliance: ECLIPSE_COLOR_PALETTE.black,
   wardens_of_magellan: ECLIPSE_COLOR_PALETTE.purple,
   enlightened_of_lyra: ECLIPSE_COLOR_PALETTE.orange,
+  the_exiles: ECLIPSE_COLOR_PALETTE.teal,
+  rho_indi_syndicate: ECLIPSE_COLOR_PALETTE.amber,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -429,12 +436,79 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 4,
     reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
+  {
+    id: 'the_exiles',
+    name: 'The Exiles',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.teal,
+    startingSectorNumber: 234,
+    startingResources: { money: 3, science: 2, materials: 4 },
+    startingDiscs: 13, // 16 discs total: 1 on starting sector, 12 on track, 3 in tray
+    startingColonyShips: 3,
+    startingTechIds: ['cloaking_device', 'orbital'],
+    traitDescription: 'Nomadic orbital dwellers whose Orbitals are armed ships with 3-slot blueprints (outside module: 2 Hulls + 4 Power). Cannot construct Starbases. +1 VP per Orbital with your population cube at game end.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    reputationSlots: 4,
+    ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+  },
+  {
+    id: 'rho_indi_syndicate',
+    name: 'Rho Indi Syndicate',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.amber,
+    startingSectorNumber: 236,
+    startingResources: { money: 2, science: 3, materials: 3 },
+    startingDiscs: 13, // 16 discs total: 1 on starting sector, 12 on track, 3 in tray
+    startingColonyShips: 2,
+    startingTechIds: ['starbase', 'gauss_shield'],
+    traitDescription: 'Ruthless raiders with 4 Move activations, 2 starting Interceptors, preprinted Gauss Shields on all ships, Traitor Card immunity, reputation tile money bounties, and 3:2 Money trading. Cannot construct Dreadnoughts.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 4,
+    influenceActivations: 2,
+    reputationSlots: 5,
+    ambassadorSlots: 2,
+    reputationSlotTypes: ['both', 'both', 'rep_only', 'rep_only', 'rep_only'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
   ...HUMAN_FACTIONS,
   ...ALIEN_FACTIONS,
 ];
+
+/**
+ * Checks whether a faction is available given the list of active expansions.
+ * Base game factions (6 Human, 6 Alien) are always available.
+ * Seekers factions (Wardens of Magellan, Enlightened of Lyra) require 'seekers'.
+ * Outcasts factions (The Exiles, Rho Indi Syndicate) require 'outcasts'.
+ */
+export function isFactionAvailable(factionId: string, expansions: string[] = []): boolean {
+  if (factionId === 'wardens_of_magellan' || factionId === 'enlightened_of_lyra') {
+    return expansions.includes('seekers');
+  }
+  if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
+    return expansions.includes('outcasts');
+  }
+  return true;
+}
+
+/**
+ * Returns the list of factions available for selection under the active expansions.
+ */
+export function getAvailableFactions(expansions: string[] = []): FactionInfo[] {
+  return ALL_FACTIONS.filter((f) => isFactionAvailable(f.id, expansions));
+}
 
 export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationSlotType[] {
   if (faction.reputationSlotTypes && faction.reputationSlotTypes.length > 0) {
@@ -448,6 +522,12 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   }
   if (faction.id === 'eridani_empire') {
     return ['both', 'both', 'rep_only', 'rep_only'];
+  }
+  if (faction.id === 'the_exiles') {
+    return ['both', 'both', 'both', 'rep_only'];
+  }
+  if (faction.id === 'rho_indi_syndicate') {
+    return ['both', 'both', 'rep_only', 'rep_only', 'rep_only'];
   }
   if (faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
     return ['both', 'both', 'both', 'both'];
@@ -663,7 +743,7 @@ export function createInitialGame(
         sectorNumber: 220 + i + 1,
         ring: 2,
         victoryPoints: 3,
-        wormholes: [true, false, true, false, true, false],
+        wormholes: [true, false, true, true, false, true],
         planets: [
           { id: `p_${i}_1`, resource: 'money', isAdvanced: false },
           { id: `p_${i}_2`, resource: 'science', isAdvanced: false },
@@ -686,6 +766,20 @@ export function createInitialGame(
         } else if (!p.isAdvanced) {
           isColonized = true;
         }
+      } else if (faction.id === 'the_exiles') {
+        // Exiles: non-advanced planet colonized with material; orbital initialized with science cube (pending setup choice)
+        if (!p.isAdvanced && !p.isOrbital) {
+          isColonized = true;
+          colonizedResource = 'material';
+        } else if (p.isOrbital) {
+          isColonized = true;
+          colonizedResource = 'science';
+        }
+      } else if (faction.id === 'rho_indi_syndicate') {
+        // Rho Indi: non-advanced material and non-advanced money colonized
+        if (!p.isAdvanced) {
+          isColonized = true;
+        }
       } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
         // Planta, Magellan, and Lyra home sectors colonize only non-advanced planets
         isColonized = !p.isAdvanced;
@@ -702,7 +796,46 @@ export function createInitialGame(
       };
     });
 
-    const startShipType = faction.id === 'orion_hegemony' ? 'cruiser' : 'interceptor';
+    const startShips: SectorShip[] = [];
+    if (faction.id === 'rho_indi_syndicate') {
+      startShips.push(
+        {
+          id: `ship_${playerId}_start_interceptor_1`,
+          ownerId: playerId,
+          type: 'interceptor',
+          damage: 0,
+        },
+        {
+          id: `ship_${playerId}_start_interceptor_2`,
+          ownerId: playerId,
+          type: 'interceptor',
+          damage: 0,
+        }
+      );
+    } else if (faction.id === 'the_exiles') {
+      startShips.push(
+        {
+          id: `ship_${playerId}_start_interceptor`,
+          ownerId: playerId,
+          type: 'interceptor',
+          damage: 0,
+        },
+        {
+          id: `ship_${playerId}_start_orbital`,
+          ownerId: playerId,
+          type: 'orbital',
+          damage: 0,
+        }
+      );
+    } else {
+      const startShipType = faction.id === 'orion_hegemony' ? 'cruiser' : 'interceptor';
+      startShips.push({
+        id: `ship_${playerId}_start_${startShipType}`,
+        ownerId: playerId,
+        type: startShipType,
+        damage: 0,
+      });
+    }
 
     const centerEdge = getEdgeTowardCenter(startCoord);
 
@@ -713,28 +846,29 @@ export function createInitialGame(
       ring: 2,
       coord: startCoord,
       rotation: centerEdge,
-      wormholes: homeConfig.wormholes || [true, false, true, false, true, false],
+      wormholes: homeConfig.wormholes || [true, false, true, true, false, true],
       planets,
+      structures: homeConfig.structures ? { ...homeConfig.structures } : undefined,
       victoryPoints: homeConfig.victoryPoints || 3,
       hasArtifact: homeConfig.hasArtifact ?? true,
       hasDiscovery: false,
       ancientsCount: 0,
       discOwner: playerId,
-      ships: [
-        {
-          id: `ship_${playerId}_start_${startShipType}`,
-          ownerId: playerId,
-          type: startShipType,
-          damage: 0,
-        },
-      ],
+      ships: startShips,
     };
 
     sectors.push(homeSector);
 
     // Starting technologies
     const startingTechs = (faction.startingTechIds || [])
-      .map((tId) => TECH_CATALOG.find((t) => t.id === tId))
+      .map((tId) => {
+        const t = TECH_CATALOG.find((tech) => tech.id === tId);
+        if (!t) return null;
+        if (faction.id === 'the_exiles' && t.id === 'cloaking_device') {
+          return { ...t, placedTrack: 'military' as const };
+        }
+        return { ...t };
+      })
       .filter((t): t is (typeof TECH_CATALOG)[number] => Boolean(t));
 
     // Initial population cubes remaining on board
@@ -747,6 +881,16 @@ export function createInitialGame(
       scienceCubesRemaining = 9;
       materialCubesRemaining = 10;
       moneyCubesRemaining = 10;
+    } else if (faction.id === 'the_exiles') {
+      // 1 material on planet, 1 science on starting orbital -> 10 material, 10 science, 11 money on board
+      moneyCubesRemaining = 11;
+      scienceCubesRemaining = 10;
+      materialCubesRemaining = 10;
+    } else if (faction.id === 'rho_indi_syndicate') {
+      // 1 material on ri_p1, 1 money on ri_p3 -> 10 material, 10 money, 11 science on board
+      moneyCubesRemaining = 10;
+      scienceCubesRemaining = 11;
+      materialCubesRemaining = 10;
     } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan') {
       // 1 material, 1 science, 0 money colonized
       moneyCubesRemaining = 11;
@@ -775,9 +919,9 @@ export function createInitialGame(
       blueprints: createFactionBlueprints(faction.id),
       techTrack: {
         researched: startingTechs,
-        militaryCount: startingTechs.filter((t) => t.category === 'military').length,
-        gridCount: startingTechs.filter((t) => t.category === 'grid').length,
-        nanoCount: startingTechs.filter((t) => t.category === 'nano').length,
+        militaryCount: startingTechs.filter((t) => (t as any).placedTrack === 'military' || t.category === 'military').length,
+        gridCount: startingTechs.filter((t) => (t as any).placedTrack === 'grid' || t.category === 'grid').length,
+        nanoCount: startingTechs.filter((t) => (t as any).placedTrack === 'nano' || t.category === 'nano').length,
       },
       influenceTrack: {
         totalDiscs: faction.startingDiscs,
@@ -867,6 +1011,20 @@ export function createInitialGame(
 
   const turnOrder = players.map((p) => p.id);
 
+  const exilePlayer = players.find((p) => p.faction.id === 'the_exiles');
+  let pendingExilesOrbitalSetup: { playerId: string; sectorId: string; planetId: string } | null = null;
+  if (exilePlayer) {
+    const homeSector = sectors.find((s) => s.id === `home_sector_${exilePlayer.id}` || s.sectorNumber === 234);
+    const orbitalPlanet = homeSector?.planets.find((p) => p.isOrbital);
+    if (orbitalPlanet && homeSector) {
+      pendingExilesOrbitalSetup = {
+        playerId: exilePlayer.id,
+        sectorId: homeSector.id,
+        planetId: orbitalPlanet.id,
+      };
+    }
+  }
+
   return {
     id: `game_${Date.now()}`,
     expansions: expansions || [],
@@ -891,6 +1049,7 @@ export function createInitialGame(
     pendingExplore: null,
     pendingDiscovery: null,
     pendingCombatConquest: null,
+    pendingExilesOrbitalSetup,
     resolvedCombatSectorIds: [],
     log: [
       {

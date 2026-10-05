@@ -175,6 +175,7 @@ export interface GameState {
   pendingReputationDraw?: PendingReputationDraw | null;
   pendingReputationDrawQueue?: PendingReputationDraw[];
   pendingDiplomacyProposal?: DiplomacyProposal | null;
+  pendingExilesOrbitalSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];
   traitorPlayerId?: string;

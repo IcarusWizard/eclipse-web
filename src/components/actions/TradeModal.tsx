@@ -19,7 +19,8 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   onTrade,
   onClose,
 }) => {
-  const ratio = player.faction.tradeRatio || 2;
+  const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
+  const ratio = isRhoIndi ? 3 : (player.faction.tradeRatio || 2);
   const [fromResource, setFromResource] = useState<ResourceType>('material');
   const [toResource, setToResource] = useState<ResourceType>('money');
   const [amount, setAmount] = useState<number>(ratio);
@@ -31,7 +32,9 @@ export const TradeModal: React.FC<TradeModalProps> = ({
       : player.resources.materials;
 
   const maxTrade = Math.floor(available / ratio) * ratio;
-  const gained = Math.floor(amount / ratio);
+  const gained = isRhoIndi && fromResource === 'money'
+    ? Math.floor(amount / ratio) * 2
+    : Math.floor(amount / ratio);
 
   const canTrade = amount > 0 && amount <= available && amount % ratio === 0 && fromResource !== toResource;
 
@@ -100,8 +103,17 @@ export const TradeModal: React.FC<TradeModalProps> = ({
         {/* Body */}
         <div className="p-6 space-y-4 text-xs">
           <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-400 leading-relaxed">
-            Faction Exchange Rate: <strong className="text-amber-400 font-bold">{ratio}:1</strong>.
-            Trade {ratio} units of any resource for 1 unit of another resource at your galactic commerce ratio.
+            {isRhoIndi ? (
+              <>
+                <span className="text-amber-400 font-bold">Rho Indi Syndicate Asymmetric Trade:</span>{' '}
+                Trade <strong>3 Money for 2</strong> Science or Materials (3:2), or trade <strong>3 Materials / Science for 1</strong> of any other resource (3:1).
+              </>
+            ) : (
+              <>
+                Faction Exchange Rate: <strong className="text-amber-400 font-bold">{ratio}:1</strong>.{' '}
+                Trade {ratio} units of any resource for 1 unit of another resource at your galactic commerce ratio.
+              </>
+            )}
           </div>
 
           {/* Trade Source */}
@@ -140,7 +152,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           {/* Trade Destination */}
           <div>
             <label className="block text-slate-300 font-bold uppercase mb-2 text-[11px] tracking-wider">
-              2. Trade Target (Receive 1 unit)
+              2. Trade Target (Receive {isRhoIndi && fromResource === 'money' ? '2 units' : '1 unit'})
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(['money', 'science', 'material'] as const).map((res) => {

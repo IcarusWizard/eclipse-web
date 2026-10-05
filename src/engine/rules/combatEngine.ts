@@ -140,6 +140,7 @@ export const SHIP_SIZE_RANK: Record<string, number> = {
   dreadnought: 4,
   cruiser: 3,
   starbase: 2,
+  orbital: 2,
   interceptor: 1,
 };
 

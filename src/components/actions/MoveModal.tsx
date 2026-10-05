@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile, SectorShip } from '../../engine/types/galaxy';
-import { getMaxMoveActivations } from '../../engine/rules/gameReducer';
+import { getMaxMoveActivations, playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
 import {
@@ -76,6 +76,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 }) => {
   const maxMoves = player.hasPassed ? 1 : getMaxMoveActivations(player);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
+  const hasWormholeGen = playerHasWormholeGenerator(player);
 
   const currentShipObj = playerShips.find((p) => p.ship.id === selectedShipId)?.ship;
   const currentSimSector = simulatedShipSector.get(selectedShipId);

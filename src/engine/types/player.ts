@@ -20,7 +20,9 @@ export type FactionId =
   | 'hydran_progress'
   | 'eridani_empire'
   | 'wardens_of_magellan'
-  | 'enlightened_of_lyra';
+  | 'enlightened_of_lyra'
+  | 'the_exiles'
+  | 'rho_indi_syndicate';
 
 export interface FactionInfo {
   readonly id: FactionId;

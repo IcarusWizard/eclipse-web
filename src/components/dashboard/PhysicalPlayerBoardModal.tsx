@@ -88,13 +88,27 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
 
   const isActive = player.id === activePlayerId;
 
-  // Ship stats calculations for all 4 ship classes
-  const shipClasses: { type: ShipType; name: string; maxSlots: number; baseCost: number }[] = [
-    { type: 'interceptor', name: 'Interceptor', maxSlots: 4, baseCost: 3 },
-    { type: 'cruiser', name: 'Cruiser', maxSlots: 6, baseCost: 5 },
-    { type: 'dreadnought', name: 'Dreadnought', maxSlots: 8, baseCost: 8 },
-    { type: 'starbase', name: 'Starbase', maxSlots: 5, baseCost: 3 },
-  ];
+  // Ship stats calculations for all available ship classes
+  const shipClasses: { type: ShipType; name: string; maxSlots: number; baseCost: number }[] = useMemo(() => {
+    return (Object.keys(player.blueprints) as ShipType[]).map((type) => {
+      const bp = player.blueprints[type];
+      const isMechanema = player.faction.id === 'mechanema';
+      const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
+      const isExiles = player.faction.id === 'the_exiles';
+      let cost = 3;
+      if (type === 'interceptor') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
+      else if (type === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
+      else if (type === 'dreadnought') cost = isMechanema ? 7 : 8;
+      else if (type === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
+      else if (type === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
+      return {
+        type,
+        name: type.charAt(0).toUpperCase() + type.slice(1),
+        maxSlots: bp?.maxSlots ?? 4,
+        baseCost: cost,
+      };
+    });
+  }, [player.blueprints, player.faction.id]);
 
   const blueprintsWithStats = useMemo(() => {
     return shipClasses.map((sc) => {
