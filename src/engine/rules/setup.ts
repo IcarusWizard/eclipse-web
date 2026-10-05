@@ -403,8 +403,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
   {
     id: 'enlightened_of_lyra',
@@ -425,8 +425,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
 ];
 
@@ -447,6 +447,9 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   }
   if (faction.id === 'eridani_empire') {
     return ['both', 'both', 'rep_only', 'rep_only'];
+  }
+  if (faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
+    return ['both', 'both', 'both', 'both'];
   }
   const total = faction.reputationSlots ?? (faction.isHuman ? 5 : 4);
   const amb = faction.ambassadorSlots ?? 3;

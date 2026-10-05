@@ -9100,6 +9100,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(magellan.population.material.cubesOnBoard).toBe(10);
         expect(magellan.magellanDiscoveryTile).toBeDefined();
         expect(magellan.magellanDiscoveryResolved).toBe(false);
+        expect(magellan.faction.reputationSlots).toBe(4);
+        expect(magellan.faction.ambassadorSlots).toBe(4);
+        expect(magellan.faction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both']);
+        const magellanSlots = getPlayerReputationTrackSlots(magellan, game.players);
+        expect(magellanSlots.length).toBe(4);
+        expect(magellanSlots.every((s) => s.slotType === 'both')).toBe(true);
 
         const homeSec = game.sectors.find((s) => s.sectorNumber === 233 || s.id === `home_sector_${magellan.id}`)!;
         expect(homeSec).toBeDefined();
@@ -9285,6 +9291,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(lyra.population.money.cubesOnBoard).toBe(10);
         expect(lyra.population.science.cubesOnBoard).toBe(10);
         expect(lyra.population.material.cubesOnBoard).toBe(10);
+        expect(lyra.faction.reputationSlots).toBe(4);
+        expect(lyra.faction.ambassadorSlots).toBe(4);
+        expect(lyra.faction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both']);
+        const lyraSlots = getPlayerReputationTrackSlots(lyra, game.players);
+        expect(lyraSlots.length).toBe(4);
+        expect(lyraSlots.every((s) => s.slotType === 'both')).toBe(true);
 
         expect(lyra.shrineBoard).toBeDefined();
         expect(lyra.shrineBoard!.slots.length).toBe(3);
