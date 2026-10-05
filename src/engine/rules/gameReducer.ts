@@ -2176,14 +2176,15 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       player.actionsTakenThisRound += 1;
 
-      // Flip two colony ships face-up (ready)
+      // Flip colony ships face-up (ready): standard 2, Magellan 1
+      const refreshMax = getInfluenceColonyShipRefreshes(player);
       const initialReady = player.colonyShips.ready;
       player.colonyShips.ready = Math.min(
         player.colonyShips.total,
-        player.colonyShips.ready + 2
+        player.colonyShips.ready + refreshMax
       );
       const readiedCount = player.colonyShips.ready - initialReady;
-      influenceRefreshesRemaining = Math.max(0, 2 - readiedCount);
+      influenceRefreshesRemaining = Math.max(0, refreshMax - readiedCount);
 
       // Abandon sectors first (returns influence discs and population cubes)
       if (action.abandonSectors) {
@@ -4127,4 +4128,8 @@ export function getMaxMoveActivations(player: PlayerState): number {
 
 export function getMaxInfluenceActivations(player: PlayerState): number {
   return player.faction.influenceActivations ?? 2;
+}
+
+export function getInfluenceColonyShipRefreshes(player: PlayerState): number {
+  return player.faction.influenceColonyShipRefreshes ?? (player.faction.id === 'wardens_of_magellan' ? 1 : 2);
 }

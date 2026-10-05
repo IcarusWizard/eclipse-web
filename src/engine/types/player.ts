@@ -44,6 +44,7 @@ export interface FactionInfo {
   readonly buildActivations?: number; // Base build activations per Build action disc (standard 2)
   readonly moveActivations?: number; // Base move activations per Move action disc (Humans 3, Aliens 2)
   readonly influenceActivations?: number; // Base influence activations per Influence action disc (standard 2)
+  readonly influenceColonyShipRefreshes?: number; // Colony ships flipped face-up during Influence action (standard 2, Magellan 1)
   readonly reputationSlots?: number; // Capacity of reputation track (4 for Eridani, Planta, Mechanema, Hydran, Draco; 5 for Orion and Terrans)
   readonly ambassadorSlots?: number; // Number of ambassador-eligible slots on reputation track (3 for Terrans/Planta/Draco/Mechanema, 4 for Orion/Hydran, 2 for Eridani)
   readonly reputationSlotTypes?: ReputationSlotType[];

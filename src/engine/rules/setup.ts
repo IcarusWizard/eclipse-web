@@ -402,6 +402,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     buildActivations: 2,
     moveActivations: 2,
     influenceActivations: 2,
+    influenceColonyShipRefreshes: 1,
     reputationSlots: 4,
     ambassadorSlots: 4,
     reputationSlotTypes: ['both', 'both', 'both', 'both'],

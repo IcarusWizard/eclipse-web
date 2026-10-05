@@ -2,7 +2,11 @@ import React, { useState, useMemo } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile } from '../../engine/types/galaxy';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
-import { getMaxInfluenceActivations, playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
+import {
+  getMaxInfluenceActivations,
+  getInfluenceColonyShipRefreshes,
+  playerHasWormholeGenerator,
+} from '../../engine/rules/gameReducer';
 import {
   CircleDot,
   Ship,
@@ -68,8 +72,9 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
     return sectors.filter((sec) => sec.discOwner === player.id);
   }, [sectors, player.id]);
 
+  const colonyShipRefreshes = getInfluenceColonyShipRefreshes(player);
   const totalActivations = claimSectors.length + abandonSectors.length;
-  const readyShipsAfter = Math.min(player.colonyShips.total, player.colonyShips.ready + 2);
+  const readyShipsAfter = Math.min(player.colonyShips.total, player.colonyShips.ready + colonyShipRefreshes);
   const discsRemainingAfter = player.influenceTrack.discsOnTrack - 1 - claimSectors.length + abandonSectors.length;
   const canAffordDiscs = player.influenceTrack.discsOnTrack >= 1 && discsRemainingAfter >= 0;
 
@@ -117,7 +122,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Flip up to 2 Colony Ships faceup, and modify Control on up to {maxActivations} eligible sectors.
+                Flip up to {colonyShipRefreshes} Colony Ship{colonyShipRefreshes === 1 ? '' : 's'} faceup, and modify Control on up to {maxActivations} eligible sectors.
               </p>
             </div>
           </div>
@@ -142,7 +147,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                   Colony Ships Readied
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  Flips up to 2 used Colony Ships faceup automatically upon action execution.
+                  Flips up to {colonyShipRefreshes} used Colony Ship{colonyShipRefreshes === 1 ? '' : 's'} faceup automatically upon action execution.
                 </div>
               </div>
             </div>
@@ -310,7 +315,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
               </span>
             )}
             {canAffordDiscs && totalActivations === 0 && (
-              <span>Optionally ready 2 colony ships without moving sector discs.</span>
+              <span>Optionally ready {colonyShipRefreshes} colony ship{colonyShipRefreshes === 1 ? '' : 's'} without moving sector discs.</span>
             )}
             {canAffordDiscs && totalActivations > 0 && (
               <span className="text-emerald-400 flex items-center gap-1">

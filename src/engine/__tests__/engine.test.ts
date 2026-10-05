@@ -52,6 +52,7 @@ import {
   computePinningState,
   canExchangeAmbassadors,
   getMaxUpgradeActivations,
+  getInfluenceColonyShipRefreshes,
   playerHasWormholeGenerator,
   applyShrinePlacement,
 } from '../rules/gameReducer';
@@ -9161,8 +9162,29 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         });
         expect(failConv.success).toBe(false);
 
+        // 3b. Influence action readies ONLY 1 colony ship for Magellan (standard is 2)
+        expect(getInfluenceColonyShipRefreshes(convRes3.newState.players[0]!)).toBe(1);
+        const magellanInf = executeAction(convRes3.newState, {
+          type: 'INFLUENCE',
+          playerId: magellan.id,
+        });
+        expect(magellanInf.success).toBe(true);
+        // Only 1 colony ship flipped back face-up (ready)
+        expect(magellanInf.newState.players[0]!.colonyShips.ready).toBe(1);
+
+        // Comparison with standard faction (e.g. Terran Federation) which readies 2
+        const terranGame = createInitialGame(1, ['terran_federation']);
+        terranGame.players[0]!.colonyShips.ready = 0;
+        expect(getInfluenceColonyShipRefreshes(terranGame.players[0]!)).toBe(2);
+        const terranInf = executeAction(terranGame, {
+          type: 'INFLUENCE',
+          playerId: terranGame.players[0]!.id,
+        });
+        expect(terranInf.success).toBe(true);
+        expect(terranInf.newState.players[0]!.colonyShips.ready).toBe(2);
+
         // 4. 4th Tech Placement Discovery Resolution
-        let curState = convRes3.newState;
+        let curState = magellanInf.newState;
         curState.players[0]!.resources.science = 50;
         curState.players[0]!.influenceTrack.discsOnTrack = 8;
         curState.activePlayerIndex = 0;
