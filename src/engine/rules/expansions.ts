@@ -2,7 +2,7 @@
  * Official Expansion Modules & Configuration for Eclipse: Second Dawn
  */
 
-export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order';
+export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers';
 
 export interface ExpansionDefinition {
   readonly id: ExpansionId;
@@ -55,6 +55,18 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'During Cleanup, Turn Order Markers are reordered according to the Next Turn Order Tiles',
     ],
   },
+  {
+    id: 'seekers',
+    name: 'Seekers',
+    shortName: 'Seekers',
+    badge: '2 New Factions',
+    description: 'Introduces two new Alien Species with unique boards and mechanics: Wardens of Magellan and Enlightened of Lyra.',
+    features: [
+      'Wardens of Magellan: Ancient relic hunters with 16 Discs, starting Fusion Source, Colony Ship resource conversion, tech track discovery tile, and +1 VP per discovery ship part.',
+      'Enlightened of Lyra: Spiritual recluses with 17 Discs, Shrine Board (9 Shrines built during Research), Wormhole Generator & Discovery & Disc row bonuses, and combat dice rerolls via Colony Ships.',
+      'Home Sectors: Sector 233 (47 Ursae Majoris) and Sector 238 (Beta Lyrae).',
+    ],
+  },
 ];
 
 export function isExpansionActive(expansions: string[] | undefined, id: ExpansionId): boolean {
@@ -96,6 +108,16 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === '+3 money +3 gray'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'remnants_of_worlds_afar') || null;
+  }
+  if (
+    norm === 'seekers' ||
+    norm === 'wardens_of_magellan' ||
+    norm === 'magellan' ||
+    norm === 'enlightened_of_lyra' ||
+    norm === 'lyra' ||
+    norm === 'shrine'
+  ) {
+    return AVAILABLE_EXPANSIONS.find((e) => e.id === 'seekers') || null;
   }
   return null;
 }

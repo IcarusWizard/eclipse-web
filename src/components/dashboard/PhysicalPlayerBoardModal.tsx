@@ -43,6 +43,7 @@ import {
   Handshake,
 } from 'lucide-react';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
+import { playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
 
 interface PhysicalPlayerBoardModalProps {
   player: PlayerState;
@@ -56,6 +57,7 @@ interface PhysicalPlayerBoardModalProps {
   hideOpponentReputation?: boolean;
   traitorPlayerId?: string | null;
   onExchangeAmbassador?: (targetPlayerId: string) => void;
+  onConvertColonyShip?: (resource: 'money' | 'science' | 'materials') => void;
 }
 
 export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> = ({
@@ -70,6 +72,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   hideOpponentReputation = false,
   traitorPlayerId,
   onExchangeAmbassador,
+  onConvertColonyShip,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'tracks' | 'tech' | 'blueprints'>('all');
   const [selectedTech, setSelectedTech] = useState<Technology | null>(null);
@@ -274,6 +277,45 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <span className="text-xs font-mono font-bold text-indigo-300 ml-1">
                     {player.colonyShips.ready}/{player.colonyShips.total} Ready
                   </span>
+
+                  {/* Magellan Scavenge Colony Ship Ability */}
+                  {player.faction.id === 'wardens_of_magellan' && onConvertColonyShip && (
+                    <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-slate-700">
+                      <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider">
+                        Scavenge:
+                      </span>
+                      <button
+                        onClick={() => onConvertColonyShip('money')}
+                        disabled={player.colonyShips.ready <= 0 || !isActive}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors disabled:opacity-40"
+                        title="Convert 1 ready Colony Ship to 1 Money"
+                      >
+                        +1 Money
+                      </button>
+                      <button
+                        onClick={() => onConvertColonyShip('science')}
+                        disabled={player.colonyShips.ready <= 0 || !isActive}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/40 transition-colors disabled:opacity-40"
+                        title="Convert 1 ready Colony Ship to 1 Science"
+                      >
+                        +1 Sci
+                      </button>
+                      <button
+                        onClick={() => onConvertColonyShip('materials')}
+                        disabled={player.colonyShips.ready <= 0 || !isActive}
+                        className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-700/20 hover:bg-amber-700/30 text-amber-200 border border-amber-700/40 transition-colors disabled:opacity-40"
+                        title="Convert 1 ready Colony Ship to 1 Material"
+                      >
+                        +1 Mat
+                      </button>
+                    </div>
+                  )}
+
+                  {player.faction.id === 'wardens_of_magellan' && (player.discoveryTilesUsedAsShipPartsCount || 0) > 0 && (
+                    <span className="text-[10px] text-purple-300 ml-2 font-mono" title="Discovery Tiles equipped as Ship Parts (+1 VP each at end of game)">
+                      ({player.discoveryTilesUsedAsShipPartsCount} Discovery Ship Parts: +{player.discoveryTilesUsedAsShipPartsCount} VP)
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -695,8 +737,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     const p1Sectors = sectors.filter((s) => s.discOwner === player.id || s.ships.some((shp) => shp.ownerId === player.id));
                     const p2Sectors = sectors.filter((s) => s.discOwner === other.id || s.ships.some((shp) => shp.ownerId === other.id));
                     const hasWormholeGen =
-                      player.techTrack.researched.some((t) => t.id === 'wormhole_generator') ||
-                      other.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+                      playerHasWormholeGenerator(player) ||
+                      playerHasWormholeGenerator(other);
                     const isConnected = p1Sectors.some((s1) =>
                       p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen))
                     );
@@ -812,6 +854,22 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       <h3 className="text-xs font-bold uppercase tracking-wider text-rose-300 font-display flex items-center gap-1.5">
                         <Crosshair className="w-3.5 h-3.5 text-rose-400" /> MILITARY TECH ROW ({techRows.military.count} Researched)
                       </h3>
+                      {player.faction.id === 'wardens_of_magellan' && (
+                        <span
+                          className={`text-[10px] font-bold px-2 py-0.5 rounded border ml-2 ${
+                            !player.magellanDiscoveryResolved
+                              ? 'bg-purple-900/60 border-purple-500 text-purple-200 shadow-sm shadow-purple-500/30 animate-pulse'
+                              : 'bg-slate-800 border-slate-700 text-slate-400'
+                          }`}
+                          title={
+                            !player.magellanDiscoveryResolved
+                              ? 'Facedown Relic Tile on Military Track. Reveals and resolves when 4th technology is placed on any track.'
+                              : 'Relic Tile resolved.'
+                          }
+                        >
+                          {!player.magellanDiscoveryResolved ? '🔮 Facedown Relic Tile (Unrevealed)' : '🔮 Relic Tile Resolved'}
+                        </span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3 text-xs font-mono">
                       <span className="text-slate-400">
@@ -1060,6 +1118,126 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
           )}
 
           {/* ================================================================= */}
+          {/* SECTION 2.5: ENLIGHTENED OF LYRA - 3x3 SHRINE BOARD                */}
+          {/* ================================================================= */}
+          {player.faction.id === 'enlightened_of_lyra' && player.shrineBoard && (activeTab === 'all' || activeTab === 'tech') && (
+            <div className="bg-slate-950/80 border border-orange-500/40 rounded-xl p-4 sm:p-5 shadow-lg space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-3 border-b border-orange-950/80 pb-3">
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-orange-400" />
+                  <div>
+                    <h2 className="text-sm sm:text-base font-bold text-orange-200 font-display flex items-center gap-2">
+                      SHRINE BOARD (9 Sacred Shrines)
+                    </h2>
+                    <p className="text-xs text-slate-400">
+                      With each Research action, you may place one Shrine on an eligible planet slot in a controlled hex. Complete rows to unlock powerful spiritual bonuses.
+                    </p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-3 text-xs font-mono">
+                  <span className="text-orange-300 font-bold">
+                    {`${player.shrineBoard.slots.flat().filter((s) => s.built).length}/9 Shrines Built`}
+                  </span>
+                  <span className="text-amber-400 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
+                    {`+${player.shrineBoard.slots.flat().filter((s) => s.built).length} VP`}
+                  </span>
+                </div>
+              </div>
+
+              {/* 3 Rows with Row Bonuses */}
+              <div className="space-y-3">
+                {player.shrineBoard.slots.map((rowSlots, rIdx) => {
+                  const isCompleted = rowSlots.every((s) => s.built);
+                  const rowBonusClaimed = player.shrineBoard?.rowBonusesClaimed[rIdx];
+                  const rowTitles = [
+                    'Row 1 — Unlocks Permanent Wormhole Generator Ability',
+                    'Row 2 — Unlocks Free Discovery Tile (Sector 238 or +2 VP)',
+                    'Row 3 — Unlocks +1 Permanent Influence Disc',
+                  ];
+                  const bonusStatus = [
+                    player.hasWormholeGeneratorAbility ? 'UNLOCKED' : 'LOCKED',
+                    rowBonusClaimed ? 'CLAIMED' : 'LOCKED',
+                    player.lyraExtraDiscClaimed ? '+1 DISC GRANTED' : 'LOCKED',
+                  ];
+
+                  return (
+                    <div
+                      key={`shrine_row_${rIdx}`}
+                      className={`border rounded-xl p-3 transition-all ${
+                        isCompleted
+                          ? 'bg-orange-950/20 border-orange-500/50 shadow-md'
+                          : 'bg-slate-900/80 border-slate-800'
+                      }`}
+                    >
+                      <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-orange-300 font-display">
+                            {rowTitles[rIdx]}
+                          </span>
+                        </div>
+                        <span
+                          className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded border ${
+                            isCompleted
+                              ? 'bg-emerald-950/60 border-emerald-500/60 text-emerald-300'
+                              : 'bg-slate-800 border-slate-700 text-slate-400'
+                          }`}
+                        >
+                          {bonusStatus[rIdx]}
+                        </span>
+                      </div>
+
+                      <div className="grid grid-cols-3 gap-2.5">
+                        {rowSlots.map((slot, cIdx) => {
+                          const resColors = {
+                            science: 'text-pink-400 border-pink-500/30 bg-pink-950/20',
+                            money: 'text-amber-300 border-amber-500/30 bg-amber-950/20',
+                            materials: 'text-amber-500 border-amber-600/30 bg-amber-950/20',
+                          };
+                          const resColor = resColors[slot.costResource] || 'text-slate-300';
+
+                          return (
+                            <div
+                              key={`shrine_slot_${rIdx}_${cIdx}`}
+                              className={`rounded-lg border p-2 flex flex-col items-center justify-center text-center transition-all ${
+                                slot.built
+                                  ? 'bg-orange-900/30 border-orange-400 text-orange-200 shadow ring-1 ring-orange-500/30'
+                                  : `${resColor} border-dashed opacity-80`
+                              }`}
+                            >
+                              {slot.built ? (
+                                <div className="flex flex-col items-center gap-1">
+                                  <div className="flex items-center gap-1">
+                                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
+                                    <span className="text-xs font-bold font-display text-orange-200">
+                                      Shrine {rIdx * 3 + cIdx + 1}
+                                    </span>
+                                  </div>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {slot.sectorId ? `Sec ${slot.sectorId}` : 'Erected'}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex flex-col items-center gap-0.5">
+                                  <span className="text-xs font-bold font-mono">
+                                    {slot.costAmount} {slot.costResource.toUpperCase()}
+                                  </span>
+                                  <span className="text-[9px] text-slate-400">
+                                    Next to {slot.costResource} / gray planet
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ================================================================= */}
           {/* SECTION 3: CURRENT SHIP BLUEPRINTS (HANGAR TRAY)                  */}
           {/* Directly answers: "what are my current ship blue print"            */}
           {/* ================================================================= */}
@@ -1240,10 +1418,12 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               </div>
                               <div>
                                 <div className="text-[10px] font-bold text-emerald-300 leading-tight line-clamp-1">
-                                  {player.faction.id === 'planta'
-                                    ? sc.type === 'starbase'
+                                  {sc.type === 'starbase'
+                                    ? player.faction.id === 'planta'
                                       ? 'Planta Defense Core'
-                                      : 'Planta Bio-Computer'
+                                      : 'Starbase Power Core'
+                                    : player.faction.id === 'planta'
+                                    ? 'Planta Bio-Computer'
                                     : player.faction.id === 'orion_hegemony'
                                     ? 'Orion Martial Reactor'
                                     : player.faction.id === 'eridani_empire'

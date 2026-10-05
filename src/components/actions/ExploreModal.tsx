@@ -13,6 +13,7 @@ import {
   getNeighborCoord,
   areCoordsEqual,
 } from '../../engine/rules/hexMath';
+import { playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
 import {
   Compass,
   RotateCw,
@@ -82,7 +83,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     coord: targetCoord,
   };
 
-  const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+  const hasWormholeGen = playerHasWormholeGenerator(player);
   const isConnected = isLegallyConnectedToPlayerSectors(
     sectors,
     targetCoord,

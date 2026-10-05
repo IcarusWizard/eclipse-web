@@ -27,6 +27,7 @@ export interface PlanetSlot {
   readonly isOrbital?: boolean; // Orbital structure slot
   colonizedBy?: string; // Player ID who has a population cube here
   colonizedResource?: 'money' | 'science' | 'material'; // Type of cube placed on this slot
+  shrineOwner?: string; // Player ID who built a shrine next to this planet (Enlightened of Lyra)
 }
 
 export type ShipType = 'interceptor' | 'cruiser' | 'dreadnought' | 'starbase';

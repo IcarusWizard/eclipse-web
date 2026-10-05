@@ -3,17 +3,34 @@
  */
 
 import { GameState, GamePhase, GameLogEntry, CombatState } from '../types/state';
-import { GameAction, BuildAction, UpgradeAction, MoveAction, ResearchAction, ExploreAction } from '../types/actions';
+import {
+  GameAction,
+  BuildAction,
+  UpgradeAction,
+  MoveAction,
+  ResearchAction,
+  ExploreAction,
+  ConvertColonyShipAction,
+  PlaceShrineAction,
+  RerollCombatDieAction,
+} from '../types/actions';
 import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors, getExplorableHexes } from './hexMath';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE } from './economyEngine';
-import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, sortUnitsByInitiative } from './combatEngine';
+import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, sortUnitsByInitiative } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import { getMaxReputationTilesForPlayer } from './setup';
 import { DISCOVERY_TILES } from './sectorData';
+
+export function playerHasWormholeGenerator(player: PlayerState): boolean {
+  return (
+    player.techTrack.researched.some((t) => t.id === 'wormhole_generator') ||
+    Boolean(player.hasWormholeGeneratorAbility)
+  );
+}
 
 export interface ActionResult {
   success: boolean;
@@ -154,8 +171,8 @@ export function canExchangeAmbassadors(
   const p1Sectors = state.sectors.filter((s) => s.discOwner === p1.id || s.ships.some((shp) => shp.ownerId === p1.id));
   const p2Sectors = state.sectors.filter((s) => s.discOwner === p2.id || s.ships.some((shp) => shp.ownerId === p2.id));
   const hasWormholeGen =
-    p1.techTrack.researched.some((t) => t.id === 'wormhole_generator') ||
-    p2.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+    playerHasWormholeGenerator(p1) ||
+    playerHasWormholeGenerator(p2);
 
   const areConnected = p1Sectors.some((s1) =>
     p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen))
@@ -221,7 +238,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'COLONIZE' &&
       action.type !== 'PROPOSE_DIPLOMACY' &&
-      action.type !== 'RESPOND_DIPLOMACY'
+      action.type !== 'RESPOND_DIPLOMACY' &&
+      action.type !== 'CONVERT_COLONY_SHIP' &&
+      action.type !== 'REROLL_COMBAT_DIE'
     ) {
       return {
         valid: false,
@@ -230,7 +249,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
   }
 
-  // Active player check (except combat, colonization, trade, conquest, discovery choices, confirm/revert, diplomacy)
+  // Active player check (except combat, colonization, trade, conquest, discovery choices, confirm/revert, diplomacy, colony ship convert)
   if (state.phase === 'ACTION_PHASE') {
     const activePlayer = state.players[state.activePlayerIndex];
     if (
@@ -247,7 +266,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'REVERT_TURN_ACTION' &&
       action.type !== 'DIPLOMACY_EXCHANGE' &&
       action.type !== 'PROPOSE_DIPLOMACY' &&
-      action.type !== 'RESPOND_DIPLOMACY'
+      action.type !== 'RESPOND_DIPLOMACY' &&
+      action.type !== 'CONVERT_COLONY_SHIP' &&
+      action.type !== 'REROLL_COMBAT_DIE'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -448,6 +469,58 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           error: `Insufficient science. Total cost is ${totalScienceCost}, but player has ${player.resources.science}.`,
         };
       }
+
+      if (action.shrinePlacement) {
+        if (player.faction.id !== 'enlightened_of_lyra') {
+          return { valid: false, error: 'Only Enlightened of Lyra can place a Shrine during Research.' };
+        }
+        if (!player.shrineBoard) {
+          return { valid: false, error: 'Lyra Shrine Board not found.' };
+        }
+        const { row, col, sectorId, planetId } = action.shrinePlacement;
+        if (row < 0 || row > 2 || col < 0 || col > 2) {
+          return { valid: false, error: 'Invalid Shrine Board slot coordinate.' };
+        }
+        const slot = player.shrineBoard.slots[row]?.[col];
+        if (!slot) {
+          return { valid: false, error: 'Shrine slot not found.' };
+        }
+        if (slot.built) {
+          return { valid: false, error: 'This Shrine has already been placed.' };
+        }
+        const targetSector = state.sectors.find((s) => s.id === sectorId);
+        if (!targetSector) {
+          return { valid: false, error: 'Target sector not found.' };
+        }
+        if (targetSector.discOwner !== player.id) {
+          return { valid: false, error: 'You must control the sector to place a Shrine.' };
+        }
+        const planet = targetSector.planets.find((p) => p.id === planetId);
+        if (!planet) {
+          return { valid: false, error: 'Target planet not found.' };
+        }
+        if (planet.shrineOwner) {
+          return { valid: false, error: 'Each planet may only have one Shrine.' };
+        }
+        const costRes = slot.costResource;
+        const planetRes = planet.resource;
+        const isMatchingColor =
+          planetRes === 'any' ||
+          (costRes === 'science' && planetRes === 'science') ||
+          (costRes === 'money' && planetRes === 'money') ||
+          (costRes === 'materials' && (planetRes === 'materials' || planetRes === 'material'));
+        if (!isMatchingColor) {
+          return {
+            valid: false,
+            error: `Shrine costing ${costRes} must be placed next to a matching ${costRes} planet or a gray planet.`,
+          };
+        }
+        const availableResource = costRes === 'science' ? player.resources.science - totalScienceCost : player.resources[costRes];
+        if (availableResource < slot.costAmount) {
+          return { valid: false, error: `Not enough ${costRes} to place this Shrine (costs ${slot.costAmount}).` };
+        }
+      }
+
       return { valid: true };
     }
 
@@ -607,7 +680,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
       const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
       const maxMoveActivations = isPassed ? 1 : getMaxMoveActivations(player);
-      const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+      const hasWormholeGen = playerHasWormholeGenerator(player);
 
       // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed and Jump Drive
       const shipMap = new Map<
@@ -841,7 +914,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Not enough influence discs on track for the requested claims.' };
       }
 
-      const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+      const hasWormholeGen = playerHasWormholeGenerator(player);
 
       for (const secId of claimed) {
         const sec = state.sectors.find((s) => s.id === secId);
@@ -1215,9 +1288,342 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'CONVERT_COLONY_SHIP': {
+      if (player.faction.id !== 'wardens_of_magellan') {
+        return { valid: false, error: 'Only Wardens of Magellan can convert Colony Ships to resources.' };
+      }
+      const count = action.count ?? 1;
+      if (count < 1) {
+        return { valid: false, error: 'Must convert at least 1 Colony Ship.' };
+      }
+      if (player.colonyShips.ready < count) {
+        return { valid: false, error: 'Not enough ready Colony Ships to convert.' };
+      }
+      if (action.resource !== 'money' && action.resource !== 'science' && action.resource !== 'materials') {
+        return { valid: false, error: 'Invalid resource type for conversion.' };
+      }
+      return { valid: true };
+    }
+
+    case 'PLACE_SHRINE': {
+      if (player.faction.id !== 'enlightened_of_lyra') {
+        return { valid: false, error: 'Only Enlightened of Lyra can place Shrines.' };
+      }
+      if (!player.shrineBoard) {
+        return { valid: false, error: 'Lyra Shrine Board not found.' };
+      }
+      const { row, col, sectorId, planetId } = action;
+      if (row < 0 || row > 2 || col < 0 || col > 2) {
+        return { valid: false, error: 'Invalid Shrine Board slot coordinate.' };
+      }
+      const slot = player.shrineBoard.slots[row]?.[col];
+      if (!slot) {
+        return { valid: false, error: 'Shrine slot not found.' };
+      }
+      if (slot.built) {
+        return { valid: false, error: 'This Shrine has already been placed.' };
+      }
+      const targetSector = state.sectors.find((s) => s.id === sectorId);
+      if (!targetSector) {
+        return { valid: false, error: 'Target sector not found.' };
+      }
+      if (targetSector.discOwner !== player.id) {
+        return { valid: false, error: 'You must control the sector to place a Shrine.' };
+      }
+      const planet = targetSector.planets.find((p) => p.id === planetId);
+      if (!planet) {
+        return { valid: false, error: 'Target planet not found.' };
+      }
+      if (planet.shrineOwner) {
+        return { valid: false, error: 'Each planet may only have one Shrine.' };
+      }
+      const costRes = slot.costResource;
+      const planetRes = planet.resource;
+      const isMatchingColor =
+        planetRes === 'any' ||
+        (costRes === 'science' && planetRes === 'science') ||
+        (costRes === 'money' && planetRes === 'money') ||
+        (costRes === 'materials' && (planetRes === 'materials' || planetRes === 'material'));
+      if (!isMatchingColor) {
+        return {
+          valid: false,
+          error: `Shrine costing ${costRes} must be placed next to a matching ${costRes} planet or a gray planet.`,
+        };
+      }
+      if (player.resources[costRes] < slot.costAmount) {
+        return { valid: false, error: `Not enough ${costRes} to place this Shrine (costs ${slot.costAmount}).` };
+      }
+      return { valid: true };
+    }
+
+    case 'REROLL_COMBAT_DIE': {
+      if (player.faction.id !== 'enlightened_of_lyra') {
+        return { valid: false, error: 'Only Enlightened of Lyra can reroll combat dice using Colony Ships.' };
+      }
+      if (!state.activeCombat || state.phase !== 'COMBAT_PHASE') {
+        return { valid: false, error: 'No active combat to reroll dice in.' };
+      }
+      if (player.colonyShips.ready < 1) {
+        return { valid: false, error: 'No ready Colony Ships available to flip for reroll.' };
+      }
+      const lastRolls = state.activeCombat.lastRolls;
+      if (!lastRolls || action.rollIndex < 0 || action.rollIndex >= lastRolls.length) {
+        return { valid: false, error: 'Invalid combat roll index to reroll.' };
+      }
+      const targetRoll = lastRolls[action.rollIndex]!;
+      if (targetRoll.shipOwner !== player.id) {
+        return { valid: false, error: 'You can only reroll your own dice.' };
+      }
+      return { valid: true };
+    }
+
     default:
       return { valid: true };
   }
+}
+
+export function applyShrinePlacement(
+  state: GameState,
+  player: PlayerState,
+  placement: { row: number; col: number; sectorId: string; planetId: string }
+): void {
+  if (!player.shrineBoard) return;
+  const { row, col, sectorId, planetId } = placement;
+  const slot = player.shrineBoard.slots[row]?.[col];
+  if (!slot || slot.built) return;
+
+  const costRes = slot.costResource;
+  player.resources[costRes] -= slot.costAmount;
+  slot.built = true;
+  slot.sectorId = sectorId;
+  slot.planetId = planetId;
+
+  const targetSector = state.sectors.find((s) => s.id === sectorId);
+  const planet = targetSector?.planets.find((p) => p.id === planetId);
+  if (planet) {
+    planet.shrineOwner = player.id;
+  }
+
+  state.log.unshift({
+    id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    timestamp: Date.now(),
+    round: state.round,
+    phase: state.phase,
+    playerId: player.id,
+    message: `${player.name} placed a Shrine on Sector ${targetSector?.sectorNumber || sectorId} next to ${planet?.resource.toUpperCase()} planet for ${slot.costAmount} ${costRes.toUpperCase()}!`,
+    type: 'action',
+  });
+
+  // Check row completion bonus
+  const rowSlots = player.shrineBoard.slots[row];
+  if (rowSlots && rowSlots.every((s) => s.built) && !player.shrineBoard.rowBonusesClaimed[row]) {
+    player.shrineBoard.rowBonusesClaimed[row] = true;
+    if (row === 0) {
+      player.hasWormholeGeneratorAbility = true;
+      state.log.unshift({
+        id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: state.phase,
+        playerId: player.id,
+        message: `🌟 ${player.name} completed Row 1 of their Shrine Board and unlocked the Wormhole Generator ability!`,
+        type: 'tech',
+      });
+    } else if (row === 1) {
+      const disc = state.discoveryBag && state.discoveryBag.length > 0 ? state.discoveryBag.pop()! : { ...DISCOVERY_TILES[0]! };
+      const startingSector = state.sectors.find((s) => s.sectorNumber === 238 || s.id === `home_sector_${player.id}`);
+      const controlsStart = Boolean(startingSector && startingSector.discOwner === player.id);
+
+      const placesInSector = Boolean(
+        disc.immediateReward?.grantStructure ||
+        disc.immediateReward?.grantShipType ||
+        disc.id === 'disc_ancient_cruiser' ||
+        disc.immediateReward?.warpPortal
+      );
+
+      if (placesInSector && !controlsStart) {
+        player.keptDiscoveryTiles = player.keptDiscoveryTiles || [];
+        player.keptDiscoveryTiles.push(disc);
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          playerId: player.id,
+          message: `🌟 ${player.name} completed Row 2 of their Shrine Board and drew Discovery Tile "${disc.name}". Since they do not control their Starting Sector, it was kept for 2 VP!`,
+          type: 'tech',
+        });
+      } else {
+        state.pendingDiscovery = {
+          sectorId: startingSector?.id || state.sectors[0]?.id || 'sec_1',
+          playerId: player.id,
+          discovery: disc,
+        };
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          playerId: player.id,
+          message: `🌟 ${player.name} completed Row 2 of their Shrine Board and drew Discovery Tile "${disc.name}"! Must decide whether to claim reward or keep for 2 VP.`,
+          type: 'tech',
+        });
+      }
+    } else if (row === 2) {
+      player.influenceTrack.totalDiscs += 1;
+      player.influenceTrack.discsOnTrack += 1;
+      player.lyraExtraDiscClaimed = true;
+      state.log.unshift({
+        id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: state.phase,
+        playerId: player.id,
+        message: `🌟 ${player.name} completed Row 3 of their Shrine Board and gained +1 bonus Influence Disc!`,
+        type: 'action',
+      });
+    }
+  }
+}
+
+export function checkMagellanFourthTechDiscovery(state: GameState, player: PlayerState): void {
+  if (
+    player.faction.id === 'wardens_of_magellan' &&
+    !player.magellanDiscoveryResolved &&
+    player.magellanDiscoveryTile
+  ) {
+    const hasFourthTech =
+      player.techTrack.militaryCount >= 4 ||
+      player.techTrack.gridCount >= 4 ||
+      player.techTrack.nanoCount >= 4;
+
+    if (hasFourthTech) {
+      player.magellanDiscoveryResolved = true;
+      const tile = player.magellanDiscoveryTile;
+      player.magellanDiscoveryTile = null;
+
+      const startingSector = state.sectors.find(
+        (s) => s.sectorNumber === 233 || s.id === `home_sector_${player.id}`
+      );
+      const controlsStart = Boolean(startingSector && startingSector.discOwner === player.id);
+
+      const placesInSector = Boolean(
+        tile.immediateReward?.grantStructure ||
+        tile.immediateReward?.grantShipType ||
+        tile.id === 'disc_ancient_cruiser' ||
+        tile.immediateReward?.warpPortal
+      );
+
+      if (placesInSector && !controlsStart) {
+        player.keptDiscoveryTiles = player.keptDiscoveryTiles || [];
+        player.keptDiscoveryTiles.push(tile);
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          playerId: player.id,
+          message: `✨ ${player.name} placed a 4th tech on a tech track! Revealed facedown Discovery Tile "${tile.name}". Since they do not control their Starting Sector, it was kept for 2 VP!`,
+          type: 'tech',
+        });
+      } else {
+        state.pendingDiscovery = {
+          sectorId: startingSector?.id || state.sectors[0]?.id || 'sec_1',
+          playerId: player.id,
+          discovery: tile,
+        };
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          playerId: player.id,
+          message: `✨ ${player.name} placed a 4th tech on a tech track! Revealed facedown Discovery Tile "${tile.name}"! Must decide whether to claim reward or keep for 2 VP.`,
+          type: 'tech',
+        });
+      }
+    }
+  }
+}
+
+export function applyCombatDieReroll(state: GameState, player: PlayerState, rollIndex: number): void {
+  if (!state.activeCombat) return;
+  const sector = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
+  if (!sector) return;
+  const lastRolls = state.activeCombat.lastRolls;
+  if (!lastRolls || rollIndex < 0 || rollIndex >= lastRolls.length) return;
+  const targetRoll = lastRolls[rollIndex]!;
+  if (targetRoll.shipOwner !== player.id) return;
+
+  player.colonyShips.ready = Math.max(0, player.colonyShips.ready - 1);
+
+  const oldDmg = targetRoll.isHit ? targetRoll.damage : 0;
+  let newRollVal = 0;
+  let newIsHit = false;
+  let newDmg = 0;
+
+  if (targetRoll.dieColor === 'purple') {
+    const purpleRes = rollPurpleDie();
+    newRollVal = purpleRes.rawRoll;
+    newIsHit = purpleRes.isHit;
+    newDmg = purpleRes.targetDamage;
+    targetRoll.roll = purpleRes.rawRoll;
+    targetRoll.modifiedRoll = purpleRes.rawRoll;
+    targetRoll.isHit = purpleRes.isHit;
+    targetRoll.damage = purpleRes.targetDamage;
+    targetRoll.selfDamage = purpleRes.selfDamage;
+    targetRoll.symbol = purpleRes.symbol;
+  } else {
+    newRollVal = rollD6();
+    const computerBonus = targetRoll.modifiedRoll - targetRoll.roll;
+    const modified = newRollVal + computerBonus;
+    if (newRollVal === 6) {
+      newIsHit = true;
+    } else if (newRollVal === 1) {
+      newIsHit = false;
+    } else {
+      newIsHit = modified >= 6;
+    }
+    const singleDieDmg = oldDmg > 0 ? oldDmg : targetRoll.dieColor === 'orange' ? 4 : targetRoll.dieColor === 'blue' ? 2 : 1;
+    newDmg = newIsHit ? singleDieDmg : 0;
+    targetRoll.roll = newRollVal;
+    targetRoll.modifiedRoll = modified;
+    targetRoll.isHit = newIsHit;
+    targetRoll.damage = newDmg;
+  }
+
+  const dmgDiff = newDmg - oldDmg;
+  if (dmgDiff !== 0) {
+    const enemyUnits = sector.ships.filter((s) => s.ownerId !== player.id);
+    if (dmgDiff > 0 && enemyUnits.length > 0) {
+      const targetShip = enemyUnits[0]!;
+      targetShip.damage += dmgDiff;
+      const bp = state.players.find((p) => p.id === targetShip.ownerId)?.blueprints[targetShip.type];
+      const maxHull = bp ? calculateBlueprintStats(bp).hull : 1;
+      if (targetShip.damage >= maxHull) {
+        state.activeCombat.destroyedShips = state.activeCombat.destroyedShips || [];
+        if (!state.activeCombat.destroyedShips.some((d) => d.shipId === targetShip.id)) {
+          state.activeCombat.destroyedShips.push({
+            shipId: targetShip.id,
+            type: targetShip.type,
+            ownerId: targetShip.ownerId,
+            killerId: player.id,
+          });
+        }
+        sector.ships = sector.ships.filter((s) => s.id !== targetShip.id);
+      }
+    }
+  }
+
+  state.log.unshift({
+    id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    timestamp: Date.now(),
+    round: state.round,
+    phase: state.phase,
+    playerId: player.id,
+    message: `🎲 ${player.name} flipped 1 Colony Ship to reroll die #${rollIndex + 1}: rolled ${newRollVal} (${newIsHit ? `HIT! [${newDmg} dmg]` : 'MISS'})!`,
+    type: 'combat',
+  });
 }
 
 export function executeAction(state: GameState, action: GameAction): ActionResult {
@@ -1246,7 +1652,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     action.type !== 'ABANDON_SECTOR_BANKRUPTCY' &&
     action.type !== 'DIPLOMACY_EXCHANGE' &&
     action.type !== 'PROPOSE_DIPLOMACY' &&
-    action.type !== 'RESPOND_DIPLOMACY'
+    action.type !== 'RESPOND_DIPLOMACY' &&
+    action.type !== 'CONVERT_COLONY_SHIP' &&
+    action.type !== 'REROLL_COMBAT_DIE'
   ) {
     newState.consecutivePasses = 0;
   }
@@ -1320,7 +1728,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
       // Wormhole connection check (Bug 74: connect to either adjacent player sector)
       const sourceSector = newState.sectors.find((s) => areCoordsEqual(s.coord, action.fromCoord));
-      const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+      const hasWormholeGen = playerHasWormholeGenerator(player);
       const isConnected = isLegallyConnectedToPlayerSectors(
         newState.sectors,
         action.targetCoord,
@@ -1367,7 +1775,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
       // If player has pending explore activations remaining, verify if any valid target hexes exist on galaxy (Bug 114)
       if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
-        const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+        const hasWormholeGen = playerHasWormholeGenerator(player);
         const explorable = getExplorableHexes(newState.sectors, player.id, hasWormholeGen, newState.sectorDecks);
         if (explorable.length === 0) {
           newState.pendingExploreActivations = 0;
@@ -1517,6 +1925,11 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
         addLog(`${player.name} researched ${tech.name} for ${cost} Science (${targetTrack.toUpperCase()} track).`);
       }
+
+      if (action.shrinePlacement && player.faction.id === 'enlightened_of_lyra') {
+        applyShrinePlacement(newState, player, action.shrinePlacement);
+      }
+      checkMagellanFourthTechDiscovery(newState, player);
       break;
     }
 
@@ -1534,6 +1947,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         // When installing an Ancient part from storage, remove it so it cannot be placed again
         if (up.partId && player.unlockedAncientParts && player.unlockedAncientParts.includes(up.partId)) {
           player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== up.partId);
+          if (player.faction.id === 'wardens_of_magellan') {
+            player.discoveryTilesUsedAsShipPartsCount = (player.discoveryTilesUsedAsShipPartsCount || 0) + 1;
+          }
         }
 
         if (part && oldPart) {
@@ -2057,6 +2473,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               player.influenceTrack.totalDiscs += 1;
               player.influenceTrack.discsOnTrack += 1;
             }
+            checkMagellanFourthTechDiscovery(newState, player);
             addLog(`${player.name} acquired free Ancient Tech: ${chosenTech.name}!`);
           } else {
             addLog(`${player.name} explored Ancient Tech but no eligible regular tech remained in the supply.`);
@@ -2097,6 +2514,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               bp.slots[action.equipSlotIndex] = part;
               // Placed immediately when taken: ensure it is NOT stored in player.unlockedAncientParts
               player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== disc.shipPartId);
+              if (player.faction.id === 'wardens_of_magellan') {
+                player.discoveryTilesUsedAsShipPartsCount = (player.discoveryTilesUsedAsShipPartsCount || 0) + 1;
+              }
               addLog(`${player.name} equipped Ancient Tech "${part.name}" directly to their ${action.equipShipType.toUpperCase()} blueprint (Slot ${action.equipSlotIndex + 1})!`);
             }
           } else {
@@ -2309,6 +2729,11 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           if (newState.activeCombat.stage === 'resolved' || action.concludeCombat) {
             const winnerId = (newState.activeCombat as any).winnerOwnerId || getSectorDefenderOwnerId(sector);
             concludeEngagement(winnerId, units);
+            return { success: true, newState };
+          }
+
+          if (action.rerollRollIndex !== undefined && player.faction.id === 'enlightened_of_lyra' && player.colonyShips.ready >= 1) {
+            applyCombatDieReroll(newState, player, action.rerollRollIndex);
             return { success: true, newState };
           }
 
@@ -2656,6 +3081,24 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         });
       }
       return { success: true, newState: restoredState };
+    }
+
+    case 'CONVERT_COLONY_SHIP': {
+      const count = action.count ?? 1;
+      player.colonyShips.ready = Math.max(0, player.colonyShips.ready - count);
+      player.resources[action.resource] += count;
+      addLog(`${player.name} converted ${count} Colony Ship(s) to ${count} ${action.resource.toUpperCase()}!`, 'economy');
+      return { success: true, newState };
+    }
+
+    case 'PLACE_SHRINE': {
+      applyShrinePlacement(newState, player, action);
+      return { success: true, newState };
+    }
+
+    case 'REROLL_COMBAT_DIE': {
+      applyCombatDieReroll(newState, player, action.rollIndex);
+      return { success: true, newState };
     }
   }
 
@@ -3608,6 +4051,20 @@ export function computeCurrentScores(state: GameState): {
         return sum + Math.max(s.ancientsCount, shipsCount);
       }, 0);
       speciesBonus += totalAncientsOnBoard;
+    } else if (p.faction.id === 'wardens_of_magellan') {
+      // 1 VP per Discovery Tile used as a Ship Part
+      speciesBonus += p.discoveryTilesUsedAsShipPartsCount || 0;
+    } else if (p.faction.id === 'enlightened_of_lyra') {
+      // 1 VP per Shrine you control at the end of the game
+      let controlledShrines = 0;
+      for (const s of controlledSectors) {
+        for (const pl of s.planets || []) {
+          if (pl.shrineOwner === p.id) {
+            controlledShrines += 1;
+          }
+        }
+      }
+      speciesBonus += controlledShrines;
     }
 
     // 9. Traitor Tile Penalty (-2 VP)

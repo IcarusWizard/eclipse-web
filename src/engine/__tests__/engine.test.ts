@@ -52,6 +52,8 @@ import {
   computePinningState,
   canExchangeAmbassadors,
   getMaxUpgradeActivations,
+  playerHasWormholeGenerator,
+  applyShrinePlacement,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -295,10 +297,19 @@ describe('Ship Blueprint Validation', () => {
     expect(interceptorStats.isValid).toBe(true);
     expect(interceptorStats.totalHull).toBe(1);
 
-    // Starbase has 2 HP (1 base + 1 hull)
+    // Starbase has 3 HP (1 base + 2 hulls), 3 preprinted power, 1 power consumed
     const starbaseStats = calculateBlueprintStats(defaultBps.starbase!);
     expect(starbaseStats.isValid).toBe(true);
-    expect(starbaseStats.totalHull).toBe(2);
+    expect(starbaseStats.totalHull).toBe(3);
+    expect(starbaseStats.totalPowerProduced).toBe(3);
+    expect(starbaseStats.totalPowerConsumed).toBe(1);
+    expect(defaultBps.starbase!.preprintedPower).toBe(3);
+    expect(defaultBps.starbase!.slots.length).toBe(5);
+    expect(defaultBps.starbase!.slots[0]?.id).toBe('ion_cannon');
+    expect(defaultBps.starbase!.slots[1]?.id).toBe('electron_computer');
+    expect(defaultBps.starbase!.slots[2]?.id).toBe('hull');
+    expect(defaultBps.starbase!.slots[3]?.id).toBe('hull');
+    expect(defaultBps.starbase!.slots[4]).toBeNull();
   });
 });
 
@@ -1742,11 +1753,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(dreStats.totalHull).toBe(3);
       expect(p1.blueprints.dreadnought.maxSlots).toBe(8);
 
-      // Starbase: 5 slots, 2 HP (1 Hull)
+      // Starbase: 5 slots, 3 HP (2 Hulls), 3 preprinted power, 1 power consumed
       const staStats = calculateBlueprintStats(p1.blueprints.starbase);
       expect(staStats.isValid).toBe(true);
-      expect(staStats.totalHull).toBe(2);
+      expect(staStats.totalHull).toBe(3);
       expect(p1.blueprints.starbase.maxSlots).toBe(5);
+      expect(staStats.totalPowerProduced).toBe(3);
+      expect(staStats.totalPowerConsumed).toBe(1);
     });
   });
 
@@ -3347,6 +3360,62 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(orion.blueprints.dreadnought.preprintedPower).toBe(3);
       });
 
+      it('verifies standard and faction Starbase blueprints have 5 slots, 3 preprinted power, 2 hulls, and 1 empty slot', () => {
+        const factions = ['terran_federation', 'eridani_empire', 'descendants_of_draco', 'mechanema', 'wardens_of_magellan', 'enlightened_of_lyra'];
+        for (const factionId of factions) {
+          const bps = createFactionBlueprints(factionId);
+          const sb = bps.starbase;
+          expect(sb).toBeDefined();
+          expect(sb.maxSlots).toBe(5);
+          expect(sb.preprintedPower).toBe(3);
+          expect(sb.slots.length).toBe(5);
+          expect(sb.slots[0]?.id).toBe('ion_cannon');
+          expect(sb.slots[1]?.id).toBe('electron_computer');
+          expect(sb.slots[2]?.id).toBe('hull');
+          expect(sb.slots[3]?.id).toBe('hull');
+          expect(sb.slots[4]).toBeNull();
+
+          const stats = calculateBlueprintStats(sb);
+          expect(stats.isValid).toBe(true);
+          expect(stats.totalHull).toBe(3); // 1 base + 2 hulls
+          expect(stats.totalPowerProduced).toBe(3);
+          expect(stats.totalPowerConsumed).toBe(1);
+        }
+
+        // Orion Hegemony has Gauss Shield replacing one Hull, base initiative 5
+        const orionBps = createFactionBlueprints('orion_hegemony');
+        const orionSb = orionBps.starbase;
+        expect(orionSb.maxSlots).toBe(5);
+        expect(orionSb.preprintedPower).toBe(3);
+        expect(orionSb.baseInitiative).toBe(5);
+        expect(orionSb.slots[0]?.id).toBe('ion_cannon');
+        expect(orionSb.slots[1]?.id).toBe('electron_computer');
+        expect(orionSb.slots[2]?.id).toBe('gauss_shield');
+        expect(orionSb.slots[3]?.id).toBe('hull');
+        expect(orionSb.slots[4]).toBeNull();
+        const orionStats = calculateBlueprintStats(orionSb);
+        expect(orionStats.isValid).toBe(true);
+        expect(orionStats.totalHull).toBe(2); // 1 base + 1 hull
+        expect(orionStats.totalPowerProduced).toBe(3);
+        expect(orionStats.totalPowerConsumed).toBe(1);
+
+        // Planta has 4 slots, 1 computer preprinted, 5 power preprinted
+        const plantaBps = createFactionBlueprints('planta');
+        const plantaSb = plantaBps.starbase;
+        expect(plantaSb.maxSlots).toBe(4);
+        expect(plantaSb.preprintedPower).toBe(5);
+        expect(plantaSb.preprintedComputer).toBe(1);
+        expect(plantaSb.slots[0]?.id).toBe('ion_cannon');
+        expect(plantaSb.slots[1]?.id).toBe('hull');
+        expect(plantaSb.slots[2]).toBeNull();
+        expect(plantaSb.slots[3]).toBeNull();
+        const plantaStats = calculateBlueprintStats(plantaSb);
+        expect(plantaStats.isValid).toBe(true);
+        expect(plantaStats.totalHull).toBe(2);
+        expect(plantaStats.totalPowerProduced).toBe(5);
+        expect(plantaStats.totalPowerConsumed).toBe(1);
+      });
+
       it('13a. Home system orientation: ensures wormhole always points toward Galactic Center', () => {
         for (const count of [2, 3, 4, 5, 6]) {
           const game = createInitialGame(count);
@@ -4844,13 +4913,20 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // --- 1. Bug 35: Orion Hegemony Blueprints ---
         const orionGame = createInitialGame(1, ['orion_hegemony']);
         const orion = orionGame.players[0]!;
-        for (const shipType of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as const) {
+        for (const shipType of ['interceptor', 'cruiser', 'dreadnought'] as const) {
           const bp = orion.blueprints[shipType];
           expect(bp.slots.every((s) => s !== null)).toBe(true);
           expect(bp.slots.some((s) => s?.id === 'gauss_shield')).toBe(true);
           expect(bp.slots.some((s) => s?.id === 'electron_computer')).toBe(true);
           expect(isShipBlueprintValid(bp)).toBe(true);
         }
+        const orionSb = orion.blueprints.starbase;
+        expect(orionSb.slots.filter((s) => s !== null).length).toBe(4);
+        expect(orionSb.slots[4]).toBeNull();
+        expect(orionSb.preprintedPower).toBe(3);
+        expect(orionSb.slots.some((s) => s?.id === 'gauss_shield')).toBe(true);
+        expect(orionSb.slots.some((s) => s?.id === 'electron_computer')).toBe(true);
+        expect(isShipBlueprintValid(orionSb)).toBe(true);
 
         // --- 2. Bug 38: Reaction actions and consecutive passes ---
         const game = createInitialGame(2);
@@ -8823,7 +8899,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // 3. Round 1 Action Phase order follows turnOrder: p0 -> p1 -> p2 -> p0
         // P0 takes Research action
-        const techToResearch = game.techSupply[0];
+        const techToResearch = game.techSupply.find((t) => t.id !== 'ancient_labs' && t.id !== 'artifact_key') || game.techSupply[0];
         const res0 = executeAction(game, {
           type: 'RESEARCH',
           playerId: p0.id,
@@ -8834,7 +8910,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(res0.newState.activePlayerIndex).toBe(1);
 
         // P1 takes Research action
-        const tech2 = res0.newState.techSupply[0];
+        const tech2 = res0.newState.techSupply.find((t) => t.id !== 'ancient_labs' && t.id !== 'artifact_key') || res0.newState.techSupply[0];
         const res1 = executeAction(res0.newState, {
           type: 'RESEARCH',
           playerId: p1.id,
@@ -8903,7 +8979,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         r2State.players[1].resources.science = 20;
 
         // P2 acts
-        const r2Tech0 = r2State.techSupply[0];
+        const regularTechs = r2State.techSupply.filter(
+          (t) =>
+            (t.category === 'military' || t.category === 'grid' || t.category === 'nano') &&
+            t.id !== 'ancient_labs' &&
+            t.id !== 'artifact_key'
+        );
+        const r2Tech0 = regularTechs[0]!;
         const r2Act1 = executeAction(r2State, {
           type: 'RESEARCH',
           playerId: p2.id,
@@ -8914,7 +8996,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(r2Act1.newState.activePlayerIndex).toBe(0);
 
         // P0 acts
-        const r2Tech1 = r2Act1.newState.techSupply[0];
+        const r2Tech1 = regularTechs[1]!;
         const r2Act2 = executeAction(r2Act1.newState, {
           type: 'RESEARCH',
           playerId: p0.id,
@@ -8925,7 +9007,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(r2Act2.newState.activePlayerIndex).toBe(1);
 
         // P1 acts
-        const r2Tech2 = r2Act2.newState.techSupply[0];
+        const r2Tech2 = regularTechs[2]!;
         const r2Act3 = executeAction(r2Act2.newState, {
           type: 'RESEARCH',
           playerId: p1.id,
@@ -8995,6 +9077,470 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           })
         );
         expect(barHtml).toContain('#1');
+      });
+
+      it('58. verifies Seekers Expansion: Wardens of Magellan setup, Colony Ship resource conversion, 4th tech discovery resolution, discovery ship part VP scoring, and UI components', async () => {
+        // 1. Expansions registration check
+        expect(AVAILABLE_EXPANSIONS.some((e) => e.id === 'seekers')).toBe(true);
+        expect(getExpansionForItem('wardens_of_magellan')?.id).toBe('seekers');
+        expect(getExpansionForItem('enlightened_of_lyra')?.id).toBe('seekers');
+
+        // 2. Setup verification
+        const game = createInitialGame(2, ['wardens_of_magellan', 'terran_federation'], ['seekers']);
+        const magellan = game.players[0]!;
+        expect(magellan.faction.id).toBe('wardens_of_magellan');
+        expect(magellan.color).toBe(ECLIPSE_COLOR_PALETTE.purple);
+        expect(magellan.faction.startingSectorNumber).toBe(233);
+        expect(magellan.colonyShips.ready).toBe(3);
+        expect(magellan.colonyShips.total).toBe(3);
+        expect(magellan.influenceTrack.totalDiscs).toBe(13);
+        expect(magellan.influenceTrack.discsOnTrack).toBe(12); // 1 disc used on home sector
+        expect(magellan.population.money.cubesOnBoard).toBe(11);
+        expect(magellan.population.science.cubesOnBoard).toBe(10);
+        expect(magellan.population.material.cubesOnBoard).toBe(10);
+        expect(magellan.magellanDiscoveryTile).toBeDefined();
+        expect(magellan.magellanDiscoveryResolved).toBe(false);
+
+        const homeSec = game.sectors.find((s) => s.sectorNumber === 233 || s.id === `home_sector_${magellan.id}`)!;
+        expect(homeSec).toBeDefined();
+        expect(homeSec.discOwner).toBe(magellan.id);
+        expect(homeSec.planets.length).toBe(4);
+        expect(homeSec.planets.some((p) => p.resource === 'science')).toBe(true);
+        expect(homeSec.planets.some((p) => p.resource === 'material' || p.resource === 'materials')).toBe(true);
+
+        // 3. Colony Ship Conversion (Scavenge)
+        const initMoney = magellan.resources.money;
+        const initSci = magellan.resources.science;
+        const initMat = magellan.resources.materials;
+
+        // Convert 1 colony ship to money
+        const convRes1 = executeAction(game, {
+          type: 'CONVERT_COLONY_SHIP',
+          playerId: magellan.id,
+          resource: 'money',
+          count: 1,
+        });
+        expect(convRes1.success).toBe(true);
+        expect(convRes1.newState.players[0]!.colonyShips.ready).toBe(2);
+        expect(convRes1.newState.players[0]!.resources.money).toBe(initMoney + 1);
+
+        // Convert 1 colony ship to science
+        const convRes2 = executeAction(convRes1.newState, {
+          type: 'CONVERT_COLONY_SHIP',
+          playerId: magellan.id,
+          resource: 'science',
+          count: 1,
+        });
+        expect(convRes2.success).toBe(true);
+        expect(convRes2.newState.players[0]!.colonyShips.ready).toBe(1);
+        expect(convRes2.newState.players[0]!.resources.science).toBe(initSci + 1);
+
+        // Convert 1 colony ship to materials
+        const convRes3 = executeAction(convRes2.newState, {
+          type: 'CONVERT_COLONY_SHIP',
+          playerId: magellan.id,
+          resource: 'materials',
+          count: 1,
+        });
+        expect(convRes3.success).toBe(true);
+        expect(convRes3.newState.players[0]!.colonyShips.ready).toBe(0);
+        expect(convRes3.newState.players[0]!.resources.materials).toBe(initMat + 1);
+
+        // Attempting to convert when ready === 0 fails
+        const failConv = executeAction(convRes3.newState, {
+          type: 'CONVERT_COLONY_SHIP',
+          playerId: magellan.id,
+          resource: 'money',
+          count: 1,
+        });
+        expect(failConv.success).toBe(false);
+
+        // 4. 4th Tech Placement Discovery Resolution
+        let curState = convRes3.newState;
+        curState.players[0]!.resources.science = 50;
+        curState.players[0]!.influenceTrack.discsOnTrack = 8;
+        curState.activePlayerIndex = 0;
+
+        const techsToResearch = [
+          TECH_CATALOG.find((t) => t.id === 'neutron_bombs')!,
+          TECH_CATALOG.find((t) => t.id === 'starbase')!,
+          TECH_CATALOG.find((t) => t.id === 'plasma_cannon')!,
+          TECH_CATALOG.find((t) => t.id === 'phase_shield')!,
+        ];
+
+        curState.techSupply = [...curState.techSupply, ...techsToResearch];
+
+        // Research tech 1
+        const r1 = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: magellan.id,
+          techId: 'neutron_bombs',
+          targetTrack: 'military',
+        });
+        expect(r1.success).toBe(true);
+        expect(r1.newState.players[0]!.magellanDiscoveryResolved).toBe(false);
+
+        // Research tech 2
+        curState = r1.newState;
+        curState.activePlayerIndex = 0;
+        const r2 = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: magellan.id,
+          techId: 'starbase',
+          targetTrack: 'military',
+        });
+        expect(r2.success).toBe(true);
+        expect(r2.newState.players[0]!.magellanDiscoveryResolved).toBe(false);
+
+        // Research tech 3
+        curState = r2.newState;
+        curState.activePlayerIndex = 0;
+        const r3 = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: magellan.id,
+          techId: 'plasma_cannon',
+          targetTrack: 'military',
+        });
+        expect(r3.success).toBe(true);
+        expect(r3.newState.players[0]!.magellanDiscoveryResolved).toBe(false);
+
+        // Research tech 4 (triggers 4th tech discovery resolution on Military track!)
+        curState = r3.newState;
+        curState.activePlayerIndex = 0;
+        const r4 = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: magellan.id,
+          techId: 'phase_shield',
+          targetTrack: 'military',
+        });
+        expect(r4.success).toBe(true);
+        expect(r4.newState.players[0]!.magellanDiscoveryResolved).toBe(true);
+        expect(r4.newState.pendingDiscovery !== null || r4.newState.players[0]!.keptDiscoveryTiles.length > 0).toBe(true);
+
+        if (r4.newState.pendingDiscovery) {
+          const discRes = executeAction(r4.newState, {
+            type: 'DISCOVERY_CHOICE',
+            playerId: magellan.id,
+            sectorId: r4.newState.pendingDiscovery.sectorId,
+            keepForVictoryPoints: true,
+          });
+          expect(discRes.success).toBe(true);
+          expect(discRes.newState.players[0]!.keptDiscoveryTiles.length).toBeGreaterThan(0);
+          curState = discRes.newState;
+        } else {
+          curState = r4.newState;
+        }
+
+        // 5. Discovery Tiles Used as Ship Parts End Game VP
+        const baseScore = computeCurrentScores(curState).scores[magellan.id]!;
+        expect(curState.players[0]!.discoveryTilesUsedAsShipPartsCount || 0).toBe(0);
+
+        curState.activePlayerIndex = 0;
+        curState.players[0]!.unlockedAncientParts = ['part_ion_disruptor'];
+        const upgRes = executeAction(curState, {
+          type: 'UPGRADE',
+          playerId: magellan.id,
+          upgrades: [{ shipType: 'interceptor', slotIndex: 1, partId: 'part_ion_disruptor' }],
+        });
+        expect(upgRes.success).toBe(true);
+        expect(upgRes.newState.players[0]!.discoveryTilesUsedAsShipPartsCount).toBe(1);
+
+        const newScore = computeCurrentScores(upgRes.newState).scores[magellan.id]!;
+        expect(newScore.speciesBonus).toBe((baseScore.speciesBonus || 0) + 1);
+
+        // 6. UI Rendering: PhysicalPlayerBoardModal
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+        const modalHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: upgRes.newState.players[0]!,
+            players: upgRes.newState.players,
+            activePlayerId: magellan.id,
+            sectors: upgRes.newState.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+            onConvertColonyShip: () => {},
+          })
+        );
+        expect(modalHtml).toContain('Scavenge:');
+        expect(modalHtml).toContain('+1 Money');
+        expect(modalHtml).toContain('Relic Tile');
+      });
+
+      it('59. verifies Seekers Expansion: Enlightened of Lyra setup, 3x3 Shrine Board placement during Research, Row bonuses (Wormhole Gen, Discovery Tile, +1 Disc), combat die reroll via colony ships, controlled shrine VP scoring, and UI components', async () => {
+        // 1. Setup verification
+        const game = createInitialGame(2, ['enlightened_of_lyra', 'terran_federation'], ['seekers']);
+        const lyra = game.players[0]!;
+        expect(lyra.faction.id).toBe('enlightened_of_lyra');
+        expect(lyra.color).toBe(ECLIPSE_COLOR_PALETTE.orange);
+        expect(lyra.faction.startingSectorNumber).toBe(238);
+        expect(lyra.colonyShips.ready).toBe(3);
+        expect(lyra.colonyShips.total).toBe(3);
+        expect(lyra.influenceTrack.totalDiscs).toBe(13);
+        expect(lyra.influenceTrack.discsOnTrack).toBe(12); // 1 disc used on home sector
+        expect(lyra.population.money.cubesOnBoard).toBe(10);
+        expect(lyra.population.science.cubesOnBoard).toBe(10);
+        expect(lyra.population.material.cubesOnBoard).toBe(10);
+
+        expect(lyra.shrineBoard).toBeDefined();
+        expect(lyra.shrineBoard!.slots.length).toBe(3);
+        expect(lyra.shrineBoard!.slots[0]!.length).toBe(3);
+        expect(lyra.hasWormholeGeneratorAbility).toBe(false);
+        expect(playerHasWormholeGenerator(lyra)).toBe(false);
+
+        const homeSec = game.sectors.find((s) => s.sectorNumber === 238 || s.id === `home_sector_${lyra.id}`)!;
+        expect(homeSec).toBeDefined();
+        expect(homeSec.discOwner).toBe(lyra.id);
+        expect(homeSec.planets.length).toBe(4);
+
+        const sciPlanet = homeSec.planets.find((p) => p.resource === 'science')!;
+        const moneyPlanet = homeSec.planets.find((p) => p.resource === 'money')!;
+        const matPlanet = homeSec.planets.find((p) => p.resource === 'material' || p.resource === 'materials')!;
+        expect(sciPlanet).toBeDefined();
+        expect(moneyPlanet).toBeDefined();
+        expect(matPlanet).toBeDefined();
+
+        // 2. Shrine Placement during Research
+        let curState = game;
+        curState.players[0]!.resources.science = 50;
+        curState.players[0]!.resources.money = 50;
+        curState.players[0]!.resources.materials = 50;
+        curState.players[0]!.influenceTrack.discsOnTrack = 10;
+        curState.activePlayerIndex = 0;
+
+        const testTechs = [
+          TECH_CATALOG.find((t) => t.id === 'neutron_bombs')!,
+          TECH_CATALOG.find((t) => t.id === 'starbase')!,
+          TECH_CATALOG.find((t) => t.id === 'plasma_cannon')!,
+        ];
+        curState.techSupply = [...curState.techSupply, ...testTechs];
+
+        // Research tech with Row 0, Col 0 shrine placement (Cost: 2 Science, matches sciPlanet)
+        const initSci = curState.players[0]!.resources.science;
+        const resShrine1 = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: lyra.id,
+          techId: 'neutron_bombs',
+          targetTrack: 'military',
+          shrinePlacement: {
+            row: 0,
+            col: 0,
+            sectorId: homeSec.id,
+            planetId: sciPlanet.id,
+          },
+        });
+        expect(resShrine1.success).toBe(true);
+        const lyraAfter1 = resShrine1.newState.players[0]!;
+        expect(lyraAfter1.shrineBoard!.slots[0]![0]!.built).toBe(true);
+        expect(resShrine1.newState.sectors.find((s) => s.id === homeSec.id)!.planets.find((p) => p.id === sciPlanet.id)!.shrineOwner).toBe(lyra.id);
+        // Cost of tech (2) + cost of shrine (2 sci) = 4 sci
+        expect(lyraAfter1.resources.science).toBe(initSci - 4);
+
+        // Attempting to place shrine on planet that already has a shrine should fail
+        curState = resShrine1.newState;
+        curState.activePlayerIndex = 0;
+        const dupShrineRes = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: lyra.id,
+          techId: 'starbase',
+          targetTrack: 'military',
+          shrinePlacement: {
+            row: 0,
+            col: 1,
+            sectorId: homeSec.id,
+            planetId: sciPlanet.id,
+          },
+        });
+        expect(dupShrineRes.success).toBe(false);
+        expect(dupShrineRes.error).toContain('Each planet may only have one Shrine');
+
+        // Attempting to place shrine with mismatched resource (money shrine on mat planet) should fail
+        const mismatchRes = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: lyra.id,
+          techId: 'starbase',
+          targetTrack: 'military',
+          shrinePlacement: {
+            row: 0,
+            col: 1,
+            sectorId: homeSec.id,
+            planetId: matPlanet.id,
+          },
+        });
+        expect(mismatchRes.success).toBe(false);
+        expect(mismatchRes.error).toContain('must be placed next to a matching');
+
+        // Complete Row 0:
+        // Place Row 0, Col 1 on moneyPlanet
+        curState = resShrine1.newState;
+        curState.activePlayerIndex = 0;
+        const resShrine2 = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: lyra.id,
+          techId: 'starbase',
+          targetTrack: 'military',
+          shrinePlacement: {
+            row: 0,
+            col: 1,
+            sectorId: homeSec.id,
+            planetId: moneyPlanet.id,
+          },
+        });
+        expect(resShrine2.success).toBe(true);
+
+        // Place Row 0, Col 2 on matPlanet -> Completes Row 0!
+        curState = resShrine2.newState;
+        curState.activePlayerIndex = 0;
+        const resShrine3 = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: lyra.id,
+          techId: 'plasma_cannon',
+          targetTrack: 'military',
+          shrinePlacement: {
+            row: 0,
+            col: 2,
+            sectorId: homeSec.id,
+            planetId: matPlanet.id,
+          },
+        });
+        expect(resShrine3.success).toBe(true);
+
+        // Row 0 completed: Unlocks Wormhole Generator ability!
+        const lyraRow0Done = resShrine3.newState.players[0]!;
+        expect(lyraRow0Done.shrineBoard!.rowBonusesClaimed[0]).toBe(true);
+        expect(lyraRow0Done.hasWormholeGeneratorAbility).toBe(true);
+        expect(playerHasWormholeGenerator(lyraRow0Done)).toBe(true);
+
+        // Row 1 & Row 2 completion:
+        curState = resShrine3.newState;
+        const sec = curState.sectors.find((s) => s.id === homeSec.id)!;
+        sec.planets.push(
+          { id: 'p_extra_mat1', resource: 'materials', colonizedBy: lyra.id },
+          { id: 'p_extra_sci1', resource: 'science', colonizedBy: lyra.id },
+          { id: 'p_extra_money1', resource: 'money', colonizedBy: lyra.id },
+          { id: 'p_extra_money2', resource: 'money', colonizedBy: lyra.id },
+          { id: 'p_extra_mat2', resource: 'materials', colonizedBy: lyra.id },
+          { id: 'p_extra_sci2', resource: 'science', colonizedBy: lyra.id }
+        );
+
+        // Build Row 1 slots [1][0] (mat), [1][1] (sci), [1][2] (money)
+        applyShrinePlacement(curState, curState.players[0]!, { row: 1, col: 0, sectorId: homeSec.id, planetId: 'p_extra_mat1' });
+        applyShrinePlacement(curState, curState.players[0]!, { row: 1, col: 1, sectorId: homeSec.id, planetId: 'p_extra_sci1' });
+        applyShrinePlacement(curState, curState.players[0]!, { row: 1, col: 2, sectorId: homeSec.id, planetId: 'p_extra_money1' });
+
+        expect(curState.players[0]!.shrineBoard!.rowBonusesClaimed[1]).toBe(true);
+        // Row 1 bonus: Discovery Tile drawn
+        expect(curState.pendingDiscovery !== null || curState.players[0]!.keptDiscoveryTiles.length > 0).toBe(true);
+        if (curState.pendingDiscovery) {
+          executeAction(curState, { type: 'DISCOVERY_CHOICE', playerId: lyra.id, sectorId: curState.pendingDiscovery.sectorId, keepForVictoryPoints: true });
+        }
+
+        // Build Row 2 slots [2][0] (money), [2][1] (mat), [2][2] (sci)
+        const prevTotalDiscs = curState.players[0]!.influenceTrack.totalDiscs;
+        const prevDiscsOnTrack = curState.players[0]!.influenceTrack.discsOnTrack;
+        applyShrinePlacement(curState, curState.players[0]!, { row: 2, col: 0, sectorId: homeSec.id, planetId: 'p_extra_money2' });
+        applyShrinePlacement(curState, curState.players[0]!, { row: 2, col: 1, sectorId: homeSec.id, planetId: 'p_extra_mat2' });
+        applyShrinePlacement(curState, curState.players[0]!, { row: 2, col: 2, sectorId: homeSec.id, planetId: 'p_extra_sci2' });
+
+        expect(curState.players[0]!.shrineBoard!.rowBonusesClaimed[2]).toBe(true);
+        expect(curState.players[0]!.lyraExtraDiscClaimed).toBe(true);
+        expect(curState.players[0]!.influenceTrack.totalDiscs).toBe(prevTotalDiscs + 1);
+        expect(curState.players[0]!.influenceTrack.discsOnTrack).toBe(prevDiscsOnTrack + 1);
+
+        // 3. Combat Die Reroll via Colony Ships
+        curState.phase = 'COMBAT_PHASE';
+        curState.players[0]!.colonyShips.ready = 3;
+        curState.activeCombat = {
+          sectorId: homeSec.id,
+          round: 1,
+          step: 'cannons',
+          units: [],
+          currentInitiative: 2,
+          currentUnitIndex: 0,
+          pendingDamage: [],
+          combatLog: [],
+          lastRolls: [
+            {
+              dieIndex: 0,
+              color: 'yellow',
+              naturalRoll: 2,
+              modifiedRoll: 2,
+              isHit: false,
+              isMiss: false,
+              damageValue: 1,
+              shipId: 'ship_1',
+              shipType: 'interceptor',
+              shipOwner: lyra.id,
+            },
+          ],
+        };
+        const prevReadyShips = curState.players[0]!.colonyShips.ready;
+
+        const rerollRes = executeAction(curState, {
+          type: 'REROLL_COMBAT_DIE',
+          playerId: lyra.id,
+          rollIndex: 0,
+        });
+        expect(rerollRes.success).toBe(true);
+        expect(rerollRes.newState.players[0]!.colonyShips.ready).toBe(prevReadyShips - 1);
+
+        // 4. End of Game VP Scoring for Shrines
+        const score = computeCurrentScores(curState).scores[lyra.id]!;
+        // 9 shrines built and controlled
+        expect(score.speciesBonus).toBe(9);
+
+        // 5. UI Rendering
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+        const boardHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: curState.players[0]!,
+            players: curState.players,
+            activePlayerId: lyra.id,
+            sectors: curState.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        );
+        const builtCount = curState.players[0]!.shrineBoard!.slots.flat().filter((s) => s.built).length;
+        expect(builtCount).toBe(9);
+        expect(boardHtml).toContain('SHRINE BOARD (9 Sacred Shrines)');
+        expect(boardHtml).toContain('9/9 Shrines Built');
+        expect(boardHtml).toContain('+9 VP');
+
+        // TechMarketModal rendering with Lyra shrine panel
+        const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+        const techHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: curState.players[0]!,
+            activePlayer: curState.players[0]!,
+            players: curState.players,
+            sectors: curState.sectors,
+            techSupply: curState.techSupply,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(techHtml).toContain('Enlightened of Lyra — Shrine Placement');
+
+        // HexGalaxyMap rendering with Shrine marker
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: curState,
+            activePlayer: curState.players[0]!,
+            onSelectSector: () => {},
+          })
+        );
+        expect(mapHtml).toContain('Shrine of Enlightened of Lyra');
       });
     });
   });

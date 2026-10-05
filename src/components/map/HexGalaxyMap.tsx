@@ -13,6 +13,7 @@ import {
   getRingFromCoord,
   getExplorableHexes,
 } from '../../engine/rules/hexMath';
+import { playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
 import {
   Rocket,
   Compass,
@@ -237,7 +238,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   // Compute legal unexplored target hexes adjacent to explored sectors where active player has presence
   const explorableHexes = useMemo(() => {
     if (!isExploreMode || !activePlayer) return [];
-    const hasWormholeGen = activePlayer.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+    const hasWormholeGen = playerHasWormholeGenerator(activePlayer);
     return getExplorableHexes(state.sectors, activePlayer.id, hasWormholeGen, state.sectorDecks);
   }, [state.sectors, activePlayer, isExploreMode, state.sectorDecks]);
 
@@ -820,7 +821,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     state.sectors.find((s) => areCoordsEqual(s.coord, neighborCoord)) ||
                     candidateNeighbor;
                   const hasWormholeGen =
-                    activePlayer?.techTrack.researched.some((t) => t.id === 'wormhole_generator') ?? false;
+                    activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
                   const isConnected = neighborSector ? areSectorsConnected(sector, neighborSector, hasWormholeGen) : false;
 
                   return (
@@ -1260,6 +1261,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                             )}
                           </>
                         )}
+
+                        {/* Lyra Shrine Marker */}
+                        {planet.shrineOwner && (
+                          <g transform="translate(0, -9)" className="pointer-events-none">
+                            <title>{`Shrine of ${state.players.find((p) => p.id === planet.shrineOwner)?.name || 'Lyra'}`}</title>
+                            <circle r="4" fill="#f97316" fillOpacity="0.5" />
+                            <polygon points="0,-5 3.5,2 -3.5,2" fill="#ea580c" stroke="#fed7aa" strokeWidth="0.8" />
+                            <circle cx="0" cy="-1" r="0.9" fill="#ffffff" />
+                          </g>
+                        )}
                       </g>
                     );
                   })}
@@ -1624,7 +1635,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               rotation: pendingExplore.rotation,
             };
             const hasWormholeGen =
-              activePlayer?.techTrack.researched.some((t) => t.id === 'wormhole_generator') ?? false;
+              activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
             const sourceSector = state.sectors.find((s) => areCoordsEqual(s.coord, pendingExplore.from));
             const isConnectedToSource = sourceSector
               ? areSectorsConnected(sourceSector, simulatedTile, hasWormholeGen)

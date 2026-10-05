@@ -24,7 +24,10 @@ export type ActionType =
   | 'CONFIRM_TURN_ACTION'
   | 'REVERT_TURN_ACTION'
   | 'PROPOSE_DIPLOMACY'
-  | 'RESPOND_DIPLOMACY';
+  | 'RESPOND_DIPLOMACY'
+  | 'CONVERT_COLONY_SHIP'
+  | 'PLACE_SHRINE'
+  | 'REROLL_COMBAT_DIE';
 
 export interface BaseAction {
   playerId: string;
@@ -59,6 +62,12 @@ export interface ResearchAction extends BaseAction {
     money?: number;
     science?: number;
     materials?: number;
+  };
+  shrinePlacement?: {
+    row: number; // 0..2
+    col: number; // 0..2
+    sectorId: string;
+    planetId: string;
   };
 }
 
@@ -152,6 +161,7 @@ export interface ResolveCombatStepAction extends BaseAction {
   retreatShipIds?: string[];
   retreatDestinationSectorId?: string;
   concludeCombat?: boolean;
+  rerollRollIndex?: number; // Lyra: flip colony ship to reroll die at this index in lastRolls
 }
 
 export interface CombatConquestAction extends BaseAction {
@@ -190,6 +200,25 @@ export interface RevertTurnAction extends BaseAction {
   type: 'REVERT_TURN_ACTION';
 }
 
+export interface ConvertColonyShipAction extends BaseAction {
+  type: 'CONVERT_COLONY_SHIP';
+  resource: 'money' | 'science' | 'materials';
+  count?: number; // Default 1
+}
+
+export interface PlaceShrineAction extends BaseAction {
+  type: 'PLACE_SHRINE';
+  row: number; // 0..2
+  col: number; // 0..2
+  sectorId: string;
+  planetId: string;
+}
+
+export interface RerollCombatDieAction extends BaseAction {
+  type: 'REROLL_COMBAT_DIE';
+  rollIndex: number;
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -211,4 +240,7 @@ export type GameAction =
   | AllocateArtifactRewardAction
   | AbandonSectorBankruptcyAction
   | ConfirmTurnAction
-  | RevertTurnAction;
+  | RevertTurnAction
+  | ConvertColonyShipAction
+  | PlaceShrineAction
+  | RerollCombatDieAction;

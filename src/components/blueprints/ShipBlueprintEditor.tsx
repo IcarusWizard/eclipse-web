@@ -497,10 +497,12 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
                     <div className="mt-1">
                       <div className="font-bold text-xs text-emerald-300 leading-tight">
-                        {player.faction.id === 'planta'
-                          ? activeShipType === 'starbase'
+                        {activeShipType === 'starbase'
+                          ? player.faction.id === 'planta'
                             ? 'Planta Defense Core'
-                            : 'Planta Bio-Computer'
+                            : 'Starbase Power Core'
+                          : player.faction.id === 'planta'
+                          ? 'Planta Bio-Computer'
                           : player.faction.id === 'orion_hegemony'
                           ? 'Orion Martial Reactor'
                           : player.faction.id === 'eridani_empire'
@@ -516,7 +518,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                         )}
                       </div>
                       <div className="text-[9px] text-slate-400 mt-1 italic">
-                        Inherent species chassis bonus
+                        {activeShipType === 'starbase'
+                          ? 'Fixed starbase chassis power'
+                          : 'Inherent species chassis bonus'}
                       </div>
                     </div>
                   </div>

@@ -35,7 +35,8 @@ interface TechMarketModalProps {
   onResearchTech: (
     researches: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
     targetTrack?: 'military' | 'grid' | 'nano',
-    warpPortalSectorId?: string
+    warpPortalSectorId?: string,
+    shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string }
   ) => void;
   onClose: () => void;
 }
@@ -72,6 +73,49 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   const [selectedForResearch, setSelectedForResearch] = useState<
     { techId: string; targetTrack: 'military' | 'grid' | 'nano' }[]
   >([]);
+
+  // Lyra Shrine Placement State (Optional with Research action)
+  const [selectedShrineSlot, setSelectedShrineSlot] = useState<{ row: number; col: number } | null>(null);
+  const [selectedPlanetTarget, setSelectedPlanetTarget] = useState<{ sectorId: string; planetId: string } | null>(null);
+
+  const selectedShrine = React.useMemo(() => {
+    if (!selectedShrineSlot || !commander.shrineBoard) return null;
+    return commander.shrineBoard.slots[selectedShrineSlot.row]?.[selectedShrineSlot.col] || null;
+  }, [selectedShrineSlot, commander.shrineBoard]);
+
+  const eligiblePlanetSlots = React.useMemo(() => {
+    if (!selectedShrine) return [];
+    const results: { sector: SectorTile; planet: any; planetIndex: number }[] = [];
+    for (const sec of controlledSectors) {
+      sec.planets.forEach((p, idx) => {
+        if (!p.shrineOwner) {
+          const costRes = selectedShrine.costResource;
+          const planetRes = p.resource;
+          const isMatch =
+            planetRes === 'any' ||
+            (costRes === 'science' && planetRes === 'science') ||
+            (costRes === 'money' && planetRes === 'money') ||
+            (costRes === 'materials' && (planetRes === 'materials' || planetRes === 'material'));
+          if (isMatch) {
+            results.push({ sector: sec, planet: p, planetIndex: idx });
+          }
+        }
+      });
+    }
+    return results;
+  }, [selectedShrine, controlledSectors]);
+
+  const shrinePlacement = React.useMemo(() => {
+    if (!selectedShrineSlot || !selectedPlanetTarget) return undefined;
+    return {
+      row: selectedShrineSlot.row,
+      col: selectedShrineSlot.col,
+      sectorId: selectedPlanetTarget.sectorId,
+      planetId: selectedPlanetTarget.planetId,
+    };
+  }, [selectedShrineSlot, selectedPlanetTarget]);
+
+  const isShrinePartiallySelected = Boolean(selectedShrineSlot && !selectedPlanetTarget);
 
   // Build tech counts in techSupply
   const supplyCountMap = new Map<string, number>();
@@ -396,17 +440,20 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                     Select
                   </button>
                   <button
-                    onClick={() => onResearchTech([{ techId: tech.id, targetTrack: chosenTrack }], undefined, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined)}
-                    className="px-2 py-1.5 rounded-lg text-[10px] font-semibold bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white transition-all font-sans"
-                    title="Research only this single technology immediately"
+                    onClick={() => onResearchTech([{ techId: tech.id, targetTrack: chosenTrack }], undefined, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined, shrinePlacement)}
+                    disabled={isShrinePartiallySelected}
+                    className="px-2 py-1.5 rounded-lg text-[10px] font-semibold bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white transition-all font-sans disabled:opacity-40"
+                    title={isShrinePartiallySelected ? "Select target planet for Shrine or deselect Shrine" : "Research only this single technology immediately"}
                   >
                     Quick
                   </button>
                 </div>
               ) : (
                 <button
-                  onClick={() => onResearchTech(tech.id, chosenTrack, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined)}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-lg shadow-pink-950/50 transition-all font-sans"
+                  onClick={() => onResearchTech(tech.id, chosenTrack, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined, shrinePlacement)}
+                  disabled={isShrinePartiallySelected}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-lg shadow-pink-950/50 transition-all font-sans disabled:opacity-40"
+                  title={isShrinePartiallySelected ? "Select target planet for Shrine or deselect Shrine" : "Research technology"}
                 >
                   Research
                 </button>
@@ -624,6 +671,146 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           )}
         </div>
 
+        {/* Enlightened of Lyra Shrine Placement Panel */}
+        {commander.faction.id === 'enlightened_of_lyra' && commander.shrineBoard && isCommanderTurn && (
+          <div className="px-5 py-3.5 bg-orange-950/20 border-t border-orange-500/40">
+            <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-orange-400" />
+                <h4 className="text-xs font-bold text-orange-200 uppercase tracking-wider font-display">
+                  Enlightened of Lyra — Shrine Placement (Optional with this Research Action)
+                </h4>
+              </div>
+              {selectedShrineSlot && (
+                <button
+                  onClick={() => {
+                    setSelectedShrineSlot(null);
+                    setSelectedPlanetTarget(null);
+                  }}
+                  className="text-[11px] text-slate-400 hover:text-white underline font-sans"
+                >
+                  Cancel Shrine Placement
+                </button>
+              )}
+            </div>
+
+            <p className="text-[11px] text-slate-400 mb-3">
+              With each Research action, you may also place one Shrine onto an eligible planet slot in a controlled hex (matching resource color or gray). Complete rows to unlock bonuses!
+            </p>
+
+            {/* Shrine Slot Selector */}
+            <div className="space-y-2">
+              <div className="text-[11px] font-bold text-slate-300">
+                Step 1: Choose an unbuilt Shrine from your 3x3 board:
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                {commander.shrineBoard.slots.map((rowSlots, rIdx) => {
+                  const rowNames = ['Row 1 (Wormhole Gen)', 'Row 2 (Discovery Tile)', 'Row 3 (+1 Disc)'];
+                  return (
+                    <div key={`lyra_shrine_row_${rIdx}`} className="bg-slate-900/90 border border-slate-800 rounded-lg p-2">
+                      <div className="text-[10px] font-bold text-orange-300/80 mb-1.5">{rowNames[rIdx]}</div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {rowSlots.map((slot, cIdx) => {
+                          const isSelected = selectedShrineSlot?.row === rIdx && selectedShrineSlot?.col === cIdx;
+                          const canAfford = commander.resources[slot.costResource] >= slot.costAmount;
+                          return (
+                            <button
+                              key={`shrine_opt_${rIdx}_${cIdx}`}
+                              disabled={slot.built || (!canAfford && !isSelected)}
+                              onClick={() => {
+                                if (isSelected) {
+                                  setSelectedShrineSlot(null);
+                                  setSelectedPlanetTarget(null);
+                                } else {
+                                  setSelectedShrineSlot({ row: rIdx, col: cIdx });
+                                  setSelectedPlanetTarget(null);
+                                }
+                              }}
+                              className={`p-1.5 rounded border text-[10px] font-mono transition-all flex flex-col items-center justify-center ${
+                                slot.built
+                                  ? 'bg-slate-900 border-slate-800 text-slate-600 opacity-60 cursor-not-allowed'
+                                  : isSelected
+                                  ? 'bg-orange-500 border-orange-400 text-slate-950 font-black shadow-md ring-2 ring-orange-400/50'
+                                  : canAfford
+                                  ? 'bg-slate-800/80 hover:bg-slate-700/80 border-slate-700 text-slate-200'
+                                  : 'bg-slate-950/40 border-slate-900 text-slate-600 cursor-not-allowed opacity-50'
+                              }`}
+                            >
+                              {slot.built ? (
+                                <span>Built ✓</span>
+                              ) : (
+                                <>
+                                  <span className="font-bold">{slot.costAmount}</span>
+                                  <span className="text-[9px] uppercase">{slot.costResource.slice(0, 3)}</span>
+                                </>
+                              )}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Step 2: Target Planet Slot Selector (only shown if a shrine is selected) */}
+            {selectedShrineSlot && selectedShrine && (
+              <div className="mt-3 pt-3 border-t border-orange-950/60 space-y-2">
+                <div className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
+                  <span>
+                    Step 2: Choose target planet slot in a controlled hex (Cost: {selectedShrine.costAmount} {selectedShrine.costResource}):
+                  </span>
+                  {selectedPlanetTarget && (
+                    <span className="text-emerald-400 font-bold">
+                      ✓ Ready to build Shrine on Sector {selectedPlanetTarget.sectorId}
+                    </span>
+                  )}
+                </div>
+
+                {eligiblePlanetSlots.length === 0 ? (
+                  <div className="text-xs text-rose-400 bg-rose-950/30 border border-rose-900/60 rounded-lg p-2.5">
+                    No eligible planet slots available for this shrine in your controlled sectors. The planet must match the shrine color ({selectedShrine.costResource}) or be gray/wildcard, and cannot already have a shrine.
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap gap-2">
+                    {eligiblePlanetSlots.map(({ sector: sec, planet: pl, planetIndex }) => {
+                      const isTargeted = selectedPlanetTarget?.sectorId === sec.id && selectedPlanetTarget?.planetId === pl.id;
+                      const resBadgeColors = {
+                        science: 'bg-pink-950/60 text-pink-300 border-pink-700',
+                        money: 'bg-amber-950/60 text-amber-300 border-amber-700',
+                        materials: 'bg-amber-900/60 text-amber-200 border-amber-800',
+                        material: 'bg-amber-900/60 text-amber-200 border-amber-800',
+                        any: 'bg-slate-800 text-slate-300 border-slate-700',
+                      };
+                      const badgeClass = resBadgeColors[pl.resource as keyof typeof resBadgeColors] || 'bg-slate-800 text-slate-300 border-slate-700';
+
+                      return (
+                        <button
+                          key={`pl_target_${sec.id}_${pl.id}`}
+                          onClick={() => setSelectedPlanetTarget({ sectorId: sec.id, planetId: pl.id })}
+                          className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-2 transition-all ${
+                            isTargeted
+                              ? 'bg-orange-500 border-orange-300 text-slate-950 font-bold shadow-md ring-2 ring-orange-400/50'
+                              : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200'
+                          }`}
+                        >
+                          <span>Sector {sec.sectorNumber || sec.id}</span>
+                          <span className={`text-[10px] px-1.5 py-0.5 rounded border uppercase font-mono ${badgeClass}`}>
+                            {pl.resource}
+                          </span>
+                          {pl.isAdvanced && <span className="text-[10px]">★</span>}
+                          {pl.colonizedBy && <span className="text-[10px] text-emerald-400">(Colonized)</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* Hydran Double Research Staging Panel */}
         {maxResearch > 1 && (
           <div className="px-5 py-3 bg-slate-900/95 border-t border-cyan-500/40 flex flex-wrap items-center justify-between gap-4">
@@ -679,12 +866,13 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   stagedResearches.totalScience > commander.resources.science ||
                   !hasActionDiscs ||
                   hasPassed ||
-                  !isCommanderTurn
+                  !isCommanderTurn ||
+                  isShrinePartiallySelected
                 }
                 onClick={() => {
                   const hasWarp = selectedForResearch.some((s) => s.techId === 'warp_portal');
                   const targetSecId = hasWarp ? (warpPortalSectorId || (sectors || []).find((s) => s.discOwner === commander.id)?.id) : undefined;
-                  onResearchTech(selectedForResearch, undefined, targetSecId);
+                  onResearchTech(selectedForResearch, undefined, targetSecId, shrinePlacement);
                 }}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg shadow-cyan-950/50 transition-all flex items-center gap-1.5 font-sans"
               >

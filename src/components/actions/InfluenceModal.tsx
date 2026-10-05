@@ -2,7 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile } from '../../engine/types/galaxy';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
-import { getMaxInfluenceActivations } from '../../engine/rules/gameReducer';
+import { getMaxInfluenceActivations, playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
 import {
   CircleDot,
   Ship,
@@ -32,7 +32,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
   const [claimSectors, setClaimSectors] = useState<string[]>([]);
   const [abandonSectors, setAbandonSectors] = useState<string[]>([]);
 
-  const hasWormholeGen = player.techTrack.researched.some((t) => t.id === 'wormhole_generator');
+  const hasWormholeGen = playerHasWormholeGenerator(player);
 
   const isDraco = player.faction.id === 'descendants_of_draco';
 

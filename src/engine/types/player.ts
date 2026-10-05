@@ -18,7 +18,9 @@ export type FactionId =
   | 'orion_hegemony'
   | 'descendants_of_draco'
   | 'hydran_progress'
-  | 'eridani_empire';
+  | 'eridani_empire'
+  | 'wardens_of_magellan'
+  | 'enlightened_of_lyra';
 
 export interface FactionInfo {
   readonly id: FactionId;
@@ -62,6 +64,21 @@ export interface PopulationTrack {
   cubesOnBoard: number;
 }
 
+export interface ShrineSlot {
+  readonly row: number;
+  readonly col: number;
+  readonly costResource: 'science' | 'money' | 'materials';
+  readonly costAmount: number;
+  built: boolean;
+  sectorId?: string;
+  planetId?: string;
+}
+
+export interface ShrineBoardState {
+  slots: ShrineSlot[][]; // 3 rows of 3 shrines (9 shrines total)
+  rowBonusesClaimed: [boolean, boolean, boolean];
+}
+
 export interface PlayerState {
   readonly id: string;
   readonly name: string;
@@ -90,6 +107,13 @@ export interface PlayerState {
   unlockedAncientParts: string[]; // Ancient ship parts unlocked from discoveries
   hasArtifactCodex?: boolean; // Remnants of Worlds Afar: +1 VP per controlled artifact at game end
   hasAncientMight?: boolean; // Remnants of Worlds Afar: +1 VP per 3 VP in reputation tiles at game end
+  // Seekers Expansion
+  magellanDiscoveryTile?: DiscoveryTile | null; // Facedown Discovery Tile on top Tech Track
+  magellanDiscoveryResolved?: boolean;
+  discoveryTilesUsedAsShipPartsCount?: number; // Magellan: +1 VP per Discovery Tile used as a Ship Part
+  shrineBoard?: ShrineBoardState; // Lyra: 3x3 Shrine Board
+  hasWormholeGeneratorAbility?: boolean; // Lyra: Row 1 bonus
+  lyraExtraDiscClaimed?: boolean; // Lyra: Row 3 bonus (+1 disc)
   hasPassed: boolean;
   isFirstPasser: boolean;
   actionsTakenThisRound: number;

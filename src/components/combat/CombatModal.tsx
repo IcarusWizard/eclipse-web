@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { GameState, CombatState } from '../../engine/types/state';
-import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X, Navigation, ArrowRight, Minimize2, Maximize2 } from 'lucide-react';
+import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X, Navigation, ArrowRight, Minimize2, Maximize2, RotateCcw } from 'lucide-react';
 import { buildCombatUnitsForSector, sortUnitsByInitiative, getSectorDefenderOwnerId } from '../../engine/rules/combatEngine';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
+import { playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
 
 interface CombatModalProps {
   state: GameState;
   combat: CombatState;
-  onStepCombat: (retreatShipIds?: string[], retreatDestinationSectorId?: string, concludeCombat?: boolean) => void;
+  onStepCombat: (retreatShipIds?: string[], retreatDestinationSectorId?: string, concludeCombat?: boolean, rerollRollIndex?: number) => void;
+  onRerollDie?: (rollIndex: number) => void;
   onAutoResolve?: () => void;
   currentSeat?: number | 'all' | 'spectator';
 }
@@ -16,6 +18,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   state,
   combat,
   onStepCombat,
+  onRerollDie,
   onAutoResolve,
   currentSeat = 'all',
 }) => {
@@ -55,7 +58,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const isMyShip = isPlayerShip && myPlayer ? activeAttacker?.ownerId === myPlayer.id : false;
   // Neutral NPC ships (Ancients, Guardians, GCDS) can be triggered by any player; player ships require owner authority
   const canCommandActiveShip = isResolved || currentSeat === 'all' || isNpcShip || isMyShip;
-  const hasWormholeGen = attackerOwner?.techTrack.researched.some((t) => t.id === 'wormhole_generator') || false;
+  const hasWormholeGen = attackerOwner ? playerHasWormholeGenerator(attackerOwner) : false;
 
   // Determine eligible retreat destination sectors:
   // Must be adjacent, connected by wormhole (or wormhole generator), controlled by this player, with no enemy ships
@@ -401,6 +404,38 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                           'MISS'
                         )}
                       </span>
+
+                      {(() => {
+                        const rollPlayer = state.players.find((p) => p.id === roll.shipOwner);
+                        const isLyra = rollPlayer?.faction.id === 'enlightened_of_lyra';
+                        const hasReadyColonyShip = (rollPlayer?.colonyShips.ready || 0) > 0;
+                        const canReroll =
+                          isLyra &&
+                          hasReadyColonyShip &&
+                          !isResolved &&
+                          (currentSeat === 'all' || (myPlayer && myPlayer.id === roll.shipOwner));
+
+                        if (!canReroll) return null;
+
+                        return (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              if (onRerollDie) {
+                                onRerollDie(idx);
+                              } else {
+                                onStepCombat(undefined, undefined, undefined, idx);
+                              }
+                            }}
+                            title={`Lyra Combat Ability: Flip 1 Colony Ship (${rollPlayer.colonyShips.ready} ready) to reroll this die`}
+                            className="ml-1.5 px-2 py-0.5 rounded bg-orange-600/30 hover:bg-orange-500/50 border border-orange-500 text-orange-200 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5 text-orange-300" />
+                            <span>Reroll (1 Ship)</span>
+                          </button>
+                        );
+                      })()}
                     </div>
                   );
                 })}

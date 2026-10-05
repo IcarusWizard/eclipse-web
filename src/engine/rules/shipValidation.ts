@@ -158,11 +158,12 @@ export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
       maxSlots: 5,
       baseInitiative: 4,
       baseBuildCost: 3,
+      preprintedPower: 3,
       slots: [
         SHIP_PARTS.ion_cannon,
         SHIP_PARTS.electron_computer,
         SHIP_PARTS.hull,
-        SHIP_PARTS.nuclear_source,
+        SHIP_PARTS.hull,
         null,
       ],
     },
@@ -223,11 +224,12 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           maxSlots: 5,
           baseInitiative: 4,
           baseBuildCost: 3,
+          preprintedPower: 3,
           slots: [
             SHIP_PARTS.ion_cannon,
             SHIP_PARTS.electron_computer,
             SHIP_PARTS.hull,
-            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.hull,
             null,
           ],
         },
@@ -345,11 +347,12 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           maxSlots: 5,
           baseInitiative: 4,
           baseBuildCost: 3,
+          preprintedPower: 3,
           slots: [
             SHIP_PARTS.ion_cannon,
             SHIP_PARTS.electron_computer,
             SHIP_PARTS.hull,
-            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.hull,
             null,
           ],
         },
@@ -404,11 +407,12 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           maxSlots: 5,
           baseInitiative: 4,
           baseBuildCost: 2, // 2 materials
+          preprintedPower: 3,
           slots: [
             SHIP_PARTS.ion_cannon,
             SHIP_PARTS.electron_computer,
             SHIP_PARTS.hull,
-            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.hull,
             null,
           ],
         },
@@ -466,16 +470,19 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           maxSlots: 5,
           baseInitiative: 5, // +1 increased initiative
           baseBuildCost: 3,
+          preprintedPower: 3,
           slots: [
             SHIP_PARTS.ion_cannon,
             SHIP_PARTS.electron_computer,
             SHIP_PARTS.gauss_shield,
             SHIP_PARTS.hull,
-            SHIP_PARTS.nuclear_source,
+            null,
           ],
         },
       };
 
+    case 'wardens_of_magellan':
+    case 'enlightened_of_lyra':
     default:
       return createDefaultHumanBlueprints();
   }

@@ -267,6 +267,34 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'oh_p4', resource: 'money', isAdvanced: true },
     ],
   },
+  wardens_of_magellan: {
+    sectorNumber: 233,
+    name: '47 Ursae Majoris',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, true, false, true, false, false],
+    planets: [
+      { id: 'wm_p1', resource: 'material', isAdvanced: false },
+      { id: 'wm_p2', resource: 'science', isAdvanced: false },
+      { id: 'wm_p3', resource: 'science', isAdvanced: true },
+      { id: 'wm_p4', resource: 'money', isAdvanced: true },
+    ],
+  },
+  enlightened_of_lyra: {
+    sectorNumber: 238,
+    name: 'Beta Lyrae',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, true, false, true, true, false],
+    planets: [
+      { id: 'el_p1', resource: 'material', isAdvanced: false },
+      { id: 'el_p2', resource: 'science', isAdvanced: false },
+      { id: 'el_p3', resource: 'science', isAdvanced: true },
+      { id: 'el_p4', resource: 'money', isAdvanced: false },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

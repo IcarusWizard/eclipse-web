@@ -64,6 +64,11 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
           gcds: cur.gcds === 'expert' ? 'default' : cur.gcds,
         }));
       }
+      if (!next.includes('seekers')) {
+        setDraftedFactions((cur) =>
+          cur.filter((fid) => fid !== 'wardens_of_magellan' && fid !== 'enlightened_of_lyra')
+        );
+      }
       return next;
     });
   };
@@ -102,15 +107,27 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
     setCurrentDrafterIndex(0);
   };
 
+  const availableFactions = ALL_FACTIONS.filter((f) => {
+    if (f.id === 'wardens_of_magellan' || f.id === 'enlightened_of_lyra') {
+      return selectedExpansions.includes('seekers');
+    }
+    return true;
+  });
+
   const handleRandomize = () => {
     // Pick N factions with distinct colors randomly across all available factions
     const colorGroups: FactionColorGroup[] = ['red', 'blue', 'green', 'yellow', 'white', 'black'];
+    if (selectedExpansions.includes('seekers')) {
+      colorGroups.push('purple', 'orange');
+    }
     const shuffledColors = [...colorGroups].sort(() => Math.random() - 0.5).slice(0, playerCount);
     const selected: string[] = [];
     for (const color of shuffledColors) {
-      const candidates = ALL_FACTIONS.filter((f) => FACTION_COLOR_GROUP[f.id] === color);
-      const chosen = candidates[Math.floor(Math.random() * candidates.length)]!;
-      selected.push(chosen.id);
+      const candidates = availableFactions.filter((f) => FACTION_COLOR_GROUP[f.id] === color);
+      if (candidates.length > 0) {
+        const chosen = candidates[Math.floor(Math.random() * candidates.length)]!;
+        selected.push(chosen.id);
+      }
     }
     setDraftedFactions(selected);
     setCurrentDrafterIndex(playerCount - 1);
@@ -128,7 +145,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
     }
   };
 
-  const filteredFactions = ALL_FACTIONS.filter((f) => {
+  const filteredFactions = availableFactions.filter((f) => {
     if (filterCategory === 'alien') return !f.isHuman;
     if (filterCategory === 'human') return f.isHuman;
     return true;
@@ -428,7 +445,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              All (12)
+              All ({availableFactions.length})
             </button>
             <button
               onClick={() => setFilterCategory('alien')}
@@ -438,7 +455,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Alien Species (6)
+              Alien Species ({availableFactions.filter((f) => !f.isHuman).length})
             </button>
             <button
               onClick={() => setFilterCategory('human')}

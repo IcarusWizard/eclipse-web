@@ -582,11 +582,12 @@ export const App: React.FC = () => {
     setIsExploreMode((prev) => !prev);
   };
 
-  // Research flow (supports single tech or array of technologies for Hydran double research)
+  // Research flow (supports single tech or array of technologies for Hydran double research, and Lyra shrine placement)
   const handleResearchTech = (
     researchesOrId: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
     targetTrack?: 'military' | 'grid' | 'nano',
-    warpPortalSectorId?: string
+    warpPortalSectorId?: string,
+    shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string }
   ) => {
     let researches: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[];
     if (Array.isArray(researchesOrId)) {
@@ -600,6 +601,7 @@ export const App: React.FC = () => {
       playerId: activePlayer.id,
       researches,
       warpPortalSectorId,
+      shrinePlacement,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -607,6 +609,39 @@ export const App: React.FC = () => {
       setIsTechMarketOpen(false);
     } else {
       showToast(res.error || 'Failed to research technology.');
+    }
+  };
+
+  // Magellan Colony Ship Conversion
+  const handleConvertColonyShip = (resource: 'money' | 'science' | 'materials', count?: number) => {
+    const res = executeAction(state, {
+      type: 'CONVERT_COLONY_SHIP',
+      playerId: activePlayer.id,
+      resource,
+      count: count ?? 1,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(`Converted ${count ?? 1} Colony Ship to ${count ?? 1} ${resource.toUpperCase()}`);
+    } else {
+      showToast(res.error || 'Failed to convert colony ship.');
+    }
+  };
+
+  // Lyra Combat Die Reroll
+  const handleRerollCombatDie = (rollIndex: number) => {
+    if (!state.activeCombat) return;
+    const targetRoll = state.activeCombat.lastRolls?.[rollIndex];
+    if (!targetRoll) return;
+    const res = executeAction(state, {
+      type: 'REROLL_COMBAT_DIE',
+      playerId: targetRoll.shipOwner,
+      rollIndex,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to reroll die.');
     }
   };
 
@@ -1647,6 +1682,7 @@ export const App: React.FC = () => {
           state={state}
           combat={state.activeCombat}
           onStepCombat={handleStepCombat}
+          onRerollDie={handleRerollCombatDie}
           onAutoResolve={handleAutoResolveCombat}
           currentSeat={currentSeat}
         />
@@ -1758,6 +1794,7 @@ export const App: React.FC = () => {
           hideOpponentReputation={hideOpponentReputation}
           traitorPlayerId={state.traitorPlayerId}
           onExchangeAmbassador={handleExchangeAmbassador}
+          onConvertColonyShip={handleConvertColonyShip}
         />
       )}
 

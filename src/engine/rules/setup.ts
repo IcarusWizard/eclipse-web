@@ -4,7 +4,7 @@
  */
 
 import { GameState } from '../types/state';
-import { FactionInfo, PlayerState, ReputationSlotType } from '../types/player';
+import { FactionInfo, PlayerState, ReputationSlotType, ShrineBoardState } from '../types/player';
 import { SectorTile, HexCoord } from '../types/galaxy';
 import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, RIFT_CONDUCTOR_DISCOVERY, REMNANTS_DISCOVERY_TILES, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
@@ -48,6 +48,9 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Black
   orion_hegemony: 'black',
   terran_alliance: 'black',
+  // Seekers
+  wardens_of_magellan: 'purple',
+  enlightened_of_lyra: 'orange',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -63,6 +66,8 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   terran_union: ECLIPSE_COLOR_PALETTE.white,
   orion_hegemony: ECLIPSE_COLOR_PALETTE.black,
   terran_alliance: ECLIPSE_COLOR_PALETTE.black,
+  wardens_of_magellan: ECLIPSE_COLOR_PALETTE.purple,
+  enlightened_of_lyra: ECLIPSE_COLOR_PALETTE.orange,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -379,6 +384,50 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 4,
     reputationSlotTypes: ['both', 'both', 'both', 'both', 'rep_only'],
   },
+  {
+    id: 'wardens_of_magellan',
+    name: 'Wardens of Magellan',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.purple,
+    startingSectorNumber: 233,
+    startingResources: { money: 2, science: 2, materials: 3 },
+    startingDiscs: 13, // 16 discs total: 1 on starting sector, 12 on track, 3 in tray
+    startingColonyShips: 3,
+    startingTechIds: ['fusion_source'],
+    traitDescription: 'Nomadic worldship scavengers who convert Colony Ships to resources at any time, resolve a Tech Track Discovery Tile upon researching 4 techs, and score +1 VP per Discovery Tile used as a Ship Part.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    reputationSlots: 4,
+    ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+  },
+  {
+    id: 'enlightened_of_lyra',
+    name: 'Enlightened of Lyra',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.orange,
+    startingSectorNumber: 238,
+    startingResources: { money: 2, science: 4, materials: 3 },
+    startingDiscs: 13, // 17 discs total: 1 on starting sector, 12 on track, 4 in tray
+    startingColonyShips: 3,
+    startingTechIds: ['fusion_source'],
+    traitDescription: 'Spiritual ascetics with a 3x3 Shrine Board (built during Research to unlock Wormhole Generator, Discovery Tile, and +1 Disc), combat die rerolls via Colony Ships, and +1 VP per controlled Shrine.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    reputationSlots: 4,
+    ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -512,6 +561,32 @@ export function getPlayerReputationTrackSlots(
   return slots;
 }
 
+export function createInitialShrineBoard(): ShrineBoardState {
+  return {
+    slots: [
+      // Row 0: 2 Science, 3 Money, 4 Materials -> Bonus: Wormhole Generator
+      [
+        { row: 0, col: 0, costResource: 'science', costAmount: 2, built: false },
+        { row: 0, col: 1, costResource: 'money', costAmount: 3, built: false },
+        { row: 0, col: 2, costResource: 'materials', costAmount: 4, built: false },
+      ],
+      // Row 1: 3 Materials, 4 Science, 5 Money -> Bonus: Discovery Tile
+      [
+        { row: 1, col: 0, costResource: 'materials', costAmount: 3, built: false },
+        { row: 1, col: 1, costResource: 'science', costAmount: 4, built: false },
+        { row: 1, col: 2, costResource: 'money', costAmount: 5, built: false },
+      ],
+      // Row 2: 4 Money, 5 Materials, 6 Science -> Bonus: +1 Influence Disc
+      [
+        { row: 2, col: 0, costResource: 'money', costAmount: 4, built: false },
+        { row: 2, col: 1, costResource: 'materials', costAmount: 5, built: false },
+        { row: 2, col: 2, costResource: 'science', costAmount: 6, built: false },
+      ],
+    ],
+    rowBonusesClaimed: [false, false, false],
+  };
+}
+
 export function createInitialGame(
   playerCount: number = 2,
   selectedFactions?: (string | FactionInfo)[],
@@ -536,6 +611,22 @@ export function createInitialGame(
     ...Array(5).fill(3),
     ...Array(3).fill(4),
   ].sort(() => Math.random() - 0.5);
+
+  // Discovery bag setup
+  const discoveryBag = (() => {
+    const bag = [...DISCOVERY_TILES];
+    if (expansions?.includes('rift_cannon')) {
+      bag.push({ ...RIFT_CONDUCTOR_DISCOVERY });
+    }
+    if (expansions?.includes('remnants_of_worlds_afar')) {
+      bag.push(...REMNANTS_DISCOVERY_TILES.map((d) => ({ ...d })));
+    }
+    for (let i = bag.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      [bag[i], bag[j]] = [bag[j]!, bag[i]!];
+    }
+    return bag;
+  })();
 
   const players: PlayerState[] = [];
   const sectors: SectorTile[] = [
@@ -591,8 +682,8 @@ export function createInitialGame(
         } else if (!p.isAdvanced) {
           isColonized = true;
         }
-      } else if (faction.id === 'planta') {
-        // Planta home sector only has 2 standard planets (Material and Science)
+      } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
+        // Planta, Magellan, and Lyra home sectors colonize only non-advanced planets
         isColonized = !p.isAdvanced;
       } else {
         // Standard start: first 3 non-advanced planets colonized
@@ -652,9 +743,14 @@ export function createInitialGame(
       scienceCubesRemaining = 9;
       materialCubesRemaining = 10;
       moneyCubesRemaining = 10;
-    } else if (faction.id === 'planta') {
+    } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan') {
       // 1 material, 1 science, 0 money colonized
       moneyCubesRemaining = 11;
+      scienceCubesRemaining = 10;
+      materialCubesRemaining = 10;
+    } else if (faction.id === 'enlightened_of_lyra') {
+      // 1 material, 1 science, 1 money colonized
+      moneyCubesRemaining = 10;
       scienceCubesRemaining = 10;
       materialCubesRemaining = 10;
     }
@@ -697,6 +793,12 @@ export function createInitialGame(
       ambassadorCubes: {},
       keptDiscoveryTiles: [],
       unlockedAncientParts: [],
+      magellanDiscoveryTile: faction.id === 'wardens_of_magellan' ? (discoveryBag.pop() || null) : undefined,
+      magellanDiscoveryResolved: faction.id === 'wardens_of_magellan' ? false : undefined,
+      discoveryTilesUsedAsShipPartsCount: faction.id === 'wardens_of_magellan' ? 0 : undefined,
+      shrineBoard: faction.id === 'enlightened_of_lyra' ? createInitialShrineBoard() : undefined,
+      hasWormholeGeneratorAbility: false,
+      lyraExtraDiscClaimed: false,
       hasPassed: false,
       isFirstPasser: false,
       actionsTakenThisRound: 0,
@@ -705,22 +807,6 @@ export function createInitialGame(
   }
 
   const decks = generateSectorDecks(players.length);
-
-  // Discovery bag setup
-  const discoveryBag = (() => {
-    const bag = [...DISCOVERY_TILES];
-    if (expansions?.includes('rift_cannon')) {
-      bag.push({ ...RIFT_CONDUCTOR_DISCOVERY });
-    }
-    if (expansions?.includes('remnants_of_worlds_afar')) {
-      bag.push(...REMNANTS_DISCOVERY_TILES.map((d) => ({ ...d })));
-    }
-    for (let i = bag.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [bag[i], bag[j]] = [bag[j]!, bag[i]!];
-    }
-    return bag;
-  })();
 
   // Fill unused starting positions in Ring 2 with authentic Guardian Sectors (Sectors 271 to 274)
   const canonicalStartingCoords = STARTING_COORDS_BY_COUNT[6]!;
