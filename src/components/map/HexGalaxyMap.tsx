@@ -13,7 +13,7 @@ import {
   getRingFromCoord,
   getExplorableHexes,
 } from '../../engine/rules/hexMath';
-import { playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
+import { playerHasWormholeGenerator, getPlayerShortName } from '../../engine/rules/gameReducer';
 import {
   Rocket,
   Compass,
@@ -1315,7 +1315,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     } else {
                       const pl = state.players.find((p) => p.id === ownerId);
                       if (pl) {
-                        ownerName = pl.name.split(' ')[1] || pl.name.split(' ')[0] || pl.name;
+                        ownerName = getPlayerShortName(pl);
                         ownerColor = pl.color;
                       }
                     }
@@ -1332,6 +1332,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     if (countMap.cruiser) typeCounts.push({ type: 'cruiser', count: countMap.cruiser, label: 'Cru' });
                     if (countMap.dreadnought) typeCounts.push({ type: 'dreadnought', count: countMap.dreadnought, label: 'Dre' });
                     if (countMap.starbase) typeCounts.push({ type: 'starbase', count: countMap.starbase, label: 'Sta' });
+                    if (countMap.orbital) typeCounts.push({ type: 'orbital', count: countMap.orbital, label: 'Orb' });
                     if (countMap.ancient) typeCounts.push({ type: 'ancient', count: countMap.ancient, label: 'Anc' });
                     if (countMap.gcds) typeCounts.push({ type: 'gcds', count: countMap.gcds, label: 'GCDS' });
                     if (countMap.guardian) typeCounts.push({ type: 'guardian', count: countMap.guardian, label: 'Grd' });

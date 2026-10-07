@@ -16,6 +16,7 @@ import { calculateBlueprintStats, countPlayerShips, SHIP_LIMITS } from '../../en
 import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
 import { ANCIENT_PART_IDS } from '../../engine/rules/partData';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
+import { getPlayerShortName } from '../../engine/rules/gameReducer';
 import {
   X,
   Zap,
@@ -190,7 +191,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: p.color }}
                   />
-                  <span>{p.name.split(' ')[1] || p.name}</span>
+                  <span>{getPlayerShortName(p)}</span>
                 </button>
               ))}
             </div>

@@ -2,7 +2,7 @@
  * Combat Engine: Initiative Queue, Missiles, Dice Rolls, Damage Allocation, and Reputation
  */
 
-import { CombatRoll, CombatState } from '../types/state';
+import { CombatRoll, CombatState, CombatDamageAssignment, PendingDamageAssignment } from '../types/state';
 import { SectorShip, SectorTile } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import { calculateBlueprintStats } from './shipValidation';
@@ -263,11 +263,247 @@ export interface CombatStepResult {
     ownerId: string;
     destinationSectorId: string;
   };
+  completedRetreats?: {
+    shipId: string;
+    ownerId: string;
+    destinationSectorId: string;
+  }[];
   declaredRetreat?: {
     shipIds: string[];
     destinationSectorId: string;
     ownerId: string;
   };
+  isPendingAssignment?: boolean;
+}
+
+export interface CombatShipGroup {
+  groupKey: string; // `${ownerId}_${type}`
+  ownerId: string;
+  type: string;
+  initiative: number;
+  shipIds: string[];
+  ships: CombatUnit[];
+  computerBonus: number;
+  shieldBonus: number;
+  weapons: CombatUnit['weapons'];
+  hasMorphShield?: boolean;
+}
+
+export function getCombatShipTypeGroups(
+  units: CombatUnit[],
+  defenderOwnerId?: string
+): CombatShipGroup[] {
+  const alive = units.filter((u) => u.currentDamage < u.maxHull);
+  const groupMap = new Map<string, CombatShipGroup>();
+
+  for (const u of alive) {
+    const key = `${u.ownerId}_${u.type}`;
+    if (!groupMap.has(key)) {
+      groupMap.set(key, {
+        groupKey: key,
+        ownerId: u.ownerId,
+        type: u.type,
+        initiative: u.initiative,
+        shipIds: [u.id],
+        ships: [u],
+        computerBonus: u.computerBonus,
+        shieldBonus: u.shieldBonus,
+        weapons: u.weapons.map((w) => ({ ...w })),
+        hasMorphShield: u.hasMorphShield,
+      });
+    } else {
+      const g = groupMap.get(key)!;
+      g.shipIds.push(u.id);
+      g.ships.push(u);
+      for (const w of u.weapons) {
+        g.weapons.push({ ...w });
+      }
+      if (u.hasMorphShield) g.hasMorphShield = true;
+    }
+  }
+
+  const groups = Array.from(groupMap.values());
+  groups.sort((a, b) => {
+    if (b.initiative !== a.initiative) {
+      return b.initiative - a.initiative;
+    }
+    // Defender wins initiative ties between opponents
+    if (defenderOwnerId) {
+      if (a.ownerId === defenderOwnerId && b.ownerId !== defenderOwnerId) return -1;
+      if (b.ownerId === defenderOwnerId && a.ownerId !== defenderOwnerId) return 1;
+    }
+    const rankA = SHIP_SIZE_RANK[a.type] ?? 0;
+    const rankB = SHIP_SIZE_RANK[b.type] ?? 0;
+    return rankB - rankA;
+  });
+
+  return groups;
+}
+
+export function autoAssignSalvoDamage(
+  rolls: CombatRoll[],
+  activeGroup: CombatShipGroup,
+  enemyTargets: CombatUnit[],
+  activeCombat: CombatState,
+  allUnits: CombatUnit[]
+): void {
+  const isNpc = !activeGroup.ownerId.startsWith('player_');
+
+  for (const r of rolls) {
+    if (r.dieColor === 'purple') {
+      if (r.selfDamage && r.selfDamage > 0) {
+        applyRiftSelfDamage(allUnits, activeGroup.ownerId, r.selfDamage, activeCombat);
+      }
+    }
+
+    const aliveTargets = enemyTargets.filter((u) => u.currentDamage < u.maxHull);
+    if (aliveTargets.length === 0) {
+      if (enemyTargets.length > 0) {
+        r.targetShipId = enemyTargets[0]!.id;
+      }
+      continue;
+    }
+
+    // Sort target candidates
+    const candidates = [...aliveTargets].sort((a, b) => {
+      const hpA = a.maxHull - a.currentDamage;
+      const hpB = b.maxHull - b.currentDamage;
+      const rankA = SHIP_SIZE_RANK[a.type] ?? 0;
+      const rankB = SHIP_SIZE_RANK[b.type] ?? 0;
+
+      if (isNpc) {
+        // Official NPC rule (p. 19): destroy largest to smallest; if none destroyed, max damage largest to smallest
+        if (rankB !== rankA) return rankB - rankA;
+        return hpA - hpB;
+      } else {
+        // Player default auto-assign: destroy ships first (lowest remaining HP first to kill), else largest rank
+        if (hpA !== hpB) return hpA - hpB;
+        return rankB - rankA;
+      }
+    });
+
+    let chosenTarget: CombatUnit | null = null;
+    for (const cand of candidates) {
+      if (r.dieColor === 'purple') {
+        if (r.damage > 0) chosenTarget = cand;
+        break;
+      }
+      let isHit = false;
+      if (r.roll === 6) isHit = true;
+      else if (r.roll === 1) isHit = false;
+      else isHit = r.roll + activeGroup.computerBonus - cand.shieldBonus >= 6;
+
+      if (isHit) {
+        chosenTarget = cand;
+        break;
+      }
+    }
+
+    if (!chosenTarget) {
+      chosenTarget = candidates[0]!;
+    }
+
+    r.targetShipId = chosenTarget.id;
+    if (r.dieColor === 'purple') {
+      r.isHit = r.damage > 0;
+      r.modifiedRoll = r.roll;
+      if (r.isHit) {
+        chosenTarget.currentDamage += r.damage;
+      }
+    } else {
+      const modified = r.roll + activeGroup.computerBonus - chosenTarget.shieldBonus;
+      r.modifiedRoll = modified;
+      if (r.roll === 6) r.isHit = true;
+      else if (r.roll === 1) r.isHit = false;
+      else r.isHit = modified >= 6;
+
+      if (r.isHit) {
+        chosenTarget.currentDamage += r.damage;
+      }
+    }
+
+    if (chosenTarget.currentDamage >= chosenTarget.maxHull) {
+      activeCombat.destroyedShips = activeCombat.destroyedShips || [];
+      if (!activeCombat.destroyedShips.some((d) => d.shipId === chosenTarget!.id)) {
+        activeCombat.destroyedShips.push({
+          shipId: chosenTarget.id,
+          type: chosenTarget.type,
+          ownerId: chosenTarget.ownerId,
+          killerId: activeGroup.ownerId,
+        });
+      }
+    }
+  }
+}
+
+export function applyManualDamageAssignments(
+  assignments: CombatDamageAssignment[],
+  pendingSalvo: PendingDamageAssignment,
+  enemyTargets: CombatUnit[],
+  activeCombat: CombatState,
+  allUnits: CombatUnit[]
+): CombatRoll[] {
+  const resultRolls: CombatRoll[] = [];
+
+  for (let idx = 0; idx < pendingSalvo.rolls.length; idx++) {
+    const roll = { ...pendingSalvo.rolls[idx]! };
+    const assign = assignments.find((a) => a.rollIndex === idx);
+    const targetShipId = assign?.targetShipId;
+    const target = targetShipId ? enemyTargets.find((u) => u.id === targetShipId) : null;
+
+    if (roll.dieColor === 'purple') {
+      if (roll.selfDamage && roll.selfDamage > 0) {
+        applyRiftSelfDamage(allUnits, pendingSalvo.attackerOwnerId, roll.selfDamage, activeCombat);
+      }
+      if (target) {
+        roll.targetShipId = target.id;
+        roll.isHit = roll.damage > 0;
+        if (roll.isHit) {
+          target.currentDamage += roll.damage;
+          if (target.currentDamage >= target.maxHull) {
+            activeCombat.destroyedShips = activeCombat.destroyedShips || [];
+            if (!activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
+              activeCombat.destroyedShips.push({
+                shipId: target.id,
+                type: target.type,
+                ownerId: target.ownerId,
+                killerId: pendingSalvo.attackerOwnerId,
+              });
+            }
+          }
+        }
+      }
+    } else {
+      if (target) {
+        roll.targetShipId = target.id;
+        const modified = roll.roll + pendingSalvo.computerBonus - target.shieldBonus;
+        roll.modifiedRoll = modified;
+        if (roll.roll === 6) roll.isHit = true;
+        else if (roll.roll === 1) roll.isHit = false;
+        else roll.isHit = modified >= 6;
+
+        if (roll.isHit) {
+          target.currentDamage += roll.damage;
+          if (target.currentDamage >= target.maxHull) {
+            activeCombat.destroyedShips = activeCombat.destroyedShips || [];
+            if (!activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
+              activeCombat.destroyedShips.push({
+                shipId: target.id,
+                type: target.type,
+                ownerId: target.ownerId,
+                killerId: pendingSalvo.attackerOwnerId,
+              });
+            }
+          }
+        }
+      } else {
+        roll.isHit = false;
+      }
+    }
+    resultRolls.push(roll);
+  }
+
+  return resultRolls;
 }
 
 export function executeCombatStep(
@@ -277,9 +513,10 @@ export function executeCombatStep(
     retreatShipIds?: string[];
     retreatDestinationSectorId?: string;
   },
-  defenderOwnerId?: string
+  defenderOwnerId?: string,
+  autoAssign?: boolean,
+  damageAssignments?: CombatDamageAssignment[]
 ): CombatStepResult {
-  const rolls: CombatRoll[] = [];
   const effectiveDefenderId = defenderOwnerId || activeCombat.defenderOwnerId;
   const aliveUnits = sortUnitsByInitiative(
     units.filter((u) => u.currentDamage < u.maxHull),
@@ -289,6 +526,7 @@ export function executeCombatStep(
   // Group alive units by owner
   const owners = Array.from(new Set(aliveUnits.map((u) => u.ownerId)));
   if (owners.length <= 1) {
+    activeCombat.pendingDamageAssignment = null;
     return {
       updatedUnits: units,
       rolls: [],
@@ -299,27 +537,119 @@ export function executeCombatStep(
 
   activeCombat.destroyedShips = activeCombat.destroyedShips || [];
 
+  // -------------------------------------------------------------
+  // Case A: Confirming manual damage assignments for a pending salvo
+  // -------------------------------------------------------------
+  if (activeCombat.pendingDamageAssignment && damageAssignments && damageAssignments.length > 0) {
+    const pendingSalvo = activeCombat.pendingDamageAssignment;
+    const enemyTargets = units.filter((u) => u.ownerId !== pendingSalvo.attackerOwnerId);
+    const appliedRolls = applyManualDamageAssignments(
+      damageAssignments,
+      pendingSalvo,
+      enemyTargets,
+      activeCombat,
+      units
+    );
+    activeCombat.pendingDamageAssignment = null;
+    activeCombat.lastRolls = appliedRolls;
+
+    if (pendingSalvo.isMissile) {
+      activeCombat.missileFiredShipIds = activeCombat.missileFiredShipIds || [];
+      for (const sid of pendingSalvo.attackerShipIds) {
+        if (!activeCombat.missileFiredShipIds.includes(sid)) {
+          activeCombat.missileFiredShipIds.push(sid);
+        }
+      }
+
+      const remainingAlive = units.filter((u) => u.currentDamage < u.maxHull);
+      const remainingOwners = Array.from(new Set(remainingAlive.map((u) => u.ownerId)));
+      if (remainingOwners.length <= 1) {
+        return {
+          updatedUnits: units,
+          rolls: appliedRolls,
+          isCombatOver: true,
+          winnerOwnerId: remainingOwners[0],
+        };
+      }
+
+      const groups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
+      const nextPendingMissileGroups = groups.filter(
+        (g) =>
+          g.weapons.some((w) => w.isMissile) &&
+          !g.shipIds.every((id) => activeCombat.missileFiredShipIds!.includes(id))
+      );
+      if (nextPendingMissileGroups.length === 0) {
+        activeCombat.stage = 'regular';
+        activeCombat.roundNumber = 1;
+        activeCombat.currentTurnIndex = -1;
+      }
+      return {
+        updatedUnits: units,
+        rolls: appliedRolls,
+        isCombatOver: false,
+      };
+    } else {
+      const remainingAlive = units.filter((u) => u.currentDamage < u.maxHull);
+      const remainingOwners = Array.from(new Set(remainingAlive.map((u) => u.ownerId)));
+      if (remainingOwners.length <= 1) {
+        return {
+          updatedUnits: units,
+          rolls: appliedRolls,
+          isCombatOver: true,
+          winnerOwnerId: remainingOwners[0],
+        };
+      }
+
+      const groups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
+      const unitIndex = activeCombat.currentTurnIndex % (groups.length || 1);
+      if (unitIndex + 1 >= groups.length) {
+        activeCombat.roundNumber += 1;
+        for (const u of remainingAlive) {
+          if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
+            u.currentDamage = Math.max(0, u.currentDamage - 1);
+          }
+        }
+      }
+
+      return {
+        updatedUnits: units,
+        rolls: appliedRolls,
+        isCombatOver: false,
+      };
+    }
+  }
+
+  // -------------------------------------------------------------
+  // Group units by (ownerId, type) for coordinated ship type activations
+  // -------------------------------------------------------------
+  const groups = getCombatShipTypeGroups(aliveUnits, effectiveDefenderId);
+
   // =========================================================================
-  // STAGE 1: MISSILE COMBAT STAGE (Fired once in initiative order, Rulebook p. 20)
+  // STAGE 1: MISSILE COMBAT STAGE (Fired once by ship type, Rulebook p. 20)
   // =========================================================================
   if (activeCombat.stage === 'missile') {
     activeCombat.missileFiredShipIds = activeCombat.missileFiredShipIds || [];
 
-    const pendingMissileUnits = aliveUnits.filter(
-      (u) => u.weapons.some((w) => w.isMissile) && !activeCombat.missileFiredShipIds!.includes(u.id)
+    const pendingMissileGroups = groups.filter(
+      (g) =>
+        g.weapons.some((w) => w.isMissile) &&
+        !g.shipIds.every((id) => activeCombat.missileFiredShipIds!.includes(id))
     );
 
-    // If no missile-equipped units remain to fire, transition immediately to regular engagement rounds
-    if (pendingMissileUnits.length === 0) {
+    if (pendingMissileGroups.length === 0) {
       activeCombat.stage = 'regular';
       activeCombat.roundNumber = 1;
       activeCombat.currentTurnIndex = 0;
     } else {
-      const attacker = pendingMissileUnits[0]!;
-      activeCombat.missileFiredShipIds.push(attacker.id);
+      const activeGroup = pendingMissileGroups[0]!;
+      for (const sid of activeGroup.shipIds) {
+        if (!activeCombat.missileFiredShipIds.includes(sid)) {
+          activeCombat.missileFiredShipIds.push(sid);
+        }
+      }
 
       const enemyTargets = aliveUnits.filter(
-        (u) => u.ownerId !== attacker.ownerId && u.currentDamage < u.maxHull
+        (u) => u.ownerId !== activeGroup.ownerId && u.currentDamage < u.maxHull
       );
 
       if (enemyTargets.length === 0) {
@@ -327,121 +657,94 @@ export function executeCombatStep(
           updatedUnits: units,
           rolls: [],
           isCombatOver: true,
-          winnerOwnerId: attacker.ownerId,
+          winnerOwnerId: activeGroup.ownerId,
         };
       }
 
-      // Target selection: lowest remaining hull first
-      enemyTargets.sort(
-        (a, b) => a.maxHull - a.currentDamage - (b.maxHull - b.currentDamage)
-      );
-      let target = enemyTargets[0]!;
-
-      // Fire ONLY missile weapons
-      const missileWeapons = attacker.weapons.filter((w) => w.isMissile);
-      for (const weapon of missileWeapons) {
-        for (let i = 0; i < weapon.count; i++) {
-          if (target.currentDamage >= target.maxHull) {
-            const nextTarget = enemyTargets.find((u) => u.currentDamage < u.maxHull);
-            if (!nextTarget) break;
-            target = nextTarget;
-          }
-
-          if (weapon.color === 'purple') {
-            const purpleResult = rollPurpleDie();
-            if (purpleResult.targetDamage > 0) {
-              target.currentDamage += purpleResult.targetDamage;
-              if (target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
-                activeCombat.destroyedShips.push({
-                  shipId: target.id,
-                  type: target.type,
-                  ownerId: target.ownerId,
-                  killerId: attacker.ownerId,
-                });
-              }
-            }
-
-            if (purpleResult.selfDamage > 0) {
-              applyRiftSelfDamage(units, attacker.ownerId, purpleResult.selfDamage, activeCombat);
-            }
-
-            rolls.push({
-              shipId: attacker.id,
-              shipOwner: attacker.ownerId,
-              dieColor: 'purple',
-              roll: purpleResult.rawRoll,
-              modifiedRoll: purpleResult.rawRoll,
-              isHit: purpleResult.isHit,
-              damage: purpleResult.targetDamage,
-              selfDamage: purpleResult.selfDamage,
-              symbol: purpleResult.symbol,
-            });
-          } else {
-            const rawRoll = rollD6();
-            const modified = rawRoll + attacker.computerBonus - target.shieldBonus;
-
-            // Natural 6 always hits, Natural 1 always misses
-            let isHit = false;
-            if (rawRoll === 6) {
-              isHit = true;
-            } else if (rawRoll === 1) {
-              isHit = false;
+      // Roll all missile weapons for all ships of this type
+      const salvoRolls: CombatRoll[] = [];
+      for (const ship of activeGroup.ships) {
+        const missileWeapons = ship.weapons.filter((w) => w.isMissile);
+        for (const weapon of missileWeapons) {
+          for (let i = 0; i < weapon.count; i++) {
+            if (weapon.color === 'purple') {
+              const res = rollPurpleDie();
+              salvoRolls.push({
+                shipId: ship.id,
+                shipOwner: activeGroup.ownerId,
+                dieColor: 'purple',
+                roll: res.rawRoll,
+                modifiedRoll: res.rawRoll,
+                isHit: res.isHit,
+                damage: res.targetDamage,
+                selfDamage: res.selfDamage,
+                symbol: res.symbol,
+              });
             } else {
-              isHit = modified >= 6;
-            }
-
-            const damageDealt = isHit ? weapon.damage : 0;
-            target.currentDamage += damageDealt;
-
-            if (isHit && target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
-              activeCombat.destroyedShips.push({
-                shipId: target.id,
-                type: target.type,
-                ownerId: target.ownerId,
-                killerId: attacker.ownerId,
+              const raw = rollD6();
+              salvoRolls.push({
+                shipId: ship.id,
+                shipOwner: activeGroup.ownerId,
+                dieColor: weapon.color,
+                roll: raw,
+                modifiedRoll: raw + activeGroup.computerBonus,
+                isHit: raw === 6,
+                damage: weapon.damage,
               });
             }
-
-            rolls.push({
-              shipId: attacker.id,
-              shipOwner: attacker.ownerId,
-              dieColor: weapon.color,
-              roll: rawRoll,
-              modifiedRoll: modified,
-              isHit,
-              damage: damageDealt,
-            });
           }
         }
       }
 
+      // Check manual assignment requirement
+      const isPlayerAttacker = activeGroup.ownerId.startsWith('player_');
+      if (autoAssign === false && isPlayerAttacker) {
+        activeCombat.pendingDamageAssignment = {
+          attackerOwnerId: activeGroup.ownerId,
+          attackerShipType: activeGroup.type,
+          attackerShipIds: activeGroup.shipIds,
+          computerBonus: activeGroup.computerBonus,
+          rolls: salvoRolls,
+          isMissile: true,
+        };
+        activeCombat.lastRolls = salvoRolls;
+        return {
+          updatedUnits: units,
+          rolls: salvoRolls,
+          isCombatOver: false,
+          isPendingAssignment: true,
+        };
+      }
+
+      // Auto-assign salvo damage
+      autoAssignSalvoDamage(salvoRolls, activeGroup, enemyTargets, activeCombat, units);
+
       const remainingAlive = aliveUnits.filter((u) => u.currentDamage < u.maxHull);
       const remainingOwners = Array.from(new Set(remainingAlive.map((u) => u.ownerId)));
-
       if (remainingOwners.length <= 1) {
         return {
           updatedUnits: units,
-          rolls,
+          rolls: salvoRolls,
           isCombatOver: true,
           winnerOwnerId: remainingOwners[0],
         };
       }
 
-      // Check if all missile units have now fired
-      const nextPendingMissileUnits = remainingAlive.filter(
-        (u) => u.weapons.some((w) => w.isMissile) && !activeCombat.missileFiredShipIds!.includes(u.id)
+      const nextPendingMissileGroups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId).filter(
+        (g) =>
+          g.weapons.some((w) => w.isMissile) &&
+          !g.shipIds.every((id) => activeCombat.missileFiredShipIds!.includes(id))
       );
 
-      if (nextPendingMissileUnits.length === 0) {
-        // Missile stage completed: advance to regular Engagement Rounds
+      if (nextPendingMissileGroups.length === 0) {
         activeCombat.stage = 'regular';
         activeCombat.roundNumber = 1;
-        activeCombat.currentTurnIndex = -1; // Will become 0 after gameReducer increments
+        activeCombat.currentTurnIndex = -1;
       }
 
       return {
         updatedUnits: units,
-        rolls,
+        rolls: salvoRolls,
         isCombatOver: false,
       };
     }
@@ -451,8 +754,7 @@ export function executeCombatStep(
   // STAGE 2: REGULAR ENGAGEMENT ROUNDS (Cannons Only, Rulebook p. 20)
   // =========================================================================
 
-  // Check Stalemate: If no alive unit on ANY side has non-missile cannons,
-  // neither player can damage the other. Attacker must retreat or be destroyed (Rulebook p. 20).
+  // Stalemate check
   const hasAnyCannons = aliveUnits.some((u) =>
     u.weapons.some((w) => !w.isMissile && w.count > 0 && (w.damage > 0 || w.color === 'purple'))
   );
@@ -478,11 +780,10 @@ export function executeCombatStep(
     };
   }
 
-  // Pick current attacking unit based on initiative order
-  const unitIndex = activeCombat.currentTurnIndex % aliveUnits.length;
-  const attacker = aliveUnits[unitIndex];
+  const groupIndex = activeCombat.currentTurnIndex % groups.length;
+  const activeGroup = groups[groupIndex];
 
-  if (!attacker) {
+  if (!activeGroup) {
     return {
       updatedUnits: units,
       rolls: [],
@@ -491,23 +792,23 @@ export function executeCombatStep(
     };
   }
 
-  // Check 1: Did the user declare retreat this step?
+  // Check 1: User declared retreat this step
   if (
     retreatOptions?.retreatShipIds &&
     retreatOptions.retreatShipIds.length > 0 &&
     retreatOptions.retreatDestinationSectorId
   ) {
     activeCombat.retreatDeclared = activeCombat.retreatDeclared || {};
-    for (const sid of retreatOptions.retreatShipIds) {
+    for (const sid of activeGroup.shipIds) {
       activeCombat.retreatDeclared[sid] = retreatOptions.retreatDestinationSectorId;
     }
 
-    const playerUnits = aliveUnits.filter((u) => u.ownerId === attacker.ownerId);
+    const playerUnits = aliveUnits.filter((u) => u.ownerId === activeGroup.ownerId);
     const allRetreating = playerUnits.every((u) => !!activeCombat.retreatDeclared[u.id]);
     if (allRetreating) {
       activeCombat.retreatAttemptedPlayerIds = activeCombat.retreatAttemptedPlayerIds || [];
-      if (!activeCombat.retreatAttemptedPlayerIds.includes(attacker.ownerId)) {
-        activeCombat.retreatAttemptedPlayerIds.push(attacker.ownerId);
+      if (!activeCombat.retreatAttemptedPlayerIds.includes(activeGroup.ownerId)) {
+        activeCombat.retreatAttemptedPlayerIds.push(activeGroup.ownerId);
       }
     }
 
@@ -516,134 +817,110 @@ export function executeCombatStep(
       rolls: [],
       isCombatOver: false,
       declaredRetreat: {
-        shipIds: retreatOptions.retreatShipIds,
+        shipIds: activeGroup.shipIds,
         destinationSectorId: retreatOptions.retreatDestinationSectorId,
-        ownerId: attacker.ownerId,
+        ownerId: activeGroup.ownerId,
       },
     };
   }
 
-  // Check 2: Was retreat already declared for this ship in a previous activation?
-  if (activeCombat.retreatDeclared && activeCombat.retreatDeclared[attacker.id]) {
-    const destSecId = activeCombat.retreatDeclared[attacker.id]!;
-    const remainingUnits = units.filter((u) => u.id !== attacker.id);
+  // Check 2: Was retreat declared for this ship type in a previous round?
+  const retreatingShips = activeGroup.ships.filter((s) => activeCombat.retreatDeclared && activeCombat.retreatDeclared[s.id]);
+  if (retreatingShips.length > 0) {
+    const destSecId = activeCombat.retreatDeclared[retreatingShips[0]!.id]!;
+    const retreatingIds = retreatingShips.map((s) => s.id);
+    const remainingUnits = units.filter((u) => !retreatingIds.includes(u.id));
     const remainingAlive = remainingUnits.filter((u) => u.currentDamage < u.maxHull);
     const remainingOwners = Array.from(new Set(remainingAlive.map((u) => u.ownerId)));
+
+    const completedRetreats = retreatingShips.map((s) => ({
+      shipId: s.id,
+      ownerId: s.ownerId,
+      destinationSectorId: destSecId,
+    }));
 
     return {
       updatedUnits: remainingUnits,
       rolls: [],
       isCombatOver: remainingOwners.length <= 1,
       winnerOwnerId: remainingOwners.length === 1 ? remainingOwners[0] : undefined,
-      completedRetreat: {
-        shipId: attacker.id,
-        ownerId: attacker.ownerId,
-        destinationSectorId: destSecId,
-      },
+      completedRetreat: completedRetreats[0],
+      completedRetreats,
     };
   }
 
   // Choose eligible enemy target
-  const enemyTargets = aliveUnits.filter((u) => u.ownerId !== attacker.ownerId);
+  const enemyTargets = aliveUnits.filter((u) => u.ownerId !== activeGroup.ownerId);
   if (enemyTargets.length === 0) {
     return {
       updatedUnits: units,
       rolls: [],
       isCombatOver: true,
-      winnerOwnerId: attacker.ownerId,
+      winnerOwnerId: activeGroup.ownerId,
     };
   }
 
-  // Target selection: lowest remaining health first
-  enemyTargets.sort(
-    (a, b) => a.maxHull - a.currentDamage - (b.maxHull - b.currentDamage)
-  );
-  let target = enemyTargets[0]!;
-
-  // Fire ONLY non-missile cannons in engagement rounds (missiles were spent in missile stage)
-  const cannonWeapons = attacker.weapons.filter((w) => !w.isMissile);
-
-  for (const weapon of cannonWeapons) {
-    for (let i = 0; i < weapon.count; i++) {
-      if (target.currentDamage >= target.maxHull) {
-        const nextTarget = enemyTargets.find((u) => u.currentDamage < u.maxHull);
-        if (!nextTarget) break;
-        target = nextTarget;
-      }
-
-      if (weapon.color === 'purple') {
-        const purpleResult = rollPurpleDie();
-        if (purpleResult.targetDamage > 0) {
-          target.currentDamage += purpleResult.targetDamage;
-          if (target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
-            activeCombat.destroyedShips.push({
-              shipId: target.id,
-              type: target.type,
-              ownerId: target.ownerId,
-              killerId: attacker.ownerId,
-            });
-          }
-        }
-
-        if (purpleResult.selfDamage > 0) {
-          applyRiftSelfDamage(units, attacker.ownerId, purpleResult.selfDamage, activeCombat);
-        }
-
-        rolls.push({
-          shipId: attacker.id,
-          shipOwner: attacker.ownerId,
-          dieColor: 'purple',
-          roll: purpleResult.rawRoll,
-          modifiedRoll: purpleResult.rawRoll,
-          isHit: purpleResult.isHit,
-          damage: purpleResult.targetDamage,
-          selfDamage: purpleResult.selfDamage,
-          symbol: purpleResult.symbol,
-        });
-      } else {
-        const rawRoll = rollD6();
-        const modified = rawRoll + attacker.computerBonus - target.shieldBonus;
-
-        let isHit = false;
-        if (rawRoll === 6) {
-          isHit = true;
-        } else if (rawRoll === 1) {
-          isHit = false;
+  // Roll non-missile cannons for all ships in activeGroup
+  const salvoRolls: CombatRoll[] = [];
+  for (const ship of activeGroup.ships) {
+    const cannonWeapons = ship.weapons.filter((w) => !w.isMissile);
+    for (const weapon of cannonWeapons) {
+      for (let i = 0; i < weapon.count; i++) {
+        if (weapon.color === 'purple') {
+          const res = rollPurpleDie();
+          salvoRolls.push({
+            shipId: ship.id,
+            shipOwner: activeGroup.ownerId,
+            dieColor: 'purple',
+            roll: res.rawRoll,
+            modifiedRoll: res.rawRoll,
+            isHit: res.isHit,
+            damage: res.targetDamage,
+            selfDamage: res.selfDamage,
+            symbol: res.symbol,
+          });
         } else {
-          isHit = modified >= 6;
-        }
-
-        const damageDealt = isHit ? weapon.damage : 0;
-        target.currentDamage += damageDealt;
-
-        if (isHit && target.currentDamage >= target.maxHull && !activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
-          activeCombat.destroyedShips.push({
-            shipId: target.id,
-            type: target.type,
-            ownerId: target.ownerId,
-            killerId: attacker.ownerId,
+          const raw = rollD6();
+          salvoRolls.push({
+            shipId: ship.id,
+            shipOwner: activeGroup.ownerId,
+            dieColor: weapon.color,
+            roll: raw,
+            modifiedRoll: raw + activeGroup.computerBonus,
+            isHit: raw === 6,
+            damage: weapon.damage,
           });
         }
-
-        rolls.push({
-          shipId: attacker.id,
-          shipOwner: attacker.ownerId,
-          dieColor: weapon.color,
-          roll: rawRoll,
-          modifiedRoll: modified,
-          isHit,
-          damage: damageDealt,
-        });
       }
     }
   }
 
-  // Check if engagement round completes a full cycle of alive units
-  if (unitIndex + 1 >= aliveUnits.length) {
-    activeCombat.roundNumber += 1;
+  // Check manual assignment requirement
+  const isPlayerAttacker = activeGroup.ownerId.startsWith('player_');
+  if (autoAssign === false && isPlayerAttacker) {
+    activeCombat.pendingDamageAssignment = {
+      attackerOwnerId: activeGroup.ownerId,
+      attackerShipType: activeGroup.type,
+      attackerShipIds: activeGroup.shipIds,
+      computerBonus: activeGroup.computerBonus,
+      rolls: salvoRolls,
+      isMissile: false,
+    };
+    activeCombat.lastRolls = salvoRolls;
+    return {
+      updatedUnits: units,
+      rolls: salvoRolls,
+      isCombatOver: false,
+      isPendingAssignment: true,
+    };
+  }
 
-    // Remnants of Worlds Afar: Morph Shield
-    // Remove one Damage Cube from each Ship with this Ship Part after each Engagement Round.
+  // Auto-assign salvo damage
+  autoAssignSalvoDamage(salvoRolls, activeGroup, enemyTargets, activeCombat, units);
+
+  // Check round completion
+  if (groupIndex + 1 >= groups.length) {
+    activeCombat.roundNumber += 1;
     for (const u of aliveUnits) {
       if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
         u.currentDamage = Math.max(0, u.currentDamage - 1);
@@ -657,7 +934,7 @@ export function executeCombatStep(
 
   return {
     updatedUnits: units,
-    rolls,
+    rolls: salvoRolls,
     isCombatOver: remainingOwners.length <= 1,
     winnerOwnerId: remainingOwners.length === 1 ? remainingOwners[0] : undefined,
   };

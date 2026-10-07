@@ -88,7 +88,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     const results: { sector: SectorTile; planet: any; planetIndex: number }[] = [];
     for (const sec of controlledSectors) {
       sec.planets.forEach((p, idx) => {
-        if (!p.shrineOwner) {
+        if (!p.shrineOwner && p.colonizedBy === commander.id) {
           const costRes = selectedShrine.costResource;
           const planetRes = p.resource;
           const isMatch =

@@ -3,6 +3,7 @@
  */
 
 import { HexCoord, ShipType, PlanetResourceType } from './galaxy';
+import { CombatDamageAssignment } from './state';
 
 export type ActionType =
   | 'EXPLORE'
@@ -105,6 +106,7 @@ export interface InfluenceAction extends BaseAction {
   refreshColonyShips?: boolean; // Flip 2 colony ships face-up
   claimSectors?: string[]; // Place disc from track on sector
   abandonSectors?: string[]; // Remove disc from sector back to track
+  abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>; // Map of planetId to chosen track for returning orbital/wild population cubes (Bug 120)
 }
 
 export interface ColonizeAction extends BaseAction {
@@ -162,6 +164,8 @@ export interface ResolveCombatStepAction extends BaseAction {
   retreatDestinationSectorId?: string;
   concludeCombat?: boolean;
   rerollRollIndex?: number; // Lyra: flip colony ship to reroll die at this index in lastRolls
+  autoAssign?: boolean; // When false, pause with pendingDamageAssignment for manual die targeting
+  damageAssignments?: CombatDamageAssignment[]; // Target assignments for pending salvo
 }
 
 export interface CombatConquestAction extends BaseAction {

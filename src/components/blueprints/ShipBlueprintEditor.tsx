@@ -115,7 +115,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       oldPart: ShipPart | null;
       newPart: ShipPart | null;
     }[] = [];
-    const shipTypes: ShipType[] = ['interceptor', 'cruiser', 'dreadnought', 'starbase'];
+    const shipTypes = availableShipTypes;
     for (const st of shipTypes) {
       const origSlots = player.blueprints[st]?.slots || [];
       const curSlots = draftBlueprints[st] || [];
@@ -133,7 +133,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       }
     }
     return list;
-  }, [draftBlueprints, player.blueprints]);
+  }, [draftBlueprints, player.blueprints, availableShipTypes]);
 
   const usedActivations = modifiedSlots.length;
   const remainingActivations = Math.max(0, maxUpgrades - usedActivations);
@@ -150,7 +150,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
   // Check that all ship classes with modifications are valid
   const allModifiedShipsValid = useMemo(() => {
-    const shipTypes: ShipType[] = ['interceptor', 'cruiser', 'dreadnought', 'starbase'];
+    const shipTypes = availableShipTypes;
     for (const st of shipTypes) {
       const isModified = modifiedSlots.some((m) => m.shipType === st);
       if (isModified || st === activeShipType) {
@@ -160,7 +160,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       }
     }
     return true;
-  }, [modifiedSlots, draftBlueprints, player.blueprints, activeShipType]);
+  }, [modifiedSlots, draftBlueprints, player.blueprints, activeShipType, availableShipTypes]);
 
   const handleInstallPart = (part: ShipPart) => {
     if (selectedSlotIndex === null) return;

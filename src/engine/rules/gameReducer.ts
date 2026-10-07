@@ -18,12 +18,35 @@ import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, 
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
-import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE } from './economyEngine';
-import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, sortUnitsByInitiative } from './combatEngine';
+import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack } from './economyEngine';
+import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, sortUnitsByInitiative, getCombatShipTypeGroups } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import { getMaxReputationTilesForPlayer } from './setup';
 import { DISCOVERY_TILES } from './sectorData';
+
+export function getPlayerShortName(playerOrName?: { name: string; faction?: { id: string; name: string } } | string | null): string {
+  if (!playerOrName) return '';
+  const name = typeof playerOrName === 'string' ? playerOrName : playerOrName.name;
+  if (!name) return '';
+  if (/^Player \d+$/i.test(name)) return name;
+  if (name.includes(' of ')) {
+    return name.split(' of ').pop() || name;
+  }
+  if (name.startsWith('The ')) {
+    return name.replace(/^The\s+/, '');
+  }
+  if (name === 'Rho Indi Syndicate') {
+    return 'Rho Indi';
+  }
+  if (name === 'Terran Federation' || name.startsWith('Terran ')) {
+    return name.split(' ')[0] || name;
+  }
+  if (name === 'Eridani Empire') return 'Eridani';
+  if (name === 'Hydran Progress') return 'Hydran';
+  if (name === 'Orion Hegemony') return 'Orion';
+  return name.split(' ')[0] || name;
+}
 
 export function playerHasWormholeGenerator(player: PlayerState): boolean {
   return (
@@ -511,6 +534,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         }
         if (planet.shrineOwner) {
           return { valid: false, error: 'Each planet may only have one Shrine.' };
+        }
+        if (planet.colonizedBy !== player.id) {
+          return { valid: false, error: 'You must have a population cube on the planet to place a Shrine.' };
         }
         const costRes = slot.costResource;
         const planetRes = planet.resource;
@@ -1246,6 +1272,17 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (state.activeCombat.stage === 'resolved' || (action as any).concludeCombat) {
         return { valid: true };
       }
+
+      if (state.activeCombat.pendingDamageAssignment) {
+        if (action.playerId && action.playerId !== state.activeCombat.pendingDamageAssignment.attackerOwnerId) {
+          return {
+            valid: false,
+            error: `Only player ${state.activeCombat.pendingDamageAssignment.attackerOwnerId} can assign damage for their ${state.activeCombat.pendingDamageAssignment.attackerShipType}.`,
+          };
+        }
+        return { valid: true };
+      }
+
       const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints);
       const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector);
       const aliveUnits = sortUnitsByInitiative(
@@ -1253,23 +1290,28 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         defenderId
       );
       if (aliveUnits.length > 0) {
-        const isMissileStage = state.activeCombat.stage === 'missile';
-        const pendingMissileUnits = isMissileStage
-          ? aliveUnits.filter(
-              (u) => u.weapons.some((w) => w.isMissile) && !state.activeCombat!.missileFiredShipIds?.includes(u.id)
-            )
-          : [];
-        const activeAttacker = isMissileStage
-          ? (pendingMissileUnits[0] || null)
-          : aliveUnits[state.activeCombat.currentTurnIndex % aliveUnits.length];
+        const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
+        if (groups.length > 0) {
+          const isMissileStage = state.activeCombat.stage === 'missile';
+          const pendingMissileGroups = isMissileStage
+            ? groups.filter(
+                (g) =>
+                  g.weapons.some((w) => w.isMissile) &&
+                  !g.shipIds.every((id) => state.activeCombat!.missileFiredShipIds?.includes(id))
+              )
+            : [];
+          const activeGroup = isMissileStage
+            ? (pendingMissileGroups[0] || null)
+            : groups[state.activeCombat.currentTurnIndex % groups.length];
 
-        if (activeAttacker) {
-          const isPlayerShip = state.players.some((p) => p.id === activeAttacker.ownerId);
-          if (isPlayerShip && action.playerId && action.playerId !== activeAttacker.ownerId) {
-            return {
-              valid: false,
-              error: `Only player ${activeAttacker.ownerId} can command their ${activeAttacker.type}.`,
-            };
+          if (activeGroup) {
+            const isPlayerShip = state.players.some((p) => p.id === activeGroup.ownerId);
+            if (isPlayerShip && action.playerId && action.playerId !== activeGroup.ownerId) {
+              return {
+                valid: false,
+                error: `Only player ${activeGroup.ownerId} can command their ${activeGroup.type}.`,
+              };
+            }
           }
         }
       }
@@ -1362,6 +1404,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (planet.shrineOwner) {
         return { valid: false, error: 'Each planet may only have one Shrine.' };
       }
+      if (planet.colonizedBy !== player.id) {
+        return { valid: false, error: 'You must have a population cube on the planet to place a Shrine.' };
+      }
       const costRes = slot.costResource;
       const planetRes = planet.resource;
       const isMatchingColor =
@@ -1430,17 +1475,16 @@ export function applyShrinePlacement(
   const slot = player.shrineBoard.slots[row]?.[col];
   if (!slot || slot.built) return;
 
+  const targetSector = state.sectors.find((s) => s.id === sectorId);
+  const planet = targetSector?.planets.find((p) => p.id === planetId);
+  if (!planet || planet.shrineOwner || planet.colonizedBy !== player.id) return;
+
   const costRes = slot.costResource;
   player.resources[costRes] -= slot.costAmount;
   slot.built = true;
   slot.sectorId = sectorId;
   slot.planetId = planetId;
-
-  const targetSector = state.sectors.find((s) => s.id === sectorId);
-  const planet = targetSector?.planets.find((p) => p.id === planetId);
-  if (planet) {
-    planet.shrineOwner = player.id;
-  }
+  planet.shrineOwner = player.id;
 
   state.log.unshift({
     id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -1630,8 +1674,14 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
     targetRoll.damage = newDmg;
   }
 
+  if (state.activeCombat.pendingDamageAssignment) {
+    if (state.activeCombat.pendingDamageAssignment.rolls[rollIndex]) {
+      state.activeCombat.pendingDamageAssignment.rolls[rollIndex] = { ...targetRoll };
+    }
+  }
+
   const dmgDiff = newDmg - oldDmg;
-  if (dmgDiff !== 0) {
+  if (dmgDiff !== 0 && !state.activeCombat.pendingDamageAssignment) {
     const enemyUnits = sector.ships.filter((s) => s.ownerId !== player.id);
     if (dmgDiff > 0 && enemyUnits.length > 0) {
       const targetShip = enemyUnits[0]!;
@@ -1653,7 +1703,7 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
           if (victimOwner && victimOwner.faction.id === 'the_exiles') {
             const orbitalPlanet = sector.planets.find((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
             if (orbitalPlanet) {
-              const res = orbitalPlanet.colonizedResource || 'science';
+              const res = resolveCubeReturnTrack(victimOwner, orbitalPlanet);
               if (!victimOwner.graveyardCubes) {
                 victimOwner.graveyardCubes = { money: 0, science: 0, material: 0 };
               }
@@ -2095,37 +2145,50 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 toSector.playerEntryOrder.push(player.id);
               }
 
-              // Check if moved into allied player's territory -> break alliance and take Traitor tile (-2 VP)
-              const alliedPresent =
-                (toSector.discOwner && toSector.discOwner !== player.id && player.ambassadorTiles.includes(toSector.discOwner) ? toSector.discOwner : null) ||
-                toSector.ships.find((s) => s.ownerId !== player.id && s.ownerId.startsWith('player_') && player.ambassadorTiles.includes(s.ownerId))?.ownerId ||
-                toSector.planets.find((p) => p.colonizedBy && p.colonizedBy !== player.id && player.ambassadorTiles.includes(p.colonizedBy))?.colonizedBy;
-
-              if (alliedPresent) {
-                const allyPlayer = newState.players.find((p) => p.id === alliedPresent);
-                player.ambassadorTiles = (player.ambassadorTiles || []).filter((id) => id !== alliedPresent);
-                if (player.ambassadorCubes?.[alliedPresent]) {
-                  const pRes = player.ambassadorCubes[alliedPresent];
-                  player.population[pRes].cubesOnBoard = Math.min(11, player.population[pRes].cubesOnBoard + 1);
-                  delete player.ambassadorCubes[alliedPresent];
-                }
-                if (allyPlayer) {
-                  allyPlayer.ambassadorTiles = (allyPlayer.ambassadorTiles || []).filter((id) => id !== player.id);
-                  if (allyPlayer.ambassadorCubes?.[player.id]) {
-                    const allyRes = allyPlayer.ambassadorCubes[player.id];
-                    allyPlayer.population[allyRes].cubesOnBoard = Math.min(11, allyPlayer.population[allyRes].cubesOnBoard + 1);
-                    delete allyPlayer.ambassadorCubes[player.id];
-                  }
-                }
-                newState.traitorPlayerId = player.id;
-                addLog(`⚔️ ${player.name} moved into allied space of ${allyPlayer?.name || alliedPresent}, breaking the alliance and claiming the Traitor Tile (-2 VP)!`, 'combat');
-              }
-
               addLog(
                 `${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber} to Sector ${toSector.sectorNumber}.`
               );
             }
           }
+        }
+      }
+
+      // Check if player ended movement in allied player's territory (Act of Aggression, Rulebook p. 15)
+      // "An Act Of Aggression is defined as having any number of your Ships in a Sector where the other player
+      // has a Ship or Control at the end of your Action. Moving through an opponent's Sectors is not an Act of Aggression
+      // if your Ships remain Unpinned!"
+      const playerSectorsWithShips = newState.sectors.filter((s) => s.ships.some((sh) => sh.ownerId === player.id));
+      const currentAllies = [...(player.ambassadorTiles || [])].filter((id) => id.startsWith('player_') && id !== player.id);
+
+      for (const allyId of currentAllies) {
+        const endedInAllySpace = playerSectorsWithShips.some((s) => {
+          const allyControls = s.discOwner === allyId;
+          const allyHasShips = s.ships.some((sh) => sh.ownerId === allyId);
+          const allyHasPlanet = s.planets.some((p) => p.colonizedBy === allyId);
+          return allyControls || allyHasShips || allyHasPlanet;
+        });
+
+        if (endedInAllySpace) {
+          const allyPlayer = newState.players.find((p) => p.id === allyId);
+          player.ambassadorTiles = (player.ambassadorTiles || []).filter((id) => id !== allyId);
+          if (player.ambassadorCubes?.[allyId]) {
+            const pRes = player.ambassadorCubes[allyId];
+            player.population[pRes].cubesOnBoard = Math.min(11, player.population[pRes].cubesOnBoard + 1);
+            delete player.ambassadorCubes[allyId];
+          }
+          if (allyPlayer) {
+            allyPlayer.ambassadorTiles = (allyPlayer.ambassadorTiles || []).filter((id) => id !== player.id);
+            if (allyPlayer.ambassadorCubes?.[player.id]) {
+              const allyRes = allyPlayer.ambassadorCubes[player.id];
+              allyPlayer.population[allyRes].cubesOnBoard = Math.min(11, allyPlayer.population[allyRes].cubesOnBoard + 1);
+              delete allyPlayer.ambassadorCubes[player.id];
+            }
+          }
+          newState.traitorPlayerId = player.id;
+          addLog(
+            `⚔️ ${player.name} ended movement in allied space of ${allyPlayer?.name || allyId}, breaking the alliance and claiming the Traitor Tile (-2 VP)!`,
+            'combat'
+          );
         }
       }
       break;
@@ -2253,10 +2316,11 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               player.influenceTrack.totalDiscs,
               player.influenceTrack.discsOnTrack + 1
             );
-            // Return any population cubes in this sector to player board
+            // Return any population cubes in this sector to player board (Bug 120)
             for (const p of sec.planets) {
               if (p.colonizedBy === player.id) {
-                const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+                const preferred = action.abandonReturnTrack?.[p.id];
+                const res = resolveCubeReturnTrack(player, p, preferred);
                 if (res === 'money' || res === 'science' || res === 'material') {
                   player.population[res].cubesOnBoard = Math.min(
                     11,
@@ -2704,7 +2768,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 if (victimOwner && victimOwner.faction.id === 'the_exiles') {
                   const orbitalPlanet = sector.planets.find((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
                   if (orbitalPlanet) {
-                    const res = orbitalPlanet.colonizedResource || 'science';
+                    const res = resolveCubeReturnTrack(victimOwner, orbitalPlanet);
                     if (!victimOwner.graveyardCubes) {
                       victimOwner.graveyardCubes = { money: 0, science: 0, material: 0 };
                     }
@@ -2717,26 +2781,36 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             }
 
             // Identify duel participants (Bug 57: even if ships destroyed, player participated)
-            const duelPlayerIds = (newState.activeCombat?.participatingPlayerIds || Array.from(new Set(currentUnits.map((u) => u.ownerId)))).filter((id) => id.startsWith('player_'));
+            // Bug 122: The defender must always draw reputation tiles first!
+            const rawDuelPlayerIds = (newState.activeCombat?.participatingPlayerIds || Array.from(new Set(currentUnits.map((u) => u.ownerId)))).filter((id) => id.startsWith('player_'));
+            const combatDefenderId = newState.activeCombat?.defenderOwnerId || getSectorDefenderOwnerId(sector);
+            const duelPlayerIds = combatDefenderId && rawDuelPlayerIds.includes(combatDefenderId)
+              ? [combatDefenderId, ...rawDuelPlayerIds.filter((id) => id !== combatDefenderId)]
+              : rawDuelPlayerIds;
 
             // Compute reputation tiles for participating players
             const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string }[] = [];
 
             for (const pId of duelPlayerIds) {
-              const attemptedRetreat = newState.activeCombat?.retreatAttemptedPlayerIds?.includes(pId);
-              const survivingShipsInSec = sector.ships.filter((s) => s.ownerId === pId).length;
-              const allRetreated = attemptedRetreat && survivingShipsInSec === 0 && !newState.activeCombat?.destroyedShips?.some((d) => d.ownerId === pId);
+              const attemptedRetreat = Boolean(
+                newState.activeCombat?.retreatAttemptedPlayerIds?.includes(pId) ||
+                (newState.activeCombat?.retreatDeclared && Object.keys(newState.activeCombat.retreatDeclared).some((sid) => currentUnits.find((u) => u.id === sid)?.ownerId === pId))
+              );
               
               const isLoser = Boolean(winnerId && pId !== winnerId);
               const playerKills = (newState.activeCombat?.destroyedShips || []).filter(
                 (casualty) => casualty.killerId === pId && casualty.ownerId !== pId
               );
 
-              let tilesCount = allRetreated ? 0 : 1; // 1 tile for participating unless all retreated without losses
+              // Official Rulebook p. 21 & p. 30:
+              // "RETREAT PENALTY: If all of your remaining Ships attempt to Retreat from a battle,
+              // you do not draw a Reputation Tile for participating in the battle, but still draw
+              // Reputation Tiles for any Ships you destroyed."
+              let tilesCount = attemptedRetreat ? 0 : 1;
 
               if (isLoser && playerKills.length === 0) {
-                // Bug 70: loser of the battle should only draw 1 rep tile if he doesn't destroy anything
-                tilesCount = allRetreated ? 0 : 1;
+                // Bug 70: loser of the battle draws 1 rep tile if he didn't retreat, or 0 if he retreated
+                tilesCount = attemptedRetreat ? 0 : 1;
               } else {
                 // Kills tiles
                 for (const casualty of playerKills) {
@@ -2748,6 +2822,10 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                     tilesCount += 3;
                   }
                 }
+              }
+
+              if (attemptedRetreat && playerKills.length === 0) {
+                tilesCount = 0;
               }
 
               tilesCount = Math.min(5, tilesCount); // Maximum 5 tiles drawn per battle
@@ -2861,8 +2939,15 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               retreatShipIds: action.retreatShipIds,
               retreatDestinationSectorId: action.retreatDestinationSectorId,
             },
-            defenderId
+            defenderId,
+            action.autoAssign,
+            action.damageAssignments
           );
+
+          if (combatRes.isPendingAssignment) {
+            newState.activeCombat.lastRolls = combatRes.rolls;
+            return { success: true, newState };
+          }
 
           if (combatRes.declaredRetreat) {
             const p = newState.players.find((pl) => pl.id === combatRes.declaredRetreat!.ownerId);
@@ -2873,7 +2958,24 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             );
           }
 
-          if (combatRes.completedRetreat) {
+          if (combatRes.completedRetreats && combatRes.completedRetreats.length > 0) {
+            for (const cr of combatRes.completedRetreats) {
+              const destSec = newState.sectors.find((s) => s.id === cr.destinationSectorId);
+              const sIdx = sector.ships.findIndex((s) => s.id === cr.shipId);
+              if (sIdx >= 0 && destSec) {
+                const [retreatedShip] = sector.ships.splice(sIdx, 1);
+                retreatedShip.damage = 0;
+                destSec.ships.push(retreatedShip);
+              }
+            }
+            const firstRetreat = combatRes.completedRetreats[0]!;
+            const p = newState.players.find((pl) => pl.id === firstRetreat.ownerId);
+            const destSec = newState.sectors.find((s) => s.id === firstRetreat.destinationSectorId);
+            addLog(
+              `${p ? p.name : 'Ships'} completed retreat into Sector ${destSec ? destSec.sectorNumber : firstRetreat.destinationSectorId}.`,
+              'combat'
+            );
+          } else if (combatRes.completedRetreat) {
             const p = newState.players.find((pl) => pl.id === combatRes.completedRetreat!.ownerId);
             const destSec = newState.sectors.find((s) => s.id === combatRes.completedRetreat!.destinationSectorId);
             const sIdx = sector.ships.findIndex((s) => s.id === combatRes.completedRetreat!.shipId);
@@ -2933,7 +3035,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             if (des.type === 'orbital' && victimOwner && victimOwner.faction.id === 'the_exiles') {
               const orbitalPlanet = sector.planets.find((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
               if (orbitalPlanet) {
-                const res = orbitalPlanet.colonizedResource || 'science';
+                const res = resolveCubeReturnTrack(victimOwner, orbitalPlanet);
                 if (!victimOwner.graveyardCubes) {
                   victimOwner.graveyardCubes = { money: 0, science: 0, material: 0 };
                 }
@@ -3384,7 +3486,7 @@ export function resolveAttackingPopulationAndConquest(
             return;
           }
           if (defPlayer) {
-            const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+            const res = resolveCubeReturnTrack(defPlayer, p);
             if (res === 'money' || res === 'science' || res === 'material') {
               if (!defPlayer.graveyardCubes) {
                 defPlayer.graveyardCubes = { money: 0, science: 0, material: 0 };
@@ -3469,7 +3571,7 @@ export function resolveAttackingPopulationAndConquest(
         if (!isPlanta && damageRemaining <= 0) break;
 
         if (defPlayer) {
-          const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+          const res = resolveCubeReturnTrack(defPlayer, p);
           if (res === 'money' || res === 'science' || res === 'material') {
             if (!defPlayer.graveyardCubes) {
               defPlayer.graveyardCubes = { money: 0, science: 0, material: 0 };

@@ -28,6 +28,7 @@ import {
   executeCombatStep,
   rollPurpleDie,
   applyRiftSelfDamage,
+  getCombatShipTypeGroups,
 } from '../rules/combatEngine';
 import { AVAILABLE_EXPANSIONS, isExpansionActive, getExpansionForItem } from '../rules/expansions';
 import {
@@ -58,6 +59,7 @@ import {
   playerHasWormholeGenerator,
   applyShrinePlacement,
   getMaxMoveActivations,
+  getPlayerShortName,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -85,6 +87,7 @@ import {
   applyUpkeepPhase,
   POPULATION_TRACK_SPACES,
   abandonSectorForUpkeep,
+  resolveCubeReturnTrack,
 } from '../rules/economyEngine';
 import {
   CENTER_SECTOR,
@@ -8002,7 +8005,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Give Eridani a 2 VP reputation tile
         eridaniPlayer.reputationTiles = [2];
 
-        // getPlayerReputationTrackSlots places ambassador into Slot 0 ('both') and reputation tile into Slot 1 ('both')
+        // getPlayerReputationTrackSlots places ambassador into Slot 0 ('both') and reputation tile into Slot 2 ('rep_only' first, Bug 118)
         const trackSlots = getPlayerReputationTrackSlots(eridaniPlayer, eridaniState.players);
         expect(trackSlots.length).toBe(4);
         expect(trackSlots[0]!.tile?.type).toBe('ambassador');
@@ -8011,11 +8014,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           expect(trackSlots[0]!.tile.allyName).toBe(terranPlayer.name);
           expect(trackSlots[0]!.tile.vp).toBe(1);
         }
-        expect(trackSlots[1]!.tile?.type).toBe('reputation');
-        if (trackSlots[1]!.tile?.type === 'reputation') {
-          expect(trackSlots[1]!.tile.vp).toBe(2);
+        expect(trackSlots[1]!.tile).toBeUndefined(); // Slot 1 ('both') remains open for another ambassador!
+        expect(trackSlots[2]!.tile?.type).toBe('reputation');
+        if (trackSlots[2]!.tile?.type === 'reputation') {
+          expect(trackSlots[2]!.tile.vp).toBe(2);
         }
-        expect(trackSlots[2]!.tile).toBeUndefined();
         expect(trackSlots[3]!.tile).toBeUndefined();
 
         // Render PlayerBoard (the upper-left floating window)
@@ -8040,8 +8043,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(playerBoardHtml).toContain('🤝');
         expect(playerBoardHtml).toContain(`Ambassador (${terranPlayer.name})`);
         expect(playerBoardHtml).toContain('Reputation Slot #1');
-        expect(playerBoardHtml).toContain('Reputation Tile: +2 VP (Slot #2)');
-        expect(playerBoardHtml).toContain('Empty Slot #3');
+        expect(playerBoardHtml).toContain('Empty Slot #2');
+        expect(playerBoardHtml).toContain('Reputation Tile: +2 VP (Slot #3)');
         // Reputation total score & slot count
         expect(playerBoardHtml).toContain('2 VP');
         expect(playerBoardHtml).toContain('Rep');
@@ -8994,6 +8997,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // P2 acts
         const p2Tech = r2State.techSupply.find(
           (t) =>
+            t.id !== 'ancient_labs' &&
+            t.id !== 'artifact_key' &&
             (t.category === 'military' || t.category === 'grid' || t.category === 'nano') &&
             !p2.techTrack.researched.some((rt) => rt.id === t.id)
         )!;
@@ -10163,6 +10168,550 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           expect(entry.wormholes).toEqual(AUTHENTIC_HOME_WORMHOLES);
           expect(entry.wormholes.filter(Boolean).length).toBe(4);
         }
+      });
+
+      it('64. verifies Bug 1 to Bug 6: Faction short names, Lyra shrine population cube rule, Retreat 0 rep penalty, Alliance break on movement end only, Ship type group activations, and Manual damage allocation', () => {
+        // -------------------------------------------------------------
+        // Bug 1: Faction short names for Magellan and Lyra
+        // -------------------------------------------------------------
+        expect(getPlayerShortName({ name: 'Wardens of Magellan' })).toBe('Magellan');
+        expect(getPlayerShortName({ name: 'Enlightened of Lyra' })).toBe('Lyra');
+        expect(getPlayerShortName({ name: 'Descendants of Draco' })).toBe('Draco');
+        expect(getPlayerShortName({ name: 'The Exiles' })).toBe('Exiles');
+        expect(getPlayerShortName({ name: 'Rho Indi Syndicate' })).toBe('Rho Indi');
+        expect(getPlayerShortName({ name: 'Terran Federation' })).toBe('Terran');
+        expect(getPlayerShortName({ name: 'Player 1' })).toBe('Player 1');
+        expect(getPlayerShortName({ name: 'Planta' })).toBe('Planta');
+
+        // -------------------------------------------------------------
+        // Bug 2: Lyra can only place shrines where they have a population cube
+        // -------------------------------------------------------------
+        const lyraGame = createInitialGame(2, ['enlightened_of_lyra', 'terran_federation'], ['seekers']);
+        const lyraPlayer = lyraGame.players[0]!;
+        expect(lyraPlayer.faction.id).toBe('enlightened_of_lyra');
+        expect(lyraPlayer.shrineBoard).toBeDefined();
+
+        const lyraHome = lyraGame.sectors.find((s) => s.sectorNumber === 238)!;
+        expect(lyraHome).toBeDefined();
+        // Give Lyra plenty of money/materials
+        lyraPlayer.resources.money = 10;
+        lyraPlayer.resources.materials = 10;
+        lyraPlayer.resources.science = 10;
+
+        // Try placing a shrine on an uncolonized planet
+        const uncolonizedPlanet = lyraHome.planets.find((p) => !p.colonizedBy)!;
+        expect(uncolonizedPlanet).toBeDefined();
+
+        const invalidShrineRes = validateAction(lyraGame, {
+          type: 'PLACE_SHRINE',
+          playerId: lyraPlayer.id,
+          row: 0,
+          col: 0,
+          sectorId: lyraHome.id,
+          planetId: uncolonizedPlanet.id,
+        });
+        expect(invalidShrineRes.valid).toBe(false);
+        expect(invalidShrineRes.error).toContain('population cube');
+
+        // Colonize the planet with Lyra cube
+        uncolonizedPlanet.colonizedBy = lyraPlayer.id;
+        uncolonizedPlanet.colonizedResource = uncolonizedPlanet.resource;
+
+        const validShrineRes = validateAction(lyraGame, {
+          type: 'PLACE_SHRINE',
+          playerId: lyraPlayer.id,
+          row: 0,
+          col: 0,
+          sectorId: lyraHome.id,
+          planetId: uncolonizedPlanet.id,
+        });
+        expect(validShrineRes.valid).toBe(true);
+
+        // Execute placement
+        const placeShrineRes = executeAction(lyraGame, {
+          type: 'PLACE_SHRINE',
+          playerId: lyraPlayer.id,
+          row: 0,
+          col: 0,
+          sectorId: lyraHome.id,
+          planetId: uncolonizedPlanet.id,
+        });
+        expect(placeShrineRes.success).toBe(true);
+        const updatedHome = placeShrineRes.newState.sectors.find((s) => s.sectorNumber === 238)!;
+        const updatedPlanet = updatedHome.planets.find((p) => p.id === uncolonizedPlanet.id)!;
+        expect(updatedPlanet.shrineOwner).toBe(lyraPlayer.id);
+
+        // -------------------------------------------------------------
+        // Bug 3: Retreating without destroying ships draws 0 reputation tiles
+        // -------------------------------------------------------------
+        const retreatGame = createInitialGame(2);
+        const p1 = retreatGame.players[0]!;
+        const p2 = retreatGame.players[1]!;
+
+        const combatSec = retreatGame.sectors.find((s) => s.ring === 0)!;
+        const p1DestSec = retreatGame.sectors.find((s) => s.discOwner === p1.id)!;
+        p1DestSec.ships = [];
+
+        combatSec.ships = [
+          { id: 'p1_int', ownerId: p1.id, type: 'interceptor', damage: 0 },
+          { id: 'p2_dread', ownerId: p2.id, type: 'dreadnought', damage: 0 },
+        ];
+
+        retreatGame.phase = 'COMBAT_PHASE';
+        retreatGame.activeCombat = {
+          sectorId: combatSec.id,
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          participatingPlayerIds: [p1.id, p2.id],
+          retreatDeclared: { p1_int: p1DestSec.id },
+          retreatAttemptedPlayerIds: [p1.id],
+          destroyedShips: [],
+        };
+
+        // Resolve combat conclusion directly (P1 retreated, 0 kills made by P1)
+        const concludeRes = executeAction(retreatGame, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+          sectorId: combatSec.id,
+          concludeCombat: true,
+        });
+        expect(concludeRes.success).toBe(true);
+
+        // Check reputation draw queue: P1 should NOT draw any reputation tiles (0 tiles)
+        const p1Draw = concludeRes.newState.pendingReputationDrawQueue?.find((d) => d.playerId === p1.id) ||
+          (concludeRes.newState.pendingReputationDraw?.playerId === p1.id ? concludeRes.newState.pendingReputationDraw : null);
+        expect(p1Draw).toBeNull();
+
+        // -------------------------------------------------------------
+        // Bug 4: Alliance only breaks when movement ends on friend's sector
+        // -------------------------------------------------------------
+        const allyGame = createInitialGame(2);
+        const playerA = allyGame.players[0]!;
+        const playerB = allyGame.players[1]!;
+
+        // Form alliance with ambassador exchange
+        playerA.ambassadorTiles = [playerB.id];
+        playerB.ambassadorTiles = [playerA.id];
+        playerA.ambassadorCubes = { [playerB.id]: 'money' };
+        playerB.ambassadorCubes = { [playerA.id]: 'money' };
+
+        const homeA = allyGame.sectors.find((s) => s.sectorNumber === 221)!;
+        const allySec = allyGame.sectors.find((s) => s.sectorNumber === 222)!;
+        const destSec = allyGame.sectors.find((s) => s.ring === 0)!;
+
+        homeA.discOwner = playerA.id;
+        homeA.coord = { q: 0, r: 1, s: -1 };
+        allySec.discOwner = playerB.id;
+        allySec.coord = { q: 1, r: 0, s: -1 };
+        destSec.discOwner = playerA.id;
+        destSec.coord = { q: 0, r: 0, s: 0 };
+        destSec.hasGCDS = false;
+
+        // Ensure wormhole connections between homeA -> allySec -> destSec
+        homeA.wormholes = [true, true, true, true, true, true];
+        allySec.wormholes = [true, true, true, true, true, true];
+        destSec.wormholes = [true, true, true, true, true, true];
+
+        homeA.ships = [{ id: 'ship_a1', ownerId: playerA.id, type: 'cruiser', damage: 0 }];
+        allySec.ships = []; // Ally controls sector, but unpinned ship passes through
+        destSec.ships = [];
+
+        playerA.resources.money = 20;
+
+        // Move 2 steps: homeA -> allySec -> destSec (passing through allySec without stopping)
+        const moveThroughRes = executeAction(allyGame, {
+          type: 'MOVE',
+          playerId: playerA.id,
+          moves: [
+            { shipId: 'ship_a1', fromSectorId: homeA.id, toSectorId: allySec.id },
+            { shipId: 'ship_a1', fromSectorId: allySec.id, toSectorId: destSec.id },
+          ],
+        });
+
+        expect(moveThroughRes.success).toBe(true);
+        // Alliance should NOT be broken because movement did not end in allySec!
+        expect(moveThroughRes.newState.traitorPlayerId).toBeUndefined();
+        expect(moveThroughRes.newState.players[0]!.ambassadorTiles).toContain(playerB.id);
+
+        // Move ending IN allySec breaks the alliance
+        moveThroughRes.newState.activePlayerIndex = 0;
+        const curDestSec = moveThroughRes.newState.sectors.find((s) => s.ring === 0)!;
+        const curAllySec = moveThroughRes.newState.sectors.find((s) => s.sectorNumber === 222)!;
+        const moveEndingInAllyRes = executeAction(moveThroughRes.newState, {
+          type: 'MOVE',
+          playerId: playerA.id,
+          moves: [
+            { shipId: 'ship_a1', fromSectorId: curDestSec.id, toSectorId: curAllySec.id },
+          ],
+        });
+        expect(moveEndingInAllyRes.success).toBe(true);
+        expect(moveEndingInAllyRes.newState.traitorPlayerId).toBe(playerA.id);
+        expect(moveEndingInAllyRes.newState.players[0]!.ambassadorTiles).not.toContain(playerB.id);
+
+        // -------------------------------------------------------------
+        // Bug 5: Ship type groups activate together in combat
+        // -------------------------------------------------------------
+        const fleetUnits = [
+          {
+            id: 'p1_cruiser_1',
+            ownerId: 'player_1',
+            type: 'cruiser',
+            initiative: 2,
+            currentDamage: 0,
+            maxHull: 2,
+            computerBonus: 1,
+            shieldBonus: 0,
+            weapons: [{ count: 1, damage: 1, color: 'yellow' }],
+          },
+          {
+            id: 'p1_cruiser_2',
+            ownerId: 'player_1',
+            type: 'cruiser',
+            initiative: 2,
+            currentDamage: 0,
+            maxHull: 2,
+            computerBonus: 1,
+            shieldBonus: 0,
+            weapons: [{ count: 1, damage: 1, color: 'yellow' }],
+          },
+          {
+            id: 'p1_int_1',
+            ownerId: 'player_1',
+            type: 'interceptor',
+            initiative: 3,
+            currentDamage: 0,
+            maxHull: 1,
+            computerBonus: 1,
+            shieldBonus: 0,
+            weapons: [{ count: 1, damage: 1, color: 'yellow' }],
+          },
+          {
+            id: 'p2_cruiser_1',
+            ownerId: 'player_2',
+            type: 'cruiser',
+            initiative: 2,
+            currentDamage: 0,
+            maxHull: 2,
+            computerBonus: 0,
+            shieldBonus: 0,
+            weapons: [{ count: 1, damage: 1, color: 'yellow' }],
+          },
+        ];
+
+        const shipGroups = getCombatShipTypeGroups(fleetUnits, 'player_2');
+        // Group 1: p1_int_1 (Init 3)
+        // Groups 2 & 3: p2_cruiser_1 (defender) and p1_cruisers (both cruisers in ONE group!)
+        const p1CruiserGroup = shipGroups.find((g) => g.ownerId === 'player_1' && g.type === 'cruiser');
+        expect(p1CruiserGroup).toBeDefined();
+        expect(p1CruiserGroup!.shipIds.length).toBe(2);
+        expect(p1CruiserGroup!.ships.length).toBe(2);
+
+        // -------------------------------------------------------------
+        // Bug 6: Damage allocation - manual pause vs auto-assign
+        // -------------------------------------------------------------
+        const combatGroupGame: CombatState = {
+          sectorId: 'test_sec',
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          defenderOwnerId: 'player_2',
+          lastRolls: [],
+        };
+
+        // When autoAssign is false: pauses with pendingDamageAssignment
+        const manualStepRes = executeCombatStep(
+          fleetUnits.map((u) => ({ ...u })),
+          combatGroupGame,
+          undefined,
+          'player_2',
+          false // autoAssign = false
+        );
+
+        expect(manualStepRes.isPendingAssignment).toBe(true);
+        expect(combatGroupGame.pendingDamageAssignment).toBeDefined();
+        expect(combatGroupGame.pendingDamageAssignment!.rolls.length).toBe(1); // p1_int has 1 weapon
+        expect(combatGroupGame.pendingDamageAssignment!.attackerOwnerId).toBe('player_1');
+
+        // Confirm manual damage assignment targeting p2_cruiser_1
+        const confirmStepRes = executeCombatStep(
+          fleetUnits.map((u) => ({ ...u })),
+          combatGroupGame,
+          undefined,
+          'player_2',
+          false,
+          [{ rollIndex: 0, targetShipId: 'p2_cruiser_1' }]
+        );
+
+        expect(confirmStepRes.isPendingAssignment).toBeFalsy();
+        expect(combatGroupGame.pendingDamageAssignment).toBeNull();
+      });
+
+      test('65. verifies Bug Fixes 118-124: Rep-only slots first, Exiles orbital upgrades, returning cube track choices, orbital on map badge, defender rep draw priority, side modals, and GameOver examine board', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+
+        // ---------------------------------------------------------------------
+        // Bug 118: When faction has rep-only slots, they should be used first when obtaining rep tiles
+        // ---------------------------------------------------------------------
+        const game118 = createInitialGame(2, ['rho_indi_syndicate', 'terran_federation'], ['outcasts']);
+        const rhoPlayer = game118.players[0]!;
+        expect(rhoPlayer.faction.reputationSlotTypes).toEqual(['both', 'both', 'rep_only', 'rep_only', 'rep_only']);
+
+        // Give Rho Indi 2 reputation tiles (e.g. 3 VP and 4 VP)
+        rhoPlayer.reputationTiles = [3, 4];
+        const rhoSlots = getPlayerReputationTrackSlots(rhoPlayer, game118.players);
+        expect(rhoSlots.length).toBe(5);
+        // Slots 0 and 1 are 'both' and MUST BE EMPTY so ambassadors can be placed
+        expect(rhoSlots[0]!.tile).toBeUndefined();
+        expect(rhoSlots[0]!.slotType).toBe('both');
+        expect(rhoSlots[1]!.tile).toBeUndefined();
+        expect(rhoSlots[1]!.slotType).toBe('both');
+        // Slots 2 and 3 are 'rep_only' and MUST HOLD the reputation tiles
+        expect(rhoSlots[2]!.tile?.type).toBe('reputation');
+        expect((rhoSlots[2]!.tile as any)?.vp).toBe(3);
+        expect(rhoSlots[2]!.slotType).toBe('rep_only');
+        expect(rhoSlots[3]!.tile?.type).toBe('reputation');
+        expect((rhoSlots[3]!.tile as any)?.vp).toBe(4);
+        expect(rhoSlots[3]!.slotType).toBe('rep_only');
+        expect(rhoSlots[4]!.tile).toBeUndefined();
+
+        // If player has an ambassador, it goes to Slot 0 ('both'), while rep tiles remain in rep_only slots
+        rhoPlayer.ambassadorTiles = ['player_2'];
+        const rhoSlotsWithAmb = getPlayerReputationTrackSlots(rhoPlayer, game118.players);
+        expect(rhoSlotsWithAmb[0]!.tile?.type).toBe('ambassador');
+        expect(rhoSlotsWithAmb[1]!.tile).toBeUndefined(); // Still 1 empty 'both' slot for another ambassador!
+        expect(rhoSlotsWithAmb[2]!.tile?.type).toBe('reputation');
+        expect(rhoSlotsWithAmb[3]!.tile?.type).toBe('reputation');
+
+        // ---------------------------------------------------------------------
+        // Bug 119: Exiles upgrade orbital is counted as upgrade activation
+        // ---------------------------------------------------------------------
+        const game119 = createInitialGame(2, ['the_exiles', 'terran_federation'], ['outcasts']);
+        const exilesPlayer = game119.players[0]!;
+        expect(exilesPlayer.blueprints.orbital).toBeDefined();
+        expect(getMaxUpgradeActivations(exilesPlayer)).toBe(2);
+        game119.pendingExilesOrbitalSetup = null;
+
+        // Attempt 1 upgrade on orbital: valid and counts as 1 activation
+        const singleOrbitalUpgradeAction = {
+          type: 'UPGRADE' as const,
+          playerId: exilesPlayer.id,
+          upgrades: [
+            { shipType: 'orbital' as const, slotIndex: 0, partId: 'electron_computer' },
+          ],
+        };
+        const validRes1 = validateAction(game119, singleOrbitalUpgradeAction);
+        expect(validRes1.valid).toBe(true);
+
+        // Attempt 2 upgrades (1 on orbital + 1 on interceptor): valid (within max 2)
+        const twoUpgradesAction = {
+          type: 'UPGRADE' as const,
+          playerId: exilesPlayer.id,
+          upgrades: [
+            { shipType: 'orbital' as const, slotIndex: 0, partId: 'electron_computer' },
+            { shipType: 'interceptor' as const, slotIndex: 0, partId: 'electron_computer' },
+          ],
+        };
+        const validRes2 = validateAction(game119, twoUpgradesAction);
+        expect(validRes2.valid).toBe(true);
+
+        // Attempt 3 upgrades (exceeding limit of 2): invalid
+        const threeUpgradesAction = {
+          type: 'UPGRADE' as const,
+          playerId: exilesPlayer.id,
+          upgrades: [
+            { shipType: 'orbital' as const, slotIndex: 0, partId: 'electron_computer' },
+            { shipType: 'interceptor' as const, slotIndex: 0, partId: 'electron_computer' },
+            { shipType: 'cruiser' as const, slotIndex: 0, partId: 'electron_computer' },
+          ],
+        };
+        const invalidRes = validateAction(game119, threeUpgradesAction);
+        expect(invalidRes.valid).toBe(false);
+        expect(invalidRes.error).toContain('Cannot make more than 2 component upgrades');
+
+        // Execute UPGRADE action on orbital and verify reducer applies it
+        const upgradeExecRes = executeAction(game119, singleOrbitalUpgradeAction);
+        expect(upgradeExecRes.success).toBe(true);
+        expect(upgradeExecRes.newState.players[0]!.blueprints.orbital.slots[0]?.id).toBe('electron_computer');
+
+        // ---------------------------------------------------------------------
+        // Bug 120: Population returned from orbital or wild planet chooses return destination
+        // Exception: Track space is full (11 cubes on board / production down to 2)
+        // ---------------------------------------------------------------------
+        const orbitalSlot: any = {
+          id: 'test_orbital_slot',
+          resource: 'any',
+          isOrbital: true,
+          colonizedResource: 'money',
+          colonizedBy: exilesPlayer.id,
+        };
+
+        // Case A: Both money and science have room (< 11 cubes) -> chosen preferred track is used
+        exilesPlayer.population.money.cubesOnBoard = 5;
+        exilesPlayer.population.science.cubesOnBoard = 8;
+        expect(resolveCubeReturnTrack(exilesPlayer, orbitalSlot, 'science')).toBe('science');
+        expect(resolveCubeReturnTrack(exilesPlayer, orbitalSlot, 'money')).toBe('money');
+
+        // Case B: Money is FULL (11 cubes on board / production 2) -> automatically routed to science!
+        exilesPlayer.population.money.cubesOnBoard = 11;
+        exilesPlayer.population.science.cubesOnBoard = 7;
+        expect(resolveCubeReturnTrack(exilesPlayer, orbitalSlot, 'money')).toBe('science');
+
+        // Case C: Science is FULL (11 cubes) -> automatically routed to money!
+        exilesPlayer.population.money.cubesOnBoard = 9;
+        exilesPlayer.population.science.cubesOnBoard = 11;
+        expect(resolveCubeReturnTrack(exilesPlayer, orbitalSlot, 'science')).toBe('money');
+
+        // Case D: Wild planet with money full -> routes to science or material
+        const wildSlot: any = {
+          id: 'test_wild_slot',
+          resource: 'any',
+          colonizedResource: 'money',
+          colonizedBy: exilesPlayer.id,
+        };
+        exilesPlayer.population.money.cubesOnBoard = 11;
+        exilesPlayer.population.science.cubesOnBoard = 6;
+        exilesPlayer.population.material.cubesOnBoard = 11;
+        expect(resolveCubeReturnTrack(exilesPlayer, wildSlot, 'money')).toBe('science');
+
+        // Case E: Influence action abandoning sector with abandonReturnTrack
+        const targetSector = game119.sectors.find((s) => s.discOwner === exilesPlayer.id)!;
+        targetSector.planets.push({
+          id: 'abandon_orb_planet',
+          resource: 'any',
+          isOrbital: true,
+          isAdvanced: false,
+          colonizedBy: exilesPlayer.id,
+          colonizedResource: 'money',
+        });
+        exilesPlayer.population.science.cubesOnBoard = 5;
+        exilesPlayer.population.money.cubesOnBoard = 5;
+        const influenceRes = executeAction(game119, {
+          type: 'INFLUENCE',
+          playerId: exilesPlayer.id,
+          abandonSectors: [targetSector.id],
+          abandonReturnTrack: {
+            abandon_orb_planet: 'science',
+          },
+        });
+        expect(influenceRes.success).toBe(true);
+        // Science cubes should have increased: home sector science planet (+1) + orbital cube (+1) = +2
+        expect(influenceRes.newState.players[0]!.population.science.cubesOnBoard).toBe(7);
+
+        // ---------------------------------------------------------------------
+        // Bug 121: For Exiles, orbital is shown on units list on the map
+        // ---------------------------------------------------------------------
+        const countMapWithOrbital: Record<string, number> = {
+          cruiser: 1,
+          orbital: 1,
+        };
+        const typeCounts: { type: string; count: number; label: string }[] = [];
+        if (countMapWithOrbital.interceptor) typeCounts.push({ type: 'interceptor', count: countMapWithOrbital.interceptor, label: 'Int' });
+        if (countMapWithOrbital.cruiser) typeCounts.push({ type: 'cruiser', count: countMapWithOrbital.cruiser, label: 'Cru' });
+        if (countMapWithOrbital.dreadnought) typeCounts.push({ type: 'dreadnought', count: countMapWithOrbital.dreadnought, label: 'Dre' });
+        if (countMapWithOrbital.starbase) typeCounts.push({ type: 'starbase', count: countMapWithOrbital.starbase, label: 'Sta' });
+        if (countMapWithOrbital.orbital) typeCounts.push({ type: 'orbital', count: countMapWithOrbital.orbital, label: 'Orb' });
+
+        expect(typeCounts).toContainEqual({ type: 'orbital', count: 1, label: 'Orb' });
+
+        // ---------------------------------------------------------------------
+        // Bug 122: Defender should always draw reputation tiles first
+        // ---------------------------------------------------------------------
+        const game122 = createInitialGame(2, ['the_exiles', 'terran_federation']);
+        const defender = game122.players[0]!; // Exiles is defender in home sector
+        const attacker = game122.players[1]!; // Terran is attacker
+        const combatSector = game122.sectors.find((s) => s.discOwner === defender.id)!;
+        combatSector.ships = [
+          { id: 'def_cruiser', type: 'cruiser', ownerId: defender.id, damage: 0 },
+          { id: 'att_cruiser', type: 'cruiser', ownerId: attacker.id, damage: 0 },
+        ];
+        game122.pendingExilesOrbitalSetup = undefined;
+        game122.phase = 'COMBAT_PHASE';
+        game122.activeCombat = {
+          sectorId: combatSector.id,
+          defenderOwnerId: defender.id,
+          roundNumber: 1,
+          stage: 'cannon',
+          destroyedShips: [
+            { shipId: 'att_cruiser', type: 'cruiser', ownerId: attacker.id, killerId: defender.id },
+            { shipId: 'def_cruiser', type: 'cruiser', ownerId: defender.id, killerId: attacker.id },
+          ],
+          participatingPlayerIds: [attacker.id, defender.id], // Notice attacker is listed first in raw array!
+        };
+
+        // Conclude engagement in combat
+        game122.activeCombat.stage = 'resolved';
+        combatSector.ships = [{ id: 'def_cruiser', type: 'cruiser', ownerId: defender.id, damage: 0 }];
+        const concludeRes = executeAction(game122, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: defender.id,
+          concludeCombat: true,
+        });
+        expect(concludeRes.success).toBe(true);
+        // Defender MUST be the first in pendingReputationDraw!
+        expect(concludeRes.newState.pendingReputationDraw).toBeDefined();
+        expect(concludeRes.newState.pendingReputationDraw!.playerId).toBe(defender.id);
+
+        // ---------------------------------------------------------------------
+        // Bug 123: Reputation selection and Discovery choice implemented as side windows
+        // ---------------------------------------------------------------------
+        const { ReputationTileModal } = await import('../../components/combat/ReputationTileModal');
+        const repModalHtml = renderToString(
+          React.createElement(ReputationTileModal, {
+            state: game122,
+            pendingDraw: {
+              playerId: defender.id,
+              drawnTiles: [2, 3],
+              sectorId: combatSector.id,
+            },
+            onClaimTile: () => {},
+          })
+        );
+        // Must NOT have full-screen blocking overlay (fixed inset-0 bg-black/90)
+        expect(repModalHtml).not.toContain('fixed inset-0 z-50 bg-black/90');
+        // Must be floating side window with map visible and minimize button
+        expect(repModalHtml).toContain('fixed top-18 right-2');
+        expect(repModalHtml).toContain('View Map');
+        expect(repModalHtml).toContain('REPUTATION TILE DRAW');
+
+        const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+        const discModalHtml = renderToString(
+          React.createElement(DiscoveryChoiceModal, {
+            discovery: DISCOVERY_TILES[0]!,
+            player: defender,
+            onChoice: () => {},
+          })
+        );
+        expect(discModalHtml).not.toContain('fixed inset-0 z-50 flex items-center justify-center bg-black/80');
+        expect(discModalHtml).toContain('fixed top-18 right-2');
+        expect(discModalHtml).toContain('View Map');
+        expect(discModalHtml).toContain('Ancient Artifact');
+
+        // ---------------------------------------------------------------------
+        // Bug 124: Player allowed to examine the board after game ends
+        // ---------------------------------------------------------------------
+        const { GameOverModal } = await import('../../components/gameover/GameOverModal');
+        const gameOverHtml = renderToString(
+          React.createElement(GameOverModal, {
+            state: {
+              ...game122,
+              winnerId: defender.id,
+              finalScores: {
+                [defender.id]: { total: 32, sectors: 10, monoliths: 6, reputation: 8, techs: 4, ambassadors: 2, discoveries: 2, traitor: false },
+                [attacker.id]: { total: 25, sectors: 8, monoliths: 4, reputation: 6, techs: 5, ambassadors: 1, discoveries: 1, traitor: false },
+              },
+            },
+            onNewGame: () => {},
+            onExitToLobby: () => {},
+          })
+        );
+        // Must contain "Examine Board" button
+        expect(gameOverHtml).toContain('Examine Board');
+        expect(gameOverHtml).toContain('GALACTIC SUPREMACY ACHIEVED!');
       });
     });
   });

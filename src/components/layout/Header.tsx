@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GameState } from '../../engine/types/state';
-import { computeCurrentScores } from '../../engine/rules/gameReducer';
+import { computeCurrentScores, getPlayerShortName } from '../../engine/rules/gameReducer';
 import { getTableNumber } from '../../engine/rules/persistence';
 import {
   Radio,
@@ -176,7 +176,7 @@ export const Header: React.FC<HeaderProps> = ({
                     className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: p.color }}
                   />
-                  <span className="hidden sm:inline">{p.name.split(' ')[1] || p.name}</span>
+                  <span className="hidden sm:inline">{getPlayerShortName(p)}</span>
                   <span className="text-[10px] text-amber-400 font-mono font-bold">
                     {displayVP}
                   </span>
@@ -282,7 +282,7 @@ export const Header: React.FC<HeaderProps> = ({
                           <option value="all">Hotseat (All)</option>
                           {state.players.map((p, idx) => (
                             <option key={p.id} value={idx.toString()}>
-                              Seat {idx + 1} ({p.name.split(' ')[0]})
+                              Seat {idx + 1} ({getPlayerShortName(p)})
                             </option>
                           ))}
                           <option value="spectator">Spectator</option>

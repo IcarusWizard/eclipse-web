@@ -624,14 +624,22 @@ export function getPlayerReputationTrackSlots(
     }
   }
 
-  // Then place reputation tiles into empty 'both' or 'rep_only' slots
+  // Then place reputation tiles: into empty 'rep_only' slots first, then into empty 'both' slots (Bug 118)
   let repIdx = 0;
   for (const slot of slots) {
-    if (
-      !slot.tile &&
-      (slot.slotType === 'both' || slot.slotType === 'rep_only') &&
-      repIdx < repTiles.length
-    ) {
+    if (!slot.tile && slot.slotType === 'rep_only' && repIdx < repTiles.length) {
+      const vp = repTiles[repIdx];
+      slot.tile = {
+        type: 'reputation',
+        vp,
+        repIndex: repIdx,
+      };
+      repIdx++;
+    }
+  }
+
+  for (const slot of slots) {
+    if (!slot.tile && slot.slotType === 'both' && repIdx < repTiles.length) {
       const vp = repTiles[repIdx];
       slot.tile = {
         type: 'reputation',

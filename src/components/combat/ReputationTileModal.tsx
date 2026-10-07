@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { GameState, PendingReputationDraw } from '../../engine/types/state';
-import { Trophy, Shield, CheckCircle2, ArrowRight, RotateCcw, X, Users } from 'lucide-react';
+import { Trophy, Shield, CheckCircle2, ArrowRight, RotateCcw, X, Users, Minimize2, Maximize2 } from 'lucide-react';
 import {
   getMaxReputationTilesForPlayer,
   getPlayerReputationTrackSlots,
@@ -17,6 +17,7 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
   pendingDraw,
   onClaimTile,
 }) => {
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const player = state.players.find((p) => p.id === pendingDraw.playerId);
   const sector = state.sectors.find((s) => s.id === pendingDraw.sectorId);
   if (!player) return null;
@@ -69,14 +70,41 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
     }
   };
 
+  // Minimized floating banner at top
+  if (isMinimized) {
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-amber-500 rounded-full shadow-2xl backdrop-blur-md text-white">
+          <Trophy className="w-4 h-4 text-amber-400" />
+          <span className="font-bold text-xs sm:text-sm tracking-wide text-amber-300 font-display">
+            REPUTATION DRAW: SECTOR {sector?.sectorNumber || 'Unknown'} ({player.name})
+          </span>
+          <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300">
+            {pendingDraw.drawnTiles.length} DRAWN
+          </span>
+          <div className="h-4 w-px bg-slate-800" />
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="px-3.5 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-full text-xs font-bold transition-all shadow-md shadow-amber-950/50 flex items-center gap-1.5 cursor-pointer"
+            title="Return to reputation selection"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>Select Tile</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Side window (Bug 123)
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-amber-500/70 rounded-2xl w-full max-w-xl shadow-2xl overflow-hidden text-slate-100 flex flex-col max-h-[90vh]">
+    <div className="fixed top-18 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] sm:w-125 max-w-xl pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
+      <div className="bg-slate-900/95 border-2 border-amber-500/80 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden text-slate-100 flex flex-col max-h-[calc(100vh-90px)]">
         {/* Header */}
-        <div className="p-5 border-b border-amber-900/50 bg-slate-950 flex items-center justify-between">
+        <div className="p-4 border-b border-amber-900/50 bg-slate-950 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-amber-500/20 border border-amber-500/40">
-              <Trophy className="w-6 h-6 text-amber-400" />
+            <div className="p-2 rounded-xl bg-amber-500/20 border border-amber-500/40">
+              <Trophy className="w-5 h-5 text-amber-400" />
             </div>
             <div>
               <h2 className="text-base font-bold text-amber-300 font-display">
@@ -88,9 +116,19 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
               </p>
             </div>
           </div>
-          <span className="text-xs font-mono font-bold px-2.5 py-1 rounded bg-amber-950/80 border border-amber-800 text-amber-300">
-            {pendingDraw.drawnTiles.length} Drawn
-          </span>
+          <div className="flex items-center gap-2">
+            <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800 text-amber-300">
+              {pendingDraw.drawnTiles.length} Drawn
+            </span>
+            <button
+              onClick={() => setIsMinimized(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-sm cursor-pointer"
+              title="Minimize to inspect map"
+            >
+              <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
+              <span>View Map</span>
+            </button>
+          </div>
         </div>
 
         {/* Content */}

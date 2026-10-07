@@ -1,6 +1,6 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { GameState } from '../../engine/types/state';
-import { Trophy, RefreshCw, Award, Star, Home } from 'lucide-react';
+import { Trophy, RefreshCw, Award, Star, Home, Eye, Minimize2, Maximize2 } from 'lucide-react';
 
 interface GameOverModalProps {
   state: GameState;
@@ -9,12 +9,47 @@ interface GameOverModalProps {
 }
 
 export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, onExitToLobby }) => {
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const winner = state.players.find((p) => p.id === state.winnerId);
   const scores = state.finalScores || {};
 
+  // Minimized floating banner allowing players to inspect the map and boards (Bug 124)
+  if (isMinimized) {
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-amber-500 rounded-full shadow-2xl backdrop-blur-md text-white">
+          <Trophy className="w-4 h-4 text-amber-400" />
+          <span className="font-bold text-xs sm:text-sm tracking-wide text-amber-300 font-display">
+            GAME OVER: {winner ? `${winner.name} Victorious (${scores[winner.id]?.total || 0} VP)` : 'Galactic Supremacy Concluded'}
+          </span>
+          <div className="h-4 w-px bg-slate-800" />
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="px-3.5 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-full text-xs font-bold transition-all shadow-md shadow-amber-950/50 flex items-center gap-1.5 cursor-pointer"
+            title="Return to final scores and end-game summary"
+          >
+            <Award className="w-3.5 h-3.5" />
+            <span>Show Scores</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-amber-500/60 rounded-2xl w-full max-w-4xl shadow-2xl p-6 text-slate-100 flex flex-col items-center text-center">
+      <div className="bg-slate-900 border border-amber-500/60 rounded-2xl w-full max-w-4xl shadow-2xl p-6 text-slate-100 flex flex-col items-center text-center relative max-h-[95vh] overflow-y-auto">
+        {/* Top bar with Examine Board button */}
+        <div className="w-full flex items-center justify-end mb-1">
+          <button
+            onClick={() => setIsMinimized(true)}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold border border-slate-700 hover:border-amber-500 transition-all shadow-sm cursor-pointer"
+            title="Minimize to examine galaxy board"
+          >
+            <Eye className="w-4 h-4 text-amber-400" />
+            <span>Examine Board</span>
+          </button>
+        </div>
         <Trophy className="w-16 h-16 text-amber-400 mb-3 animate-bounce" />
         <h2 className="text-2xl font-extrabold text-amber-300 font-display">
           GALACTIC SUPREMACY ACHIEVED!
@@ -98,6 +133,12 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, 
         </div>
 
         <div className="flex flex-wrap items-center justify-center gap-3">
+          <button
+            onClick={() => setIsMinimized(true)}
+            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase tracking-wider border border-slate-700 hover:border-amber-500 transition-all shadow-lg cursor-pointer"
+          >
+            <Eye className="w-4 h-4 text-amber-400" /> Examine Board
+          </button>
           {onExitToLobby && (
             <button
               onClick={onExitToLobby}

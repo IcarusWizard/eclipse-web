@@ -3,8 +3,56 @@
  */
 
 import { PlayerState } from '../types/player';
-import { SectorTile } from '../types/galaxy';
+import { SectorTile, PlanetSlot } from '../types/galaxy';
 import { TECH_TRACK_DISCOUNT_TABLE } from './techData';
+
+/**
+ * Determine which population track a returning cube should go back to (Bug 120).
+ * - Orbital cubes can only go to money or science.
+ * - Wild (gray, 'any') planet cubes can go to money, science, or material.
+ * - Specific resource planets go to their matching resource.
+ * If preferredTrack is provided, valid, and not full (< 11 cubes), it is chosen.
+ * Exception: A track with 11 cubes on board (income down to 2) is FULL and cannot receive cubes.
+ */
+export function resolveCubeReturnTrack(
+  player: PlayerState,
+  planet: PlanetSlot,
+  preferredTrack?: 'money' | 'science' | 'material'
+): 'money' | 'science' | 'material' {
+  const allowed: ('money' | 'science' | 'material')[] = planet.isOrbital
+    ? ['money', 'science']
+    : planet.resource === 'any'
+    ? ['money', 'science', 'material']
+    : [planet.resource as 'money' | 'science' | 'material'];
+
+  // 1. If preferredTrack is allowed and track has room (< 11 cubes)
+  if (
+    preferredTrack &&
+    allowed.includes(preferredTrack) &&
+    (player.population[preferredTrack]?.cubesOnBoard ?? 0) < 11
+  ) {
+    return preferredTrack;
+  }
+
+  // 2. If colonizedResource is allowed and track has room (< 11 cubes)
+  if (
+    planet.colonizedResource &&
+    allowed.includes(planet.colonizedResource) &&
+    (player.population[planet.colonizedResource]?.cubesOnBoard ?? 0) < 11
+  ) {
+    return planet.colonizedResource;
+  }
+
+  // 3. Pick any allowed track that has space (< 11 cubes)
+  for (const track of allowed) {
+    if ((player.population[track]?.cubesOnBoard ?? 0) < 11) {
+      return track;
+    }
+  }
+
+  // 4. If all allowed tracks are at maximum capacity (11 cubes), fallback
+  return preferredTrack || planet.colonizedResource || allowed[0] || 'money';
+}
 
 export const INCOME_TABLE = [
   28, // 0 cubes on board (11 colonized)
@@ -118,7 +166,8 @@ export interface UpkeepPhaseResult {
 
 export function abandonSectorForUpkeep(
   player: PlayerState,
-  sector: SectorTile
+  sector: SectorTile,
+  preferredReturnTracks?: Record<string, 'money' | 'science' | 'material'>
 ): {
   updatedPlayer: PlayerState;
   savedUpkeep: number;
@@ -137,7 +186,8 @@ export function abandonSectorForUpkeep(
   // Return population cubes from sector back to player board
   for (const p of sector.planets) {
     if (p.colonizedBy === updatedPlayer.id) {
-      const res = p.colonizedResource || (p.resource !== 'any' ? p.resource : 'money');
+      const preferred = preferredReturnTracks?.[p.id];
+      const res = resolveCubeReturnTrack(updatedPlayer, p, preferred);
       if (res === 'money' || res === 'science' || res === 'material') {
         updatedPlayer.population[res].cubesOnBoard = Math.min(
           11,

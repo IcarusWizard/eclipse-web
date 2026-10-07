@@ -23,7 +23,11 @@ interface InfluenceModalProps {
   player: PlayerState;
   sectors: SectorTile[];
   onClose: () => void;
-  onConfirm: (claimSectors: string[], abandonSectors: string[]) => void;
+  onConfirm: (
+    claimSectors: string[],
+    abandonSectors: string[],
+    abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>
+  ) => void;
 }
 
 export const InfluenceModal: React.FC<InfluenceModalProps> = ({
@@ -35,6 +39,9 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
   const maxActivations = getMaxInfluenceActivations(player);
   const [claimSectors, setClaimSectors] = useState<string[]>([]);
   const [abandonSectors, setAbandonSectors] = useState<string[]>([]);
+  const [abandonReturnTrack, setAbandonReturnTrack] = useState<
+    Record<string, 'money' | 'science' | 'material'>
+  >({});
 
   const hasWormholeGen = playerHasWormholeGenerator(player);
 
@@ -102,8 +109,11 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
 
   const handleExecute = () => {
     if (!canAffordDiscs) return;
-    onConfirm(claimSectors, abandonSectors);
+    onConfirm(claimSectors, abandonSectors, abandonReturnTrack);
   };
+
+  const moneyFull = player.population.money.cubesOnBoard >= 11;
+  const scienceFull = player.population.science.cubesOnBoard >= 11;
 
   return (
     <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
@@ -269,35 +279,115 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                 {controlledSectors.map((sec) => {
                   const isSelected = abandonSectors.includes(sec.id);
                   const popCount = sec.planets.filter((p) => p.colonizedBy === player.id).length;
+                  const flexiblePlanets = sec.planets.filter(
+                    (p) => p.colonizedBy === player.id && (p.isOrbital || p.resource === 'any')
+                  );
+
                   return (
                     <div
                       key={sec.id}
                       onClick={() => toggleAbandon(sec.id)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                      className={`p-3 rounded-xl border transition-all cursor-pointer flex flex-col justify-between ${
                         isSelected
                           ? 'bg-amber-950/40 border-amber-500 shadow-md ring-1 ring-amber-500/50'
                           : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
                       }`}
                     >
-                      <div>
-                        <div className="font-bold text-xs text-slate-200 flex items-center gap-1.5">
-                          <span>Sector {sec.sectorNumber}</span>
-                          <span className="text-[10px] text-slate-500 font-normal">Ring {sec.ring}</span>
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="font-bold text-xs text-slate-200 flex items-center gap-1.5">
+                            <span>Sector {sec.sectorNumber}</span>
+                            <span className="text-[10px] text-slate-500 font-normal">Ring {sec.ring}</span>
+                          </div>
+                          <div className="text-[10px] text-amber-400 mt-0.5">
+                            {popCount > 0 ? `${popCount} Population Cube(s) will return` : 'No population'}
+                          </div>
                         </div>
-                        <div className="text-[10px] text-amber-400 mt-0.5">
-                          {popCount > 0 ? `${popCount} Population Cube(s) will return` : 'No population'}
-                        </div>
+                        <button
+                          type="button"
+                          className={`text-xs px-2.5 py-1 rounded font-bold transition-all ${
+                            isSelected
+                              ? 'bg-amber-500 text-slate-950'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                          }`}
+                        >
+                          {isSelected ? 'Abandoning' : 'Abandon'}
+                        </button>
                       </div>
-                      <button
-                        type="button"
-                        className={`text-xs px-2.5 py-1 rounded font-bold transition-all ${
-                          isSelected
-                            ? 'bg-amber-500 text-slate-950'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                        }`}
-                      >
-                        {isSelected ? 'Abandoning' : 'Abandon'}
-                      </button>
+
+                      {/* Bug 120: Destination track selection for orbital or wild planet cubes */}
+                      {isSelected && flexiblePlanets.length > 0 && (
+                        <div
+                          className="mt-2.5 pt-2 border-t border-amber-900/60 space-y-1.5"
+                          onClick={(e) => e.stopPropagation()}
+                        >
+                          {flexiblePlanets.map((fp) => {
+                            const isOrb = Boolean(fp.isOrbital);
+                            const options: ('money' | 'science' | 'material')[] = isOrb
+                              ? ['money', 'science']
+                              : ['money', 'science', 'material'];
+                            const currentChoice =
+                              abandonReturnTrack[fp.id] ||
+                              (isOrb
+                                ? fp.colonizedResource === 'science' && !scienceFull
+                                  ? 'science'
+                                  : !moneyFull
+                                  ? 'money'
+                                  : 'science'
+                                : fp.colonizedResource && player.population[fp.colonizedResource].cubesOnBoard < 11
+                                ? fp.colonizedResource
+                                : !moneyFull
+                                ? 'money'
+                                : !scienceFull
+                                ? 'science'
+                                : 'material');
+
+                            return (
+                              <div
+                                key={fp.id}
+                                className="text-[10px] bg-slate-900/90 p-1.5 rounded-lg border border-slate-800"
+                              >
+                                <span className="font-semibold text-slate-300">
+                                  Return {isOrb ? 'Orbital' : 'Wild'} Cube to:
+                                </span>
+                                <div className="flex items-center gap-1 mt-1">
+                                  {options.map((opt) => {
+                                    const isOptFull = player.population[opt].cubesOnBoard >= 11;
+                                    const isChosen = currentChoice === opt;
+                                    return (
+                                      <button
+                                        key={opt}
+                                        type="button"
+                                        disabled={isOptFull}
+                                        onClick={() => {
+                                          setAbandonReturnTrack((prev) => ({
+                                            ...prev,
+                                            [fp.id]: opt,
+                                          }));
+                                        }}
+                                        className={`px-1.5 py-0.5 rounded text-[9px] font-bold uppercase transition-all ${
+                                          isOptFull
+                                            ? 'bg-slate-900 text-slate-600 border border-slate-800 cursor-not-allowed line-through'
+                                            : isChosen
+                                            ? 'bg-amber-400 text-slate-950 font-black shadow'
+                                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                                        }`}
+                                        title={
+                                          isOptFull
+                                            ? 'Track is FULL (11 cubes / production 2)'
+                                            : `Return to ${opt}`
+                                        }
+                                      >
+                                        {opt} {isOptFull ? '(Full)' : `(${player.population[opt].cubesOnBoard}/11)`}
+                                      </button>
+                                    );
+                                  })}
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   );
                 })}

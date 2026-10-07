@@ -24,6 +24,21 @@ export interface CombatRoll {
   damage: number;
   selfDamage?: number;
   symbol?: string;
+  targetShipId?: string;
+}
+
+export interface CombatDamageAssignment {
+  rollIndex: number;
+  targetShipId: string;
+}
+
+export interface PendingDamageAssignment {
+  attackerOwnerId: string;
+  attackerShipType: string;
+  attackerShipIds: string[];
+  computerBonus: number;
+  rolls: CombatRoll[];
+  isMissile: boolean;
 }
 
 export interface CombatState {
@@ -44,6 +59,7 @@ export interface CombatState {
   destroyedShips?: { shipId: string; type: string; ownerId: string; killerId?: string }[];
   participatingPlayerIds?: string[];
   missileFiredShipIds?: string[];
+  pendingDamageAssignment?: PendingDamageAssignment | null;
 }
 
 export interface PendingReputationDraw {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo } from 'react';
-import { GameState } from './engine/types/state';
+import { GameState, CombatDamageAssignment } from './engine/types/state';
 import { SectorTile, HexCoord, ShipType, SectorShip } from './engine/types/galaxy';
 import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
@@ -11,7 +11,7 @@ import {
 } from './engine/rules/gameReducer';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
-import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative } from './engine/rules/combatEngine';
+import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups } from './engine/rules/combatEngine';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X } from 'lucide-react';
 
@@ -1169,12 +1169,17 @@ export const App: React.FC = () => {
   };
 
   // Influence flow (Claim / Abandon sector control)
-  const handleExecuteInfluence = (claimSectors: string[], abandonSectors: string[]) => {
+  const handleExecuteInfluence = (
+    claimSectors: string[],
+    abandonSectors: string[],
+    abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>
+  ) => {
     const res = executeAction(state, {
       type: 'INFLUENCE',
       playerId: activePlayer.id,
       claimSectors: claimSectors.length > 0 ? claimSectors : undefined,
       abandonSectors: abandonSectors.length > 0 ? abandonSectors : undefined,
+      abandonReturnTrack,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -1219,7 +1224,14 @@ export const App: React.FC = () => {
   };
 
   // Step Combat
-  const handleStepCombat = (retreatShipIds?: string[], retreatDestinationSectorId?: string, concludeCombat?: boolean) => {
+  const handleStepCombat = (
+    retreatShipIds?: string[],
+    retreatDestinationSectorId?: string,
+    concludeCombat?: boolean,
+    rerollRollIndex?: number,
+    autoAssign?: boolean,
+    damageAssignments?: CombatDamageAssignment[]
+  ) => {
     if (!state.activeCombat) return;
 
     // Determine commanding player ID
@@ -1227,8 +1239,10 @@ export const App: React.FC = () => {
       ? state.players[currentSeat].id
       : undefined;
 
-    if (!commandingPlayerId && !concludeCombat && state.activeCombat.stage !== 'resolved') {
-      // In 'all' mode: automatically use the active ship's owner (or activePlayer if neutral)
+    if (state.activeCombat.pendingDamageAssignment) {
+      commandingPlayerId = state.activeCombat.pendingDamageAssignment.attackerOwnerId;
+    } else if (!commandingPlayerId && !concludeCombat && state.activeCombat.stage !== 'resolved') {
+      // In 'all' mode: automatically use the active group's owner (or activePlayer if neutral)
       const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
       if (sec) {
         const units = buildCombatUnitsForSector(
@@ -1242,17 +1256,18 @@ export const App: React.FC = () => {
           units.filter((u) => u.currentDamage < u.maxHull),
           defenderId
         );
+        const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
         const isMissileStage = state.activeCombat.stage === 'missile';
-        const pendingMissileUnits = isMissileStage
-          ? aliveUnits.filter(
-              (u) => u.weapons.some((w) => w.isMissile) && !state.activeCombat!.missileFiredShipIds?.includes(u.id)
+        const pendingMissileGroups = isMissileStage
+          ? groups.filter(
+              (g) => g.weapons.some((w) => w.isMissile) && !g.shipIds.every((id) => state.activeCombat!.missileFiredShipIds?.includes(id))
             )
           : [];
-        const activeAttacker = isMissileStage
-          ? (pendingMissileUnits[0] || null)
-          : (aliveUnits.length > 0 ? aliveUnits[state.activeCombat.currentTurnIndex % aliveUnits.length] : null);
-        if (activeAttacker && activeAttacker.ownerId.startsWith('player_')) {
-          commandingPlayerId = activeAttacker.ownerId;
+        const activeGroup = isMissileStage
+          ? (pendingMissileGroups[0] || null)
+          : (groups.length > 0 ? groups[state.activeCombat.currentTurnIndex % groups.length] : null);
+        if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
+          commandingPlayerId = activeGroup.ownerId;
         }
       }
     }
@@ -1264,6 +1279,9 @@ export const App: React.FC = () => {
       retreatShipIds,
       retreatDestinationSectorId,
       concludeCombat,
+      rerollRollIndex,
+      autoAssign,
+      damageAssignments,
     });
     if (res.success) {
       setState(res.newState);

@@ -1,5 +1,5 @@
 import React from 'react';
-import { Rocket, Wrench, Archive, Trophy, Zap, Cpu, AlertTriangle } from 'lucide-react';
+import { Rocket, Wrench, Archive, Trophy, Zap, Cpu, AlertTriangle, Minimize2, Maximize2 } from 'lucide-react';
 import { DiscoveryTile, ShipType } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
 import { Technology } from '../../engine/types/tech';
@@ -28,6 +28,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 }) => {
   const part = discovery.shipPartId ? SHIP_PARTS[discovery.shipPartId] : null;
 
+  const [isMinimized, setIsMinimized] = React.useState<boolean>(false);
   const [selectedShipType, setSelectedShipType] = React.useState<ShipType>('cruiser');
   const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number>(0);
   const [selectedTechId, setSelectedTechId] = React.useState<string>('');
@@ -79,17 +80,56 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
     }
   }, [tiedTechs, selectedTechId]);
 
+  // Minimized floating banner at top
+  if (isMinimized) {
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-amber-500 rounded-full shadow-2xl backdrop-blur-md text-white">
+          <Trophy className="w-4 h-4 text-amber-400" />
+          <span className="font-bold text-xs sm:text-sm tracking-wide text-amber-300 font-display">
+            ANCIENT DISCOVERY: {discovery.name} ({player.name})
+          </span>
+          <div className="h-4 w-px bg-slate-800" />
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="px-3.5 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-full text-xs font-bold transition-all shadow-md shadow-amber-950/50 flex items-center gap-1.5 cursor-pointer"
+            title="Return to discovery resolution"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>Resolve Discovery</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Side window (Bug 123)
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-xl bg-slate-900 border-2 border-amber-500/50 rounded-2xl shadow-2xl shadow-amber-500/20 p-6 flex flex-col items-center text-center overflow-hidden">
+    <div className="fixed top-18 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] sm:w-125 max-w-xl pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
+      <div className="relative w-full bg-slate-900/95 border-2 border-amber-500/80 rounded-2xl shadow-2xl backdrop-blur-md p-5 flex flex-col items-center text-center overflow-y-auto max-h-[calc(100vh-90px)]">
         {/* Glow ambient decoration */}
         <div className="absolute -top-24 -left-24 w-48 h-48 bg-amber-500/20 rounded-full blur-3xl pointer-events-none" />
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
 
+        {/* Header Action Bar */}
+        <div className="w-full flex items-center justify-between mb-2">
+          <span className="text-[10px] uppercase tracking-widest text-amber-400 font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800/80">
+            Ancient Artifact
+          </span>
+          <button
+            onClick={() => setIsMinimized(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-sm cursor-pointer"
+            title="Minimize to inspect map"
+          >
+            <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
+            <span>View Map</span>
+          </button>
+        </div>
+
         {/* Discovery Icon Header */}
-        <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30 mb-3 border border-amber-300/40">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30 mb-2 border border-amber-300/40">
           <svg
-            className="w-8 h-8 text-slate-950"
+            className="w-7 h-7 text-slate-950"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -101,13 +141,10 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           </svg>
         </div>
 
-        <div className="text-xs uppercase tracking-widest text-amber-400 font-black mb-1">
-          Ancient Discovery Uncovered
-        </div>
-        <h2 className="text-2xl font-black text-white tracking-wide mb-1">
+        <h2 className="text-xl font-black text-white tracking-wide mb-1">
           {discovery.name}
         </h2>
-        <div className="text-xs text-slate-400 mb-4 font-medium">
+        <div className="text-xs text-slate-400 mb-3 font-medium">
           Commander <span className="font-bold text-slate-200">{player.name}</span> must decide how to utilize this ancient artifact.
         </div>
 
