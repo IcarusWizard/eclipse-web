@@ -2,7 +2,7 @@
  * Official Expansion Modules & Configuration for Eclipse: Second Dawn
  */
 
-export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts';
+export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species';
 
 export interface ExpansionDefinition {
   readonly id: ExpansionId;
@@ -79,6 +79,20 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'Home Sectors: Sector 234 (Outer Rim) and Sector 236 (The Desolation).',
     ],
   },
+  {
+    id: 'minor_species',
+    name: 'Minor Species',
+    shortName: 'Minor Species',
+    badge: 'Ambassador Tiles',
+    description: 'Introduces 9 Minor Species Ambassador Tiles that can be allied with for Money at any time during your actions.',
+    features: [
+      '4 randomly selected Minor Species Ambassador Tiles available in the play area',
+      'Pay Money cost to ally and place the tile on an empty Ambassador space on your Reputation Track',
+      'Allies grant immediate building/tech discounts or end-game scoring bonuses',
+      'Allowed in 2-6 player games (even when player-to-player diplomacy is disabled)',
+      'Minor Species Ambassador Tiles cannot be discarded once acquired',
+    ],
+  },
 ];
 
 export function isExpansionActive(expansions: string[] | undefined, id: ExpansionId): boolean {
@@ -140,6 +154,9 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'rho indi'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'outcasts') || null;
+  }
+  if (norm.startsWith('minor_species') || norm.includes('minor species')) {
+    return AVAILABLE_EXPANSIONS.find((e) => e.id === 'minor_species') || null;
   }
   return null;
 }

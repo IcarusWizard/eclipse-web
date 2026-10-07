@@ -8,6 +8,7 @@ import {
   ALL_RARE_TECHS,
   calculateTechCost,
 } from '../../engine/rules/techData';
+import { getMinorSpeciesTechDiscount } from '../../engine/rules/minorSpecies';
 import {
   Cpu,
   FlaskConical,
@@ -138,7 +139,9 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
       else if (item.targetTrack === 'grid') countBefore = gCount++;
       else countBefore = nCount++;
 
-      const cost = calculateTechCost(tech, countBefore);
+      const baseCost = calculateTechCost(tech, countBefore);
+      const msDiscount = getMinorSpeciesTechDiscount(commander);
+      const cost = Math.max(tech.minCost, baseCost - msDiscount);
       const discount = tech.baseCost - cost;
       totalScience += cost;
       return { ...item, tech, cost, discount, countBefore };
@@ -183,7 +186,8 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     }
     const trackCount = chosenTrack ? getTrackCount(chosenTrack) : 0;
     const isTrackFull = trackCount >= 7;
-    const discountedCost = calculateTechCost(tech, trackCount);
+    const msDiscount = getMinorSpeciesTechDiscount(commander);
+    const discountedCost = Math.max(tech.minCost, calculateTechCost(tech, trackCount) - msDiscount);
     const canAfford = commander.resources.science >= discountedCost;
     const canResearch = isCommanderTurn && !hasPassed && hasActionDiscs && stock > 0 && !isOwned && canAfford && !isTrackFull;
 
@@ -336,7 +340,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 {(['military', 'grid', 'nano'] as const).map((tr) => {
                   const trCount = getTrackCount(tr);
                   const isTrFull = trCount >= 7;
-                  const costOnTr = calculateTechCost(tech, trCount);
+                  const costOnTr = Math.max(tech.minCost, calculateTechCost(tech, trCount) - msDiscount);
                   const isSelectedTr = chosenTrack === tr;
                   return (
                     <button

@@ -662,17 +662,17 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               <div
                                 className="w-9 h-9 rounded-lg flex items-center justify-center shadow-md border-2"
                                 style={{
-                                  backgroundColor: (ally?.color || '#6366f1') + '33',
-                                  borderColor: ally?.color || '#818cf8',
+                                  backgroundColor: (ally?.color || slot.tile?.allyColor || '#10b981') + '33',
+                                  borderColor: ally?.color || slot.tile?.allyColor || '#10b981',
                                 }}
                               >
-                                <Handshake className="w-5 h-5" style={{ color: ally?.color || '#a5b4fc' }} />
+                                <Handshake className="w-5 h-5" style={{ color: ally?.color || slot.tile?.allyColor || '#34d399' }} />
                               </div>
                               <span className="text-base font-extrabold font-display text-indigo-300 mt-0.5">
-                                +1 VP
+                                +{slot.tile?.vp ?? 1} VP
                               </span>
-                              <span className="text-[10px] font-medium text-slate-300 truncate max-w-[100px]" title={ally?.name}>
-                                {ally?.name || allyId}
+                              <span className="text-[10px] font-medium text-slate-300 truncate max-w-[100px]" title={slot.tile?.allyName || ally?.name || allyId || ''}>
+                                {slot.tile?.allyName || ally?.name || allyId}
                               </span>
                             </div>
                           ) : hasRepTile ? (

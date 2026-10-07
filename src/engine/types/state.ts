@@ -6,6 +6,7 @@ import { SectorTile, DiscoveryTile, HexCoord } from './galaxy';
 import { PlayerState } from './player';
 import { Technology } from './tech';
 import type { NeutralShipConfig, NeutralShipSelectionConfig } from '../rules/neutralShips';
+import type { MinorSpeciesTile } from '../rules/minorSpecies';
 
 export type GamePhase =
   | 'ACTION_PHASE'
@@ -180,6 +181,7 @@ export interface GameState {
   techBag: Technology[];
   reputationBag: number[];
   discoveryBag: DiscoveryTile[];
+  minorSpeciesSupply?: MinorSpeciesTile[];
   activeCombat: CombatState | null;
   pendingExplore: PendingExplore | null;
   pendingExploreActivations?: number; // for multi-activation explore (e.g. Planta)

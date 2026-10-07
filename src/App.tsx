@@ -47,6 +47,8 @@ import { BugReportModal } from './components/feedback/BugReportModal';
 import { BugReportCornerButton } from './components/feedback/BugReportCornerButton';
 import { DiplomacyModal, PopulationResourceType } from './components/diplomacy/DiplomacyModal';
 import { TurnOrderTrackModal } from './components/turnOrder/TurnOrderTrackModal';
+import { MinorSpeciesModal } from './components/minorSpecies/MinorSpeciesModal';
+import { MinorSpeciesId } from './engine/rules/minorSpecies';
 import {
   loadActiveGameState,
   saveGameState,
@@ -103,6 +105,7 @@ export const App: React.FC = () => {
   const [isNewGameOpen, setIsNewGameOpen] = useState<boolean>(false);
   const [isBugReportOpen, setIsBugReportOpen] = useState<boolean>(false);
   const [isTurnOrderOpen, setIsTurnOrderOpen] = useState<boolean>(false);
+  const [isMinorSpeciesOpen, setIsMinorSpeciesOpen] = useState<boolean>(false);
   const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
@@ -1378,6 +1381,24 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleClaimMinorSpecies = (
+    speciesId: MinorSpeciesId,
+    populationTrack?: 'money' | 'science' | 'material'
+  ) => {
+    const res = executeAction(state, {
+      type: 'CLAIM_MINOR_SPECIES',
+      playerId: activePlayer.id,
+      speciesId,
+      populationTrack,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast('Formed Diplomatic Relations with Minor Species!');
+    } else {
+      showToast(res.error || 'Failed to form Diplomatic Relations.');
+    }
+  };
+
   // Find candidate tile for exploration preview if pending
   const candidateTile = React.useMemo(() => {
     if (!pendingExploreCoords) return null;
@@ -1461,6 +1482,7 @@ export const App: React.FC = () => {
         onOpenGallery={() => setIsGalleryOpen(true)}
         onOpenBugReport={() => setIsBugReportOpen(true)}
         onOpenTurnOrder={() => setIsTurnOrderOpen(true)}
+        onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
         onReturnToLobby={handleReturnToLobby}
         currentSeat={currentSeat}
         onChangeSeat={handleChangeSeat}
@@ -1902,6 +1924,15 @@ export const App: React.FC = () => {
         onClose={() => setIsTurnOrderOpen(false)}
         state={state}
       />
+
+      {isMinorSpeciesOpen && state.expansions?.includes('minor_species') && (
+        <MinorSpeciesModal
+          state={state}
+          activePlayer={activePlayer}
+          onClaimMinorSpecies={handleClaimMinorSpecies}
+          onClose={() => setIsMinorSpeciesOpen(false)}
+        />
+      )}
 
       <BugReportModal
         isOpen={isBugReportOpen}

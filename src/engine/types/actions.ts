@@ -4,6 +4,7 @@
 
 import { HexCoord, ShipType, PlanetResourceType } from './galaxy';
 import { CombatDamageAssignment } from './state';
+import type { MinorSpeciesId } from '../rules/minorSpecies';
 
 export type ActionType =
   | 'EXPLORE'
@@ -23,6 +24,7 @@ export type ActionType =
   | 'ALLOCATE_ARTIFACT_REWARD'
   | 'ABANDON_SECTOR_BANKRUPTCY'
   | 'CONFIRM_TURN_ACTION'
+  | 'CLAIM_MINOR_SPECIES'
   | 'REVERT_TURN_ACTION'
   | 'PROPOSE_DIPLOMACY'
   | 'RESPOND_DIPLOMACY'
@@ -228,6 +230,12 @@ export interface ChooseExilesOrbitalCubeAction extends BaseAction {
   resource: 'money' | 'science';
 }
 
+export interface ClaimMinorSpeciesAction extends BaseAction {
+  type: 'CLAIM_MINOR_SPECIES';
+  speciesId: MinorSpeciesId;
+  populationTrack?: 'money' | 'science' | 'material';
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -253,4 +261,5 @@ export type GameAction =
   | ConvertColonyShipAction
   | PlaceShrineAction
   | RerollCombatDieAction
-  | ChooseExilesOrbitalCubeAction;
+  | ChooseExilesOrbitalCubeAction
+  | ClaimMinorSpeciesAction;

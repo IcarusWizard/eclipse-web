@@ -15,6 +15,7 @@ import {
 } from '../../engine/rules/sectorData';
 import { ALL_FACTIONS } from '../../engine/rules/setup';
 import { getExpansionForItem } from '../../engine/rules/expansions';
+import { ALL_MINOR_SPECIES_TILES } from '../../engine/rules/minorSpecies';
 import { Technology } from '../../engine/types/tech';
 import { ShipPart } from '../../engine/types/blueprints';
 import { DiscoveryTile } from '../../engine/types/galaxy';
@@ -990,6 +991,50 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                       <strong className="text-slate-200">Mechanema:</strong> 4 Reputation Slots
                     </li>
                   </ul>
+                </div>
+              </div>
+
+              {/* Minor Species Expansion Ambassador Tiles */}
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold text-emerald-400 font-display uppercase tracking-wider flex items-center gap-2">
+                    <Users className="w-4 h-4 text-emerald-400" />
+                    Minor Species Expansion: Ambassador Tiles (9 Tiles)
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60 font-bold uppercase">
+                    Minor Species
+                  </span>
+                </div>
+                <p className="text-xs text-slate-300 leading-relaxed">
+                  In games with the Minor Species expansion, 4 random Minor Species Ambassador Tiles are placed in the play area. During their actions, any player can pay the Money cost to place a tile on an empty Ambassador space on their Reputation Track, gaining powerful permanent discounts and endgame Victory Points.
+                </p>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
+                  {ALL_MINOR_SPECIES_TILES.map((tile) => (
+                    <div
+                      key={tile.id}
+                      className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/50 transition flex flex-col justify-between"
+                    >
+                      <div>
+                        <div className="flex items-start justify-between gap-2 mb-1.5">
+                          <h4 className="text-xs font-bold text-slate-100">{tile.name}</h4>
+                          <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300 shrink-0">
+                            {tile.cost} Money
+                          </span>
+                        </div>
+                        <div className="text-[11px] font-semibold text-indigo-400 mb-2">
+                          {tile.vpDescription}
+                        </div>
+                        <p className="text-[11px] text-slate-300 leading-relaxed bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+                          {tile.abilityDescription}
+                        </p>
+                      </div>
+                      <div className="mt-2.5 pt-2 border-t border-slate-800/80 flex items-center justify-between text-[10px] text-slate-500 font-mono">
+                        <span>Ambassador Tile</span>
+                        <span className="text-emerald-400 font-bold">Minor Species</span>
+                      </div>
+                    </div>
+                  ))}
                 </div>
               </div>
             </div>

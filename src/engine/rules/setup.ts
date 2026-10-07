@@ -15,6 +15,10 @@ import {
   NeutralShipSelectionConfig,
   resolveNeutralShipConfig,
 } from './neutralShips';
+import {
+  createInitialMinorSpeciesSupply,
+  ALL_MINOR_SPECIES_TILES,
+} from './minorSpecies';
 
 export const ECLIPSE_COLOR_PALETTE = {
   red: '#dc2626',
@@ -598,14 +602,25 @@ export function getPlayerReputationTrackSlots(
   for (const slot of slots) {
     if (slot.slotType === 'amb_only' && ambIdx < ambTiles.length) {
       const allyId = ambTiles[ambIdx++];
-      const ally = players?.find((p) => p.id === allyId);
-      slot.tile = {
-        type: 'ambassador',
-        allyId,
-        allyName: ally?.name || allyId,
-        allyColor: ally?.color || '#6366f1',
-        vp: 1,
-      };
+      if (allyId.startsWith('minor_species_')) {
+        const ms = ALL_MINOR_SPECIES_TILES.find((m) => m.id === allyId);
+        slot.tile = {
+          type: 'ambassador',
+          allyId,
+          allyName: ms?.name || 'Minor Species',
+          allyColor: '#10b981',
+          vp: ms?.vp || 1,
+        };
+      } else {
+        const ally = players?.find((p) => p.id === allyId);
+        slot.tile = {
+          type: 'ambassador',
+          allyId,
+          allyName: ally?.name || allyId,
+          allyColor: ally?.color || '#6366f1',
+          vp: 1,
+        };
+      }
     }
   }
 
@@ -613,14 +628,25 @@ export function getPlayerReputationTrackSlots(
   for (const slot of slots) {
     if (!slot.tile && slot.slotType === 'both' && ambIdx < ambTiles.length) {
       const allyId = ambTiles[ambIdx++];
-      const ally = players?.find((p) => p.id === allyId);
-      slot.tile = {
-        type: 'ambassador',
-        allyId,
-        allyName: ally?.name || allyId,
-        allyColor: ally?.color || '#6366f1',
-        vp: 1,
-      };
+      if (allyId.startsWith('minor_species_')) {
+        const ms = ALL_MINOR_SPECIES_TILES.find((m) => m.id === allyId);
+        slot.tile = {
+          type: 'ambassador',
+          allyId,
+          allyName: ms?.name || 'Minor Species',
+          allyColor: '#10b981',
+          vp: ms?.vp || 1,
+        };
+      } else {
+        const ally = players?.find((p) => p.id === allyId);
+        slot.tile = {
+          type: 'ambassador',
+          allyId,
+          allyName: ally?.name || allyId,
+          allyColor: ally?.color || '#6366f1',
+          vp: 1,
+        };
+      }
     }
   }
 
@@ -1053,6 +1079,7 @@ export function createInitialGame(
     techBag,
     reputationBag,
     discoveryBag,
+    minorSpeciesSupply: expansions?.includes('minor_species') ? createInitialMinorSpeciesSupply() : undefined,
     activeCombat: null,
     pendingExplore: null,
     pendingDiscovery: null,

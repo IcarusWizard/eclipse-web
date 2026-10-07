@@ -265,7 +265,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
             <span className="font-bold text-purple-200 uppercase tracking-wide text-[11px]">
               Expansions:
             </span>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               {AVAILABLE_EXPANSIONS.map((exp) => {
                 const active = selectedExpansions.includes(exp.id);
                 return (

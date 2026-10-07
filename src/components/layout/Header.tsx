@@ -18,6 +18,7 @@ import {
   SlidersHorizontal,
   ChevronRight,
   ListOrdered,
+  Users,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -33,6 +34,7 @@ interface HeaderProps {
   onReturnToLobby?: () => void;
   onOpenBugReport?: () => void;
   onOpenTurnOrder?: () => void;
+  onOpenMinorSpecies?: () => void;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
 }
@@ -50,6 +52,7 @@ export const Header: React.FC<HeaderProps> = ({
   onReturnToLobby,
   onOpenBugReport,
   onOpenTurnOrder,
+  onOpenMinorSpecies,
   currentSeat = 'all',
   onChangeSeat,
 }) => {
@@ -132,6 +135,23 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <ListOrdered className="w-3.5 h-3.5 text-purple-400" />
               <span className="hidden md:inline">Turn Order</span>
+            </button>
+          )}
+
+          {/* Minor Species Embassy Button */}
+          {onOpenMinorSpecies && state.expansions?.includes('minor_species') && (
+            <button
+              onClick={onOpenMinorSpecies}
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-600/60 text-emerald-200 text-xs font-bold transition-all shadow cursor-pointer shrink-0"
+              title="Minor Species Embassy"
+            >
+              <Users className="w-3.5 h-3.5 text-emerald-400" />
+              <span className="hidden md:inline">Minor Species</span>
+              {state.minorSpeciesSupply && state.minorSpeciesSupply.length > 0 && (
+                <span className="px-1.5 py-0.2 rounded-full bg-emerald-900 text-[10px] font-mono text-emerald-300 border border-emerald-700">
+                  {state.minorSpeciesSupply.length}
+                </span>
+              )}
             </button>
           )}
         </div>
@@ -431,6 +451,33 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-purple-400 transition" />
+                      </button>
+                    )}
+
+                    {/* Minor Species Embassy (Expansion) */}
+                    {onOpenMinorSpecies && state.expansions?.includes('minor_species') && (
+                      <button
+                        onClick={() => {
+                          setIsDrawerOpen(false);
+                          onOpenMinorSpecies();
+                        }}
+                        className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800 border border-slate-800 hover:border-emerald-600/50 text-slate-200 transition group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-emerald-950/60 border border-emerald-600/40 flex items-center justify-center text-emerald-400">
+                            <Users className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="text-left">
+                            <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
+                              <span>Minor Species Embassy</span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60">
+                                Expansion
+                              </span>
+                            </div>
+                            <div className="text-[10px] text-slate-400">Diplomatic Relations & Ambassador Tiles</div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition" />
                       </button>
                     )}
 

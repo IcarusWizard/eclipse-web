@@ -3,6 +3,7 @@ import { PlayerState } from '../../engine/types/player';
 import { SectorTile, ShipType } from '../../engine/types/galaxy';
 import { getMaxBuildActivations } from '../../engine/rules/gameReducer';
 import { SHIP_LIMITS, countPlayerShips } from '../../engine/rules/shipValidation';
+import { getMinorSpeciesBuildDiscount } from '../../engine/rules/minorSpecies';
 import {
   Hammer,
   CircleAlert,
@@ -76,28 +77,37 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   };
 
   const getItemCost = (type: ShipType | 'orbital' | 'monolith') => {
+    let base = 0;
     switch (type) {
       case 'interceptor':
-        if (isMechanema) return 2;
-        if (isRhoIndi) return 4;
-        return 3;
+        if (isMechanema) base = 2;
+        else if (isRhoIndi) base = 4;
+        else base = 3;
+        break;
       case 'cruiser':
-        if (isMechanema) return 4;
-        if (isRhoIndi) return 6;
-        return 5;
+        if (isMechanema) base = 4;
+        else if (isRhoIndi) base = 6;
+        else base = 5;
+        break;
       case 'dreadnought':
-        return isMechanema ? 7 : 8;
+        base = isMechanema ? 7 : 8;
+        break;
       case 'starbase':
-        if (isMechanema) return 2;
-        if (isRhoIndi) return 4;
-        return 3;
+        if (isMechanema) base = 2;
+        else if (isRhoIndi) base = 4;
+        else base = 3;
+        break;
       case 'orbital':
-        if (isMechanema) return 3;
-        if (isExiles) return 5;
-        return 4;
+        if (isMechanema) base = 3;
+        else if (isExiles) base = 5;
+        else base = 4;
+        break;
       case 'monolith':
-        return isMechanema ? 8 : 10;
+        base = isMechanema ? 8 : 10;
+        break;
     }
+    const discount = getMinorSpeciesBuildDiscount(player, type);
+    return Math.max(0, base - discount);
   };
 
   const buildItems: {

@@ -24,6 +24,14 @@ import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile } from '../
 import { PlayerState } from '../types/player';
 import { getMaxReputationTilesForPlayer } from './setup';
 import { DISCOVERY_TILES } from './sectorData';
+import {
+  ALL_MINOR_SPECIES_TILES,
+  getAvailableAmbassadorSlotsCount,
+  getMinorSpeciesBuildDiscount,
+  getMinorSpeciesTechDiscount,
+  calculateMinorSpeciesScores,
+  MinorSpeciesId,
+} from './minorSpecies';
 
 export function getPlayerShortName(playerOrName?: { name: string; faction?: { id: string; name: string } } | string | null): string {
   if (!playerOrName) return '';
@@ -272,7 +280,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'CONVERT_COLONY_SHIP' &&
       action.type !== 'REROLL_COMBAT_DIE' &&
-      action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE'
+      action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
+      action.type !== 'CLAIM_MINOR_SPECIES'
     ) {
       return {
         valid: false,
@@ -301,7 +310,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'CONVERT_COLONY_SHIP' &&
       action.type !== 'REROLL_COMBAT_DIE' &&
-      action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE'
+      action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
+      action.type !== 'CLAIM_MINOR_SPECIES'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -493,7 +503,10 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
         }
 
-        totalScienceCost += calculateTechCost(tech, count);
+        const baseCost = calculateTechCost(tech, count);
+        const msTechDiscount = getMinorSpeciesTechDiscount(player);
+        const actualCost = Math.max(tech.minCost, baseCost - msTechDiscount);
+        totalScienceCost += actualCost;
       }
 
       if (player.resources.science < totalScienceCost) {
@@ -703,6 +716,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         else if (item.itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
         else if (item.itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
         else if (item.itemType === 'monolith') cost = isMechanema ? 8 : 10;
+
+        const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
+        cost = Math.max(0, cost - msBuildDiscount);
 
         totalMaterialsCost += cost;
       }
@@ -1460,6 +1476,36 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'CLAIM_MINOR_SPECIES': {
+      if (!state.minorSpeciesSupply || state.minorSpeciesSupply.length === 0) {
+        return { valid: false, error: 'Minor Species expansion is not active or no species available in supply.' };
+      }
+      const tile = state.minorSpeciesSupply.find((t) => t.id === action.speciesId);
+      if (!tile) {
+        return { valid: false, error: 'Minor Species Ambassador Tile not available in the supply.' };
+      }
+      if (player.resources.money < tile.cost) {
+        return {
+          valid: false,
+          error: `Insufficient money to ally with ${tile.name}. Cost: ${tile.cost} Money, Available: ${player.resources.money}.`,
+        };
+      }
+      const availableAmbSlots = getAvailableAmbassadorSlotsCount(player);
+      if (availableAmbSlots <= 0) {
+        return { valid: false, error: 'No empty Ambassador Tile spaces available on your Reputation Track.' };
+      }
+      if (action.speciesId === 'minor_species_population_cube') {
+        if (!action.populationTrack) {
+          return { valid: false, error: 'Must select a Population Track (Money, Science, or Material) for the population cube.' };
+        }
+        const track = player.population[action.populationTrack];
+        if (!track || track.cubesOnBoard <= 0) {
+          return { valid: false, error: `No population cubes remaining on the ${action.populationTrack} track.` };
+        }
+      }
+      return { valid: true };
+    }
+
     default:
       return { valid: true };
   }
@@ -1758,7 +1804,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     action.type !== 'RESPOND_DIPLOMACY' &&
     action.type !== 'CONVERT_COLONY_SHIP' &&
     action.type !== 'REROLL_COMBAT_DIE' &&
-    action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE'
+    action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
+    action.type !== 'CLAIM_MINOR_SPECIES'
   ) {
     newState.consecutivePasses = 0;
   }
@@ -1943,7 +1990,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             ? player.techTrack.gridCount
             : player.techTrack.nanoCount;
 
-        const cost = calculateTechCost(tech, count);
+        const baseCost = calculateTechCost(tech, count);
+        const msTechDiscount = getMinorSpeciesTechDiscount(player);
+        const cost = Math.max(tech.minCost, baseCost - msTechDiscount);
         player.resources.science -= cost;
         player.techTrack.researched.push({ ...tech, placedTrack: targetTrack });
 
@@ -2084,6 +2133,9 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         else if (item.itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
         else if (item.itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
         else if (item.itemType === 'monolith') cost = isMechanema ? 8 : 10;
+
+        const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
+        cost = Math.max(0, cost - msBuildDiscount);
 
         player.resources.materials -= cost;
 
@@ -3356,6 +3408,28 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       addLog(`🛰️ ${player.name} placed a ${action.resource.toUpperCase()} population cube on starting Orbital in Sector ${sector?.sectorNumber || 234}.`, 'action');
       return { success: true, newState };
     }
+
+    case 'CLAIM_MINOR_SPECIES': {
+      const tileIndex = (newState.minorSpeciesSupply || []).findIndex((t) => t.id === action.speciesId);
+      if (tileIndex === -1) {
+        return { success: false, newState: state, error: 'Minor Species tile not found in supply.' };
+      }
+      const [tile] = newState.minorSpeciesSupply!.splice(tileIndex, 1);
+      player.resources.money -= tile.cost;
+      player.ambassadorTiles = [...(player.ambassadorTiles || []), tile.id];
+
+      if (tile.id === 'minor_species_population_cube' && action.populationTrack) {
+        player.population[action.populationTrack].cubesOnBoard = Math.max(
+          0,
+          player.population[action.populationTrack].cubesOnBoard - 1
+        );
+        player.ambassadorCubes = player.ambassadorCubes || {};
+        player.ambassadorCubes[tile.id] = action.populationTrack;
+      }
+
+      addLog(`🤝 ${player.name} formed Diplomatic Relations with Minor Species: ${tile.name} for ${tile.cost} Money!`, 'action');
+      return { success: true, newState };
+    }
   }
 
   // Turn management during ACTION_PHASE
@@ -4269,7 +4343,9 @@ export function computeCurrentScores(state: GameState): {
     const techVP = trackVP + tileVP;
 
     // 5. Ambassadors
-    const ambassadorVP = p.ambassadorTiles.length;
+    const playerAmbassadorCount = p.ambassadorTiles.filter((id) => !id.startsWith('minor_species_')).length;
+    const minorSpeciesVP = calculateMinorSpeciesScores(p);
+    const ambassadorVP = playerAmbassadorCount + minorSpeciesVP;
 
     // 6. Kept Discovery Tiles (2 VP each)
     const discoveryVP = (p.keptDiscoveryTiles?.length || 0) * 2;

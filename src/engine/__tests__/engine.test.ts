@@ -8915,7 +8915,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // 3. Round 1 Action Phase order follows turnOrder: p0 -> p1 -> p2 -> p0
         // P0 takes Research action
-        const techToResearch = game.techSupply.find((t) => t.id !== 'ancient_labs' && t.id !== 'artifact_key') || game.techSupply[0];
+        const techToResearch = game.techSupply.find((t) => t.category !== 'rare' && t.id !== 'ancient_labs' && t.id !== 'artifact_key' && t.id !== 'warp_portal') || game.techSupply[0];
         const res0 = executeAction(game, {
           type: 'RESEARCH',
           playerId: p0.id,
@@ -8926,7 +8926,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(res0.newState.activePlayerIndex).toBe(1);
 
         // P1 takes Research action
-        const tech2 = res0.newState.techSupply.find((t) => t.id !== 'ancient_labs' && t.id !== 'artifact_key') || res0.newState.techSupply[0];
+        const tech2 = res0.newState.techSupply.find((t) => t.category !== 'rare' && t.id !== 'ancient_labs' && t.id !== 'artifact_key' && t.id !== 'warp_portal') || res0.newState.techSupply[0];
         const res1 = executeAction(res0.newState, {
           type: 'RESEARCH',
           playerId: p1.id,
@@ -10712,6 +10712,187 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Must contain "Examine Board" button
         expect(gameOverHtml).toContain('Examine Board');
         expect(gameOverHtml).toContain('GALACTIC SUPREMACY ACHIEVED!');
+      });
+
+      it('66. verifies Minor Species Expansion: 9 Ambassador Tiles, 4 supply setup, diplomatic relations, cube placement, build & tech discounts, scoring, and UI components', async () => {
+        const {
+          ALL_MINOR_SPECIES_TILES,
+          createInitialMinorSpeciesSupply,
+          getAvailableAmbassadorSlotsCount,
+          playerHasMinorSpecies,
+          getMinorSpeciesBuildDiscount,
+          getMinorSpeciesTechDiscount,
+          calculateMinorSpeciesScores,
+        } = await import('../rules/minorSpecies');
+        const { isExpansionActive, getExpansionForItem, AVAILABLE_EXPANSIONS } = await import('../rules/expansions');
+
+        // 1. Expansion Registry
+        expect(AVAILABLE_EXPANSIONS.some((e) => e.id === 'minor_species')).toBe(true);
+        expect(getExpansionForItem('minor_species_cruiser_discount')?.id).toBe('minor_species');
+        expect(ALL_MINOR_SPECIES_TILES).toHaveLength(9);
+
+        // 2. Initial Setup
+        const baseGame = createInitialGame(2, undefined, []);
+        expect(baseGame.minorSpeciesSupply).toBeUndefined();
+
+        const minorGame = createInitialGame(2, undefined, ['minor_species']);
+        expect(isExpansionActive(minorGame.expansions, 'minor_species')).toBe(true);
+        expect(minorGame.minorSpeciesSupply).toBeDefined();
+        expect(minorGame.minorSpeciesSupply).toHaveLength(4);
+        const uniqueIds = new Set(minorGame.minorSpeciesSupply!.map((t) => t.id));
+        expect(uniqueIds.size).toBe(4);
+
+        // 3. Ambassador Slot Availability
+        const p0 = minorGame.players[0]!;
+        // Terran Federation: 5 slots (3 'both', 2 'rep_only')
+        expect(getAvailableAmbassadorSlotsCount(p0)).toBe(3);
+
+        // Place 2 reputation tiles -> still 3 available ('rep_only' filled first)
+        p0.reputationTiles = [3, 2];
+        expect(getAvailableAmbassadorSlotsCount(p0)).toBe(3);
+
+        // Place 3rd reputation tile -> spills into 'both' -> 2 available
+        p0.reputationTiles = [3, 2, 4];
+        expect(getAvailableAmbassadorSlotsCount(p0)).toBe(2);
+
+        // 4. Form Diplomatic Relations Flow (CLAIM_MINOR_SPECIES)
+        // Setup controlled supply
+        const cruiserTile = ALL_MINOR_SPECIES_TILES.find((t) => t.id === 'minor_species_cruiser_discount')!;
+        const cubeTile = ALL_MINOR_SPECIES_TILES.find((t) => t.id === 'minor_species_population_cube')!;
+        const techTile = ALL_MINOR_SPECIES_TILES.find((t) => t.id === 'minor_species_tech_discount')!;
+        const repVpTile = ALL_MINOR_SPECIES_TILES.find((t) => t.id === 'minor_species_reputation_vp')!;
+        minorGame.minorSpeciesSupply = [cruiserTile, cubeTile, techTile, repVpTile];
+
+        p0.resources.money = 2; // Insufficient money for cruiser discount (cost 4)
+        const failMoneyRes = executeAction(minorGame, {
+          type: 'CLAIM_MINOR_SPECIES',
+          playerId: p0.id,
+          speciesId: 'minor_species_cruiser_discount',
+        });
+        expect(failMoneyRes.success).toBe(false);
+        expect(failMoneyRes.error).toContain('Insufficient money');
+
+        // Give sufficient money and ally with Cruiser Shipwrights (cost 4)
+        p0.resources.money = 20;
+        const allyCruiserRes = executeAction(minorGame, {
+          type: 'CLAIM_MINOR_SPECIES',
+          playerId: p0.id,
+          speciesId: 'minor_species_cruiser_discount',
+        });
+        expect(allyCruiserRes.success).toBe(true);
+        const postAllyState = allyCruiserRes.newState;
+        const postP0 = postAllyState.players[0]!;
+        expect(postP0.resources.money).toBe(16); // 20 - 4
+        expect(postP0.ambassadorTiles).toContain('minor_species_cruiser_discount');
+        expect(postAllyState.minorSpeciesSupply!.some((t) => t.id === 'minor_species_cruiser_discount')).toBe(false);
+        expect(playerHasMinorSpecies(postP0, 'minor_species_cruiser_discount')).toBe(true);
+
+        // Verify reputation track slot shows the minor species
+        const slotsWithMinor = getPlayerReputationTrackSlots(postP0, postAllyState.players);
+        const minorSlot = slotsWithMinor.find((s) => s.tile?.allyId === 'minor_species_cruiser_discount');
+        expect(minorSlot).toBeDefined();
+        expect(minorSlot!.tile?.allyName).toBe('Cruiser Shipwrights');
+        expect(minorSlot!.tile?.type).toBe('ambassador');
+
+        // 5. Build Discounts Verification
+        expect(getMinorSpeciesBuildDiscount(postP0, 'cruiser')).toBe(1);
+        expect(getMinorSpeciesBuildDiscount(postP0, 'interceptor')).toBe(0);
+
+        // Cruiser costs 5 in base game -> now 4 Materials!
+        postP0.resources.materials = 4;
+        const homeSector = postAllyState.sectors.find((s) => s.discOwner === postP0.id)!;
+        const buildCruiserRes = executeAction(postAllyState, {
+          type: 'BUILD',
+          playerId: postP0.id,
+          items: [{ itemType: 'cruiser', sectorId: homeSector.id }],
+        });
+        expect(buildCruiserRes.success).toBe(true);
+        expect(buildCruiserRes.newState.players[0]!.resources.materials).toBe(0); // 4 - 4 = 0
+
+        // 6. Population Cube Tile Verification (Tile 4)
+        const initialSciCubes = postP0.population.science.cubesOnBoard;
+        const allyCubeRes = executeAction(postAllyState, {
+          type: 'CLAIM_MINOR_SPECIES',
+          playerId: postP0.id,
+          speciesId: 'minor_species_population_cube',
+          populationTrack: 'science',
+        });
+        expect(allyCubeRes.success).toBe(true);
+        const cubeState = allyCubeRes.newState;
+        const cubeP0 = cubeState.players[0]!;
+        expect(cubeP0.population.science.cubesOnBoard).toBe(initialSciCubes - 1);
+        expect(cubeP0.ambassadorCubes?.['minor_species_population_cube']).toBe('science');
+
+        // 7. Tech Research Discount Verification (Tile 9)
+        cubeP0.ambassadorTiles.push('minor_species_tech_discount');
+        expect(getMinorSpeciesTechDiscount(cubeP0)).toBe(1);
+
+        // Research tech with baseCost 6, minCost 4, 0 researched in track:
+        // Discount on track = 0. Base cost = 6. With minor species: max(4, 6 - 1) = 5 Science!
+        cubeP0.resources.science = 5;
+        const nanoTech = TECH_CATALOG.find((t) => t.category === 'nano' && t.baseCost === 6 && t.minCost === 4)!;
+        cubeState.activePlayerIndex = 0;
+        cubeP0.influenceTrack.discsOnTrack = 5;
+        cubeState.techSupply = [{ ...nanoTech }];
+        const researchRes = executeAction(cubeState, {
+          type: 'RESEARCH',
+          playerId: cubeP0.id,
+          researches: [{ techId: nanoTech.id, targetTrack: 'nano' }],
+        });
+        expect(researchRes.success).toBe(true);
+        expect(researchRes.newState.players[0]!.resources.science).toBe(0); // 5 - 5 = 0
+
+        // 8. End-game Scoring Verification for All Tiles
+        const scoringPlayer = { ...cubeP0 };
+        scoringPlayer.reputationTiles = [3, 2, 4]; // 3 reputation tiles
+        // Add all 9 minor species tiles to test scoring rules
+        scoringPlayer.ambassadorTiles = [
+          'player_1', // 1 player ally (1 VP)
+          'minor_species_reputation_vp', // 1 VP per rep tile = 3 VP
+          'minor_species_ambassador_vp', // 1 VP per ambassador tile (including itself) = 5 total ambassador tiles -> 5 VP
+          'minor_species_flat_vp', // 3 VP flat
+          'minor_species_cruiser_discount', // 1 VP flat
+          'minor_species_tech_discount', // 1 VP flat
+        ];
+        // Minor species scores: 3 (rep) + 6 (amb) + 3 (flat) + 1 (cruiser) + 1 (tech) = 14 VP!
+        // Plus 1 VP for player_1 = 15 VP total ambassador category!
+        const minorVpOnly = calculateMinorSpeciesScores(scoringPlayer);
+        expect(minorVpOnly).toBe(3 + 6 + 3 + 1 + 1);
+
+        const dummyGameState: GameState = {
+          ...minorGame,
+          players: [scoringPlayer, minorGame.players[1]!],
+        };
+        const { scores } = computeCurrentScores(dummyGameState);
+        expect(scores[scoringPlayer.id]!.ambassadors).toBe(1 + minorVpOnly);
+
+        // 9. UI Components Rendering
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { MinorSpeciesModal } = await import('../../components/minorSpecies/MinorSpeciesModal');
+        const modalHtml = renderToString(
+          React.createElement(MinorSpeciesModal, {
+            state: minorGame,
+            activePlayer: p0,
+            onClaimMinorSpecies: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(modalHtml).toContain('Minor Species Embassy');
+        expect(modalHtml).toContain('Cruiser Shipwrights');
+        expect(modalHtml).toContain('Available Minor Species in Galaxy');
+
+        // 10. Galactic Gallery Reference
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+        const galleryHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            initialTab: 'reputation',
+            onClose: () => {},
+          })
+        );
+        expect(galleryHtml).toContain('Minor Species Expansion: Ambassador Tiles');
+        expect(galleryHtml).toContain('Cruiser Shipwrights');
       });
     });
   });
