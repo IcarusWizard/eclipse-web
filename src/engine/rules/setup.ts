@@ -23,6 +23,7 @@ import {
   createWarpedUniverseLayout,
   getWarpedUniverseStartingCoords,
 } from './warpedUniverse';
+import { createGalacticEventsState } from './galacticEvents';
 
 export const ECLIPSE_COLOR_PALETTE = {
   red: '#dc2626',
@@ -994,7 +995,7 @@ export function createInitialGame(
     });
   }
 
-  const decks = generateSectorDecks(players.length);
+  const decks = generateSectorDecks(players.length, expansions);
 
   // Fill unused starting positions in Ring 2 with authentic Guardian Sectors (Sectors 271 to 274)
   // Official rule: Guardian Sectors are not used with Warped Universe expansion
@@ -1090,6 +1091,7 @@ export function createInitialGame(
     discoveryBag,
     minorSpeciesSupply: expansions?.includes('minor_species') ? createInitialMinorSpeciesSupply() : undefined,
     warpedUniverse: expansions?.includes('warped_universe') ? createWarpedUniverseLayout(count) : undefined,
+    galacticEvents: expansions?.includes('galactic_events') ? createGalacticEventsState() : undefined,
     activeCombat: null,
     pendingExplore: null,
     pendingDiscovery: null,

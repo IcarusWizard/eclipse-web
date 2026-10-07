@@ -749,6 +749,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? isConquestSector
                 ? 'rgba(245, 158, 11, 0.22)'
                 : 'rgba(225, 29, 72, 0.25)'
+              : sector.isSupernovaExploded
+              ? 'rgba(239, 68, 68, 0.22)'
+              : sector.isSupernova
+              ? 'rgba(249, 115, 22, 0.16)'
+              : sector.isBlackHole
+              ? 'rgba(30, 27, 75, 0.92)'
+              : sector.isNebula
+              ? 'rgba(6, 78, 59, 0.20)'
+              : sector.isPulsar
+              ? 'rgba(3, 105, 161, 0.16)'
               : isActionHighlight
               ? 'rgba(234, 179, 8, 0.20)'
               : isStagedAbandon
@@ -763,6 +773,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? isConquestSector
                 ? '#f59e0b'
                 : '#f43f5e'
+              : sector.isSupernovaExploded
+              ? '#ef4444'
+              : sector.isSupernova
+              ? '#f97316'
+              : sector.isBlackHole
+              ? '#818cf8'
+              : sector.isNebula
+              ? '#10b981'
+              : sector.isPulsar
+              ? '#38bdf8'
               : isActionHighlight
               ? '#fbbf24'
               : isSelected
@@ -1220,6 +1240,104 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     >
                       ★
                     </text>
+                  </g>
+                )}
+
+                {/* Galactic Events: Pulsar Action Spaces */}
+                {sector.isPulsar && (
+                  <g transform={`translate(${x}, ${y - 4})`} className="pointer-events-none">
+                    <circle cx="0" cy="0" r="10" fill="#0369a1" stroke="#38bdf8" strokeWidth="1.5" className="animate-pulse" />
+                    <circle cx="0" cy="0" r="5" fill="#e0f2fe" />
+                    <text x="0" y="2" textAnchor="middle" fill="#0369a1" fontSize="7" fontWeight="bold">P</text>
+
+                    {[
+                      { slot: 'move', label: 'MOV', cx: 0, cy: -24 },
+                      { slot: 'build', label: 'BUI', cx: 22, cy: 12 },
+                      { slot: 'upgrade', label: 'UPG', cx: -22, cy: 12 },
+                    ].map((sp) => {
+                      const isOccupied = (sector.pulsarSlot || 'move') === sp.slot && !!sector.discOwner;
+                      const discOwnerPlayer = state.players.find((p) => p.id === sector.discOwner);
+                      return (
+                        <g key={sp.slot} transform={`translate(${sp.cx}, ${sp.cy})`}>
+                          <circle
+                            cx="0"
+                            cy="0"
+                            r="8"
+                            fill={isOccupied ? (discOwnerPlayer?.color || '#3b82f6') : '#0f172a'}
+                            stroke={isOccupied ? '#ffffff' : '#64748b'}
+                            strokeWidth="1.2"
+                          />
+                          <text
+                            x="0"
+                            y="2.5"
+                            textAnchor="middle"
+                            fill={isOccupied ? '#ffffff' : '#94a3b8'}
+                            fontSize="5.5"
+                            fontWeight="bold"
+                            fontFamily="monospace"
+                          >
+                            {sp.label}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                )}
+
+                {/* Galactic Events: Black Hole Vortex */}
+                {sector.isBlackHole && (
+                  <g transform={`translate(${x}, ${y - 4})`} className="pointer-events-none">
+                    <circle cx="0" cy="0" r="18" fill="none" stroke="#6366f1" strokeWidth="1" strokeDasharray="4 3" className="animate-spin" />
+                    <circle cx="0" cy="0" r="13" fill="#1e1b4b" stroke="#a5b4fc" strokeWidth="1.5" />
+                    <circle cx="0" cy="0" r="7" fill="#020617" />
+                    <text x="0" y="2.5" textAnchor="middle" fill="#c7d2fe" fontSize="7" fontWeight="900">BH</text>
+                    <rect x="-30" y="16" width="60" height="11" rx="3" fill="rgba(15, 23, 42, 0.9)" stroke="#6366f1" strokeWidth="0.8" />
+                    <text x="0" y="24" textAnchor="middle" fill="#c7d2fe" fontSize="6.5" fontWeight="bold">
+                      {sector.sectorNumber === 396 ? 'Ring I Return' : 'Empty Zone Return'}
+                    </text>
+                  </g>
+                )}
+
+                {/* Galactic Events: Supernova / Exploded Supernova */}
+                {sector.isSupernova && (
+                  <g transform={`translate(${x}, ${y - 4})`} className="pointer-events-none">
+                    {sector.isSupernovaExploded ? (
+                      <g>
+                        <circle cx="0" cy="0" r="18" fill="#450a0a" stroke="#ef4444" strokeWidth="1.5" strokeDasharray="3 2" />
+                        <text x="0" y="-2" textAnchor="middle" fill="#fca5a5" fontSize="12" fontWeight="900">💥</text>
+                        <rect x="-32" y="10" width="64" height="12" rx="3" fill="#7f1d1d" stroke="#ef4444" strokeWidth="1" />
+                        <text x="0" y="18.5" textAnchor="middle" fill="#fef2f2" fontSize="7" fontWeight="900" letterSpacing="0.5">
+                          EXPLODED
+                        </text>
+                      </g>
+                    ) : (
+                      <g>
+                        <circle cx="0" cy="0" r="14" fill="#7c2d12" stroke="#ea580c" strokeWidth="1.5" className="animate-pulse" />
+                        <circle cx="0" cy="0" r="8" fill="#ffedd5" />
+                        <text x="0" y="2.5" textAnchor="middle" fill="#ea580c" fontSize="6.5" fontWeight="900">NOVA</text>
+                      </g>
+                    )}
+                  </g>
+                )}
+
+                {/* Galactic Events: Nebula Subsectors */}
+                {sector.isNebula && (
+                  <g transform={`translate(${x}, ${y})`} className="pointer-events-none">
+                    <line x1="0" y1="0" x2={HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                    <line x1="0" y1="0" x2="0" y2={HEX_RADIUS * 0.9} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                    <line x1="0" y1="0" x2={-HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                    <g transform="translate(0, -28)">
+                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 1</text>
+                    </g>
+                    <g transform="translate(-24, 18)">
+                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 2</text>
+                    </g>
+                    <g transform="translate(24, 18)">
+                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 3</text>
+                    </g>
                   </g>
                 )}
 

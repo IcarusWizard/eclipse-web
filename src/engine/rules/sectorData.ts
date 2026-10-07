@@ -5,6 +5,7 @@
  */
 
 import { SectorTile, DiscoveryTile } from '../types/galaxy';
+import { createGalacticEventSectorTile, GALACTIC_EVENTS_CONFIGS } from './galacticEvents';
 
 export const CENTER_SECTOR: SectorTile = {
   id: 'sector_001',
@@ -1200,7 +1201,7 @@ export const RING_3_CONFIGS = [
     },
 ];
 
-export function generateSectorDecks(playerCount?: number): {
+export function generateSectorDecks(playerCount?: number, expansions?: string[]): {
   ring1: SectorTile[];
   ring2: SectorTile[];
   ring3: SectorTile[];
@@ -1282,6 +1283,22 @@ export function generateSectorDecks(playerCount?: number): {
     })),
   }));
 
+  if (expansions?.includes('galactic_events')) {
+    // Sector II: Nebula 295
+    ring2.push(createGalacticEventSectorTile(295));
+
+    // Sector III: Pulsars 393 & 394, Nebula 395, Supernovas 397 & 398, and 1 random Black Hole (396 or 399)
+    const blackHoleSector = Math.random() < 0.5 ? 396 : 399;
+    ring3.push(
+      createGalacticEventSectorTile(393),
+      createGalacticEventSectorTile(394),
+      createGalacticEventSectorTile(395),
+      createGalacticEventSectorTile(397),
+      createGalacticEventSectorTile(398),
+      createGalacticEventSectorTile(blackHoleSector)
+    );
+  }
+
   const ring3Limits: Record<number, number> = {
     1: 5,
     2: 5,
@@ -1304,7 +1321,7 @@ export interface SectorCatalogEntry {
   sectorNumber: number;
   name: string;
   ring: number | string;
-  category: 'Galactic Center' | 'Inner (Ring 1)' | 'Middle (Ring 2)' | 'Guardian' | 'Home System' | 'Outer (Ring 3)' | 'Warped Universe';
+  category: 'Galactic Center' | 'Inner (Ring 1)' | 'Middle (Ring 2)' | 'Guardian' | 'Home System' | 'Outer (Ring 3)' | 'Warped Universe' | 'Galactic Events';
   victoryPoints: number;
   hasArtifact: boolean;
   hasDiscovery: boolean;
@@ -1460,6 +1477,32 @@ export function getAllSectorsCatalog(includeExpansions: boolean = false): Sector
         wormholes: [false, false, false, false, false, false],
         planets: [],
         factionName: warpDescriptions[i - 1],
+      });
+    }
+
+    // 8. Galactic Events Phenomenon Sectors
+    for (const [secNumStr, cfg] of Object.entries(GALACTIC_EVENTS_CONFIGS)) {
+      const secNum = Number(secNumStr);
+      let desc = '';
+      if (cfg.type === 'nebula') desc = 'Nebula: 3 Subsectors with internal wormholes, 2 Discovery Tiles, 1 Ancient ship. No Influence Space.';
+      else if (cfg.type === 'pulsar') desc = 'Pulsar: 3 Action spaces (Move, Build, Upgrade). Free activation once per round.';
+      else if (cfg.type === 'supernova') desc = 'Supernova: 5 Planets (2 Adv, 1 Sci, 2 Wild). Explodes if Yellow Dice + Tech bonus < Round!';
+      else if (cfg.type === 'black_hole') desc = secNum === 396
+        ? 'Black Hole (Cygnus X-1): 1 Discovery Tile. Ships enter spacetime anomaly; returns to any Inner (I) sector.'
+        : 'Black Hole (V616 Mon): 1 Discovery Tile. Ships enter spacetime anomaly; returns to any sector facing an empty Zone.';
+
+      entries.push({
+        sectorNumber: cfg.sectorNum,
+        name: cfg.name,
+        ring: cfg.ring,
+        category: 'Galactic Events',
+        victoryPoints: cfg.vp,
+        hasArtifact: cfg.artifact,
+        hasDiscovery: cfg.discovery || cfg.type === 'nebula' || cfg.type === 'black_hole',
+        ancientsCount: cfg.type === 'nebula' ? 1 : cfg.ancients,
+        wormholes: cfg.wh,
+        planets: cfg.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
+        factionName: desc,
       });
     }
   }

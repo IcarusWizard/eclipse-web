@@ -30,7 +30,9 @@ export type ActionType =
   | 'RESPOND_DIPLOMACY'
   | 'CONVERT_COLONY_SHIP'
   | 'PLACE_SHRINE'
-  | 'REROLL_COMBAT_DIE';
+  | 'REROLL_COMBAT_DIE'
+  | 'ACTIVATE_PULSAR'
+  | 'RETURN_BLACK_HOLE_SHIP';
 
 export interface BaseAction {
   playerId: string;
@@ -96,6 +98,8 @@ export interface MoveStep {
   fromSectorId: string;
   toSectorId: string;
   activationIndex?: number;
+  blackHoleReturnSectorId?: string;
+  targetSubsector?: 1 | 2 | 3;
 }
 
 export interface MoveAction extends BaseAction {
@@ -236,6 +240,28 @@ export interface ClaimMinorSpeciesAction extends BaseAction {
   populationTrack?: 'money' | 'science' | 'material';
 }
 
+export interface ActivatePulsarAction extends BaseAction {
+  type: 'ACTIVATE_PULSAR';
+  sectorId: string;
+  targetSlot: 'move' | 'build' | 'upgrade';
+  move?: MoveStep;
+  build?: {
+    itemType: ShipType | 'orbital' | 'monolith';
+    sectorId: string;
+  };
+  upgrade?: {
+    shipType: ShipType;
+    slotIndex: number;
+    partId: string | null;
+  };
+}
+
+export interface ReturnBlackHoleShipAction extends BaseAction {
+  type: 'RETURN_BLACK_HOLE_SHIP';
+  shipId: string;
+  targetSectorId: string;
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -262,4 +288,6 @@ export type GameAction =
   | PlaceShrineAction
   | RerollCombatDieAction
   | ChooseExilesOrbitalCubeAction
-  | ClaimMinorSpeciesAction;
+  | ClaimMinorSpeciesAction
+  | ActivatePulsarAction
+  | ReturnBlackHoleShipAction;

@@ -37,6 +37,7 @@ export interface SectorShip {
   readonly ownerId: string; // Player ID or 'ancient' | 'gcds' | 'guardian'
   readonly type: ShipType | 'ancient' | 'gcds' | 'guardian';
   damage: number;
+  subsector?: 1 | 2 | 3; // Subsector index for Nebula sectors
 }
 
 export interface SectorTile {
@@ -67,6 +68,19 @@ export interface SectorTile {
     monolith?: boolean;
     orbital?: boolean;
   };
+  isPulsar?: boolean;
+  pulsarSlot?: 'move' | 'build' | 'upgrade';
+  isBlackHole?: boolean;
+  blackHoleType?: 'inner_ring' | 'empty_zone_adjacent';
+  isSupernova?: boolean;
+  isSupernovaExploded?: boolean;
+  isNebula?: boolean;
+  subsectors?: {
+    subsectorIndex: 1 | 2 | 3;
+    discoveryTile: DiscoveryTile | null;
+    hasAncient: boolean;
+    ships: SectorShip[];
+  }[];
 }
 
 export interface DiscoveryTile {

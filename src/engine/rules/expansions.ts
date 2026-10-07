@@ -2,7 +2,7 @@
  * Official Expansion Modules & Configuration for Eclipse: Second Dawn
  */
 
-export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species' | 'warped_universe';
+export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species' | 'warped_universe' | 'galactic_events';
 
 export interface ExpansionDefinition {
   readonly id: ExpansionId;
@@ -102,9 +102,22 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
     features: [
       'Modular Large Warp Sectors assembled from 9 Double-Hex tiles (18 hexes)',
       'Balanced 5-Player setup (1 Large Warp Sector), Tighter 3-Player setup (3 Large Warp Sectors), and Tighter 2/4-Player setup (2 Large Warp Sectors)',
-      'Flow lines establish 3 Ring-level wormhole conduits (Ring 1, Ring 2, Ring 3) between left and right borders',
+      'Flow lines establish 12 wormhole conduits bridging left and right flanks from top to bottom',
       'Move across the Warp Sector in 1 step through open wormholes; ships do not stop inside the Warp Sector',
       'Guardian Sectors are not used with this expansion',
+    ],
+  },
+  {
+    id: 'galactic_events',
+    name: 'Galactic Events',
+    shortName: 'Events',
+    badge: '4 Cosmic Phenomena',
+    description: 'Introduces 8 new sector hexes featuring Nebula, Pulsar, Supernova, and Black Hole environments.',
+    features: [
+      'Nebula (295 & 395): Divided into 3 Subsectors with internal wormholes, no influence spaces, and end-of-combat discovery claims',
+      'Pulsar (393 & 394): Action spaces for Move, Build, and Upgrade instead of standard influence; activate once per round in place of an action',
+      'Black Hole (396 Cygnus X-1 & 399 V616 Mon): 1 per game; first ship claims discovery, ships enter spacetime anomaly with yellow die return roll',
+      'Supernova (397 & 398): 5 rich planet slots; risks catastrophic explosion during Cleanup if roll + highest tech count < round number',
     ],
   },
 ];
@@ -174,6 +187,23 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
   }
   if (norm.startsWith('warped_universe') || norm.includes('warped') || norm.startsWith('warp_') || norm.includes('warp sector')) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'warped_universe') || null;
+  }
+  if (
+    norm.startsWith('galactic_events') ||
+    norm.includes('galactic events') ||
+    norm.includes('pulsar') ||
+    norm.includes('supernova') ||
+    norm.includes('black hole') ||
+    norm.includes('black_hole') ||
+    norm.includes('nebula') ||
+    norm.includes('geminga') ||
+    norm.includes('simeis') ||
+    norm.includes('betelgeuse') ||
+    norm.includes('deneb') ||
+    norm.includes('cygnus') ||
+    norm.includes('v616')
+  ) {
+    return AVAILABLE_EXPANSIONS.find((e) => e.id === 'galactic_events') || null;
   }
   return null;
 }

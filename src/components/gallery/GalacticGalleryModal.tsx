@@ -568,6 +568,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   { id: 'Home System', label: 'Home Systems' },
                   { id: 'Outer (Ring 3)', label: 'Outer (Ring 3)' },
                   { id: 'Warped Universe', label: 'Warped Universe' },
+                  { id: 'Galactic Events', label: 'Galactic Events' },
                 ].map((chip) => {
                   const count =
                     chip.id === 'all'
@@ -594,6 +595,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                 {filteredSectors.map((sec) => {
                   const wormholeCount = sec.wormholes.filter(Boolean).length;
                   const isWarp = sec.category === 'Warped Universe';
+                  const isGE = sec.category === 'Galactic Events';
 
                   return (
                     <div
@@ -601,6 +603,8 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                       className={`p-4 rounded-xl border flex flex-col justify-between transition-all ${
                         isWarp
                           ? 'border-purple-800/60 bg-purple-950/20 hover:border-purple-500'
+                          : isGE
+                          ? 'border-emerald-800/60 bg-emerald-950/20 hover:border-emerald-500'
                           : 'border-slate-800 bg-slate-950/80 hover:border-slate-600'
                       }`}
                     >
@@ -609,14 +613,14 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className={`text-sm font-black font-mono ${isWarp ? 'text-purple-400' : 'text-cyan-400'}`}>
+                              <span className={`text-sm font-black font-mono ${isWarp ? 'text-purple-400' : isGE ? 'text-emerald-400' : 'text-cyan-400'}`}>
                                 #{String(sec.sectorNumber).padStart(3, '0')}
                               </span>
                               <h4 className="text-sm font-bold text-slate-100">{sec.name}</h4>
                             </div>
                             {sec.factionName && (
-                              <div className={`text-[10px] font-semibold mt-0.5 ${isWarp ? 'text-purple-300/80' : 'text-amber-400'}`}>
-                                {isWarp ? sec.factionName : `Home of: ${sec.factionName}`}
+                              <div className={`text-[10px] font-semibold mt-0.5 ${isWarp ? 'text-purple-300/80' : isGE ? 'text-emerald-300/90' : 'text-amber-400'}`}>
+                                {isWarp ? sec.factionName : isGE ? sec.factionName : `Home of: ${sec.factionName}`}
                               </div>
                             )}
                           </div>
@@ -624,6 +628,10 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                             {isWarp ? (
                               <span className="text-xs px-2 py-0.5 rounded bg-purple-900/60 text-purple-200 border border-purple-500/60 font-mono font-bold">
                                 WARP
+                              </span>
+                            ) : isGE ? (
+                              <span className="text-xs px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-200 border border-emerald-500/60 font-mono font-bold">
+                                {sec.victoryPoints > 0 ? `${sec.victoryPoints} VP` : 'EVENT'}
                               </span>
                             ) : (
                               <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold">
@@ -635,8 +643,8 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
                         {/* Badges: Ring, Wormholes, Ancients */}
                         <div className="flex flex-wrap gap-1.5 mb-3">
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${isWarp ? 'bg-purple-900/40 text-purple-300 border border-purple-700/40' : 'bg-slate-800 text-slate-300'}`}>
-                            {sec.category}
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${isWarp ? 'bg-purple-900/40 text-purple-300 border border-purple-700/40' : isGE ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/40' : 'bg-slate-800 text-slate-300'}`}>
+                            {sec.category} (Ring {sec.ring})
                           </span>
                           {isWarp ? (
                             <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950/60 border border-purple-700/60 text-purple-300 font-mono">

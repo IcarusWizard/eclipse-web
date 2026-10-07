@@ -11142,6 +11142,502 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(galleryHtml).toContain('Warp Tile 1 (Double-Hex)');
         expect(galleryHtml).toContain('Modular Double-Hex');
       });
+
+      it('68. verifies Galactic Events Expansion: authentic 8-sector catalog, setup deck injections, Nebula subsectors and exit edge restrictions, Pulsar action shifting without disc penalty, Supernova 5 planets and instability check explosion, Black Hole spacetime anomaly and delayed return, and map/gallery UI rendering', async () => {
+        const {
+          GALACTIC_EVENTS_CONFIGS,
+          createGalacticEventsState,
+          createGalacticEventSectorTile,
+          rollYellowDie,
+          evaluateSupernovaStability,
+          evaluateBlackHoleEntry,
+          getLegalBlackHoleReturnSectors,
+          getNebulaSubsectorForOuterEdge,
+        } = await import('../rules/galacticEvents');
+        const { getAllSectorsCatalog, generateSectorDecks } = await import('../rules/sectorData');
+
+        // 1. Catalog & Configurations for all 8 Authentic Galactic Events Sectors
+        const catalog = getAllSectorsCatalog(true);
+        const geSectors = catalog.filter((c) => c.category === 'Galactic Events');
+        expect(geSectors.length).toBe(8);
+        const geNums = geSectors.map((s) => s.sectorNumber).sort((a, b) => a - b);
+        expect(geNums).toEqual([295, 393, 394, 395, 396, 397, 398, 399]);
+
+        // Nebula 295 & 395
+        expect(GALACTIC_EVENTS_CONFIGS[295].type).toBe('nebula');
+        expect(GALACTIC_EVENTS_CONFIGS[295].ring).toBe(2);
+        expect(GALACTIC_EVENTS_CONFIGS[295].wh).toEqual([true, true, true, true, true, true]);
+        expect(GALACTIC_EVENTS_CONFIGS[395].type).toBe('nebula');
+        expect(GALACTIC_EVENTS_CONFIGS[395].ring).toBe(3);
+        expect(GALACTIC_EVENTS_CONFIGS[395].wh).toEqual([true, true, true, true, true, true]);
+
+        // Pulsars 393 & 394
+        expect(GALACTIC_EVENTS_CONFIGS[393].type).toBe('pulsar');
+        expect(GALACTIC_EVENTS_CONFIGS[393].vp).toBe(1);
+        expect(GALACTIC_EVENTS_CONFIGS[393].wh).toEqual([true, true, false, true, false, false]);
+        expect(GALACTIC_EVENTS_CONFIGS[393].planets[0]!.resource).toBe('science');
+        expect(GALACTIC_EVENTS_CONFIGS[393].planets[0]!.isAdvanced).toBe(false);
+        expect(GALACTIC_EVENTS_CONFIGS[394].type).toBe('pulsar');
+        expect(GALACTIC_EVENTS_CONFIGS[394].vp).toBe(1);
+        expect(GALACTIC_EVENTS_CONFIGS[394].wh).toEqual([true, true, false, true, false, false]);
+        expect(GALACTIC_EVENTS_CONFIGS[394].planets[0]!.resource).toBe('material');
+        expect(GALACTIC_EVENTS_CONFIGS[394].planets[0]!.isAdvanced).toBe(false);
+
+        // Black Holes 396 & 399
+        expect(GALACTIC_EVENTS_CONFIGS[396].type).toBe('black_hole');
+        expect(GALACTIC_EVENTS_CONFIGS[396].wh).toEqual([true, false, true, true, false, true]);
+        expect(GALACTIC_EVENTS_CONFIGS[399].type).toBe('black_hole');
+        expect(GALACTIC_EVENTS_CONFIGS[399].wh).toEqual([true, false, true, true, false, true]);
+
+        // Supernovas 397 & 398
+        expect(GALACTIC_EVENTS_CONFIGS[397].type).toBe('supernova');
+        expect(GALACTIC_EVENTS_CONFIGS[397].planets.length).toBe(5);
+        expect(GALACTIC_EVENTS_CONFIGS[397].wh).toEqual([true, true, false, true, false, false]);
+        expect(GALACTIC_EVENTS_CONFIGS[398].type).toBe('supernova');
+        expect(GALACTIC_EVENTS_CONFIGS[398].planets.length).toBe(5);
+        expect(GALACTIC_EVENTS_CONFIGS[398].wh).toEqual([true, true, false, true, false, false]);
+
+        // 2. Setup Deck Injections
+        const game = createInitialGame(2, undefined, ['galactic_events']);
+        expect(game.galacticEvents?.active).toBe(true);
+        expect([396, 399]).toContain(game.galacticEvents!.selectedBlackHoleSector);
+
+        // Ring II deck contains Sector 295
+        const r2DeckNums = game.sectorDecks.ring2.map((s) => s.sectorNumber);
+        expect(r2DeckNums).toContain(295);
+
+        // Ring III deck size matches 2p limit (5 tiles)
+        expect(game.sectorDecks.ring3.length).toBe(5);
+
+        // Verify across repeated deck generations that all Galactic Events tiles appear in candidate pools
+        const drawnR2 = new Set<number>();
+        const drawnR3 = new Set<number>();
+        for (let i = 0; i < 30; i++) {
+          const decks = generateSectorDecks(6, ['galactic_events']);
+          decks.ring2.forEach((s) => drawnR2.add(s.sectorNumber));
+          decks.ring3.forEach((s) => drawnR3.add(s.sectorNumber));
+        }
+        expect(drawnR2.has(295)).toBe(true);
+        expect(drawnR3.has(393)).toBe(true);
+        expect(drawnR3.has(394)).toBe(true);
+        expect(drawnR3.has(395)).toBe(true);
+        expect(drawnR3.has(397)).toBe(true);
+        expect(drawnR3.has(398)).toBe(true);
+        expect(drawnR3.has(396) || drawnR3.has(399)).toBe(true);
+
+        // 3. Nebula Mechanics: Subsectors, Movement Edge Restrictions, and Discovery Claims
+        // Subsector mapping: Edges 4,5 -> 1; 2,3 -> 2; 0,1 -> 3
+        expect(getNebulaSubsectorForOuterEdge(4)).toBe(1);
+        expect(getNebulaSubsectorForOuterEdge(5)).toBe(1);
+        expect(getNebulaSubsectorForOuterEdge(2)).toBe(2);
+        expect(getNebulaSubsectorForOuterEdge(3)).toBe(2);
+        expect(getNebulaSubsectorForOuterEdge(0)).toBe(3);
+        expect(getNebulaSubsectorForOuterEdge(1)).toBe(3);
+
+        const nebulaSec = createGalacticEventSectorTile(295);
+        nebulaSec.coord = { q: 0, r: 1 };
+        nebulaSec.subsectors![0]!.discoveryTile = { id: 'disc_nebula_1', type: 'resource_pack', victoryPoints: 2 };
+        nebulaSec.subsectors![1]!.discoveryTile = { id: 'disc_nebula_2', type: 'resource_pack', victoryPoints: 2 };
+        game.sectors.push(nebulaSec);
+
+        const p1 = game.players[0]!;
+
+        // Cannot claim Influence on Nebula
+        const infRes = validateAction(game, {
+          type: 'INFLUENCE',
+          playerId: p1.id,
+          claimSectors: [nebulaSec.id],
+        });
+        expect(infRes.valid).toBe(false);
+        expect(infRes.error).toContain('Nebula sectors do not have an Influence Space');
+
+        // Move a ship from home into Nebula via edge 5 (enters subsector 1)
+        const p1Home = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+        p1Home.coord = { q: 1, r: 0 };
+        p1Home.wormholes = [true, true, true, true, true, true];
+        p1Home.ships.push({ id: 'p1_scout_1', ownerId: p1.id, type: 'interceptor', damage: 0 });
+
+        const moveIntoNebulaRes = executeAction(game, {
+          type: 'MOVE',
+          playerId: p1.id,
+          moves: [
+            {
+              shipId: 'p1_scout_1',
+              fromSectorId: p1Home.id,
+              toSectorId: nebulaSec.id,
+            },
+          ],
+        });
+        expect(moveIntoNebulaRes.success).toBe(true);
+        const movedScout = moveIntoNebulaRes.newState.sectors.find((s) => s.id === nebulaSec.id)!.ships.find((s) => s.id === 'p1_scout_1')!;
+        expect(movedScout).toBeDefined();
+        // Edge toward (0,1) from (1,0) is edge 2 (SW), so opposite edge into nebula is edge 5 (NE) -> Subsector 1
+        expect(movedScout.subsector).toBe(1);
+
+        // Internal movement: Scout moves from Subsector 1 to Subsector 2
+        moveIntoNebulaRes.newState.activePlayerIndex = 0;
+        moveIntoNebulaRes.newState.activePlayerId = p1.id;
+        const internalMoveRes = executeAction(moveIntoNebulaRes.newState, {
+          type: 'MOVE',
+          playerId: p1.id,
+          moves: [
+            {
+              shipId: 'p1_scout_1',
+              fromSectorId: nebulaSec.id,
+              toSectorId: nebulaSec.id,
+              targetSubsector: 2,
+            },
+          ],
+        });
+        expect(internalMoveRes.success).toBe(true);
+        const scoutInSub2 = internalMoveRes.newState.sectors.find((s) => s.id === nebulaSec.id)!.ships.find((s) => s.id === 'p1_scout_1')!;
+        expect(scoutInSub2.subsector).toBe(2);
+
+        // Exit edge restriction: Ship in Subsector 2 cannot exit back to (1,0) via edge 5
+        internalMoveRes.newState.activePlayerIndex = 0;
+        internalMoveRes.newState.activePlayerId = p1.id;
+        const invalidExitRes = validateAction(internalMoveRes.newState, {
+          type: 'MOVE',
+          playerId: p1.id,
+          moves: [
+            {
+              shipId: 'p1_scout_1',
+              fromSectorId: nebulaSec.id,
+              toSectorId: p1Home.id,
+            },
+          ],
+        });
+        expect(invalidExitRes.valid).toBe(false);
+        expect(invalidExitRes.error).toContain('Ship is located in Subsector 2 of Nebula, but exit edge connects from Subsector 1');
+
+        // Combat Phase discovery claim: End combat phase awards Subsector 2 discovery tile to sole ship
+        const combatState = JSON.parse(JSON.stringify(internalMoveRes.newState));
+        combatState.phase = 'COMBAT_PHASE';
+        checkAndTriggerCombat(combatState);
+        expect(combatState.pendingDiscovery).toBeDefined();
+        expect(combatState.pendingDiscovery.discovery.id).toBe('disc_nebula_2');
+
+        // 4. Pulsar Mechanics: Disc Placement, Shifting, Free Action without Track Disc Penalty
+        const pulsarSec = createGalacticEventSectorTile(393);
+        pulsarSec.coord = { q: -1, r: -1 };
+        pulsarSec.discOwner = p1.id;
+        pulsarSec.pulsarSlot = 'move';
+        game.sectors.push(pulsarSec);
+        if (!game.galacticEvents) game.galacticEvents = createGalacticEventsState();
+        game.galacticEvents.pulsars[pulsarSec.id] = { currentSlot: 'move', activatedThisRound: false };
+
+        // Attempting to shift to same slot ('move') fails validation
+        const sameSlotRes = validateAction(game, {
+          type: 'ACTIVATE_PULSAR',
+          playerId: p1.id,
+          sectorId: pulsarSec.id,
+          targetSlot: 'move',
+        });
+        expect(sameSlotRes.valid).toBe(false);
+        expect(sameSlotRes.error).toContain('different action space');
+
+        // Passed player cannot activate Pulsar
+        p1.hasPassed = true;
+        const passedPulsarRes = validateAction(game, {
+          type: 'ACTIVATE_PULSAR',
+          playerId: p1.id,
+          sectorId: pulsarSec.id,
+          targetSlot: 'build',
+          build: { sectorId: pulsarSec.id, itemType: 'cruiser' },
+        });
+        expect(passedPulsarRes.valid).toBe(false);
+        expect(passedPulsarRes.error).toContain('after you have passed');
+        p1.hasPassed = false;
+
+        // Valid activation: Shift from 'move' to 'build' to construct a Cruiser
+        const discsBefore = p1.influenceTrack.discsOnTrack;
+        p1.resources.materials = 10;
+        const pulsarBuildRes = executeAction(game, {
+          type: 'ACTIVATE_PULSAR',
+          playerId: p1.id,
+          sectorId: pulsarSec.id,
+          targetSlot: 'build',
+          build: { sectorId: pulsarSec.id, itemType: 'cruiser' },
+        });
+        expect(pulsarBuildRes.success).toBe(true);
+        // Crucial: No disc deducted from track!
+        expect(pulsarBuildRes.newState.players[0]!.influenceTrack.discsOnTrack).toBe(discsBefore);
+        const updatedPulsar = pulsarBuildRes.newState.sectors.find((s) => s.id === pulsarSec.id)!;
+        expect(updatedPulsar.pulsarSlot).toBe('build');
+        expect(updatedPulsar.ships.some((s) => s.type === 'cruiser')).toBe(true);
+        expect(pulsarBuildRes.newState.galacticEvents!.pulsars[pulsarSec.id]!.activatedThisRound).toBe(true);
+
+        // Cannot activate Pulsar twice in same round
+        pulsarBuildRes.newState.activePlayerIndex = 0;
+        pulsarBuildRes.newState.activePlayerId = p1.id;
+        const secondPulsarRes = validateAction(pulsarBuildRes.newState, {
+          type: 'ACTIVATE_PULSAR',
+          playerId: p1.id,
+          sectorId: pulsarSec.id,
+          targetSlot: 'move',
+          move: {
+            shipId: updatedPulsar.ships[0]!.id,
+            fromSectorId: pulsarSec.id,
+            toSectorId: p1Home.id,
+          },
+        });
+        expect(secondPulsarRes.valid).toBe(false);
+        expect(secondPulsarRes.error).toContain('already been activated this round');
+
+        // Cleanup phase resets activatedThisRound
+        const cleanupState = JSON.parse(JSON.stringify(pulsarBuildRes.newState));
+        cleanupState.round = 1;
+        transitionToCleanup(cleanupState);
+        expect(cleanupState.galacticEvents.pulsars[pulsarSec.id].activatedThisRound).toBe(false);
+
+        // 5. Supernova Mechanics: 5 Planets, Instability Check, Explosion, and Wormhole Traversal
+        // Roll yellow die evaluation
+        const yellowRolls = [rollYellowDie(() => 0.1), rollYellowDie(() => 0.5), rollYellowDie(() => 0.9)];
+        expect(yellowRolls.length).toBe(3);
+
+        // Instability check deterministic testing:
+        // Mock 1: dice roll 2 & 3 (sum 5) + 2 tech bonus = 7. In round 6: 7 >= 6 -> Stable!
+        const stableRes = evaluateSupernovaStability(
+          {
+            ...p1,
+            techTrack: {
+              ...p1.techTrack,
+              gridCount: 2,
+            },
+          },
+          6,
+          (() => {
+            let call = 0;
+            return () => (call++ === 0 ? 0.2 : 0.4); // face 2 (val 2), face 3 (val 3)
+          })()
+        );
+        expect(stableRes.techBonus).toBe(2);
+        expect(stableRes.sum).toBe(7);
+        expect(stableRes.exploded).toBe(false);
+
+        // Mock 2: dice roll 1 (Star = val 0) & 2 (val 2) + 0 tech bonus = 2. In round 4: 2 < 4 -> Exploded!
+        const explodeRes = evaluateSupernovaStability(
+          p1,
+          4,
+          (() => {
+            let call = 0;
+            return () => (call++ === 0 ? 0.05 : 0.2); // face 1 (val 0), face 2 (val 2)
+          })()
+        );
+        expect(explodeRes.sum).toBe(2);
+        expect(explodeRes.exploded).toBe(true);
+
+        // Supernova Sector 397 with 5 planets
+        const snSec = createGalacticEventSectorTile(397);
+        snSec.coord = { q: -2, r: 0 };
+        snSec.discOwner = p1.id;
+        snSec.planets[0]!.colonizedBy = p1.id;
+        snSec.ships.push({ id: 'p1_dread_sn', ownerId: p1.id, type: 'dreadnought', damage: 0 });
+        game.sectors.push(snSec);
+        p1.influenceTrack.discsOnTrack = 10;
+        p1.population.money.cubesOnBoard = 10;
+
+        // Cleanup phase explosion trigger
+        const snCleanupState = JSON.parse(JSON.stringify(game));
+        snCleanupState.round = 7;
+        snCleanupState.maxRounds = 9;
+        const origRandom = Math.random;
+        Math.random = () => 0.05; // Star (value 0) guarantees explosion
+        try {
+          transitionToCleanup(snCleanupState);
+        } finally {
+          Math.random = origRandom;
+        }
+
+        const explodedSn = snCleanupState.sectors.find((s) => s.id === snSec.id)!;
+        expect(explodedSn.isSupernovaExploded).toBe(true);
+        expect(explodedSn.wormholes).toEqual([false, false, false, false, false, false]);
+        expect(explodedSn.ships.length).toBe(0);
+        expect(explodedSn.discOwner).toBeUndefined();
+        // Influence disc and population cube returned
+        const snPlayer = snCleanupState.players.find((p: any) => p.id === p1.id)!;
+        expect(snPlayer.influenceTrack.discsOnTrack).toBe(11);
+        expect(snPlayer.population.money.cubesOnBoard).toBe(11);
+
+        // Cannot place influence disc on exploded supernova
+        snCleanupState.activePlayerIndex = 0;
+        snCleanupState.activePlayerId = p1.id;
+        const claimExplodedRes = validateAction(snCleanupState, {
+          type: 'INFLUENCE',
+          playerId: p1.id,
+          claimSectors: [explodedSn.id],
+        });
+        expect(claimExplodedRes.valid).toBe(false);
+        expect(claimExplodedRes.error).toContain('Exploded Supernova');
+
+        // Wormhole connection to exploded supernova requires Wormhole Generator
+        const neighborSec = {
+          id: 'test_sec_neighbor',
+          sectorNumber: 301,
+          ring: 3 as const,
+          coord: { q: -1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+        // Without wormhole generator
+        expect(areSectorsConnected(neighborSec, explodedSn, false)).toBe(false);
+        // With wormhole generator
+        expect(areSectorsConnected(neighborSec, explodedSn, true)).toBe(true);
+
+        // 6. Black Hole Mechanics: Spacetime Anomaly & Ship Return
+        // Entry outcomes
+        const bhImmediate = evaluateBlackHoleEntry(3, () => 0.05); // face 1 (Star)
+        expect(bhImmediate.immediate).toBe(true);
+        expect(bhImmediate.damage).toBe(1);
+        expect(bhImmediate.returnRound).toBe(3);
+
+        const bhDelay1 = evaluateBlackHoleEntry(3, () => 0.2); // face 2
+        expect(bhDelay1.immediate).toBe(false);
+        expect(bhDelay1.damage).toBe(0);
+        expect(bhDelay1.returnRound).toBe(4);
+
+        const bhDelay2 = evaluateBlackHoleEntry(3, () => 0.55); // face 4
+        expect(bhDelay2.immediate).toBe(false);
+        expect(bhDelay2.damage).toBe(0);
+        expect(bhDelay2.returnRound).toBe(5);
+
+        // Black Hole 396 (Cygnus X-1) & 399 (V616 Mon)
+        const bh396 = createGalacticEventSectorTile(396);
+        bh396.coord = { q: 2, r: -1 };
+        const bh399 = createGalacticEventSectorTile(399);
+        bh399.coord = { q: -2, r: 1 };
+        game.sectors.push(bh396, bh399);
+
+        // Cannot claim Influence on Black Hole
+        const bhInfRes = validateAction(game, {
+          type: 'INFLUENCE',
+          playerId: p1.id,
+          claimSectors: [bh396.id],
+        });
+        expect(bhInfRes.valid).toBe(false);
+        expect(bhInfRes.error).toContain('Black Hole sectors do not have an Influence Space');
+
+        // Add a Ring 1 sector to galaxy map
+        const r1Sec = {
+          id: 'sector_101',
+          sectorNumber: 101,
+          ring: 1 as const,
+          coord: { q: 0, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+        game.sectors.push(r1Sec);
+
+        // Cygnus X-1 returns only to Ring I
+        const ring1Sectors = getLegalBlackHoleReturnSectors(396, game.sectors);
+        expect(ring1Sectors.length).toBeGreaterThan(0);
+        expect(ring1Sectors.every((s) => s.ring === 1)).toBe(true);
+
+        // V616 Mon returns only to sector facing an empty Zone
+        const emptyFacingSectors = getLegalBlackHoleReturnSectors(399, game.sectors);
+        expect(emptyFacingSectors.length).toBeGreaterThan(0);
+
+        // Return Black Hole Ship action validation
+        const bhGameState = JSON.parse(JSON.stringify(game));
+        bhGameState.activePlayerIndex = 0;
+        bhGameState.activePlayerId = p1.id;
+        bhGameState.round = 2;
+        bhGameState.galacticEvents.blackHoleDelayedShips = [
+          {
+            shipId: 'delayed_cruiser_396',
+            ownerId: p1.id,
+            shipType: 'cruiser',
+            damage: 0,
+            returnRound: 3,
+            blackHoleSectorNumber: 396,
+            blackHoleSectorId: bh396.id,
+          },
+        ];
+
+        // Premature return in round 2 fails
+        const prematureReturnRes = validateAction(bhGameState, {
+          type: 'RETURN_BLACK_HOLE_SHIP',
+          playerId: p1.id,
+          shipId: 'delayed_cruiser_396',
+          targetSectorId: ring1Sectors[0]!.id,
+        });
+        expect(prematureReturnRes.valid).toBe(false);
+        expect(prematureReturnRes.error).toContain('scheduled for Round 3');
+
+        // In Round 3, returning Cygnus X-1 ship to Ring III fails
+        bhGameState.round = 3;
+        const invalidReturnRes = validateAction(bhGameState, {
+          type: 'RETURN_BLACK_HOLE_SHIP',
+          playerId: p1.id,
+          shipId: 'delayed_cruiser_396',
+          targetSectorId: bh396.id, // Ring III
+        });
+        expect(invalidReturnRes.valid).toBe(false);
+        expect(invalidReturnRes.error).toContain('can only return to an Inner (Ring I) sector');
+
+        // Returning to Ring I succeeds!
+        const validReturnRes = executeAction(bhGameState, {
+          type: 'RETURN_BLACK_HOLE_SHIP',
+          playerId: p1.id,
+          shipId: 'delayed_cruiser_396',
+          targetSectorId: ring1Sectors[0]!.id,
+        });
+        expect(validReturnRes.success).toBe(true);
+        const r1Target = validReturnRes.newState.sectors.find((s: any) => s.id === ring1Sectors[0]!.id)!;
+        expect(r1Target.ships.some((s: any) => s.id === 'delayed_cruiser_396')).toBe(true);
+        expect(validReturnRes.newState.galacticEvents.blackHoleDelayedShips.length).toBe(0);
+
+        // 7. UI Rendering: HexGalaxyMap & GalacticGalleryModal
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+          })
+        );
+        // Verify Pulsar action spaces rendered
+        expect(mapHtml).toContain('MOV');
+        expect(mapHtml).toContain('BUI');
+        expect(mapHtml).toContain('UPG');
+        // Verify Black Hole rendered
+        expect(mapHtml).toContain('Ring I Return');
+        expect(mapHtml).toContain('Empty Zone Return');
+        // Verify Nebula subsectors rendered
+        expect(mapHtml).toContain('Sub 1');
+        expect(mapHtml).toContain('Sub 2');
+        expect(mapHtml).toContain('Sub 3');
+
+        // Verify GalacticGalleryModal rendering
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+        const galleryHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            initialTab: 'sectors',
+            onClose: () => {},
+          })
+        );
+        expect(galleryHtml).toContain('Galactic Events');
+        expect(galleryHtml).toContain('NGC 5189');
+        expect(galleryHtml).toContain('Geminga');
+        expect(galleryHtml).toContain('Cygnus X-1');
+        expect(galleryHtml).toContain('Betelgeuse');
+      });
     });
   });
 });

@@ -136,6 +136,11 @@ export function areSectorsConnected(
   const aHas = hasWormholeOnEdge(tileA, edgeAtoB);
   const bHas = hasWormholeOnEdge(tileB, edgeBtoA);
 
+  // Exploded Supernovas have no wormhole connections, but can be traversed with Wormhole Generator
+  if (tileA.isSupernovaExploded || tileB.isSupernovaExploded) {
+    return hasWormholeGenerator;
+  }
+
   if (hasWormholeGenerator) {
     // Wormhole generator allows traversing if at least one side has an open wormhole
     return aHas || bHas;
