@@ -4,6 +4,7 @@
  */
 
 import { HexCoord, HexEdge, SectorTile } from '../types/galaxy';
+import type { WarpConduit, LargeWarpSectorPlacement } from './warpedUniverse';
 
 export const HEX_DIRECTIONS: readonly HexCoord[] = [
   { q: 1, r: 0 },  // 0: East (0°)
@@ -93,7 +94,8 @@ export function hasWormholeOnEdge(tile: SectorTile, edge: HexEdge): boolean {
 export function areSectorsConnected(
   tileA: SectorTile,
   tileB: SectorTile,
-  hasWormholeGenerator: boolean = false
+  hasWormholeGenerator: boolean = false,
+  warpConduits?: WarpConduit[]
 ): boolean {
   // Warp Portal connects to all other Warp Portal sectors (Sectors 281, 381, 382 and discovery/structure portals)
   const isWarpA =
@@ -107,6 +109,24 @@ export function areSectorsConnected(
 
   if (isWarpA && isWarpB) {
     return true;
+  }
+
+  // Warped Universe Conduits
+  if (warpConduits && warpConduits.length > 0) {
+    for (const c of warpConduits) {
+      const matchForward = areCoordsEqual(tileA.coord, c.coordA) && areCoordsEqual(tileB.coord, c.coordB);
+      const matchBackward = areCoordsEqual(tileA.coord, c.coordB) && areCoordsEqual(tileB.coord, c.coordA);
+      if (matchForward || matchBackward) {
+        const edgeA = matchForward ? c.edgeA : c.edgeB;
+        const edgeB = matchForward ? c.edgeB : c.edgeA;
+        const aHas = hasWormholeOnEdge(tileA, edgeA);
+        const bHas = hasWormholeOnEdge(tileB, edgeB);
+        if (hasWormholeGenerator) {
+          return aHas || bHas;
+        }
+        return aHas && bHas;
+      }
+    }
   }
 
   const edgeAtoB = getEdgeBetween(tileA.coord, tileB.coord);
@@ -126,7 +146,7 @@ export function areSectorsConnected(
 /**
  * Checks if a candidate sector tile placed at targetCoord connects legally
  * to either the exploring sourceSector OR any other adjacent sector on the board
- * controlled or occupied by the player (Bug 74).
+ * controlled or occupied by the player (Bug 74), or via Warped Universe conduit.
  */
 export function isLegallyConnectedToPlayerSectors(
   allSectors: SectorTile[] = [],
@@ -134,21 +154,29 @@ export function isLegallyConnectedToPlayerSectors(
   candidateTile: SectorTile,
   playerId?: string,
   hasWormholeGenerator: boolean = false,
-  sourceSector?: SectorTile | null
+  sourceSector?: SectorTile | null,
+  warpConduits?: WarpConduit[]
 ): boolean {
   // 1. Direct connection to sourceSector
-  if (sourceSector && areSectorsConnected(sourceSector, candidateTile, hasWormholeGenerator)) {
+  if (sourceSector && areSectorsConnected(sourceSector, candidateTile, hasWormholeGenerator, warpConduits)) {
     return true;
   }
 
   // 2. Or connection to ANY adjacent sector containing player's influence disc or ship
   for (const s of allSectors) {
-    if (!areCoordsAdjacent(s.coord, targetCoord)) continue;
+    const isAdjacent = areCoordsAdjacent(s.coord, targetCoord);
+    const hasConduit = warpConduits && warpConduits.some(
+      (c) =>
+        (areCoordsEqual(s.coord, c.coordA) && areCoordsEqual(targetCoord, c.coordB)) ||
+        (areCoordsEqual(s.coord, c.coordB) && areCoordsEqual(targetCoord, c.coordA))
+    );
+    if (!isAdjacent && !hasConduit) continue;
+
     const isPlayerSector =
       !playerId ||
       s.discOwner === playerId ||
       (s.ships && s.ships.some((ship) => ship.ownerId === playerId));
-    if (isPlayerSector && areSectorsConnected(s, candidateTile, hasWormholeGenerator)) {
+    if (isPlayerSector && areSectorsConnected(s, candidateTile, hasWormholeGenerator, warpConduits)) {
       return true;
     }
   }
@@ -175,7 +203,8 @@ export function findLegalExploreRotation(
   targetCoord: HexCoord,
   hasWormholeGenerator: boolean = false,
   allSectors?: SectorTile[],
-  playerId?: string
+  playerId?: string,
+  warpConduits?: WarpConduit[]
 ): number {
   let bestRot = -1;
   let maxScore = -1;
@@ -193,7 +222,8 @@ export function findLegalExploreRotation(
       testTile,
       playerId,
       hasWormholeGenerator,
-      sourceSector
+      sourceSector,
+      warpConduits
     );
     if (!isConnected) continue;
 
@@ -203,7 +233,7 @@ export function findLegalExploreRotation(
     if (allSectors) {
       for (const other of allSectors) {
         if (areCoordsEqual(other.coord, sourceSector.coord)) continue;
-        if (areSectorsConnected(other, testTile, false)) {
+        if (areSectorsConnected(other, testTile, false, warpConduits)) {
           score += 10;
         }
       }
@@ -229,7 +259,8 @@ export function findNextLegalExploreRotation(
   currentRotation: number,
   hasWormholeGenerator: boolean = false,
   allSectors?: SectorTile[],
-  playerId?: string
+  playerId?: string,
+  warpConduits?: WarpConduit[]
 ): number {
   for (let step = 1; step <= 6; step++) {
     const rot = (currentRotation + step) % 6;
@@ -245,7 +276,8 @@ export function findNextLegalExploreRotation(
         testTile,
         playerId,
         hasWormholeGenerator,
-        sourceSector
+        sourceSector,
+        warpConduits
       )
     ) {
       return rot;
@@ -311,7 +343,9 @@ export function getExplorableHexes(
   sectors: SectorTile[],
   playerId: string,
   hasWormholeGen: boolean,
-  sectorDecks?: { ring1?: SectorTile[]; ring2?: SectorTile[]; ring3?: SectorTile[] }
+  sectorDecks?: { ring1?: SectorTile[]; ring2?: SectorTile[]; ring3?: SectorTile[] },
+  warpConduits?: WarpConduit[],
+  warpSectors?: LargeWarpSectorPlacement[]
 ): { from: HexCoord; target: HexCoord; ring: number }[] {
   const targets: { from: HexCoord; target: HexCoord; ring: number }[] = [];
 
@@ -331,6 +365,12 @@ export function getExplorableHexes(
       const ring = getRingFromCoord(candidate);
       if (ring < 1 || ring > 3) continue; // Outside Galaxy or Center hex
 
+      // Large Warp Sectors occupy physical board hexes and cannot be explored into
+      const isBlockedByWarp = warpSectors?.some((ws) =>
+        ws.hexes.some((h) => areCoordsEqual(h, candidate))
+      );
+      if (isBlockedByWarp) continue;
+
       if (sectorDecks) {
         const deck =
           ring === 1
@@ -344,6 +384,36 @@ export function getExplorableHexes(
       const exists = sectors.some((s) => areCoordsEqual(s.coord, candidate));
       if (!exists && !targets.some((t) => areCoordsEqual(t.target, candidate))) {
         targets.push({ from: sec.coord, target: candidate, ring });
+      }
+    }
+
+    // Check Warped Universe conduits from this sector
+    if (warpConduits && warpConduits.length > 0) {
+      for (const conduit of warpConduits) {
+        const isFromA = areCoordsEqual(sec.coord, conduit.coordA);
+        const isFromB = areCoordsEqual(sec.coord, conduit.coordB);
+        if (!isFromA && !isFromB) continue;
+
+        const fromEdge = isFromA ? conduit.edgeA : conduit.edgeB;
+        if (!hasWormholeOnEdge(sec, fromEdge) && !hasWormholeGen) continue;
+
+        const candidate = isFromA ? conduit.coordB : conduit.coordA;
+        const ring = getRingFromCoord(candidate);
+        if (ring < 1 || ring > 3) continue;
+        if (sectorDecks) {
+          const deck =
+            ring === 1
+              ? sectorDecks.ring1
+              : ring === 2
+              ? sectorDecks.ring2
+              : sectorDecks.ring3;
+          if (!deck || deck.length === 0) continue;
+        }
+
+        const exists = sectors.some((s) => areCoordsEqual(s.coord, candidate));
+        if (!exists && !targets.some((t) => areCoordsEqual(t.target, candidate))) {
+          targets.push({ from: sec.coord, target: candidate, ring });
+        }
       }
     }
   }

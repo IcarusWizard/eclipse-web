@@ -19,6 +19,10 @@ import {
   createInitialMinorSpeciesSupply,
   ALL_MINOR_SPECIES_TILES,
 } from './minorSpecies';
+import {
+  createWarpedUniverseLayout,
+  getWarpedUniverseStartingCoords,
+} from './warpedUniverse';
 
 export const ECLIPSE_COLOR_PALETTE = {
   red: '#dc2626',
@@ -712,7 +716,9 @@ export function createInitialGame(
   neutralShipSelections?: Partial<NeutralShipSelectionConfig>
 ): GameState {
   const count = Math.max(1, Math.min(6, playerCount));
-  const startingCoords = STARTING_COORDS_BY_COUNT[count] ?? STARTING_COORDS_BY_COUNT[2]!;
+  const startingCoords = expansions?.includes('warped_universe')
+    ? getWarpedUniverseStartingCoords(count)
+    : (STARTING_COORDS_BY_COUNT[count] ?? STARTING_COORDS_BY_COUNT[2]!);
 
   const hasRemnants = Boolean(expansions && expansions.includes('remnants_of_worlds_afar'));
   const resolvedNeutralBlueprints = resolveNeutralShipConfig(neutralShipSelections, expansions);
@@ -991,11 +997,14 @@ export function createInitialGame(
   const decks = generateSectorDecks(players.length);
 
   // Fill unused starting positions in Ring 2 with authentic Guardian Sectors (Sectors 271 to 274)
+  // Official rule: Guardian Sectors are not used with Warped Universe expansion
   const canonicalStartingCoords = STARTING_COORDS_BY_COUNT[6]!;
   const usedCoords = startingCoords.slice(0, players.length);
-  const unusedStartingCoords = canonicalStartingCoords.filter(
-    (c) => !usedCoords.some((u) => u.q === c.q && u.r === c.r)
-  );
+  const unusedStartingCoords = expansions?.includes('warped_universe')
+    ? []
+    : canonicalStartingCoords.filter(
+        (c) => !usedCoords.some((u) => u.q === c.q && u.r === c.r)
+      );
 
   const guardianSectorNumbers = [271, 272, 273, 274];
   unusedStartingCoords.forEach((coord, gIdx) => {
@@ -1080,6 +1089,7 @@ export function createInitialGame(
     reputationBag,
     discoveryBag,
     minorSpeciesSupply: expansions?.includes('minor_species') ? createInitialMinorSpeciesSupply() : undefined,
+    warpedUniverse: expansions?.includes('warped_universe') ? createWarpedUniverseLayout(count) : undefined,
     activeCombat: null,
     pendingExplore: null,
     pendingDiscovery: null,

@@ -500,7 +500,7 @@ export const App: React.FC = () => {
     const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
 
     const defaultRotation = (source && candidate)
-      ? findLegalExploreRotation(source, candidate, targetCoord, hasWormholeGen, state.sectors)
+      ? findLegalExploreRotation(source, candidate, targetCoord, hasWormholeGen, state.sectors, activePlayer?.id, state.warpedUniverse?.conduits)
       : 0;
 
     setExploreRotation(defaultRotation);
@@ -814,7 +814,7 @@ export const App: React.FC = () => {
 
     return state.sectors.filter((s) => {
       if (s.id === currentSimSector.id) return false;
-      const isConnected = areSectorsConnected(currentSimSector, s, hasWormholeGen);
+      const isConnected = areSectorsConnected(currentSimSector, s, hasWormholeGen, state.warpedUniverse?.conduits);
       if (isConnected) return true;
       if (currentShipHasJumpDrive && !jumpUsedInCurrentActivation) {
         return getEdgeBetween(currentSimSector.coord, s.coord) !== null;
@@ -1644,6 +1644,7 @@ export const App: React.FC = () => {
         <ExploreModal
           player={activePlayer}
           sectors={state.sectors}
+          warpConduits={state.warpedUniverse?.conduits}
           fromCoord={pendingExploreCoords.from}
           targetCoord={pendingExploreCoords.target}
           candidateTile={candidateTile}

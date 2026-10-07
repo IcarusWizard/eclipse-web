@@ -7,6 +7,7 @@ import { PlayerState } from './player';
 import { Technology } from './tech';
 import type { NeutralShipConfig, NeutralShipSelectionConfig } from '../rules/neutralShips';
 import type { MinorSpeciesTile } from '../rules/minorSpecies';
+import type { WarpedUniverseState } from '../rules/warpedUniverse';
 
 export type GamePhase =
   | 'ACTION_PHASE'
@@ -182,6 +183,7 @@ export interface GameState {
   reputationBag: number[];
   discoveryBag: DiscoveryTile[];
   minorSpeciesSupply?: MinorSpeciesTile[];
+  warpedUniverse?: WarpedUniverseState;
   activeCombat: CombatState | null;
   pendingExplore: PendingExplore | null;
   pendingExploreActivations?: number; // for multi-activation explore (e.g. Planta)

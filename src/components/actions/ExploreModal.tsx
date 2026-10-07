@@ -14,6 +14,7 @@ import {
   areCoordsEqual,
 } from '../../engine/rules/hexMath';
 import { playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
+import type { WarpConduit } from '../../engine/rules/warpedUniverse';
 import {
   Compass,
   RotateCw,
@@ -37,6 +38,7 @@ interface ExploreModalProps {
   candidateTiles?: SectorTile[];
   sourceSector: SectorTile;
   sectors?: SectorTile[];
+  warpConduits?: WarpConduit[];
   rotation: number;
   onRotate: (newRotation: number | ((prev: number) => number)) => void;
   onConfirmPlacement: (rotation: number, claimInfluence: boolean, chosenTileIndex?: number) => void;
@@ -53,6 +55,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   candidateTiles,
   sourceSector,
   sectors = [],
+  warpConduits,
   rotation,
   onRotate,
   onConfirmPlacement,
@@ -90,7 +93,8 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     simulatedTile,
     player.id,
     hasWormholeGen,
-    sourceSector
+    sourceSector,
+    warpConduits
   );
   const ring = getRingFromCoord(targetCoord);
 
@@ -166,7 +170,10 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
         sourceSector,
         activeTile,
         targetCoord,
-        hasWormholeGen
+        hasWormholeGen,
+        sectors,
+        player.id,
+        warpConduits
       );
       if (legal !== rotation) {
         onRotate(legal);
@@ -226,7 +233,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                   type="button"
                   onClick={() => {
                     setSelectedDracoIndex(idx);
-                    const legal = findLegalExploreRotation(sourceSector, tile, targetCoord, hasWormholeGen);
+                    const legal = findLegalExploreRotation(sourceSector, tile, targetCoord, hasWormholeGen, sectors, player.id, warpConduits);
                     onRotate(legal);
                   }}
                   className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 ${

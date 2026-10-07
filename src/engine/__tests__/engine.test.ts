@@ -10894,6 +10894,254 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(galleryHtml).toContain('Minor Species Expansion: Ambassador Tiles');
         expect(galleryHtml).toContain('Cruiser Shipwrights');
       });
+
+      it('67. verifies Warped Universe Expansion: 5p, 3p, and 2/4p board geometry, exclusion of Guardian sectors, 1-step wormhole conduit movement across rings, wormhole generator traversal, exploration checks, and map UI rendering', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const { areSectorsConnected, isLegallyConnectedToPlayerSectors, getExplorableHexes } = await import('../rules/hexMath');
+        const { executeAction } = await import('../rules/gameReducer');
+        const { createWarpedUniverseLayout, getWarpedUniverseStartingCoords } = await import('../rules/warpedUniverse');
+
+        // 1. Board Layouts & Geometry for 5p, 3p, 4p, and 2p
+        const game5p = createInitialGame(5, undefined, ['warped_universe']);
+        expect(game5p.warpedUniverse?.active).toBe(true);
+        expect(game5p.warpedUniverse?.layoutVariant).toBe('balanced_5p');
+        expect(game5p.warpedUniverse?.warpSectors.length).toBe(1);
+        expect(game5p.warpedUniverse?.conduits.length).toBe(12);
+        // Guardian sectors strictly excluded per rulebook page 1
+        expect(game5p.sectors.some((s) => s.guardianCount || s.sectorNumber === 271 || s.sectorNumber === 272)).toBe(false);
+
+        // Verify 5p home sector coordinates
+        const homeCoords5p = game5p.players.map((p) => {
+          const home = game5p.sectors.find((s) => s.id === `home_sector_${p.id}`);
+          return home ? `${home.coord.q},${home.coord.r}` : '';
+        });
+        expect(homeCoords5p).toEqual(['0,-2', '2,-2', '2,0', '-2,0', '-2,2']);
+        // Verify South (0, 2) is NOT a player home sector (it is occupied by Large Warp Sector)
+        expect(homeCoords5p.includes('0,2')).toBe(false);
+
+        // 3p layout: 3 Large Warp Sectors at 120° intervals (3 x 12 = 36 conduits)
+        const game3p = createInitialGame(3, undefined, ['warped_universe']);
+        expect(game3p.warpedUniverse?.active).toBe(true);
+        expect(game3p.warpedUniverse?.layoutVariant).toBe('tighter_3p');
+        expect(game3p.warpedUniverse?.warpSectors.length).toBe(3);
+        expect(game3p.warpedUniverse?.conduits.length).toBe(36);
+        expect(game3p.sectors.some((s) => s.guardianCount || s.sectorNumber === 271)).toBe(false);
+        const homeCoords3p = game3p.players.map((p) => {
+          const home = game3p.sectors.find((s) => s.id === `home_sector_${p.id}`);
+          return home ? `${home.coord.q},${home.coord.r}` : '';
+        });
+        expect(homeCoords3p).toEqual(['0,2', '-2,0', '2,-2']);
+
+        // 4p and 2p layout: 2 Large Warp Sectors at East and West (2 x 12 = 24 conduits)
+        const game4p = createInitialGame(4, undefined, ['warped_universe']);
+        expect(game4p.warpedUniverse?.active).toBe(true);
+        expect(game4p.warpedUniverse?.layoutVariant).toBe('tighter_2p_4p');
+        expect(game4p.warpedUniverse?.warpSectors.length).toBe(2);
+        expect(game4p.warpedUniverse?.conduits.length).toBe(24);
+
+        const game2p = createInitialGame(2, undefined, ['warped_universe']);
+        expect(game2p.warpedUniverse?.active).toBe(true);
+        expect(game2p.warpedUniverse?.layoutVariant).toBe('tighter_2p_4p');
+        expect(game2p.warpedUniverse?.warpSectors.length).toBe(2);
+        const homeCoords2p = game2p.players.map((p) => {
+          const home = game2p.sectors.find((s) => s.id === `home_sector_${p.id}`);
+          return home ? `${home.coord.q},${home.coord.r}` : '';
+        });
+        expect(homeCoords2p).toEqual(['0,-2', '0,2']);
+
+        // 2. Large Warp Sector Composition (18 hexes / 9 double-hex tiles)
+        const southWarp = game5p.warpedUniverse!.warpSectors[0]!;
+        expect(southWarp.hexes.length).toBe(18);
+        expect(southWarp.hexes.filter((h) => h.hasMarker).length).toBe(9);
+        expect(southWarp.apexCoord).toEqual({ q: 0, r: 1 });
+
+        // 3. Wormhole Conduit Traversals across 12 conduits (Line 1, Line 3, Line 5)
+        const conduits = game5p.warpedUniverse!.conduits;
+        expect(conduits.length).toBe(12);
+        const line1 = conduits.find((c) => c.conduitIndex === 1)!;
+        const line3 = conduits.find((c) => c.conduitIndex === 3)!;
+        const line5 = conduits.find((c) => c.conduitIndex === 5)!;
+        expect(line1).toBeDefined();
+        expect(line3).toBeDefined();
+        expect(line5).toBeDefined();
+
+        // Create test sectors at Line 1 conduit endpoints
+        const p1 = game5p.players[0]!;
+        const secR1Left = {
+          id: 'test_sec_r1_left',
+          sectorNumber: 105,
+          ring: 1 as const,
+          coord: { q: -1, r: 1 },
+          rotation: 0,
+          wormholes: [true, false, false, false, false, false], // WH on edge 0 (East)
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [{ id: 'ship_r1_test', ownerId: p1.id, type: 'cruiser' as const, damage: 0 }],
+          discOwner: p1.id,
+        };
+        const secR1Right = {
+          id: 'test_sec_r1_right',
+          sectorNumber: 106,
+          ring: 1 as const,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [false, false, true, false, false, false], // WH on edge 2 (SW)
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+
+        // Connectivity without wormhole generator
+        expect(areSectorsConnected(secR1Left, secR1Right, false, conduits)).toBe(true);
+
+        // If one edge lacks a wormhole
+        const secR1RightClosed = {
+          ...secR1Right,
+          wormholes: [false, false, false, false, false, false],
+        };
+        expect(areSectorsConnected(secR1Left, secR1RightClosed, false, conduits)).toBe(false);
+        // With Wormhole Generator: allowed if at least one side has wormhole
+        expect(areSectorsConnected(secR1Left, secR1RightClosed, true, conduits)).toBe(true);
+
+        // Execute MOVE action across Line 1 Conduit in 1 step!
+        game5p.sectors.push(secR1Left, secR1Right);
+        game5p.activePlayerIndex = 0;
+        const moveRes = executeAction(game5p, {
+          type: 'MOVE',
+          playerId: p1.id,
+          moves: [
+            {
+              shipId: 'ship_r1_test',
+              fromSectorId: secR1Left.id,
+              toSectorId: secR1Right.id,
+            },
+          ],
+        });
+        expect(moveRes.success).toBe(true);
+        const updatedSecLeft = moveRes.newState.sectors.find((s) => s.id === secR1Left.id)!;
+        const updatedSecRight = moveRes.newState.sectors.find((s) => s.id === secR1Right.id)!;
+        expect(updatedSecLeft.ships.length).toBe(0);
+        expect(updatedSecRight.ships.some((s) => s.id === 'ship_r1_test')).toBe(true);
+
+        // 4. Line 3 & Line 5 Conduits
+        const secLine3Left = {
+          id: 'test_sec_line3_left',
+          sectorNumber: 205,
+          ring: 2 as const,
+          coord: { q: -2, r: 2 },
+          rotation: 0,
+          wormholes: [true, false, false, false, false, false], // Edge 0
+          planets: [],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+        const secLine3Right = {
+          id: 'test_sec_line3_right',
+          sectorNumber: 206,
+          ring: 2 as const,
+          coord: { q: 1, r: 1 },
+          rotation: 0,
+          wormholes: [false, false, true, false, false, false], // Edge 2
+          planets: [],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+        expect(areSectorsConnected(secLine3Left, secLine3Right, false, conduits)).toBe(true);
+
+        const secLine5Left = {
+          id: 'test_sec_line5_left',
+          sectorNumber: 305,
+          ring: 3 as const,
+          coord: { q: -2, r: 3 },
+          rotation: 0,
+          wormholes: [true, false, false, false, false, false], // Edge 0
+          planets: [],
+          victoryPoints: 3,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+        const secLine5Right = {
+          id: 'test_sec_line5_right',
+          sectorNumber: 306,
+          ring: 3 as const,
+          coord: { q: 2, r: 1 },
+          rotation: 0,
+          wormholes: [false, false, true, false, false, false], // Edge 2
+          planets: [],
+          victoryPoints: 3,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+        expect(areSectorsConnected(secLine5Left, secLine5Right, false, conduits)).toBe(true);
+
+        // Non-conduit pairing (e.g. Line 1 Left to Line 5 Right) does NOT connect through warp
+        expect(areSectorsConnected(secR1Left, secLine5Right, true, conduits)).toBe(false);
+
+        // 5. Exploration & Warped Hex Exclusion
+        // A player cannot explore into any of the 18 hexes inside Large Warp Sector
+        const explorable = getExplorableHexes(
+          game5p.sectors,
+          p1.id,
+          true,
+          game5p.sectorDecks,
+          game5p.warpedUniverse?.conduits,
+          game5p.warpedUniverse?.warpSectors
+        );
+        for (const target of explorable) {
+          const isInsideWarp = southWarp.hexes.some(
+            (h) => h.q === target.target.q && h.r === target.target.r
+          );
+          expect(isInsideWarp).toBe(false);
+        }
+
+        // 6. UI Rendering: HexGalaxyMap with Warped Universe
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game5p,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+          })
+        );
+        expect(mapHtml).toContain('WARP SECTOR');
+        expect(mapHtml).toContain('data-warp-sector="large_warp_sector_0"');
+        expect(mapHtml).toContain('CONDUIT 1');
+        expect(mapHtml).toContain('CONDUIT 3');
+        expect(mapHtml).toContain('CONDUIT 5');
+        expect(mapHtml).toContain('data-conduit-id="warp_conduit_s0_line_1"');
+
+        // 7. Galactic Gallery Reference
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+        const galleryHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            initialTab: 'sectors',
+            onClose: () => {},
+          })
+        );
+        expect(galleryHtml).toContain('Warped Universe');
+        expect(galleryHtml).toContain('Warp Tile 1 (Double-Hex)');
+        expect(galleryHtml).toContain('Modular Double-Hex');
+      });
     });
   });
 });

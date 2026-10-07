@@ -2,7 +2,7 @@
  * Official Expansion Modules & Configuration for Eclipse: Second Dawn
  */
 
-export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species';
+export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species' | 'warped_universe';
 
 export interface ExpansionDefinition {
   readonly id: ExpansionId;
@@ -93,6 +93,20 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'Minor Species Ambassador Tiles cannot be discarded once acquired',
     ],
   },
+  {
+    id: 'warped_universe',
+    name: 'Warped Universe',
+    shortName: 'Warped',
+    badge: 'Warp Sector Board',
+    description: 'Dense, balanced board layouts for 2–5 players using modular Large Warp Sectors with Ring-level wormhole conduits.',
+    features: [
+      'Modular Large Warp Sectors assembled from 9 Double-Hex tiles (18 hexes)',
+      'Balanced 5-Player setup (1 Large Warp Sector), Tighter 3-Player setup (3 Large Warp Sectors), and Tighter 2/4-Player setup (2 Large Warp Sectors)',
+      'Flow lines establish 3 Ring-level wormhole conduits (Ring 1, Ring 2, Ring 3) between left and right borders',
+      'Move across the Warp Sector in 1 step through open wormholes; ships do not stop inside the Warp Sector',
+      'Guardian Sectors are not used with this expansion',
+    ],
+  },
 ];
 
 export function isExpansionActive(expansions: string[] | undefined, id: ExpansionId): boolean {
@@ -157,6 +171,9 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
   }
   if (norm.startsWith('minor_species') || norm.includes('minor species')) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'minor_species') || null;
+  }
+  if (norm.startsWith('warped_universe') || norm.includes('warped') || norm.startsWith('warp_') || norm.includes('warp sector')) {
+    return AVAILABLE_EXPANSIONS.find((e) => e.id === 'warped_universe') || null;
   }
   return null;
 }

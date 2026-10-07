@@ -1304,7 +1304,7 @@ export interface SectorCatalogEntry {
   sectorNumber: number;
   name: string;
   ring: number | string;
-  category: 'Galactic Center' | 'Inner (Ring 1)' | 'Middle (Ring 2)' | 'Guardian' | 'Home System' | 'Outer (Ring 3)';
+  category: 'Galactic Center' | 'Inner (Ring 1)' | 'Middle (Ring 2)' | 'Guardian' | 'Home System' | 'Outer (Ring 3)' | 'Warped Universe';
   victoryPoints: number;
   hasArtifact: boolean;
   hasDiscovery: boolean;
@@ -1316,7 +1316,7 @@ export interface SectorCatalogEntry {
   factionName?: string;
 }
 
-export function getAllSectorsCatalog(): SectorCatalogEntry[] {
+export function getAllSectorsCatalog(includeExpansions: boolean = false): SectorCatalogEntry[] {
   const entries: SectorCatalogEntry[] = [];
 
   // 1. Center
@@ -1431,6 +1431,37 @@ export function getAllSectorsCatalog(): SectorCatalogEntry[] {
       wormholes: cfg.wh,
       planets: cfg.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
     });
+  }
+
+  if (includeExpansions) {
+    // 7. Warped Universe Large Warp Sector Tiles (Double-Hex modular boards)
+    const warpDescriptions = [
+      'Tile 1 (Double-Hex Apex): Ring 1 conduit endpoint connects border to border across the apex.',
+      'Tile 2 (Double-Hex Core): Ring 1 stabilization zone adjoining the apex hexes.',
+      'Tile 3 (Double-Hex Left Flank): Ring 2 conduit left gateway endpoint.',
+      'Tile 4 (Double-Hex Central Bridge): Ring 2 central crossway connecting left and right sectors.',
+      'Tile 5 (Double-Hex Right Flank): Ring 2 conduit right gateway endpoint.',
+      'Tile 6 (Double-Hex Spine): Central vertical spine bridging inner rings to the outer rim.',
+      'Tile 7 (Double-Hex Outer Left): Ring 3 conduit left gateway endpoint.',
+      'Tile 8 (Double-Hex Outer Right): Ring 3 conduit right gateway endpoint.',
+      'Tile 9 (Double-Hex Outer Rim Base): Stabilizing outer corner tile anchoring the warp sector boundary.',
+    ];
+
+    for (let i = 1; i <= 9; i++) {
+      entries.push({
+        sectorNumber: 900 + i,
+        name: `Warp Tile ${i} (Double-Hex)`,
+        ring: 'Warp',
+        category: 'Warped Universe',
+        victoryPoints: 0,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        wormholes: [false, false, false, false, false, false],
+        planets: [],
+        factionName: warpDescriptions[i - 1],
+      });
+    }
   }
 
   return entries;

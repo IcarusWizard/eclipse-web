@@ -155,19 +155,21 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
   const unoccupiedCoords = useMemo(() => {
     const list: HexCoord[] = [];
+    const warpHexes = state.warpedUniverse?.warpSectors.flatMap((ws) => ws.hexes) || [];
     for (let q = -3; q <= 3; q++) {
       for (let r = -3; r <= 3; r++) {
         if (Math.max(Math.abs(q), Math.abs(r), Math.abs(q + r)) <= 3) {
           const coord = { q, r };
           const exists = state.sectors.some((s) => areCoordsEqual(s.coord, coord));
-          if (!exists) {
+          const isWarp = warpHexes.some((h) => areCoordsEqual(h, coord));
+          if (!exists && !isWarp) {
             list.push(coord);
           }
         }
       }
     }
     return list;
-  }, [state.sectors]);
+  }, [state.sectors, state.warpedUniverse]);
 
   const activePlayer = state.players[state.activePlayerIndex];
 
@@ -239,8 +241,15 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   const explorableHexes = useMemo(() => {
     if (!isExploreMode || !activePlayer) return [];
     const hasWormholeGen = playerHasWormholeGenerator(activePlayer);
-    return getExplorableHexes(state.sectors, activePlayer.id, hasWormholeGen, state.sectorDecks);
-  }, [state.sectors, activePlayer, isExploreMode, state.sectorDecks]);
+    return getExplorableHexes(
+      state.sectors,
+      activePlayer.id,
+      hasWormholeGen,
+      state.sectorDecks,
+      state.warpedUniverse?.conduits,
+      state.warpedUniverse?.warpSectors
+    );
+  }, [state.sectors, activePlayer, isExploreMode, state.sectorDecks, state.warpedUniverse]);
 
   return (
     <div
@@ -631,6 +640,86 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             );
           })}
 
+          {/* Warped Universe: Large Warp Sectors */}
+          {state.warpedUniverse?.active &&
+            state.warpedUniverse.warpSectors.map((ws) => (
+              <g key={`warp_sector_${ws.id}`} data-warp-sector={ws.id} className="pointer-events-none">
+                {/* 18 Dark Hex Tiles of the Large Warp Sector */}
+                {ws.hexes.map((h, hIdx) => {
+                  const { x, y } = hexToPixel(h, HEX_RADIUS);
+                  const points = getHexCornerPoints(x, y, HEX_RADIUS - 2);
+                  const innerPoints = getHexCornerPoints(x, y, HEX_RADIUS - 6);
+                  return (
+                    <g key={`ws_${ws.id}_hex_${h.q}_${h.r}_${hIdx}`}>
+                      {/* Dark space void background for warp sector */}
+                      <polygon
+                        points={points}
+                        fill="#16141a"
+                        stroke="#2b2735"
+                        strokeWidth="1.8"
+                      />
+                      {/* Inner subtle concentric hex line */}
+                      <polygon
+                        points={innerPoints}
+                        fill="none"
+                        stroke="#231f2b"
+                        strokeWidth="1"
+                        strokeDasharray="4 3"
+                      />
+                      {/* Position Diagram & Tile Marker on 'a' hexes */}
+                      {h.hasMarker && (
+                        <g>
+                          <circle
+                            cx={x}
+                            cy={y}
+                            r="11"
+                            fill="rgba(22, 20, 26, 0.95)"
+                            stroke="#475569"
+                            strokeWidth="1"
+                          />
+                          <text
+                            x={x}
+                            y={y + 3.5}
+                            textAnchor="middle"
+                            fill="#94a3b8"
+                            fontSize="8.5"
+                            fontWeight="bold"
+                            fontFamily="monospace"
+                          >
+                            {`T${h.tileIndex}`}
+                          </text>
+                        </g>
+                      )}
+                    </g>
+                  );
+                })}
+
+                {/* Warp Sector Title Badge at Apex */}
+                {(() => {
+                  const apexPixel = hexToPixel(ws.apexCoord, HEX_RADIUS);
+                  return (
+                    <g>
+                      <text
+                        x={apexPixel.x}
+                        y={apexPixel.y - 18}
+                        textAnchor="middle"
+                        fill="#c084fc"
+                        fontSize="10"
+                        fontWeight="bold"
+                        fontFamily="sans-serif"
+                        letterSpacing="1.5"
+                        stroke="#0f172a"
+                        strokeWidth="3"
+                        paintOrder="stroke"
+                      >
+                        WARP SECTOR
+                      </text>
+                    </g>
+                  );
+                })()}
+              </g>
+            ))}
+
           {/* Render Explored Sectors */}
           {state.sectors.map((sector) => {
             const { x, y } = hexToPixel(sector.coord, HEX_RADIUS);
@@ -822,7 +911,9 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     candidateNeighbor;
                   const hasWormholeGen =
                     activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
-                  const isConnected = neighborSector ? areSectorsConnected(sector, neighborSector, hasWormholeGen) : false;
+                  const isConnected = neighborSector
+                    ? areSectorsConnected(sector, neighborSector, hasWormholeGen, state.warpedUniverse?.conduits)
+                    : false;
 
                   return (
                     <g
@@ -1543,6 +1634,110 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             );
           })}
 
+          {/* Warped Universe: Wormhole Conduit Flow Lines */}
+          {state.warpedUniverse?.active &&
+            state.warpedUniverse.conduits.map((c) => {
+              const centerA = hexToPixel(c.coordA, HEX_RADIUS);
+              const ptA = getHexEdgeCenter(centerA.x, centerA.y, HEX_RADIUS - 2, c.edgeA);
+              const centerB = hexToPixel(c.coordB, HEX_RADIUS);
+              const ptB = getHexEdgeCenter(centerB.x, centerB.y, HEX_RADIUS - 2, c.edgeB);
+
+              const secA = state.sectors.find((s) => areCoordsEqual(s.coord, c.coordA));
+              const secB = state.sectors.find((s) => areCoordsEqual(s.coord, c.coordB));
+              const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
+              const isConnected =
+                secA && secB ? areSectorsConnected(secA, secB, hasWormholeGen, state.warpedUniverse?.conduits) : false;
+
+              const midX = (ptA.x + ptB.x) / 2;
+              const midY = (ptA.y + ptB.y) / 2;
+              const rArc = Math.hypot(ptA.x, ptA.y);
+              const dist = Math.hypot(midX, midY);
+              const factor = dist > 0 ? (rArc * 1.18) / dist : 1;
+              const cpX = midX * factor;
+              const cpY = midY * factor;
+              const pathD = `M ${ptA.x} ${ptA.y} Q ${cpX} ${cpY} ${ptB.x} ${ptB.y}`;
+
+              // Midpoint of quadratic Bezier (t = 0.5)
+              const curveMidX = 0.25 * ptA.x + 0.5 * cpX + 0.25 * ptB.x;
+              const curveMidY = 0.25 * ptA.y + 0.5 * cpY + 0.25 * ptB.y;
+
+              return (
+                <g key={`flow_conduit_${c.id}`} data-conduit-id={c.id} className="pointer-events-none">
+                  {/* Outer ambient glow */}
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke={isConnected ? 'rgba(168, 85, 247, 0.45)' : 'rgba(148, 163, 184, 0.18)'}
+                    strokeWidth={isConnected ? 9 : 6}
+                    strokeLinecap="round"
+                  />
+                  {/* Main conduit stream */}
+                  <path
+                    d={pathD}
+                    fill="none"
+                    stroke={isConnected ? '#c084fc' : '#64748b'}
+                    strokeWidth={isConnected ? 3.5 : 2}
+                    strokeDasharray={isConnected ? undefined : '6 4'}
+                    strokeLinecap="round"
+                  />
+                  {/* Active animated pulses */}
+                  {isConnected && (
+                    <path
+                      d={pathD}
+                      fill="none"
+                      stroke="#f3e8ff"
+                      strokeWidth="1.5"
+                      strokeDasharray="6 14"
+                      className="animate-pulse"
+                    />
+                  )}
+                  {/* Gateway nodes at sector edges */}
+                  <circle
+                    cx={ptA.x}
+                    cy={ptA.y}
+                    r="4.5"
+                    fill={isConnected ? '#a855f7' : '#475569'}
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                  />
+                  <circle
+                    cx={ptB.x}
+                    cy={ptB.y}
+                    r="4.5"
+                    fill={isConnected ? '#a855f7' : '#475569'}
+                    stroke="#ffffff"
+                    strokeWidth="1.5"
+                  />
+                  {/* Conduit Label Pill */}
+                  {(isConnected || c.conduitIndex === 1 || c.conduitIndex === 3 || c.conduitIndex === 5) && (
+                    <g transform={`translate(${curveMidX}, ${curveMidY})`}>
+                      <rect
+                        x="-28"
+                        y="-8"
+                        width="56"
+                        height="16"
+                        rx="8"
+                        fill="#0f172a"
+                        stroke={isConnected ? '#a855f7' : '#475569'}
+                        strokeWidth="1.2"
+                      />
+                      <text
+                        x="0"
+                        y="3"
+                        textAnchor="middle"
+                        fill={isConnected ? '#e9d5ff' : '#94a3b8'}
+                        fontSize="8"
+                        fontWeight="bold"
+                        fontFamily="monospace"
+                      >
+                        {`CONDUIT ${c.conduitIndex}`}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              );
+            })}
+
           {/* Planned Fleet Movement Flight Paths & Vectors */}
           {moveMode && moveMode.plannedMoves.length > 0 && (
             <g key="fleet_movement_paths" className="pointer-events-auto">
@@ -1639,7 +1834,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
             const sourceSector = state.sectors.find((s) => areCoordsEqual(s.coord, pendingExplore.from));
             const isConnectedToSource = sourceSector
-              ? areSectorsConnected(sourceSector, simulatedTile, hasWormholeGen)
+              ? areSectorsConnected(sourceSector, simulatedTile, hasWormholeGen, state.warpedUniverse?.conduits)
               : false;
 
             return (
@@ -1693,7 +1888,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   const neighborCoord = getNeighborCoord(simulatedTile.coord, edge);
                   const neighborSector = state.sectors.find((s) => areCoordsEqual(s.coord, neighborCoord));
                   const isNeighborConnected = neighborSector
-                    ? areSectorsConnected(simulatedTile, neighborSector, hasWormholeGen)
+                    ? areSectorsConnected(simulatedTile, neighborSector, hasWormholeGen, state.warpedUniverse?.conduits)
                     : false;
 
                   return (

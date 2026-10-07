@@ -206,7 +206,7 @@ export function canExchangeAmbassadors(
     playerHasWormholeGenerator(p2);
 
   const areConnected = p1Sectors.some((s1) =>
-    p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen))
+    p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen, state.warpedUniverse?.conduits))
   );
   if (!areConnected) {
     return { canExchange: false, reason: 'Players must control adjacent or connected sectors via wormholes/warp portals to establish diplomacy.' };
@@ -898,7 +898,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (!fromSec || !toSec) {
             return { valid: false, error: 'Sector not found for movement.' };
           }
-          const isConnected = areSectorsConnected(fromSec, toSec, hasWormholeGen);
+          const isConnected = areSectorsConnected(fromSec, toSec, hasWormholeGen, state.warpedUniverse?.conduits);
           if (!isConnected) {
             const areAdjacent = getEdgeBetween(fromSec.coord, toSec.coord) !== null;
             if (shipInfo.hasJumpDrive && !usedJumpInAct && areAdjacent) {
@@ -1004,7 +1004,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (other.id === sec.id) return false;
           const isFriendly = other.discOwner === player.id || other.ships.some((s) => s.ownerId === player.id);
           if (!isFriendly) return false;
-          return areSectorsConnected(other, sec, hasWormholeGen);
+          return areSectorsConnected(other, sec, hasWormholeGen, state.warpedUniverse?.conduits);
         });
 
         if (!hasShips && !hasConnectedFriendly) {
@@ -1886,7 +1886,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         drawnTile,
         player.id,
         hasWormholeGen,
-        sourceSector
+        sourceSector,
+        newState.warpedUniverse?.conduits
       );
 
       if (!action.discard && isConnected) {
@@ -1927,7 +1928,14 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       // If player has pending explore activations remaining, verify if any valid target hexes exist on galaxy (Bug 114)
       if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
         const hasWormholeGen = playerHasWormholeGenerator(player);
-        const explorable = getExplorableHexes(newState.sectors, player.id, hasWormholeGen, newState.sectorDecks);
+        const explorable = getExplorableHexes(
+          newState.sectors,
+          player.id,
+          hasWormholeGen,
+          newState.sectorDecks,
+          newState.warpedUniverse?.conduits,
+          newState.warpedUniverse?.warpSectors
+        );
         if (explorable.length === 0) {
           newState.pendingExploreActivations = 0;
           addLog(`${player.name} has no further valid sectors to explore; exploration finished.`);

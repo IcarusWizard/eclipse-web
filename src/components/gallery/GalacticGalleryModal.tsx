@@ -119,7 +119,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
   // 3. Sector Tiles Catalog
   const allSectors = useMemo<SectorCatalogEntry[]>(() => {
-    return getAllSectorsCatalog();
+    return getAllSectorsCatalog(true);
   }, []);
 
   const filteredSectors = useMemo(() => {
@@ -567,6 +567,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   { id: 'Guardian', label: 'Guardian Sectors' },
                   { id: 'Home System', label: 'Home Systems' },
                   { id: 'Outer (Ring 3)', label: 'Outer (Ring 3)' },
+                  { id: 'Warped Universe', label: 'Warped Universe' },
                 ].map((chip) => {
                   const count =
                     chip.id === 'all'
@@ -592,43 +593,60 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {filteredSectors.map((sec) => {
                   const wormholeCount = sec.wormholes.filter(Boolean).length;
+                  const isWarp = sec.category === 'Warped Universe';
 
                   return (
                     <div
                       key={`${sec.category}_${sec.sectorNumber}_${sec.name}`}
-                      className="p-4 rounded-xl border border-slate-800 bg-slate-950/80 flex flex-col justify-between hover:border-slate-600 transition-all"
+                      className={`p-4 rounded-xl border flex flex-col justify-between transition-all ${
+                        isWarp
+                          ? 'border-purple-800/60 bg-purple-950/20 hover:border-purple-500'
+                          : 'border-slate-800 bg-slate-950/80 hover:border-slate-600'
+                      }`}
                     >
                       <div>
                         {/* Header: Sector #, Name, VP */}
                         <div className="flex items-start justify-between gap-2 mb-2">
                           <div>
                             <div className="flex items-center gap-2">
-                              <span className="text-sm font-black font-mono text-cyan-400">
+                              <span className={`text-sm font-black font-mono ${isWarp ? 'text-purple-400' : 'text-cyan-400'}`}>
                                 #{String(sec.sectorNumber).padStart(3, '0')}
                               </span>
                               <h4 className="text-sm font-bold text-slate-100">{sec.name}</h4>
                             </div>
                             {sec.factionName && (
-                              <div className="text-[10px] text-amber-400 font-semibold mt-0.5">
-                                Home of: {sec.factionName}
+                              <div className={`text-[10px] font-semibold mt-0.5 ${isWarp ? 'text-purple-300/80' : 'text-amber-400'}`}>
+                                {isWarp ? sec.factionName : `Home of: ${sec.factionName}`}
                               </div>
                             )}
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
-                            <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold">
-                              {sec.victoryPoints} VP
-                            </span>
+                            {isWarp ? (
+                              <span className="text-xs px-2 py-0.5 rounded bg-purple-900/60 text-purple-200 border border-purple-500/60 font-mono font-bold">
+                                WARP
+                              </span>
+                            ) : (
+                              <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold">
+                                {sec.victoryPoints} VP
+                              </span>
+                            )}
                           </div>
                         </div>
 
                         {/* Badges: Ring, Wormholes, Ancients */}
                         <div className="flex flex-wrap gap-1.5 mb-3">
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                          <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${isWarp ? 'bg-purple-900/40 text-purple-300 border border-purple-700/40' : 'bg-slate-800 text-slate-300'}`}>
                             {sec.category}
                           </span>
-                          <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                            {wormholeCount} / 6 Wormholes
-                          </span>
+                          {isWarp ? (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950/60 border border-purple-700/60 text-purple-300 font-mono">
+                              Modular Double-Hex
+                            </span>
+                          ) : (
+                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
+                              {wormholeCount} / 6 Wormholes
+                            </span>
+                          )}
                           {sec.ancientsCount > 0 && (
                             <span className="text-[10px] px-2 py-0.5 rounded bg-rose-950/50 border border-rose-700/60 text-rose-300 font-mono font-bold">
                               {sec.ancientsCount} Ancient Ship{sec.ancientsCount > 1 ? 's' : ''}
