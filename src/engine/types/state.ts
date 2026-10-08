@@ -11,6 +11,7 @@ import type { WarpedUniverseState } from '../rules/warpedUniverse';
 import type { GalacticEventsState } from '../rules/galacticEvents';
 
 export type GamePhase =
+  | 'DRAFT_PHASE'
   | 'ACTION_PHASE'
   | 'COMBAT_PHASE'
   | 'UPKEEP_PHASE'
@@ -46,6 +47,7 @@ export interface PendingDamageAssignment {
 
 export interface CombatState {
   sectorId: string;
+  subsector?: 1 | 2 | 3;
   attackerOwnerId?: string;
   defenderOwnerId?: string;
   roundNumber: number;
@@ -146,6 +148,14 @@ export interface DiplomacyProposal {
   initiatorCube: 'money' | 'science' | 'material';
 }
 
+export interface FactionDraftState {
+  draftOrder: string[];
+  currentDraftIndex: number;
+  availableFactionIds: string[];
+  assignedPositions: Record<string, number>;
+  firstPlayerId: string;
+}
+
 export interface PendingActionConfirmation {
   actionType: string;
   playerId: string;
@@ -187,6 +197,7 @@ export interface GameState {
   warpedUniverse?: WarpedUniverseState;
   galacticEvents?: GalacticEventsState;
   activeCombat: CombatState | null;
+  factionDraft?: FactionDraftState | null;
   pendingExplore: PendingExplore | null;
   pendingExploreActivations?: number; // for multi-activation explore (e.g. Planta)
   pendingDiscovery: PendingDiscovery | null;

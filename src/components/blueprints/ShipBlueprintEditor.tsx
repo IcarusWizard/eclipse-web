@@ -19,16 +19,22 @@ import {
   Lock,
   Wrench,
   RotateCcw,
+  Sparkles,
 } from 'lucide-react';
 
 interface ShipBlueprintEditorProps {
   player: PlayerState;
-  onSaveBlueprint: (upgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[]) => void;
+  pulsarSectorId?: string;
+  onSaveBlueprint: (
+    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[],
+    pulsarSectorId?: string
+  ) => void;
   onClose: () => void;
 }
 
 export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   player,
+  pulsarSectorId,
   onSaveBlueprint,
   onClose,
 }) => {
@@ -51,7 +57,8 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     return drafts as Record<ShipType, (ShipPart | null)[]>;
   });
 
-  const maxUpgrades = player.hasPassed ? 1 : getMaxUpgradeActivations(player);
+  const isPulsarActive = Boolean(pulsarSectorId);
+  const maxUpgrades = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxUpgradeActivations(player));
 
   // Available ship parts unlocked for the player (standard base, researched techs, and ancient discoveries)
   const STANDARD_PART_IDS = useMemo(
@@ -203,7 +210,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       slotIndex: m.slotIndex,
       partId: m.newPart?.id || null,
     }));
-    onSaveBlueprint(upgradesToApply);
+    onSaveBlueprint(upgradesToApply, pulsarSectorId);
   };
 
   return (
@@ -255,6 +262,24 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             </button>
           </div>
         </div>
+
+        {/* Pulsar Banner */}
+        {isPulsarActive && (
+          <div className="mx-4 mt-3 p-2 px-3 rounded-xl bg-cyan-950/60 border border-cyan-500/80 text-cyan-200 text-xs flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+              <div>
+                <span className="font-bold">🌟 Pulsar Blueprint Upgrade</span>
+                <span className="text-cyan-300/80 text-[11px] block">
+                  1 Component upgrade. No Influence Disc will be deducted from your track.
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-cyan-900 text-cyan-200 font-mono text-[10px] font-bold uppercase border border-cyan-700">
+              1 Slot Limit
+            </span>
+          </div>
+        )}
 
         {/* Ship Class Tabs with Per-Ship Upgrade Badges */}
         <div className="flex border-b border-slate-800 bg-slate-950/60 px-4 pt-2 gap-2">

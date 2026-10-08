@@ -36,6 +36,7 @@ import {
   SlidersHorizontal,
   Minimize2,
   Maximize2,
+  Compass,
 } from 'lucide-react';
 import {
   NeutralShipType,
@@ -50,7 +51,8 @@ interface LobbyViewProps {
     tableId: string,
     seat: number | 'all',
     expansions?: string[],
-    neutralShips?: NeutralShipSelectionConfig
+    neutralShips?: NeutralShipSelectionConfig,
+    isDraftMode?: boolean
   ) => void;
   onJoinTable: (tableId: string, seat: number | 'all' | 'spectator') => void;
   onOpenGallery?: () => void;
@@ -78,6 +80,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
   // Create Table State
   const [playerCount, setPlayerCount] = useState<number>(2);
+  const [isDraftMode, setIsDraftMode] = useState<boolean>(false);
   const [customTableId, setCustomTableId] = useState<string>(() => `galaxy-${Math.floor(100 + Math.random() * 900)}`);
   const [selectedFactions, setSelectedFactions] = useState<string[]>([
     'terran_federation', // Blue
@@ -136,6 +139,41 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     });
   };
 
+  const allExpansionIds = AVAILABLE_EXPANSIONS.map((e) => e.id);
+  const allExpansionsSelected = allExpansionIds.every((id) => selectedExpansions.includes(id));
+
+  const toggleAllExpansions = () => {
+    const next = allExpansionsSelected ? [] : allExpansionIds;
+    setSelectedExpansions(next);
+    if (!next.includes('remnants_of_worlds_afar')) {
+      setNeutralShipSelections((cur) => ({
+        ancient: cur.ancient === 'expert' ? 'default' : cur.ancient,
+        guardian: cur.guardian === 'expert' ? 'default' : cur.guardian,
+        gcds: cur.gcds === 'expert' ? 'default' : cur.gcds,
+      }));
+    }
+
+    const nextAvailable = getAvailableFactions(next);
+    setSelectedFactions((currentFactions) => {
+      const updated = [...currentFactions];
+      for (let i = 0; i < updated.length; i++) {
+        if (!isFactionAvailable(updated[i]!, next)) {
+          const replacement =
+            nextAvailable.find(
+              (cand) =>
+                !updated
+                  .slice(0, playerCount)
+                  .some((otherId, otherIdx) => otherIdx !== i && areFactionsConflictingColor(otherId, cand.id))
+            ) || nextAvailable.find((cand) => cand.id !== updated[i]) || nextAvailable[0];
+          if (replacement) {
+            updated[i] = replacement.id;
+          }
+        }
+      }
+      return updated;
+    });
+  };
+
   const toggleExpansion = (id: string) => {
     setSelectedExpansions((prev) => {
       const next = prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id];
@@ -191,15 +229,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const handleLaunchGame = (e: React.FormEvent) => {
     e.preventDefault();
     const activeFactions = selectedFactions.slice(0, playerCount);
-    for (let i = 0; i < activeFactions.length; i++) {
-      if (!isFactionAvailable(activeFactions[i]!, selectedExpansions)) {
-        alert('One or more selected factions require an unselected expansion module.');
-        return;
-      }
-      for (let j = i + 1; j < activeFactions.length; j++) {
-        if (areFactionsConflictingColor(activeFactions[i]!, activeFactions[j]!)) {
-          alert('Each player must select a faction with a distinct color.');
+    if (!isDraftMode) {
+      for (let i = 0; i < activeFactions.length; i++) {
+        if (!isFactionAvailable(activeFactions[i]!, selectedExpansions)) {
+          alert('One or more selected factions require an unselected expansion module.');
           return;
+        }
+        for (let j = i + 1; j < activeFactions.length; j++) {
+          if (areFactionsConflictingColor(activeFactions[i]!, activeFactions[j]!)) {
+            alert('Each player must select a faction with a distinct color.');
+            return;
+          }
         }
       }
     }
@@ -211,11 +251,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     };
     onStartNewGame(
       playerCount,
-      activeFactions,
+      isDraftMode ? [] : activeFactions,
       customTableId.trim() || `galaxy-${Date.now() % 1000}`,
       mySeat,
       selectedExpansions,
-      sanitizedNeutralShips
+      sanitizedNeutralShips,
+      isDraftMode
     );
   };
 
@@ -399,61 +440,106 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </div>
               </div>
 
-              {/* Faction Assignment Per Seat */}
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Faction Roster by Seat
-                </label>
-                <div
-                  className={`grid grid-cols-1 sm:grid-cols-2 gap-2 ${
-                    displayMode === 'compact' ? 'max-h-48' : 'max-h-64'
-                  } overflow-y-auto pr-1 scrollbar-thin`}
+              {/* Faction Draft Mode Toggle */}
+              <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-700/50 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <Compass className="w-5 h-5 text-indigo-400 shrink-0" />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="font-bold text-indigo-200 text-xs">
+                        Faction Draft Mode
+                      </span>
+                      {isDraftMode && (
+                        <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500 text-white">
+                          Active
+                        </span>
+                      )}
+                    </div>
+                    <span className="text-[10px] text-slate-400 block truncate sm:whitespace-normal">
+                      Randomly seat commanders on Ring 2; draft factions in reverse turn order in-game.
+                    </span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsDraftMode(!isDraftMode)}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                    isDraftMode
+                      ? 'bg-indigo-600 border-indigo-400 text-white shadow-md shadow-indigo-600/30'
+                      : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                  }`}
                 >
-                  {Array.from({ length: playerCount }).map((_, idx) => {
-                    const currentFactionId = selectedFactions[idx] || 'terran_federation';
-                    const faction = ALL_FACTIONS.find((f) => f.id === currentFactionId);
+                  {isDraftMode ? 'Draft Mode ON' : 'Enable Faction Draft'}
+                </button>
+              </div>
 
-                    return (
-                      <div
-                        key={idx}
-                        className="p-2 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2"
-                      >
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-300 text-[11px] font-bold font-mono flex items-center justify-center shrink-0">
-                            {idx + 1}
-                          </span>
-                          <div className="min-w-0">
-                            <div className="text-xs font-semibold text-slate-200 truncate">
-                              Seat {idx + 1}
-                            </div>
-                            <div className="text-[10px] text-slate-400 truncate">
-                              {faction?.isHuman ? 'Terran' : 'Alien'} ({faction?.reputationSlots ?? 5} Rep)
+              {/* Faction Assignment Per Seat / In-game Draft Banner */}
+              {isDraftMode ? (
+                <div className="p-4 rounded-xl bg-indigo-950/20 border-2 border-dashed border-indigo-700/50 text-center space-y-2">
+                  <div className="flex items-center justify-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wide">
+                    <Compass className="w-4 h-4 text-indigo-400 animate-spin" />
+                    In-Game Faction Draft Enabled
+                  </div>
+                  <p className="text-[11px] text-slate-400 max-w-md mx-auto leading-relaxed">
+                    Factions do not need to be selected in advance. When launched, all {playerCount} commanders are assigned random Ring 2 positions. A random first player is chosen to establish clockwise turn order, and factions are drafted counter-clockwise starting from the last player!
+                  </p>
+                </div>
+              ) : (
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                    Faction Roster by Seat
+                  </label>
+                  <div
+                    className={`grid grid-cols-1 sm:grid-cols-2 gap-2 ${
+                      displayMode === 'compact' ? 'max-h-48' : 'max-h-64'
+                    } overflow-y-auto pr-1 scrollbar-thin`}
+                  >
+                    {Array.from({ length: playerCount }).map((_, idx) => {
+                      const currentFactionId = selectedFactions[idx] || 'terran_federation';
+                      const faction = ALL_FACTIONS.find((f) => f.id === currentFactionId);
+
+                      return (
+                        <div
+                          key={idx}
+                          className="p-2 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-300 text-[11px] font-bold font-mono flex items-center justify-center shrink-0">
+                              {idx + 1}
+                            </span>
+                            <div className="min-w-0">
+                              <div className="text-xs font-semibold text-slate-200 truncate">
+                                Seat {idx + 1}
+                              </div>
+                              <div className="text-[10px] text-slate-400 truncate">
+                                {faction?.isHuman ? 'Terran' : 'Alien'} ({faction?.reputationSlots ?? 5} Rep)
+                              </div>
                             </div>
                           </div>
-                        </div>
 
-                        <select
-                          value={currentFactionId}
-                          onChange={(e) => handleFactionChange(idx, e.target.value)}
-                          className="bg-slate-900 border border-slate-700 text-xs font-medium rounded-lg px-2 py-1 text-slate-200 focus:outline-none focus:border-cyan-400 max-w-[130px]"
-                        >
-                          {availableFactions.map((f) => {
-                            const conflictSeat = selectedFactions.slice(0, playerCount).findIndex(
-                              (otherId, otherIdx) => otherIdx !== idx && areFactionsConflictingColor(otherId, f.id)
-                            );
-                            const isDisabled = conflictSeat !== -1;
-                            return (
-                              <option key={f.id} value={f.id} disabled={isDisabled}>
-                                {f.name}{isDisabled ? ` (Color: S${conflictSeat + 1})` : ''}
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
-                    );
-                  })}
+                          <select
+                            value={currentFactionId}
+                            onChange={(e) => handleFactionChange(idx, e.target.value)}
+                            className="bg-slate-900 border border-slate-700 text-xs font-medium rounded-lg px-2 py-1 text-slate-200 focus:outline-none focus:border-cyan-400 max-w-[130px]"
+                          >
+                            {availableFactions.map((f) => {
+                              const conflictSeat = selectedFactions.slice(0, playerCount).findIndex(
+                                (otherId, otherIdx) => otherIdx !== idx && areFactionsConflictingColor(otherId, f.id)
+                              );
+                              const isDisabled = conflictSeat !== -1;
+                              return (
+                                <option key={f.id} value={f.id} disabled={isDisabled}>
+                                  {f.name}{isDisabled ? ` (Color: S${conflictSeat + 1})` : ''}
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
+              )}
 
               {/* Your Starting Control Mode / Seat */}
               <div>
@@ -504,9 +590,21 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       Expansions & Modules
                     </label>
                   </div>
-                  <span className="text-[11px] font-mono text-cyan-400">
-                    {selectedExpansions.length} Enabled
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleAllExpansions();
+                      }}
+                      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition bg-purple-900/40 hover:bg-purple-800/60 border border-purple-500/50 text-purple-200 cursor-pointer"
+                    >
+                      {allExpansionsSelected ? 'Disable All' : 'Enable All'}
+                    </button>
+                    <span className="text-[11px] font-mono text-cyan-400">
+                      {selectedExpansions.length} Enabled
+                    </span>
+                  </div>
                 </div>
 
                 {isExpansionsOpen ? (
@@ -617,22 +715,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             type: 'ancient' as const,
                             label: 'Ancient Ship',
                             defaultDesc: 'Init 2, 2H, 2Y (+1)',
-                            advDesc: 'Init 1, 2H, 1O (+1)',
-                            expertDesc: 'Init 3, 1H, 1Y (+2)',
+                            advDesc: 'Init 1, 3H, 1O (+1)',
+                            expertDesc: 'Init 3, 2H, 1Y (+2)',
                           },
                           {
                             type: 'guardian' as const,
                             label: 'Guardian',
                             defaultDesc: 'Init 3, 3H, 3Y (+2/-1)',
-                            advDesc: 'Init 1, 3H, 2O Msl + 1R (+1)',
-                            expertDesc: 'Init 3, 3H, 2O (+1/-1)',
+                            advDesc: 'Init 1, 4H, 2O Msl + 1R (+1)',
+                            expertDesc: 'Init 3, 4H, 2O (+1/-1)',
                           },
                           {
                             type: 'gcds' as const,
                             label: 'Galactic Center Defense System (GCDS)',
                             defaultDesc: 'Init 0, 7H, 4Y (+2)',
-                            advDesc: 'Init 2, 3H, 4Y Msl + 1R (+2)',
-                            expertDesc: 'Init 3, 4H, 2O (+2/-2)',
+                            advDesc: 'Init 2, 4H, 4Y Msl + 1R (+2)',
+                            expertDesc: 'Init 3, 5H, 2O (+2/-2)',
                           },
                         ]
                       ).map(({ type, label, defaultDesc, advDesc, expertDesc }) => {

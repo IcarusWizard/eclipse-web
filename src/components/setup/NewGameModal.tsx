@@ -39,13 +39,15 @@ interface NewGameModalProps {
     playerCount: number,
     selectedFactionIds?: string[],
     expansions?: string[],
-    neutralShips?: NeutralShipSelectionConfig
+    neutralShips?: NeutralShipSelectionConfig,
+    isDraftMode?: boolean
   ) => void;
   onClose?: () => void;
 }
 
 export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose }) => {
   const [playerCount, setPlayerCount] = useState<number>(2);
+  const [isDraftMode, setIsDraftMode] = useState<boolean>(false);
   const [draftedFactions, setDraftedFactions] = useState<string[]>([]);
   const [currentDrafterIndex, setCurrentDrafterIndex] = useState<number>(0);
   const [filterCategory, setFilterCategory] = useState<'all' | 'alien' | 'human'>('all');
@@ -55,6 +57,23 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
     guardian: 'default',
     gcds: 'default',
   });
+
+  const allExpansionIds = AVAILABLE_EXPANSIONS.map((e) => e.id);
+  const allExpansionsSelected = allExpansionIds.every((id) => selectedExpansions.includes(id));
+
+  const toggleAllExpansions = () => {
+    if (allExpansionsSelected) {
+      setSelectedExpansions([]);
+      setNeutralShipSelections((cur) => ({
+        ancient: cur.ancient === 'expert' ? 'default' : cur.ancient,
+        guardian: cur.guardian === 'expert' ? 'default' : cur.guardian,
+        gcds: cur.gcds === 'expert' ? 'default' : cur.gcds,
+      }));
+      setDraftedFactions((cur) => cur.filter((fid) => isFactionAvailable(fid, [])));
+    } else {
+      setSelectedExpansions(allExpansionIds);
+    }
+  };
 
   const toggleExpansion = (id: string) => {
     setSelectedExpansions((prev) => {
@@ -81,7 +100,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
     setCurrentDrafterIndex((prev) => Math.min(prev, Math.max(0, Math.min(draftedFactions.length, playerCount - 1))));
   }, [draftedFactions.length, playerCount]);
 
-  const allDrafted = draftedFactions.length === playerCount;
+  const allDrafted = isDraftMode || draftedFactions.length === playerCount;
 
   const handleSelectFaction = (factionId: string) => {
     if (!availableFactions.some((f) => f.id === factionId)) return;
@@ -135,17 +154,21 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
   };
 
   const handleLaunch = () => {
+    const hasRemnants = selectedExpansions.includes('remnants_of_worlds_afar');
+    const sanitizedNeutralShips: NeutralShipSelectionConfig = {
+      ancient: !hasRemnants && neutralShipSelections.ancient === 'expert' ? 'default' : neutralShipSelections.ancient,
+      guardian: !hasRemnants && neutralShipSelections.guardian === 'expert' ? 'default' : neutralShipSelections.guardian,
+      gcds: !hasRemnants && neutralShipSelections.gcds === 'expert' ? 'default' : neutralShipSelections.gcds,
+    };
+    if (isDraftMode) {
+      onStartGame(playerCount, undefined, selectedExpansions, sanitizedNeutralShips, true);
+      return;
+    }
     if (draftedFactions.length === playerCount) {
       if (draftedFactions.some((fid) => !availableFactions.some((f) => f.id === fid))) {
         return;
       }
-      const hasRemnants = selectedExpansions.includes('remnants_of_worlds_afar');
-      const sanitizedNeutralShips: NeutralShipSelectionConfig = {
-        ancient: !hasRemnants && neutralShipSelections.ancient === 'expert' ? 'default' : neutralShipSelections.ancient,
-        guardian: !hasRemnants && neutralShipSelections.guardian === 'expert' ? 'default' : neutralShipSelections.guardian,
-        gcds: !hasRemnants && neutralShipSelections.gcds === 'expert' ? 'default' : neutralShipSelections.gcds,
-      };
-      onStartGame(playerCount, draftedFactions, selectedExpansions, sanitizedNeutralShips);
+      onStartGame(playerCount, draftedFactions, selectedExpansions, sanitizedNeutralShips, false);
     }
   };
 
@@ -219,52 +242,98 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
           {/* Commander Stepper Chips */}
           <div>
             <div className="text-[11px] font-bold text-slate-400 uppercase tracking-wider mb-1.5">
-              Draft Progress:
+              {isDraftMode ? 'Faction Selection:' : 'Draft Progress:'}
             </div>
-            <div className="flex items-center gap-1.5 flex-wrap">
-              {Array.from({ length: playerCount }).map((_, pIdx) => {
-                const isCurrent = pIdx === currentDrafterIndex;
-                const draftedId = draftedFactions[pIdx];
-                const factionObj = ALL_FACTIONS.find((f) => f.id === draftedId);
+            {isDraftMode ? (
+              <div className="text-xs text-indigo-300 font-medium py-1">
+                Drafted in-game in reverse turn order.
+              </div>
+            ) : (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {Array.from({ length: playerCount }).map((_, pIdx) => {
+                  const isCurrent = pIdx === currentDrafterIndex;
+                  const draftedId = draftedFactions[pIdx];
+                  const factionObj = ALL_FACTIONS.find((f) => f.id === draftedId);
 
-                return (
-                  <button
-                    key={pIdx}
-                    onClick={() => setCurrentDrafterIndex(pIdx)}
-                    className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${
-                      isCurrent
-                        ? 'border-cyan-400 bg-cyan-950/70 text-cyan-200 ring-1 ring-cyan-400/50'
-                        : factionObj
-                        ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300'
-                        : 'border-slate-800 bg-slate-900 text-slate-500 hover:border-slate-700'
-                    }`}
-                  >
-                    <span className="font-mono text-[10px]">P{pIdx + 1}:</span>
-                    {factionObj ? (
-                      <span className="font-bold flex items-center gap-1 text-[11px]">
-                        <span
-                          className="w-2 h-2 rounded-full"
-                          style={{ backgroundColor: factionObj.defaultColor }}
-                        />
-                        {factionObj.name}
-                      </span>
-                    ) : (
-                      <span className="italic text-slate-500 text-[10px]">Unselected</span>
-                    )}
-                  </button>
-                );
-              })}
+                  return (
+                    <button
+                      key={pIdx}
+                      onClick={() => setCurrentDrafterIndex(pIdx)}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${
+                        isCurrent
+                          ? 'border-cyan-400 bg-cyan-950/70 text-cyan-200 ring-1 ring-cyan-400/50'
+                          : factionObj
+                          ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300'
+                          : 'border-slate-800 bg-slate-900 text-slate-500 hover:border-slate-700'
+                      }`}
+                    >
+                      <span className="font-mono text-[10px]">P{pIdx + 1}:</span>
+                      {factionObj ? (
+                        <span className="font-bold flex items-center gap-1 text-[11px]">
+                          <span
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: factionObj.defaultColor }}
+                          />
+                          {factionObj.name}
+                        </span>
+                      ) : (
+                        <span className="italic text-slate-500 text-[10px]">Unselected</span>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
+          {/* Faction Draft Mode Toggle */}
+          <div className="md:col-span-2 flex items-center justify-between p-3 rounded-xl bg-indigo-950/40 border border-indigo-700/50 text-xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <Compass className="w-5 h-5 text-indigo-400 shrink-0" />
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-indigo-200 block text-xs">
+                    Faction Draft Mode
+                  </span>
+                  {isDraftMode && (
+                    <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500 text-white">
+                      Active
+                    </span>
+                  )}
+                </div>
+                <span className="text-[10px] text-slate-400">
+                  Seat commanders randomly on Ring 2 and draft factions in-game in reverse turn order.
+                </span>
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={() => setIsDraftMode((prev) => !prev)}
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                isDraftMode
+                  ? 'bg-indigo-600 border-indigo-400 text-white shadow-md shadow-indigo-600/30'
+                  : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+              }`}
+            >
+              {isDraftMode ? 'Draft Mode ON' : 'Enable Faction Draft'}
+            </button>
           </div>
         </div>
 
         {/* Expansions Module Selector */}
         <div className="flex items-center justify-between px-3 py-2 bg-purple-950/20 border border-purple-900/40 rounded-xl mb-2 text-xs">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <Sparkles className="w-4 h-4 text-purple-400" />
             <span className="font-bold text-purple-200 uppercase tracking-wide text-[11px]">
               Expansions:
             </span>
+            <button
+              type="button"
+              onClick={toggleAllExpansions}
+              className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition bg-purple-900/40 hover:bg-purple-800/60 border border-purple-500/50 text-purple-200 cursor-pointer"
+            >
+              {allExpansionsSelected ? 'Disable All' : 'Enable All'}
+            </button>
             <div className="flex flex-wrap items-center gap-2">
               {AVAILABLE_EXPANSIONS.map((exp) => {
                 const active = selectedExpansions.includes(exp.id);
@@ -313,22 +382,22 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                   type: 'ancient' as const,
                   label: 'Ancient',
                   def: 'Init 2, 2H, 2Y (+1)',
-                  adv: 'Init 1, 2H, 1O (+1)',
-                  exp: 'Init 3, 1H, 1Y (+2)',
+                  adv: 'Init 1, 3H, 1O (+1)',
+                  exp: 'Init 3, 2H, 1Y (+2)',
                 },
                 {
                   type: 'guardian' as const,
                   label: 'Guardian',
                   def: 'Init 3, 3H, 3Y (+2/-1)',
-                  adv: 'Init 1, 3H, 2O Msl + 1R (+1)',
-                  exp: 'Init 3, 3H, 2O (+1/-1)',
+                  adv: 'Init 1, 4H, 2O Msl + 1R (+1)',
+                  exp: 'Init 3, 4H, 2O (+1/-1)',
                 },
                 {
                   type: 'gcds' as const,
                   label: 'GCDS',
                   def: 'Init 0, 7H, 4Y (+2)',
-                  adv: 'Init 2, 3H, 4Y Msl + 1R (+2)',
-                  exp: 'Init 3, 4H, 2O (+2/-2)',
+                  adv: 'Init 2, 4H, 4Y Msl + 1R (+2)',
+                  exp: 'Init 3, 5H, 2O (+2/-2)',
                 },
               ]
             ).map(({ type, label, def, adv, exp }) => {
@@ -425,8 +494,20 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
           </div>
         </div>
 
-        {/* Drafter Active Banner & Filter Tabs */}
-        <div className="flex items-center justify-between pb-2">
+        {isDraftMode ? (
+          <div className="p-8 rounded-2xl bg-indigo-950/20 border-2 border-dashed border-indigo-700/60 text-center space-y-3 my-4">
+            <Compass className="w-10 h-10 text-indigo-400 mx-auto animate-pulse" />
+            <h3 className="font-bold text-base text-indigo-200 uppercase tracking-wide">
+              IN-GAME FACTION DRAFT ENABLED
+            </h3>
+            <p className="text-xs text-slate-400 max-w-lg mx-auto leading-relaxed">
+              Factions will not be selected now. When launched, all {playerCount} commanders will be randomly assigned starting positions on Ring 2. A random first player is chosen, turn order runs clockwise, and commanders draft their faction in reverse turn order directly in the galaxy interface!
+            </p>
+          </div>
+        ) : (
+          <>
+            {/* Drafter Active Banner & Filter Tabs */}
+            <div className="flex items-center justify-between pb-2">
           <div className="flex items-center gap-2">
             <span className="text-xs font-bold px-2 py-0.5 rounded bg-cyan-500/20 text-cyan-300 border border-cyan-500/40">
               Commander {currentDrafterIndex + 1}
@@ -605,11 +686,13 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
             );
           })}
         </div>
+      </>
+    )}
 
         {/* Footer */}
         <div className="mt-3 pt-3 border-t border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            {currentDrafterIndex > 0 && (
+            {!isDraftMode && currentDrafterIndex > 0 && (
               <button
                 onClick={handleBackStep}
                 className="flex items-center gap-1 px-3 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition"
@@ -636,7 +719,10 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                 : 'bg-slate-800 text-slate-500 cursor-not-allowed border border-slate-700'
             }`}
           >
-            <Play className="w-4 h-4 fill-current" /> Launch Galaxy ({draftedFactions.length} / {playerCount} Drafted)
+            <Play className="w-4 h-4 fill-current" />{' '}
+            {isDraftMode
+              ? `Launch Faction Draft (${playerCount}P)`
+              : `Launch Galaxy (${draftedFactions.length} / ${playerCount} Drafted)`}
           </button>
         </div>
       </div>

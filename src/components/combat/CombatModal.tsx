@@ -44,7 +44,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     combat.participatingPlayerIds,
     state.neutralShipBlueprints
   );
-  const defenderOwnerId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector);
+  const defenderOwnerId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector, state.players);
   const aliveUnits = sortUnitsByInitiative(
     units.filter((u) => u.currentDamage < u.maxHull),
     defenderOwnerId
@@ -209,6 +209,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             <span className="font-bold text-xs sm:text-sm tracking-wide text-rose-300">
               FLEET ENGAGEMENT: SECTOR {sector.sectorNumber}
             </span>
+            {combat.subsector && (
+              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 border border-indigo-700 text-indigo-300 font-bold">
+                SUB {combat.subsector}
+              </span>
+            )}
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300">
               {isResolved ? 'RESOLVED' : isMissileStage ? 'MISSILE' : `RND ${combat.roundNumber}`}
             </span>
@@ -239,12 +244,19 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             <div>
               <h2 className="text-lg font-bold text-rose-400 font-display flex items-center gap-2">
                 FLEET ENGAGEMENT: SECTOR {sector.sectorNumber}
+                {combat.subsector && (
+                  <span className="text-xs px-2 py-0.5 rounded bg-indigo-950/90 border border-indigo-500/80 text-indigo-300 font-mono font-bold">
+                    SUBSECTOR {combat.subsector}
+                  </span>
+                )}
               </h2>
               <p className="text-xs text-slate-400">
                 {isResolved
                   ? 'Engagement resolved! Review the final salvo dice results below.'
                   : isMissileStage
                   ? 'Missile Stage: Ships armed with missiles launch one salvo in initiative order before regular combat.'
+                  : sector.isNebula && combat.subsector
+                  ? `Nebula battle localized to Subsector ${combat.subsector}. Ships in other subsectors do not participate.`
                   : `Hostile forces have clashed in Ring ${sector.ring}. Tactical cannon engagement in progress.`}
               </p>
             </div>
@@ -464,7 +476,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 {pendingSalvo.rolls.map((roll, idx) => {
                   const targetId = selectedTargets[idx] || eligibleEnemyTargets[0]?.id;
                   const targetUnit = eligibleEnemyTargets.find((u) => u.id === targetId);
-                  const isPurple = roll.dieColor === 'purple';
+                  const isPurple = roll.dieColor === 'purple' || (roll as any).diceColor === 'purple' || (roll as any).color === 'purple';
                   const shieldBonus = targetUnit?.shieldBonus || 0;
                   const modified = isPurple ? roll.roll : roll.roll + pendingSalvo.computerBonus - shieldBonus;
                   const isHit = isPurple
@@ -472,6 +484,10 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     : roll.roll === 6 || (roll.roll !== 1 && modified >= 6);
 
                   return (
+                    (() => {
+                      const effectiveDieColor = roll.dieColor || (roll as any).diceColor || (roll as any).color || 'yellow';
+                      const colorName = effectiveDieColor.charAt(0).toUpperCase() + effectiveDieColor.slice(1);
+                      return (
                     <div
                       key={idx}
                       className={`p-3 rounded-lg border flex flex-col gap-2 transition ${
@@ -483,19 +499,37 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
                           <span
-                            className={`font-mono text-xs px-2 py-0.5 rounded font-black ${
-                              roll.dieColor === 'purple'
+                            className={`font-mono text-xs px-2 py-0.5 rounded font-black flex items-center gap-1.5 ${
+                              effectiveDieColor === 'purple'
                                 ? 'bg-purple-900 border border-purple-400 text-purple-100'
-                                : roll.dieColor === 'red'
+                                : effectiveDieColor === 'red'
                                 ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                                : roll.dieColor === 'orange'
+                                : effectiveDieColor === 'orange'
                                 ? 'bg-orange-950 text-orange-300 border border-orange-800'
-                                : roll.dieColor === 'blue'
+                                : effectiveDieColor === 'blue'
                                 ? 'bg-sky-950 text-sky-300 border border-sky-800'
                                 : 'bg-yellow-950 text-yellow-300 border border-yellow-800'
                             }`}
                           >
-                            {isPurple ? 'RIFT' : `Die #${idx + 1}: ${roll.roll}`}
+                            <span
+                              className="w-2 h-2 rounded-full inline-block shrink-0"
+                              style={{
+                                backgroundColor:
+                                  effectiveDieColor === 'purple'
+                                    ? '#a855f7'
+                                    : effectiveDieColor === 'red'
+                                    ? '#ef4444'
+                                    : effectiveDieColor === 'orange'
+                                    ? '#f97316'
+                                    : effectiveDieColor === 'blue'
+                                    ? '#0ea5e9'
+                                    : '#eab308',
+                              }}
+                            />
+                            <span className="capitalize font-bold">
+                              {colorName}
+                            </span>
+                            <span>{isPurple ? 'Rift' : `Die #${idx + 1}: ${roll.roll}`}</span>
                           </span>
                           <span className="text-[10px] text-slate-400 font-bold">
                             {roll.damage} Dmg
@@ -578,7 +612,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                       </div>
                     </div>
                   );
-                })}
+                })()
+              );
+            })}
               </div>
             </div>
           )}
@@ -597,8 +633,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 {isResolved ? 'Final Salvo Lethal Dice Results' : 'Recent Salvo Dice Results'}
               </h3>
               <div className="flex flex-wrap gap-2">
-                {combat.lastRolls.map((roll, idx) => {
-                  const isPurple = roll.dieColor === 'purple';
+                 {combat.lastRolls.map((roll, idx) => {
+                  const isPurple = roll.dieColor === 'purple' || (roll as any).diceColor === 'purple' || (roll as any).color === 'purple';
                   const hasSelfDmg = (roll.selfDamage || 0) > 0;
 
                   return (
@@ -618,25 +654,45 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                           : 'bg-slate-900 border-slate-800 text-slate-500'
                       }`}
                     >
-                      {isPurple ? (
-                        <span className="px-1.5 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-purple-900 border border-purple-400 text-purple-100">
-                          RIFT
-                        </span>
-                      ) : (
+                      {(() => {
+                        const histDieColor = roll.dieColor || (roll as any).diceColor || (roll as any).color || 'yellow';
+                        const colorName = histDieColor.charAt(0).toUpperCase() + histDieColor.slice(1);
+                        return (
+                      <span
+                        className={`font-mono text-xs px-2 py-0.5 rounded font-black flex items-center gap-1.5 ${
+                          histDieColor === 'purple'
+                            ? 'bg-purple-900 border border-purple-400 text-purple-100'
+                            : histDieColor === 'red'
+                            ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                            : histDieColor === 'orange'
+                            ? 'bg-orange-950 text-orange-300 border border-orange-800'
+                            : histDieColor === 'blue'
+                            ? 'bg-sky-950 text-sky-300 border border-sky-800'
+                            : 'bg-yellow-950 text-yellow-300 border border-yellow-800'
+                        }`}
+                      >
                         <span
-                          className={`font-mono text-sm ${
-                            roll.dieColor === 'red'
-                              ? 'text-rose-400'
-                              : roll.dieColor === 'blue'
-                              ? 'text-sky-400'
-                              : roll.dieColor === 'orange'
-                              ? 'text-amber-400'
-                              : 'text-yellow-400'
-                          }`}
-                        >
-                          {roll.roll}
+                          className="w-2 h-2 rounded-full inline-block shrink-0"
+                          style={{
+                            backgroundColor:
+                              histDieColor === 'purple'
+                                ? '#a855f7'
+                                : histDieColor === 'red'
+                                ? '#ef4444'
+                                : histDieColor === 'orange'
+                                ? '#f97316'
+                                : histDieColor === 'blue'
+                                ? '#0ea5e9'
+                                : '#eab308',
+                          }}
+                        />
+                        <span className="capitalize font-bold text-[10.5px]">
+                          {colorName}
                         </span>
-                      )}
+                        <span className="font-extrabold text-sm">{isPurple ? 'RIFT' : roll.roll}</span>
+                      </span>
+                        );
+                      })()}
 
                       <span>
                         {isPurple ? (

@@ -374,6 +374,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                     </g>
                   );
                 })}
+                {activeTile.isNebula && (
+                  <g className="pointer-events-none opacity-70">
+                    <line x1="17" y1="17" x2={17 + 14 * 0.866} y2={17 - 14 * 0.5} stroke="#10b981" strokeWidth="0.8" strokeDasharray="2 1" />
+                    <line x1="17" y1="17" x2="17" y2={17 + 14 * 0.9} stroke="#10b981" strokeWidth="0.8" strokeDasharray="2 1" />
+                    <line x1="17" y1="17" x2={17 - 14 * 0.866} y2={17 - 14 * 0.5} stroke="#10b981" strokeWidth="0.8" strokeDasharray="2 1" />
+                  </g>
+                )}
                 <text
                   x="17"
                   y="20"
@@ -390,6 +397,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 <span className="text-[10px] font-bold text-slate-200">
                   {activeTile.wormholes.filter(Boolean).length} Wormholes
                 </span>
+                {activeTile.isNebula && (
+                  <span className="text-[9px] font-bold text-emerald-400 mt-0.5">
+                    Nebula (3 Subsectors)
+                  </span>
+                )}
                 <span className="text-[8.5px] font-mono text-cyan-400 mt-0.5">
                   {isConnected ? '✓ Connected' : 'Unconnected'}
                 </span>

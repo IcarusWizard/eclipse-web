@@ -95,7 +95,13 @@ export function buildCombatUnitsForSector(
   return units;
 }
 
-export function getSectorDefenderOwnerId(sector: SectorTile): string | undefined {
+export function getSectorDefenderOwnerId(sector: SectorTile, players?: PlayerState[]): string | undefined {
+  if (players) {
+    const dracoPlayer = players.find((p) => p.faction.id === 'descendants_of_draco');
+    if (dracoPlayer && sector.ships.some((s) => s.ownerId === dracoPlayer.id)) {
+      return dracoPlayer.id;
+    }
+  }
   if (sector.ancientsCount > 0 || sector.ships.some((s) => s.ownerId === 'ancient' || s.type === 'ancient')) {
     return 'ancient';
   }

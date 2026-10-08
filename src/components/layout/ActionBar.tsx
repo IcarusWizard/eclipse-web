@@ -42,6 +42,8 @@ interface ActionBarProps {
   onRevertAction?: () => void;
   nextPassTileNum?: number;
   isTurnOrderVariant?: boolean;
+  onOpenPulsar?: () => void;
+  hasPulsarAvailable?: boolean;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -61,6 +63,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onRevertAction,
   nextPassTileNum,
   isTurnOrderVariant = false,
+  onOpenPulsar,
+  hasPulsarAvailable = false,
 }) => {
   if (pendingConfirmation) {
     const isMyAction = !isTurnGated;
@@ -198,8 +202,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         </div>
       </div>
 
-      {/* 7 Action Buttons Grid */}
-      <div className="grid grid-cols-7 gap-1 sm:gap-1.5 w-full">
+      {/* Action Buttons Grid */}
+      <div className={`grid ${hasPulsarAvailable ? 'grid-cols-8' : 'grid-cols-7'} gap-1 sm:gap-1.5 w-full`}>
         {/* Explore */}
         <button
           disabled={!canExplore}
@@ -311,6 +315,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <span className="leading-tight">INF</span>
           <span className="text-[8.5px] opacity-80 leading-none">({maxInfluence})</span>
         </button>
+
+        {/* Pulsar Special Action */}
+        {hasPulsarAvailable && (
+          <button
+            type="button"
+            onClick={onOpenPulsar}
+            title="Activate Pulsar Sector (Free Action without taking an Influence Disc)"
+            className="flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer bg-gradient-to-b from-cyan-950 to-slate-900 border-2 border-cyan-400 text-cyan-200 animate-pulse hover:scale-105 min-w-[44px] sm:min-w-[52px]"
+          >
+            <Sparkles className="w-4 h-4 shrink-0 text-cyan-300" />
+            <span className="leading-tight">PULSAR</span>
+            <span className="text-[8.5px] text-cyan-400 font-mono leading-none">FREE</span>
+          </button>
+        )}
 
         {/* Pass */}
         <button

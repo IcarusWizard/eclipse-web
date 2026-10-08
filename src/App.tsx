@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameState, CombatDamageAssignment } from './engine/types/state';
-import { SectorTile, HexCoord, ShipType, SectorShip } from './engine/types/galaxy';
+import { SectorTile, HexCoord, ShipType, SectorShip, HexEdge } from './engine/types/galaxy';
 import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
 import {
@@ -12,6 +12,7 @@ import {
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups } from './engine/rules/combatEngine';
+import { getNebulaSubsectorForOuterEdge } from './engine/rules/galacticEvents';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X } from 'lucide-react';
 
@@ -33,6 +34,8 @@ import { CombatConquestModal } from './components/combat/CombatConquestModal';
 import { ReputationTileModal } from './components/combat/ReputationTileModal';
 import { GameOverModal } from './components/gameover/GameOverModal';
 import { NewGameModal } from './components/setup/NewGameModal';
+import { FactionDraftModal } from './components/setup/FactionDraftModal';
+import { PulsarModal } from './components/actions/PulsarModal';
 import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { SectorInspector } from './components/map/SectorInspector';
@@ -107,6 +110,8 @@ export const App: React.FC = () => {
   const [isTurnOrderOpen, setIsTurnOrderOpen] = useState<boolean>(false);
   const [isMinorSpeciesOpen, setIsMinorSpeciesOpen] = useState<boolean>(false);
   const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
+  const [pulsarSectorIdForModal, setPulsarSectorIdForModal] = useState<string | null>(null);
+  const [activePulsarSectorId, setActivePulsarSectorId] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
 
@@ -257,9 +262,10 @@ export const App: React.FC = () => {
     tableId: string,
     seat: number | 'all',
     expansions?: string[],
-    neutralShips?: NeutralShipSelectionConfig
+    neutralShips?: NeutralShipSelectionConfig,
+    isDraftMode?: boolean
   ) => {
-    const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips);
+    const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips, isDraftMode);
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
     newGame.id = tableId;
@@ -423,6 +429,7 @@ export const App: React.FC = () => {
     let currentState = state;
 
     for (let i = 0; i < plan.trades.materials; i++) {
+      if (!currentState.pendingBankruptcy) break;
       const player = currentState.players.find((p) => p.id === playerId);
       const ratio = player?.faction.tradeRatio || 2;
       const res = executeAction(currentState, {
@@ -432,10 +439,16 @@ export const App: React.FC = () => {
         toResource: 'money',
         amount: ratio,
       });
-      if (res.success) currentState = res.newState;
+      if (res.success) {
+        currentState = res.newState;
+      } else {
+        showToast(res.error || 'Failed to trade materials.');
+        return;
+      }
     }
 
     for (let i = 0; i < plan.trades.science; i++) {
+      if (!currentState.pendingBankruptcy) break;
       const player = currentState.players.find((p) => p.id === playerId);
       const ratio = player?.faction.tradeRatio || 2;
       const res = executeAction(currentState, {
@@ -445,16 +458,27 @@ export const App: React.FC = () => {
         toResource: 'money',
         amount: ratio,
       });
-      if (res.success) currentState = res.newState;
+      if (res.success) {
+        currentState = res.newState;
+      } else {
+        showToast(res.error || 'Failed to trade science.');
+        return;
+      }
     }
 
-    for (const secId of plan.abandonedSectorIds) {
+    if (plan.abandonedSectorIds.length > 0 && currentState.pendingBankruptcy) {
       const res = executeAction(currentState, {
         type: 'ABANDON_SECTOR_BANKRUPTCY',
         playerId,
-        sectorId: secId,
+        sectorIds: plan.abandonedSectorIds,
+        sectorId: plan.abandonedSectorIds[0],
       });
-      if (res.success) currentState = res.newState;
+      if (res.success) {
+        currentState = res.newState;
+      } else {
+        showToast(res.error || 'Failed to abandon sectors.');
+        return;
+      }
     }
 
     const updatedPlayer = currentState.players.find((p) => p.id === playerId);
@@ -471,13 +495,33 @@ export const App: React.FC = () => {
     playerCount: number,
     selectedFactionIds?: string[],
     expansions?: string[],
-    neutralShips?: NeutralShipSelectionConfig
+    neutralShips?: NeutralShipSelectionConfig,
+    isDraftMode?: boolean
   ) => {
-    const newGame = createInitialGame(playerCount, selectedFactionIds, expansions, neutralShips);
+    const newGame = createInitialGame(playerCount, selectedFactionIds, expansions, neutralShips, isDraftMode);
     setState(newGame);
     setSelectedViewIndex(0);
     setSelectedSector(null);
     setIsNewGameOpen(false);
+  };
+
+  const handleDraftFaction = (factionId: string) => {
+    const draft = state.factionDraft;
+    if (!draft) return;
+    const currentDrafterId = draft.draftOrder[draft.currentDraftIndex];
+    if (!currentDrafterId) return;
+
+    const res = executeAction(state, {
+      type: 'DRAFT_FACTION',
+      playerId: currentDrafterId,
+      factionId,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast('Faction drafted!');
+    } else {
+      showToast(res.error || 'Failed to draft faction.');
+    }
   };
 
   // Explore flow: User clicks an explorable hex on map
@@ -654,18 +698,22 @@ export const App: React.FC = () => {
 
   // Blueprint save flow
   const handleSaveBlueprint = (
-    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[]
+    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[],
+    pulsarSectorId?: string
   ) => {
+    const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const res = executeAction(state, {
       type: 'UPGRADE',
       playerId: activePlayer.id,
       upgrades,
+      pulsarSectorId: effectivePulsarId,
       requireConfirmation: true,
     });
 
     if (res.success) {
       setState(res.newState);
       setIsBlueprintOpen(false);
+      setActivePulsarSectorId(null);
     } else {
       showToast(res.error || 'Failed to save blueprint.');
     }
@@ -676,6 +724,44 @@ export const App: React.FC = () => {
   const eligibleBuildSectors = useMemo(() => {
     return state.sectors.filter((s) => s.discOwner === activePlayer.id);
   }, [state.sectors, activePlayer.id]);
+
+  // --- PULSAR ANOMALY ACTIVATION (Galactic Events) ---
+  const controlledPulsarSectors = useMemo(() => {
+    return state.sectors.filter(
+      (s) => s.isPulsar && s.discOwner === activePlayer.id
+    );
+  }, [state.sectors, activePlayer.id]);
+
+  const hasPulsarAvailable = useMemo(() => {
+    return (
+      !activePlayer.hasPassed &&
+      state.phase === 'ACTION_PHASE' &&
+      controlledPulsarSectors.some(
+        (s) => !state.galacticEvents?.pulsars?.[s.id]?.activatedThisRound
+      )
+    );
+  }, [controlledPulsarSectors, state.galacticEvents, activePlayer.hasPassed, state.phase]);
+
+  const handleSelectPulsarAction = (
+    targetSlot: 'move' | 'build' | 'upgrade',
+    sectorId: string
+  ) => {
+    setActivePulsarSectorId(sectorId);
+    setPulsarSectorIdForModal(null);
+    if (targetSlot === 'build') {
+      setBuildSlots([
+        { sectorId: eligibleBuildSectors[0]?.id || sectorId, itemType: 'interceptor' },
+      ]);
+      setActiveBuildSlotIndex(0);
+      setIsBuildOpen(true);
+    } else if (targetSlot === 'move') {
+      setPlannedMoves([]);
+      setActiveActivationIndex(0);
+      setIsMoveOpen(true);
+    } else if (targetSlot === 'upgrade') {
+      setIsBlueprintOpen(true);
+    }
+  };
 
   const [buildSlots, setBuildSlots] = useState<BuildItemPayload[]>([
     { sectorId: '', itemType: 'interceptor' },
@@ -795,6 +881,17 @@ export const App: React.FC = () => {
     return false;
   }, [currentShipHasJumpDrive, currentActivationMoves, state.sectors, hasWormholeGen]);
 
+  const currentSimSubsector = useMemo(() => {
+    if (!currentMoveShip || !currentSimSector || !currentSimSector.isNebula) return undefined;
+    const movesForShip = plannedMoves.filter((m) => m.shipId === currentMoveShip.id);
+    if (movesForShip.length === 0) return (currentMoveShip.subsector ?? 1) as 1 | 2 | 3;
+    const lastMove = movesForShip[movesForShip.length - 1];
+    if (lastMove && lastMove.toSectorId === currentSimSector.id && lastMove.targetSubsector) {
+      return lastMove.targetSubsector;
+    }
+    return (currentMoveShip.subsector ?? 1) as 1 | 2 | 3;
+  }, [currentMoveShip, currentSimSector, plannedMoves]);
+
   // Destinations connected to the ship's current simulated sector via wormholes or Jump Drive
   const connectedDestinations = useMemo(() => {
     if (!currentMoveShip || !currentSimSector) return [];
@@ -814,6 +911,16 @@ export const App: React.FC = () => {
 
     return state.sectors.filter((s) => {
       if (s.id === currentSimSector.id) return false;
+      if (currentSimSector.isNebula && currentSimSubsector) {
+        const exitEdge = getEdgeBetween(currentSimSector.coord, s.coord);
+        if (exitEdge !== null) {
+          const edgeOnTile = ((exitEdge - currentSimSector.rotation) % 6 + 6) % 6;
+          const allowedSub = getNebulaSubsectorForOuterEdge(edgeOnTile as HexEdge);
+          if (allowedSub !== currentSimSubsector) {
+            return false;
+          }
+        }
+      }
       const isConnected = areSectorsConnected(currentSimSector, s, hasWormholeGen, state.warpedUniverse?.conduits);
       if (isConnected) return true;
       if (currentShipHasJumpDrive && !jumpUsedInCurrentActivation) {
@@ -824,6 +931,7 @@ export const App: React.FC = () => {
   }, [
     currentMoveShip,
     currentSimSector,
+    currentSimSubsector,
     activeActivationIndex,
     maxMoves,
     currentShipMaxSteps,
@@ -834,9 +942,10 @@ export const App: React.FC = () => {
     pinningState,
     state.sectors,
     hasWormholeGen,
+    state.warpedUniverse?.conduits,
   ]);
 
-  const handleAddMoveDestination = (destSectorId: string) => {
+  const handleAddMoveDestination = (destSectorId: string, targetSubsector?: 1 | 2 | 3) => {
     if (!currentMoveShip || !currentSimSector) return;
     if (activeActivationIndex >= maxMoves) return;
     if (currentShipMaxSteps <= 0) return;
@@ -859,15 +968,17 @@ export const App: React.FC = () => {
       activationIndex: activeActivationIndex,
       stepInActivation: stepNumber,
       driveSpeed: currentShipMaxSteps,
+      targetSubsector,
     };
 
     setPlannedMoves((prev) => [...prev, newMove]);
 
     // Pinning or speed limit check
     const isHostile =
-      destSec.ancientsCount > 0 ||
-      destSec.hasGCDS ||
-      destSec.ships.some((sh) => sh.ownerId !== activePlayer.id);
+      destSec.id !== currentSimSector.id &&
+      (destSec.ancientsCount > 0 ||
+        destSec.hasGCDS ||
+        destSec.ships.some((sh) => sh.ownerId !== activePlayer.id));
 
     if (isHostile || stepNumber >= currentShipMaxSteps) {
       setActiveActivationIndex((prev) => prev + 1);
@@ -934,32 +1045,41 @@ export const App: React.FC = () => {
   };
 
   // Build flow
-  const handleBuild = (items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith' }[]) => {
+  const handleBuild = (
+    items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith' }[],
+    pulsarSectorId?: string
+  ) => {
+    const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const res = executeAction(state, {
       type: 'BUILD',
       playerId: activePlayer.id,
       items,
+      pulsarSectorId: effectivePulsarId,
       requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
       setIsBuildOpen(false);
+      setActivePulsarSectorId(null);
     } else {
       showToast(res.error || 'Construction failed.');
     }
   };
 
   // Move flow
-  const handleMove = (moves: MoveStepPayload[]) => {
+  const handleMove = (moves: MoveStepPayload[], pulsarSectorId?: string) => {
+    const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const res = executeAction(state, {
       type: 'MOVE',
       playerId: activePlayer.id,
       moves,
+      pulsarSectorId: effectivePulsarId,
       requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
       setIsMoveOpen(false);
+      setActivePulsarSectorId(null);
     } else {
       showToast(res.error || 'Movement maneuver failed.');
     }
@@ -1254,7 +1374,7 @@ export const App: React.FC = () => {
           state.activeCombat.participatingPlayerIds,
           state.neutralShipBlueprints
         );
-        const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec);
+        const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
         const aliveUnits = sortUnitsByInitiative(
           units.filter((u) => u.currentDamage < u.maxHull),
           defenderId
@@ -1599,6 +1719,12 @@ export const App: React.FC = () => {
               pendingBankruptcy={state.pendingBankruptcy}
               stagedAbandonedSectorIds={stagedBankruptcySectors}
               onToggleAbandonSector={handleToggleAbandonSectorBankruptcy}
+              onActivatePulsar={(secId) => setPulsarSectorIdForModal(secId)}
+              isPulsarActivatedThisRound={
+                selectedSector
+                  ? Boolean(state.galacticEvents?.pulsars?.[selectedSector.id]?.activatedThisRound)
+                  : false
+              }
             />
           </div>
         )}
@@ -1622,6 +1748,15 @@ export const App: React.FC = () => {
             onRevertAction={handleRevertTurnAction}
             nextPassTileNum={(state.passedPlayerIds?.length || 0) + 1}
             isTurnOrderVariant={Boolean(state.expansions?.includes('turn_order'))}
+            onOpenPulsar={() => {
+              const availablePulsar = controlledPulsarSectors.find(
+                (s) => !state.galacticEvents?.pulsars?.[s.id]?.activatedThisRound
+              );
+              if (availablePulsar) {
+                setPulsarSectorIdForModal(availablePulsar.id);
+              }
+            }}
+            hasPulsarAvailable={hasPulsarAvailable}
           />
         )}
 
@@ -1666,8 +1801,12 @@ export const App: React.FC = () => {
       {isBlueprintOpen && (
         <ShipBlueprintEditor
           player={viewedPlayer}
+          pulsarSectorId={activePulsarSectorId ?? undefined}
           onSaveBlueprint={handleSaveBlueprint}
-          onClose={() => setIsBlueprintOpen(false)}
+          onClose={() => {
+            setIsBlueprintOpen(false);
+            setActivePulsarSectorId(null);
+          }}
         />
       )}
 
@@ -1694,7 +1833,11 @@ export const App: React.FC = () => {
           activeSlotIndex={activeBuildSlotIndex}
           onSelectSlotIndex={setActiveBuildSlotIndex}
           onBuild={handleBuild}
-          onClose={() => setIsBuildOpen(false)}
+          pulsarSectorId={activePulsarSectorId ?? undefined}
+          onClose={() => {
+            setIsBuildOpen(false);
+            setActivePulsarSectorId(null);
+          }}
         />
       )}
 
@@ -1717,7 +1860,11 @@ export const App: React.FC = () => {
           onSelectShipId={handleSelectMoveShipId}
           onFinishActivation={handleFinishCurrentActivation}
           onMove={handleMove}
-          onClose={() => setIsMoveOpen(false)}
+          pulsarSectorId={activePulsarSectorId ?? undefined}
+          onClose={() => {
+            setIsMoveOpen(false);
+            setActivePulsarSectorId(null);
+          }}
         />
       )}
 
@@ -1797,7 +1944,28 @@ export const App: React.FC = () => {
         )
       )}
 
-      {state.pendingCombatConquest && (
+      {state.phase === 'DRAFT_PHASE' && (
+        <FactionDraftModal
+          state={state}
+          onDraftFaction={handleDraftFaction}
+        />
+      )}
+
+      {pulsarSectorIdForModal && (
+        (() => {
+          const pSec = state.sectors.find((s) => s.id === pulsarSectorIdForModal);
+          if (!pSec) return null;
+          return (
+            <PulsarModal
+              sector={pSec}
+              onSelectAction={handleSelectPulsarAction}
+              onClose={() => setPulsarSectorIdForModal(null)}
+            />
+          );
+        })()
+      )}
+
+      {!state.pendingReputationDraw && state.pendingCombatConquest && (
         <CombatConquestModal
           state={state}
           conquest={state.pendingCombatConquest}
@@ -1805,7 +1973,7 @@ export const App: React.FC = () => {
         />
       )}
 
-      {state.pendingDiscovery && (
+      {!state.pendingReputationDraw && !state.pendingCombatConquest && state.pendingDiscovery && (
         <DiscoveryChoiceModal
           discovery={state.pendingDiscovery.discovery}
           player={

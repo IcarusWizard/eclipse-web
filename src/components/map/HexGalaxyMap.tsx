@@ -14,6 +14,7 @@ import {
   getExplorableHexes,
 } from '../../engine/rules/hexMath';
 import { playerHasWormholeGenerator, getPlayerShortName } from '../../engine/rules/gameReducer';
+import { getWarpConduitForSectorEdge } from '../../engine/rules/warpedUniverse';
 import {
   Rocket,
   Compass,
@@ -931,9 +932,27 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     candidateNeighbor;
                   const hasWormholeGen =
                     activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
-                  const isConnected = neighborSector
+                  let isConnected = neighborSector
                     ? areSectorsConnected(sector, neighborSector, hasWormholeGen, state.warpedUniverse?.conduits)
                     : false;
+
+                  // Bug 138: Check if this edge connects across a Warped Universe conduit to another half-wormhole
+                  if (!isConnected && state.warpedUniverse?.conduits) {
+                    const conduitInfo = getWarpConduitForSectorEdge(sector.coord, edge, state.warpedUniverse.conduits);
+                    if (conduitInfo) {
+                      const targetSector =
+                        state.sectors.find((s) => areCoordsEqual(s.coord, conduitInfo.targetCoord)) ||
+                        (candidateNeighbor && areCoordsEqual(candidateNeighbor.coord, conduitInfo.targetCoord)
+                          ? candidateNeighbor
+                          : null);
+                      if (targetSector) {
+                        const targetHasWormhole = hasWormholeOnEdge(targetSector, conduitInfo.targetEdge);
+                        if (hasWormhole && (targetHasWormhole || hasWormholeGen)) {
+                          isConnected = true;
+                        }
+                      }
+                    }
+                  }
 
                   return (
                     <g
@@ -1989,12 +2008,33 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 {/* Candidate Sector Hexagon Polygon */}
                 <polygon
                   points={getHexCornerPoints(x, y, HEX_RADIUS - 2)}
-                  fill="rgba(15, 23, 42, 0.95)"
-                  stroke={isConnectedToSource ? '#38bdf8' : '#f43f5e'}
+                  fill={pendingExplore.candidateTile.isNebula ? 'rgba(6, 78, 59, 0.45)' : 'rgba(15, 23, 42, 0.95)'}
+                  stroke={isConnectedToSource ? (pendingExplore.candidateTile.isNebula ? '#10b981' : '#38bdf8') : '#f43f5e'}
                   strokeWidth="3"
                   strokeDasharray={isConnectedToSource ? undefined : '6 4'}
                   className="transition-colors"
                 />
+
+                {/* Galactic Events: Nebula Subsectors for Candidate Tile */}
+                {pendingExplore.candidateTile.isNebula && (
+                  <g transform={`translate(${x}, ${y})`} className="pointer-events-none">
+                    <line x1="0" y1="0" x2={HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                    <line x1="0" y1="0" x2="0" y2={HEX_RADIUS * 0.9} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                    <line x1="0" y1="0" x2={-HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                    <g transform="translate(0, -28)">
+                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 1</text>
+                    </g>
+                    <g transform="translate(-24, 18)">
+                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 2</text>
+                    </g>
+                    <g transform="translate(24, 18)">
+                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 3</text>
+                    </g>
+                  </g>
+                )}
 
                 {/* Wormholes on 6 Edges with real-time rotation */}
                 {([0, 1, 2, 3, 4, 5] as HexEdge[]).map((edge) => {
@@ -2005,9 +2045,22 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   // Check if adjacent sector exists and shares a connected wormhole
                   const neighborCoord = getNeighborCoord(simulatedTile.coord, edge);
                   const neighborSector = state.sectors.find((s) => areCoordsEqual(s.coord, neighborCoord));
-                  const isNeighborConnected = neighborSector
+                  let isNeighborConnected = neighborSector
                     ? areSectorsConnected(simulatedTile, neighborSector, hasWormholeGen, state.warpedUniverse?.conduits)
                     : false;
+
+                  if (!isNeighborConnected && state.warpedUniverse?.conduits) {
+                    const conduitInfo = getWarpConduitForSectorEdge(simulatedTile.coord, edge, state.warpedUniverse.conduits);
+                    if (conduitInfo) {
+                      const targetSector = state.sectors.find((s) => areCoordsEqual(s.coord, conduitInfo.targetCoord));
+                      if (targetSector) {
+                        const targetHasWormhole = hasWormholeOnEdge(targetSector, conduitInfo.targetEdge);
+                        if (hasWormhole && (targetHasWormhole || hasWormholeGen)) {
+                          isNeighborConnected = true;
+                        }
+                      }
+                    }
+                  }
 
                   return (
                     <g

@@ -45,6 +45,8 @@ interface SectorInspectorProps {
   pendingBankruptcy?: { playerId: string; deficit: number } | null;
   stagedAbandonedSectorIds?: string[];
   onToggleAbandonSector?: (sectorId: string) => void;
+  onActivatePulsar?: (sectorId: string) => void;
+  isPulsarActivatedThisRound?: boolean;
 }
 
 export const SectorInspector: React.FC<SectorInspectorProps> = ({
@@ -58,6 +60,8 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   pendingBankruptcy,
   stagedAbandonedSectorIds = [],
   onToggleAbandonSector,
+  onActivatePulsar,
+  isPulsarActivatedThisRound = false,
 }) => {
   const isStagedForAbandonment = stagedAbandonedSectorIds.includes(sector.id);
   const discOwner = players.find((p) => p.id === sector.discOwner);
@@ -541,12 +545,47 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
         </div>
 
         {/* Special Features & Structures */}
-        {(sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile || sector.structures?.monolith || (sector.guardiansCount && sector.guardiansCount > 0)) && (
+        {(sector.isPulsar || sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile || sector.structures?.monolith || (sector.guardiansCount && sector.guardiansCount > 0)) && (
           <div className="pt-2 border-t border-slate-800/80 space-y-2">
             <h4 className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               Special Features & Structures
             </h4>
+
+            {sector.isPulsar && (
+              <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-600/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-cyan-300 font-bold flex items-center gap-1.5 text-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    Pulsar Anomaly
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-900/60 text-cyan-200 font-mono font-bold border border-cyan-600 uppercase">
+                    Slot: {sector.pulsarSlot || 'move'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-300">
+                  {sector.discOwner === activePlayer.id ? (
+                    isPulsarActivatedThisRound ? (
+                      <span className="text-slate-400 italic">Already activated this round.</span>
+                    ) : (
+                      <span className="text-emerald-300 font-medium">Ready for free action activation this round!</span>
+                    )
+                  ) : (
+                    <span className="text-slate-400">Control this sector to shift the disc for free actions.</span>
+                  )}
+                </div>
+                {sector.discOwner === activePlayer.id && !isPulsarActivatedThisRound && !activePlayer.hasPassed && onActivatePulsar && (
+                  <button
+                    type="button"
+                    onClick={() => onActivatePulsar(sector.id)}
+                    className="w-full py-1.5 px-3 rounded-lg bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-slate-950 font-bold text-xs shadow-md shadow-cyan-950 flex items-center justify-center gap-1.5 transition cursor-pointer"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Activate Pulsar (Shift Slot)</span>
+                  </button>
+                )}
+              </div>
+            )}
 
             {sector.structures?.monolith && (
               <div className="p-2 rounded-lg bg-indigo-950/40 border border-indigo-700/60 flex items-center justify-between">

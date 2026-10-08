@@ -32,7 +32,8 @@ export type ActionType =
   | 'PLACE_SHRINE'
   | 'REROLL_COMBAT_DIE'
   | 'ACTIVATE_PULSAR'
-  | 'RETURN_BLACK_HOLE_SHIP';
+  | 'RETURN_BLACK_HOLE_SHIP'
+  | 'DRAFT_FACTION';
 
 export interface BaseAction {
   playerId: string;
@@ -83,6 +84,7 @@ export interface UpgradeAction extends BaseAction {
     slotIndex: number;
     partId: string | null;
   }[];
+  pulsarSectorId?: string;
 }
 
 export interface BuildAction extends BaseAction {
@@ -91,6 +93,7 @@ export interface BuildAction extends BaseAction {
     sectorId: string;
     itemType: ShipType | 'orbital' | 'monolith';
   }[];
+  pulsarSectorId?: string;
 }
 
 export interface MoveStep {
@@ -105,6 +108,7 @@ export interface MoveStep {
 export interface MoveAction extends BaseAction {
   type: 'MOVE';
   moves: MoveStep[];
+  pulsarSectorId?: string;
 }
 
 export interface InfluenceAction extends BaseAction {
@@ -199,7 +203,8 @@ export interface AllocateArtifactRewardAction extends BaseAction {
 
 export interface AbandonSectorBankruptcyAction extends BaseAction {
   type: 'ABANDON_SECTOR_BANKRUPTCY';
-  sectorId: string;
+  sectorId?: string;
+  sectorIds?: string[];
 }
 
 export interface ConfirmTurnAction extends BaseAction {
@@ -262,6 +267,11 @@ export interface ReturnBlackHoleShipAction extends BaseAction {
   targetSectorId: string;
 }
 
+export interface DraftFactionAction extends BaseAction {
+  type: 'DRAFT_FACTION';
+  factionId: string;
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -290,4 +300,5 @@ export type GameAction =
   | ChooseExilesOrbitalCubeAction
   | ClaimMinorSpeciesAction
   | ActivatePulsarAction
-  | ReturnBlackHoleShipAction;
+  | ReturnBlackHoleShipAction
+  | DraftFactionAction;

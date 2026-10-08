@@ -23,6 +23,7 @@ import {
   createWarpedUniverseLayout,
   getWarpedUniverseStartingCoords,
 } from './warpedUniverse';
+export { getWarpedUniverseStartingCoords };
 import { createGalacticEventsState } from './galacticEvents';
 
 export const ECLIPSE_COLOR_PALETTE = {
@@ -710,11 +711,230 @@ export function createInitialShrineBoard(): ShrineBoardState {
   };
 }
 
+/**
+ * Builds full PlayerState and home SectorTile for a given faction.
+ */
+export function buildPlayerAndHomeSector(
+  playerId: string,
+  playerName: string,
+  playerColor: string,
+  faction: FactionInfo,
+  startCoord: HexCoord,
+  reputationBag: number[],
+  discoveryBag: DiscoveryTile[],
+  expansions: string[] = []
+): { player: PlayerState; homeSector: SectorTile } {
+  const homeConfig =
+    ALL_HOME_SECTORS[faction.id] ||
+    HUMAN_HOME_SECTORS[faction.id] || {
+      sectorNumber: 221,
+      ring: 2,
+      victoryPoints: 3,
+      wormholes: [true, false, true, true, false, true],
+      planets: [
+        { id: `p_1`, resource: 'money', isAdvanced: false },
+        { id: `p_2`, resource: 'science', isAdvanced: false },
+        { id: `p_3`, resource: 'material', isAdvanced: false },
+        { id: `p_4`, resource: 'money', isAdvanced: true },
+        { id: `p_5`, resource: 'science', isAdvanced: true },
+      ],
+    };
+
+  // Determine initial colonized planets
+  const planets = (homeConfig.planets || []).map((p, idx) => {
+    let isColonized = false;
+    let colonizedResource = p.resource !== 'any' ? p.resource : 'money';
+
+    if (faction.id === 'hydran_progress') {
+      if (p.isAdvanced && p.resource === 'science') {
+        isColonized = true;
+        colonizedResource = 'science';
+      } else if (!p.isAdvanced) {
+        isColonized = true;
+      }
+    } else if (faction.id === 'the_exiles') {
+      if (!p.isAdvanced && !p.isOrbital) {
+        isColonized = true;
+        colonizedResource = 'material';
+      } else if (p.isOrbital) {
+        isColonized = true;
+        colonizedResource = 'science';
+      }
+    } else if (faction.id === 'rho_indi_syndicate') {
+      if (!p.isAdvanced) {
+        isColonized = true;
+      }
+    } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
+      isColonized = !p.isAdvanced;
+    } else {
+      isColonized = !p.isAdvanced && idx < 3;
+    }
+
+    return {
+      ...p,
+      id: `home_${playerId}_p${idx}`,
+      colonizedBy: isColonized ? playerId : undefined,
+      colonizedResource: isColonized ? (colonizedResource as any) : undefined,
+    };
+  });
+
+  const startShips: SectorShip[] = [];
+  if (faction.id === 'rho_indi_syndicate') {
+    startShips.push(
+      {
+        id: `ship_${playerId}_start_interceptor_1`,
+        ownerId: playerId,
+        type: 'interceptor',
+        damage: 0,
+      },
+      {
+        id: `ship_${playerId}_start_interceptor_2`,
+        ownerId: playerId,
+        type: 'interceptor',
+        damage: 0,
+      }
+    );
+  } else if (faction.id === 'the_exiles') {
+    startShips.push(
+      {
+        id: `ship_${playerId}_start_interceptor`,
+        ownerId: playerId,
+        type: 'interceptor',
+        damage: 0,
+      },
+      {
+        id: `ship_${playerId}_start_orbital`,
+        ownerId: playerId,
+        type: 'orbital',
+        damage: 0,
+      }
+    );
+  } else {
+    const startShipType = faction.id === 'orion_hegemony' ? 'cruiser' : 'interceptor';
+    startShips.push({
+      id: `ship_${playerId}_start_${startShipType}`,
+      ownerId: playerId,
+      type: startShipType,
+      damage: 0,
+    });
+  }
+
+  const centerEdge = getEdgeTowardCenter(startCoord);
+
+  const homeSector: SectorTile = {
+    id: `home_sector_${playerId}`,
+    sectorNumber: homeConfig.sectorNumber || 221,
+    name: homeConfig.name || faction.name,
+    ring: 2,
+    coord: startCoord,
+    rotation: centerEdge,
+    wormholes: homeConfig.wormholes || [true, false, true, true, false, true],
+    planets,
+    structures: homeConfig.structures ? { ...homeConfig.structures } : undefined,
+    victoryPoints: homeConfig.victoryPoints || 3,
+    hasArtifact: homeConfig.hasArtifact ?? true,
+    hasDiscovery: false,
+    ancientsCount: 0,
+    discOwner: playerId,
+    ships: startShips,
+  };
+
+  // Starting technologies
+  const startingTechs = (faction.startingTechIds || [])
+    .map((tId) => {
+      const t = TECH_CATALOG.find((tech) => tech.id === tId);
+      if (!t) return null;
+      if (faction.id === 'the_exiles' && t.id === 'cloaking_device') {
+        return { ...t, placedTrack: 'military' as const };
+      }
+      return { ...t };
+    })
+    .filter((t): t is (typeof TECH_CATALOG)[number] => Boolean(t));
+
+  let moneyCubesRemaining = 10;
+  let scienceCubesRemaining = 10;
+  let materialCubesRemaining = 10;
+
+  if (faction.id === 'hydran_progress') {
+    scienceCubesRemaining = 9;
+    materialCubesRemaining = 10;
+    moneyCubesRemaining = 10;
+  } else if (faction.id === 'the_exiles') {
+    moneyCubesRemaining = 11;
+    scienceCubesRemaining = 10;
+    materialCubesRemaining = 10;
+  } else if (faction.id === 'rho_indi_syndicate') {
+    moneyCubesRemaining = 10;
+    scienceCubesRemaining = 11;
+    materialCubesRemaining = 10;
+  } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan') {
+    moneyCubesRemaining = 11;
+    scienceCubesRemaining = 10;
+    materialCubesRemaining = 10;
+  } else if (faction.id === 'enlightened_of_lyra') {
+    moneyCubesRemaining = 10;
+    scienceCubesRemaining = 10;
+    materialCubesRemaining = 10;
+  }
+
+  const startingRepTiles: number[] = [];
+  if (faction.id === 'eridani_empire') {
+    if (reputationBag.length > 0) startingRepTiles.push(reputationBag.pop()!);
+    if (reputationBag.length > 0) startingRepTiles.push(reputationBag.pop()!);
+  }
+
+  const player: PlayerState = {
+    id: playerId,
+    name: playerName,
+    faction,
+    color: playerColor,
+    resources: { ...faction.startingResources },
+    blueprints: createFactionBlueprints(faction.id),
+    techTrack: {
+      researched: startingTechs,
+      militaryCount: startingTechs.filter((t) => (t as any).placedTrack === 'military' || t.category === 'military').length,
+      gridCount: startingTechs.filter((t) => (t as any).placedTrack === 'grid' || t.category === 'grid').length,
+      nanoCount: startingTechs.filter((t) => (t as any).placedTrack === 'nano' || t.category === 'nano').length,
+    },
+    influenceTrack: {
+      totalDiscs: faction.startingDiscs,
+      discsOnTrack: faction.startingDiscs - 1,
+    },
+    colonyShips: {
+      total: faction.startingColonyShips,
+      ready: faction.startingColonyShips,
+    },
+    population: {
+      money: { cubesOnBoard: moneyCubesRemaining },
+      science: { cubesOnBoard: scienceCubesRemaining },
+      material: { cubesOnBoard: materialCubesRemaining },
+    },
+    reputationTiles: startingRepTiles,
+    ambassadorTiles: [],
+    ambassadorCubes: {},
+    keptDiscoveryTiles: [],
+    unlockedAncientParts: [],
+    magellanDiscoveryTile: faction.id === 'wardens_of_magellan' ? (discoveryBag.pop() || null) : undefined,
+    magellanDiscoveryResolved: faction.id === 'wardens_of_magellan' ? false : undefined,
+    discoveryTilesUsedAsShipPartsCount: faction.id === 'wardens_of_magellan' ? 0 : undefined,
+    shrineBoard: faction.id === 'enlightened_of_lyra' ? createInitialShrineBoard() : undefined,
+    hasWormholeGeneratorAbility: false,
+    lyraExtraDiscClaimed: false,
+    hasPassed: false,
+    isFirstPasser: false,
+    actionsTakenThisRound: 0,
+    graveyardShips: [],
+  };
+
+  return { player, homeSector };
+}
+
 export function createInitialGame(
   playerCount: number = 2,
   selectedFactions?: (string | FactionInfo)[],
   expansions: string[] = [],
-  neutralShipSelections?: Partial<NeutralShipSelectionConfig>
+  neutralShipSelections?: Partial<NeutralShipSelectionConfig>,
+  isDraftMode: boolean = false
 ): GameState {
   const count = Math.max(1, Math.min(6, playerCount));
   const startingCoords = expansions?.includes('warped_universe')
@@ -762,237 +982,147 @@ export function createInitialGame(
     },
   ];
 
-  for (let i = 0; i < count; i++) {
-    let faction: FactionInfo;
-    if (selectedFactions && selectedFactions[i]) {
-      const sf = selectedFactions[i];
-      if (typeof sf === 'string') {
-        faction = ALL_FACTIONS.find((f) => f.id === sf) || HUMAN_FACTIONS[i % HUMAN_FACTIONS.length]!;
-      } else {
-        faction = sf;
-      }
-    } else {
-      faction = HUMAN_FACTIONS[i % HUMAN_FACTIONS.length]!;
+  let turnOrder: string[] = [];
+  let draftOrder: string[] = [];
+  let factionDraftState: GameState['factionDraft'] = null;
+
+  if (isDraftMode) {
+    const defaultColors = ['#ef4444', '#3b82f6', '#10b981', '#f59e0b', '#8b5cf6', '#06b6d4'];
+    const posIndices = Array.from({ length: count }, (_, i) => i).sort(() => Math.random() - 0.5);
+    const assignedPositions: Record<string, number> = {};
+    for (let i = 0; i < count; i++) {
+      assignedPositions[`player_${i + 1}`] = posIndices[i]!;
     }
 
-    const playerId = `player_${i + 1}`;
-    const startCoord = startingCoords[i]!;
+    // Random first player
+    const firstPlayerIdx = Math.floor(Math.random() * count);
+    const firstPlayerId = `player_${firstPlayerIdx + 1}`;
+    const firstPlayerPos = assignedPositions[firstPlayerId]!;
 
-    const homeConfig =
-      ALL_HOME_SECTORS[faction.id] ||
-      HUMAN_HOME_SECTORS[faction.id] || {
-        sectorNumber: 220 + i + 1,
+    // Turn order follows clockwise around board positions from first player
+    for (let step = 0; step < count; step++) {
+      const targetPos = (firstPlayerPos + step) % count;
+      const pId = Object.keys(assignedPositions).find((k) => assignedPositions[k] === targetPos)!;
+      turnOrder.push(pId);
+    }
+
+    // Faction draft order is counter-clockwise from the last player in turn order
+    draftOrder = [...turnOrder].reverse();
+    const availableFactionIds = getAvailableFactions(expansions).map((f) => f.id);
+
+    for (let i = 0; i < count; i++) {
+      const pId = `player_${i + 1}`;
+      const pos = assignedPositions[pId]!;
+      const startCoord = startingCoords[pos]!;
+      const centerEdge = getEdgeTowardCenter(startCoord);
+
+      sectors.push({
+        id: `draft_slot_${pId}`,
+        sectorNumber: 220 + pos + 1,
+        name: `Position ${pos + 1} (Draft Slot)`,
         ring: 2,
-        victoryPoints: 3,
+        coord: startCoord,
+        rotation: centerEdge,
         wormholes: [true, false, true, true, false, true],
-        planets: [
-          { id: `p_${i}_1`, resource: 'money', isAdvanced: false },
-          { id: `p_${i}_2`, resource: 'science', isAdvanced: false },
-          { id: `p_${i}_3`, resource: 'material', isAdvanced: false },
-          { id: `p_${i}_4`, resource: 'money', isAdvanced: true },
-          { id: `p_${i}_5`, resource: 'science', isAdvanced: true },
-        ],
-      };
+        planets: [],
+        victoryPoints: 3,
+        discOwner: pId,
+        ships: [],
+      });
 
-    // Determine initial colonized planets
-    const planets = (homeConfig.planets || []).map((p, idx) => {
-      let isColonized = false;
-      let colonizedResource = p.resource !== 'any' ? p.resource : 'money';
-
-      if (faction.id === 'hydran_progress') {
-        // Hydran starts with a cube on Advanced Science (p2) and the standard non-advanced squares
-        if (p.isAdvanced && p.resource === 'science') {
-          isColonized = true;
-          colonizedResource = 'science';
-        } else if (!p.isAdvanced) {
-          isColonized = true;
-        }
-      } else if (faction.id === 'the_exiles') {
-        // Exiles: non-advanced planet colonized with material; orbital initialized with science cube (pending setup choice)
-        if (!p.isAdvanced && !p.isOrbital) {
-          isColonized = true;
-          colonizedResource = 'material';
-        } else if (p.isOrbital) {
-          isColonized = true;
-          colonizedResource = 'science';
-        }
-      } else if (faction.id === 'rho_indi_syndicate') {
-        // Rho Indi: non-advanced material and non-advanced money colonized
-        if (!p.isAdvanced) {
-          isColonized = true;
-        }
-      } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
-        // Planta, Magellan, and Lyra home sectors colonize only non-advanced planets
-        isColonized = !p.isAdvanced;
-      } else {
-        // Standard start: first 3 non-advanced planets colonized
-        isColonized = !p.isAdvanced && idx < 3;
-      }
-
-      return {
-        ...p,
-        id: `home_${playerId}_p${idx}`,
-        colonizedBy: isColonized ? playerId : undefined,
-        colonizedResource: isColonized ? (colonizedResource as any) : undefined,
-      };
-    });
-
-    const startShips: SectorShip[] = [];
-    if (faction.id === 'rho_indi_syndicate') {
-      startShips.push(
-        {
-          id: `ship_${playerId}_start_interceptor_1`,
-          ownerId: playerId,
-          type: 'interceptor',
-          damage: 0,
+      players.push({
+        id: pId,
+        name: `Player ${i + 1}`,
+        color: defaultColors[i % defaultColors.length]!,
+        faction: {
+          id: 'drafting',
+          name: `Player ${i + 1}`,
+          shortName: 'Drafting',
+          isHuman: true,
+          startingSector: 200,
+          startingResources: { money: 0, science: 0, materials: 0 },
+          startingStorage: { money: 0, science: 0, materials: 0 },
+          homeWorldBonus: { money: 0, science: 0, materials: 0 },
+          baseIncome: { money: 30, science: 0, materials: 0 },
+          baseUpkeep: 0,
+          startingDiscs: 16,
+          startingColonyShips: 3,
+          defaultColor: defaultColors[i % defaultColors.length]!,
+          reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
         },
-        {
-          id: `ship_${playerId}_start_interceptor_2`,
-          ownerId: playerId,
-          type: 'interceptor',
-          damage: 0,
-        }
-      );
-    } else if (faction.id === 'the_exiles') {
-      startShips.push(
-        {
-          id: `ship_${playerId}_start_interceptor`,
-          ownerId: playerId,
-          type: 'interceptor',
-          damage: 0,
+        resources: { money: 0, science: 0, materials: 0 },
+        blueprints: createFactionBlueprints('terran_directorate'),
+        techTrack: {
+          researched: [],
+          militaryCount: 0,
+          gridCount: 0,
+          nanoCount: 0,
         },
-        {
-          id: `ship_${playerId}_start_orbital`,
-          ownerId: playerId,
-          type: 'orbital',
-          damage: 0,
-        }
-      );
-    } else {
-      const startShipType = faction.id === 'orion_hegemony' ? 'cruiser' : 'interceptor';
-      startShips.push({
-        id: `ship_${playerId}_start_${startShipType}`,
-        ownerId: playerId,
-        type: startShipType,
-        damage: 0,
+        influenceTrack: {
+          totalDiscs: 16,
+          discsOnTrack: 15,
+        },
+        colonyShips: {
+          total: 3,
+          ready: 3,
+        },
+        population: {
+          money: { cubesOnBoard: 12 },
+          science: { cubesOnBoard: 12 },
+          material: { cubesOnBoard: 12 },
+        },
+        reputationTiles: [],
+        ambassadorTiles: [],
+        ambassadorCubes: {},
+        keptDiscoveryTiles: [],
+        unlockedAncientParts: [],
+        hasWormholeGeneratorAbility: false,
+        hasPassed: false,
+        isFirstPasser: false,
+        actionsTakenThisRound: 0,
+        graveyardShips: [],
       });
     }
 
-    const centerEdge = getEdgeTowardCenter(startCoord);
-
-    const homeSector: SectorTile = {
-      id: `home_sector_${playerId}`,
-      sectorNumber: homeConfig.sectorNumber || 221,
-      name: homeConfig.name || faction.name,
-      ring: 2,
-      coord: startCoord,
-      rotation: centerEdge,
-      wormholes: homeConfig.wormholes || [true, false, true, true, false, true],
-      planets,
-      structures: homeConfig.structures ? { ...homeConfig.structures } : undefined,
-      victoryPoints: homeConfig.victoryPoints || 3,
-      hasArtifact: homeConfig.hasArtifact ?? true,
-      hasDiscovery: false,
-      ancientsCount: 0,
-      discOwner: playerId,
-      ships: startShips,
+    factionDraftState = {
+      draftOrder,
+      currentDraftIndex: 0,
+      availableFactionIds,
+      assignedPositions,
+      firstPlayerId,
     };
-
-    sectors.push(homeSector);
-
-    // Starting technologies
-    const startingTechs = (faction.startingTechIds || [])
-      .map((tId) => {
-        const t = TECH_CATALOG.find((tech) => tech.id === tId);
-        if (!t) return null;
-        if (faction.id === 'the_exiles' && t.id === 'cloaking_device') {
-          return { ...t, placedTrack: 'military' as const };
+  } else {
+    for (let i = 0; i < count; i++) {
+      let faction: FactionInfo;
+      if (selectedFactions && selectedFactions[i]) {
+        const sf = selectedFactions[i];
+        if (typeof sf === 'string') {
+          faction = ALL_FACTIONS.find((f) => f.id === sf) || HUMAN_FACTIONS[i % HUMAN_FACTIONS.length]!;
+        } else {
+          faction = sf;
         }
-        return { ...t };
-      })
-      .filter((t): t is (typeof TECH_CATALOG)[number] => Boolean(t));
+      } else {
+        faction = HUMAN_FACTIONS[i % HUMAN_FACTIONS.length]!;
+      }
 
-    // Initial population cubes remaining on board
-    let moneyCubesRemaining = 10;
-    let scienceCubesRemaining = 10;
-    let materialCubesRemaining = 10;
+      const playerId = `player_${i + 1}`;
+      const startCoord = startingCoords[i]!;
 
-    if (faction.id === 'hydran_progress') {
-      // 1 material, 1 money, 1 adv science colonized -> 10 material, 10 money, 9 science on board
-      scienceCubesRemaining = 9;
-      materialCubesRemaining = 10;
-      moneyCubesRemaining = 10;
-    } else if (faction.id === 'the_exiles') {
-      // 1 material on planet, 1 science on starting orbital -> 10 material, 10 science, 11 money on board
-      moneyCubesRemaining = 11;
-      scienceCubesRemaining = 10;
-      materialCubesRemaining = 10;
-    } else if (faction.id === 'rho_indi_syndicate') {
-      // 1 material on ri_p1, 1 money on ri_p3 -> 10 material, 10 money, 11 science on board
-      moneyCubesRemaining = 10;
-      scienceCubesRemaining = 11;
-      materialCubesRemaining = 10;
-    } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan') {
-      // 1 material, 1 science, 0 money colonized
-      moneyCubesRemaining = 11;
-      scienceCubesRemaining = 10;
-      materialCubesRemaining = 10;
-    } else if (faction.id === 'enlightened_of_lyra') {
-      // 1 material, 1 science, 1 money colonized
-      moneyCubesRemaining = 10;
-      scienceCubesRemaining = 10;
-      materialCubesRemaining = 10;
+      const { player, homeSector } = buildPlayerAndHomeSector(
+        playerId,
+        faction.name,
+        faction.defaultColor,
+        faction,
+        startCoord,
+        reputationBag,
+        discoveryBag,
+        expansions
+      );
+
+      sectors.push(homeSector);
+      players.push(player);
     }
-
-    // Eridani Empire starts with 2 facedown reputation tiles
-    const startingRepTiles: number[] = [];
-    if (faction.id === 'eridani_empire') {
-      if (reputationBag.length > 0) startingRepTiles.push(reputationBag.pop()!);
-      if (reputationBag.length > 0) startingRepTiles.push(reputationBag.pop()!);
-    }
-
-    players.push({
-      id: playerId,
-      name: `${faction.name}`,
-      faction,
-      color: faction.defaultColor,
-      resources: { ...faction.startingResources },
-      blueprints: createFactionBlueprints(faction.id),
-      techTrack: {
-        researched: startingTechs,
-        militaryCount: startingTechs.filter((t) => (t as any).placedTrack === 'military' || t.category === 'military').length,
-        gridCount: startingTechs.filter((t) => (t as any).placedTrack === 'grid' || t.category === 'grid').length,
-        nanoCount: startingTechs.filter((t) => (t as any).placedTrack === 'nano' || t.category === 'nano').length,
-      },
-      influenceTrack: {
-        totalDiscs: faction.startingDiscs,
-        discsOnTrack: faction.startingDiscs - 1, // 1 disc used on home sector
-      },
-      colonyShips: {
-        total: faction.startingColonyShips,
-        ready: faction.startingColonyShips,
-      },
-      population: {
-        money: { cubesOnBoard: moneyCubesRemaining },
-        science: { cubesOnBoard: scienceCubesRemaining },
-        material: { cubesOnBoard: materialCubesRemaining },
-      },
-      reputationTiles: startingRepTiles,
-      ambassadorTiles: [],
-      ambassadorCubes: {},
-      keptDiscoveryTiles: [],
-      unlockedAncientParts: [],
-      magellanDiscoveryTile: faction.id === 'wardens_of_magellan' ? (discoveryBag.pop() || null) : undefined,
-      magellanDiscoveryResolved: faction.id === 'wardens_of_magellan' ? false : undefined,
-      discoveryTilesUsedAsShipPartsCount: faction.id === 'wardens_of_magellan' ? 0 : undefined,
-      shrineBoard: faction.id === 'enlightened_of_lyra' ? createInitialShrineBoard() : undefined,
-      hasWormholeGeneratorAbility: false,
-      lyraExtraDiscClaimed: false,
-      hasPassed: false,
-      isFirstPasser: false,
-      actionsTakenThisRound: 0,
-      graveyardShips: [],
-    });
+    turnOrder = players.map((p) => p.id);
   }
 
   const decks = generateSectorDecks(players.length, expansions);
@@ -1053,7 +1183,7 @@ export function createInitialGame(
   const { drawn: techSupply, remainingBag: techBag, regularDrawn, rareDrawn } =
     drawTechTilesForSetup(fullBag, players.length);
 
-  const turnOrder = players.map((p) => p.id);
+  const finalTurnOrder = turnOrder.length > 0 ? turnOrder : players.map((p) => p.id);
 
   const exilePlayer = players.find((p) => p.faction.id === 'the_exiles');
   let pendingExilesOrbitalSetup: { playerId: string; sectorId: string; planetId: string } | null = null;
@@ -1076,10 +1206,13 @@ export function createInitialGame(
     neutralShipSelections: storedNeutralSelections,
     round: 1,
     maxRounds: 8,
-    phase: 'ACTION_PHASE',
-    activePlayerIndex: 0,
+    phase: isDraftMode ? 'DRAFT_PHASE' : 'ACTION_PHASE',
+    activePlayerIndex: isDraftMode
+      ? players.findIndex((p) => p.id === draftOrder[0])
+      : 0,
     firstPlayerIndex: 0,
-    turnOrder,
+    turnOrder: finalTurnOrder,
+    factionDraft: factionDraftState,
     passedPlayerIds: [],
     consecutivePasses: 0,
     players,
@@ -1103,8 +1236,10 @@ export function createInitialGame(
         id: `log_${Date.now()}_1`,
         timestamp: Date.now(),
         round: 1,
-        phase: 'ACTION_PHASE',
-        message: `Galaxy initialized with ${players.length} players. Round 1 has commenced! Tech Tray populated with ${regularDrawn} regular and ${rareDrawn} rare tiles (${techBag.length} remaining in bag).`,
+        phase: isDraftMode ? 'DRAFT_PHASE' : 'ACTION_PHASE',
+        message: isDraftMode
+          ? `Galaxy initialized with ${players.length} players in Faction Draft mode! Seating assigned on Ring 2. Draft commences counter-clockwise starting with ${players.find((p) => p.id === draftOrder[0])?.name}.`
+          : `Galaxy initialized with ${players.length} players. Round 1 has commenced! Tech Tray populated with ${regularDrawn} regular and ${rareDrawn} rare tiles (${techBag.length} remaining in bag).`,
         type: 'system',
       },
     ],

@@ -14,6 +14,7 @@ import {
   RotateCcw,
   FastForward,
   ShieldAlert,
+  Sparkles,
 } from 'lucide-react';
 
 export interface MoveStepPayload {
@@ -21,6 +22,7 @@ export interface MoveStepPayload {
   fromSectorId: string;
   toSectorId: string;
   activationIndex?: number;
+  targetSubsector?: 1 | 2 | 3;
 }
 
 export interface PlannedMove extends MoveStepPayload {
@@ -31,6 +33,7 @@ export interface PlannedMove extends MoveStepPayload {
   activationIndex: number;
   stepInActivation?: number;
   driveSpeed?: number;
+  targetSubsector?: 1 | 2 | 3;
 }
 
 export interface MoveModalProps {
@@ -44,14 +47,15 @@ export interface MoveModalProps {
   currentShipDriveSpeed: number;
   movePointsUsedInCurrentActivation: number;
   isShipPinned: (shipId: string) => boolean;
-  onAddMove: (destSectorId: string) => void;
+  onAddMove: (destSectorId: string, targetSubsector?: 1 | 2 | 3) => void;
   onRemoveMove: (index: number) => void;
   onClearMoves: () => void;
   selectedShipId: string;
   onSelectShipId: (shipId: string) => void;
   onFinishActivation: () => void;
-  onMove: (moves: MoveStepPayload[]) => void;
+  onMove: (moves: MoveStepPayload[], pulsarSectorId?: string) => void;
   onClose: () => void;
+  pulsarSectorId?: string;
 }
 
 export const MoveModal: React.FC<MoveModalProps> = ({
@@ -73,8 +77,10 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   onFinishActivation,
   onMove,
   onClose,
+  pulsarSectorId,
 }) => {
-  const maxMoves = player.hasPassed ? 1 : getMaxMoveActivations(player);
+  const isPulsarActive = Boolean(pulsarSectorId);
+  const maxMoves = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxMoveActivations(player));
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
   const hasWormholeGen = playerHasWormholeGenerator(player);
 
@@ -126,17 +132,48 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             fromSectorId: m.fromSectorId,
             toSectorId: m.toSectorId,
             activationIndex: m.activationIndex,
-          }))
+            targetSubsector: m.targetSubsector,
+          })),
+          pulsarSectorId
         );
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canExecute, plannedMoves, onMove, onClose]);
+  }, [canExecute, plannedMoves, onMove, onClose, pulsarSectorId]);
+
+  const currentShipSubsector = useMemo(() => {
+    if (!currentShipObj || !currentSimSector || !currentSimSector.isNebula) return undefined;
+    const movesForShip = plannedMoves.filter((m) => m.shipId === selectedShipId);
+    if (movesForShip.length === 0) return (currentShipObj.subsector ?? 1) as 1 | 2 | 3;
+    const lastMove = movesForShip[movesForShip.length - 1];
+    if (lastMove && lastMove.toSectorId === currentSimSector.id && lastMove.targetSubsector) {
+      return lastMove.targetSubsector;
+    }
+    return (currentShipObj.subsector ?? 1) as 1 | 2 | 3;
+  }, [selectedShipId, currentShipObj, currentSimSector, plannedMoves]);
 
   return (
     <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-3xl px-4 pointer-events-none font-sans">
       <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-700/80 rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto text-slate-100 p-4 pointer-events-auto flex flex-col gap-3 transition-all scrollbar-thin">
+        {/* Pulsar Banner */}
+        {isPulsarActive && (
+          <div className="p-2 px-3 rounded-xl bg-cyan-950/60 border border-cyan-500/80 text-cyan-200 text-xs flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+              <div>
+                <span className="font-bold">🌟 Pulsar Movement Activation</span>
+                <span className="text-cyan-300/80 text-[11px] block">
+                  1 Free Ship Movement activation. No Influence Disc will be deducted from your track.
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-cyan-900 text-cyan-200 font-mono text-[10px] font-bold uppercase border border-cyan-700">
+              1 Ship Limit
+            </span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-2.5">
           <div className="flex items-center gap-2.5">
@@ -213,8 +250,18 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                               <React.Fragment key={m.id}>
                                 {sIdx > 0 && <span className="text-slate-600">→</span>}
                                 <span className="font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-800">
-                                  Sec {m.fromSectorNumber} ➔{' '}
-                                  <strong className="text-cyan-300">Sec {m.toSectorNumber}</strong>
+                                  {m.fromSectorId === m.toSectorId && m.targetSubsector ? (
+                                    <>
+                                      Sec {m.fromSectorNumber}{' '}
+                                      <strong className="text-indigo-300">(➔ Sub {m.targetSubsector})</strong>
+                                    </>
+                                  ) : (
+                                    <>
+                                      Sec {m.fromSectorNumber} ➔{' '}
+                                      <strong className="text-cyan-300">Sec {m.toSectorNumber}</strong>
+                                      {m.targetSubsector ? ` (Sub ${m.targetSubsector})` : ''}
+                                    </>
+                                  )}
                                 </span>
                               </React.Fragment>
                             ))}
@@ -370,6 +417,28 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                     </div>
                   )}
                 </div>
+
+                {/* Nebula Subsector Internal Shifts */}
+                {currentSimSector?.isNebula && (
+                  <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-900/80">
+                    <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider shrink-0">
+                      Nebula Subsector Shift (1 MP):
+                    </span>
+                    {([1, 2, 3] as const)
+                      .filter((sub) => sub !== (currentShipSubsector ?? 1))
+                      .map((sub) => (
+                        <button
+                          key={sub}
+                          type="button"
+                          onClick={() => onAddMove(currentSimSector.id, sub)}
+                          className="px-2.5 py-1 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/90 border border-indigo-700/80 text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition-all group shadow-sm cursor-pointer"
+                        >
+                          <ArrowRight className="w-3 h-3 text-indigo-400 group-hover:translate-x-0.5 transition-transform" />
+                          <span>Shift to Subsector {sub}</span>
+                        </button>
+                      ))}
+                  </div>
+                )}
               </div>
             ) : (
               <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs font-bold flex items-center gap-2">
@@ -419,7 +488,9 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                     fromSectorId: m.fromSectorId,
                     toSectorId: m.toSectorId,
                     activationIndex: m.activationIndex,
-                  }))
+                    targetSubsector: m.targetSubsector,
+                  })),
+                  pulsarSectorId
                 )
               }
               className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all"

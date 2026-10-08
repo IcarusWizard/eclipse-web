@@ -63,6 +63,7 @@ export interface SectorTile {
   hasDiscoveryWarpPortal?: boolean; // Placed via Discovery Tile (+2 VP to controller at game end)
   playerEntryOrder?: string[]; // Order players entered this sector for multi-player combat resolution
   discOwner?: string; // Player ID holding influence on this sector
+  shrineOwner?: string; // Player ID of Lyra shrine placed in this sector
   ships: SectorShip[];
   structures?: {
     monolith?: boolean;

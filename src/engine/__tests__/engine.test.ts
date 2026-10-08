@@ -8150,7 +8150,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         const ancAdv = getNeutralShipBlueprint('ancient', 'advanced');
         expect(ancAdv.initiative).toBe(1);
-        expect(ancAdv.maxHull).toBe(2);
+        expect(ancAdv.maxHull).toBe(3);
         expect(ancAdv.computerBonus).toBe(1);
         expect(ancAdv.shieldBonus).toBe(0);
         expect(ancAdv.weapons).toEqual([{ color: 'orange', damage: 2, count: 1 }]);
@@ -8165,7 +8165,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         const guardAdv = getNeutralShipBlueprint('guardian', 'advanced');
         expect(guardAdv.initiative).toBe(1);
-        expect(guardAdv.maxHull).toBe(3);
+        expect(guardAdv.maxHull).toBe(4);
         expect(guardAdv.computerBonus).toBe(1);
         expect(guardAdv.shieldBonus).toBe(0);
         expect(guardAdv.weapons).toEqual([
@@ -8183,7 +8183,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         const gcdsAdv = getNeutralShipBlueprint('gcds', 'advanced');
         expect(gcdsAdv.initiative).toBe(2);
-        expect(gcdsAdv.maxHull).toBe(3);
+        expect(gcdsAdv.maxHull).toBe(4);
         expect(gcdsAdv.computerBonus).toBe(2);
         expect(gcdsAdv.shieldBonus).toBe(0);
         expect(gcdsAdv.weapons).toEqual([
@@ -8250,7 +8250,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const gcdsUnit = centerUnits[0]!;
         expect(gcdsUnit.type).toBe('gcds');
         expect(gcdsUnit.initiative).toBe(2);
-        expect(gcdsUnit.maxHull).toBe(3);
+        expect(gcdsUnit.maxHull).toBe(4);
         expect(gcdsUnit.weapons.some((w) => w.isMissile && w.color === 'yellow' && w.count === 4)).toBe(true);
         expect(gcdsUnit.weapons.some((w) => !w.isMissile && w.color === 'red' && w.damage === 4)).toBe(true);
 
@@ -8266,7 +8266,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const gUnit = guardianUnits[0]!;
         expect(gUnit.type).toBe('guardian');
         expect(gUnit.initiative).toBe(1);
-        expect(gUnit.maxHull).toBe(3);
+        expect(gUnit.maxHull).toBe(4);
         expect(gUnit.weapons.some((w) => w.isMissile && w.color === 'orange' && w.count === 2)).toBe(true);
         expect(gUnit.weapons.some((w) => !w.isMissile && w.color === 'red' && w.damage === 4)).toBe(true);
 
@@ -8290,7 +8290,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const aUnit = ancUnits[0]!;
         expect(aUnit.type).toBe('ancient');
         expect(aUnit.initiative).toBe(1);
-        expect(aUnit.maxHull).toBe(2);
+        expect(aUnit.maxHull).toBe(3);
         expect(aUnit.weapons).toEqual([{ color: 'orange', damage: 2, count: 1 }]);
 
         // 5. Combat Stage Initialization: Advanced Guardian triggers 'missile' stage
@@ -8379,7 +8379,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Ancient Expert: 1 yellow dice, +2 computer, 1 hull, 3 init
         const ancExp = getNeutralShipBlueprint('ancient', 'expert');
         expect(ancExp.initiative).toBe(3);
-        expect(ancExp.maxHull).toBe(1);
+        expect(ancExp.maxHull).toBe(2);
         expect(ancExp.computerBonus).toBe(2);
         expect(ancExp.shieldBonus).toBe(0);
         expect(ancExp.weapons).toEqual([{ color: 'yellow', damage: 1, count: 1 }]);
@@ -8389,7 +8389,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Guardian Expert: 2 orange dice, +1 computer, -1 shield, 3 hulls, 3 init
         const guardExp = getNeutralShipBlueprint('guardian', 'expert');
         expect(guardExp.initiative).toBe(3);
-        expect(guardExp.maxHull).toBe(3);
+        expect(guardExp.maxHull).toBe(4);
         expect(guardExp.computerBonus).toBe(1);
         expect(guardExp.shieldBonus).toBe(1);
         expect(guardExp.weapons).toEqual([{ color: 'orange', damage: 2, count: 2 }]);
@@ -8399,7 +8399,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // GCDS Expert: 2 orange dice, +2 computer, -2 shield, 4 hulls, 3 init
         const gcdsExp = getNeutralShipBlueprint('gcds', 'expert');
         expect(gcdsExp.initiative).toBe(3);
-        expect(gcdsExp.maxHull).toBe(4);
+        expect(gcdsExp.maxHull).toBe(5);
         expect(gcdsExp.computerBonus).toBe(2);
         expect(gcdsExp.shieldBonus).toBe(2);
         expect(gcdsExp.weapons).toEqual([{ color: 'orange', damage: 2, count: 2 }]);
@@ -8501,7 +8501,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const expertGcds = centerUnits[0]!;
         expect(expertGcds.type).toBe('gcds');
         expect(expertGcds.initiative).toBe(3);
-        expect(expertGcds.maxHull).toBe(4);
+        expect(expertGcds.maxHull).toBe(5);
         expect(expertGcds.shieldBonus).toBe(2);
         expect(expertGcds.computerBonus).toBe(2);
         expect(expertGcds.weapons).toEqual([{ color: 'orange', damage: 2, count: 2 }]);
@@ -8516,7 +8516,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const expertGuardian = guardianUnits[0]!;
         expect(expertGuardian.type).toBe('guardian');
         expect(expertGuardian.initiative).toBe(3);
-        expect(expertGuardian.maxHull).toBe(3);
+        expect(expertGuardian.maxHull).toBe(4);
         expect(expertGuardian.shieldBonus).toBe(1);
         expect(expertGuardian.computerBonus).toBe(1);
         expect(expertGuardian.weapons).toEqual([{ color: 'orange', damage: 2, count: 2 }]);
@@ -8539,7 +8539,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const expertAncient = ancUnits[0]!;
         expect(expertAncient.type).toBe('ancient');
         expect(expertAncient.initiative).toBe(3);
-        expect(expertAncient.maxHull).toBe(1);
+        expect(expertAncient.maxHull).toBe(2);
         expect(expertAncient.computerBonus).toBe(2);
         expect(expertAncient.shieldBonus).toBe(0);
         expect(expertAncient.weapons).toEqual([{ color: 'yellow', damage: 1, count: 1 }]);
@@ -11637,6 +11637,829 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(galleryHtml).toContain('Geminga');
         expect(galleryHtml).toContain('Cygnus X-1');
         expect(galleryHtml).toContain('Betelgeuse');
+      });
+
+      it('69. verifies BackLog Bug Fixes 131 to 140: neutral ship HP, faction draft mode, expansions toggle, nebula subsector preview & localized combat/moves, pulsar activation, bankruptcy Lyra shrine clear, warped conduit highlight, combat dice color badges, and post-combat modal ordering', async () => {
+        const {
+          NEUTRAL_SHIP_BLUEPRINTS,
+          getNeutralShipBlueprint,
+          resolveNeutralShipConfig,
+        } = await import('../rules/neutralShips');
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction } = await import('../rules/gameReducer');
+        const { getNebulaSubsectorForOuterEdge } = await import('../rules/galacticEvents');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+        const { CombatModal } = await import('../../components/combat/CombatModal');
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+
+        // Bug 131: Neutral ship blueprints HP (+1 base HP for Advanced & Expert)
+        expect(getNeutralShipBlueprint('ancient', 'advanced').maxHull).toBe(3);
+        expect(getNeutralShipBlueprint('guardian', 'advanced').maxHull).toBe(4);
+        expect(getNeutralShipBlueprint('gcds', 'advanced').maxHull).toBe(4);
+
+        expect(getNeutralShipBlueprint('ancient', 'expert').maxHull).toBe(2);
+        expect(getNeutralShipBlueprint('guardian', 'expert').maxHull).toBe(4);
+        expect(getNeutralShipBlueprint('gcds', 'expert').maxHull).toBe(5);
+
+        const advConfig = resolveNeutralShipConfig({ ancient: 'advanced', guardian: 'advanced', gcds: 'advanced' });
+        expect(advConfig.ancient).toBe('advanced');
+        expect(advConfig.guardian).toBe('advanced');
+        expect(advConfig.gcds).toBe('advanced');
+
+        const expConfig = resolveNeutralShipConfig(
+          { ancient: 'expert', guardian: 'expert', gcds: 'expert' },
+          ['remnants_of_worlds_afar']
+        );
+        expect(expConfig.ancient).toBe('expert');
+        expect(expConfig.guardian).toBe('expert');
+        expect(expConfig.gcds).toBe('expert');
+
+        // Bug 132: Faction Draft Mode
+        const draftGame = createInitialGame(4, undefined, ['galactic_events'], undefined, true);
+        expect(draftGame.phase).toBe('DRAFT_PHASE');
+        expect(draftGame.factionDraft).toBeDefined();
+        expect(draftGame.turnOrder.length).toBe(4);
+        // draftOrder should be reverse of clockwise turnOrder (counter-clockwise from last player)
+        expect(draftGame.factionDraft!.draftOrder).toEqual([...draftGame.turnOrder].reverse());
+        expect(draftGame.factionDraft!.currentDraftIndex).toBe(0);
+
+        // Draft first faction for draftOrder[0]
+        const firstDrafter = draftGame.factionDraft!.draftOrder[0];
+        const draftAction1 = executeAction(draftGame, {
+          type: 'DRAFT_FACTION',
+          playerId: firstDrafter,
+          factionId: 'orion_hegemony',
+        });
+        expect(draftAction1.success).toBe(true);
+        expect(draftAction1.newState.factionDraft!.currentDraftIndex).toBe(1);
+        expect(draftAction1.newState.players.find((p) => p.id === firstDrafter)?.faction.id).toBe('orion_hegemony');
+        // Black color group: neither orion_hegemony nor terran_alliance should be available
+        expect(draftAction1.newState.factionDraft!.availableFactionIds).not.toContain('orion_hegemony');
+        expect(draftAction1.newState.factionDraft!.availableFactionIds).not.toContain('terran_alliance');
+
+        // Second drafter cannot pick terran_alliance (same color as orion_hegemony)
+        const secondDrafter = draftAction1.newState.factionDraft!.draftOrder[1];
+        const invalidColorDraft = executeAction(draftAction1.newState, {
+          type: 'DRAFT_FACTION',
+          playerId: secondDrafter,
+          factionId: 'terran_alliance',
+        });
+        expect(invalidColorDraft.success).toBe(false);
+
+        // FactionDraftModal differentiates alien vs human and shows color taken
+        const { FactionDraftModal: FactionDraftModalTest } = await import('../../components/setup/FactionDraftModal');
+        const modalInitialHtml = renderToString(
+          React.createElement(FactionDraftModalTest, {
+            state: draftGame,
+            onDraftFaction: () => {},
+          })
+        );
+        expect(modalInitialHtml).toContain('Alien Factions');
+        expect(modalInitialHtml).toContain('Terran / Human');
+        expect(modalInitialHtml).toContain('Alien');
+
+        const modalAfterPickHtml = renderToString(
+          React.createElement(FactionDraftModalTest, {
+            state: draftAction1.newState,
+            onDraftFaction: () => {},
+          })
+        );
+        expect(modalAfterPickHtml).toContain('Color Taken (Orion Hegemony)');
+
+        // Complete draft for all remaining players
+        let currState = draftAction1.newState;
+        const remainingFactions = ['descendants_of_draco', 'hydran_progress', 'planta'];
+        for (let i = 1; i < 4; i++) {
+          const drafterId = currState.factionDraft!.draftOrder[i];
+          const res = executeAction(currState, {
+            type: 'DRAFT_FACTION',
+            playerId: drafterId,
+            factionId: remainingFactions[i - 1],
+          });
+          expect(res.success).toBe(true);
+          currState = res.newState;
+        }
+        // Draft complete -> transitions to ACTION_PHASE
+        expect(currState.phase).toBe('ACTION_PHASE');
+        expect(currState.players[currState.activePlayerIndex].id).toBe(currState.turnOrder[0]);
+        expect(currState.firstPlayerIndex).toBe(currState.activePlayerIndex);
+
+        // Bug 132 UI: Verify Faction Draft Mode toggle in LobbyView and NewGameModal
+        const { LobbyView: LobbyViewTest } = await import('../../components/lobby/LobbyView');
+        const lobbyHtmlTest = renderToString(
+          React.createElement(LobbyViewTest, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+        expect(lobbyHtmlTest).toContain('Faction Draft Mode');
+        expect(lobbyHtmlTest).toContain('Enable Faction Draft');
+
+        const { NewGameModal: NewGameModalTest } = await import('../../components/setup/NewGameModal');
+        const modalHtmlTest = renderToString(
+          React.createElement(NewGameModalTest, {
+            onStartGame: () => {},
+          })
+        );
+        expect(modalHtmlTest).toContain('Faction Draft Mode');
+        expect(modalHtmlTest).toContain('Enable Faction Draft');
+
+        // Bug 133: All expansions toggle
+        const { AVAILABLE_EXPANSIONS } = await import('../rules/expansions');
+        expect(AVAILABLE_EXPANSIONS.length).toBeGreaterThanOrEqual(7);
+
+        // Bug 134: Nebula Sector 295 candidate preview shows 3 subsectors
+        const nebulaCandidate = {
+          id: 'preview_295',
+          sectorNumber: 295,
+          ring: 2 as const,
+          coord: { q: 1, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true] as [boolean, boolean, boolean, boolean, boolean, boolean],
+          planets: [],
+          hasAncient: false,
+          ancientsCount: 0,
+          hasGCDS: false,
+          ships: [],
+          isNebula: true,
+          subsectors: {
+            1: { ships: [], ancientsCount: 0 },
+            2: { ships: [], ancientsCount: 0 },
+            3: { ships: [], ancientsCount: 0 },
+          },
+        };
+        const exploreHtml = renderToString(
+          React.createElement(ExploreModal, {
+            player: currState.players[0],
+            fromCoord: { q: 0, r: 0 },
+            targetCoord: { q: 1, r: -1 },
+            candidateTile: nebulaCandidate as any,
+            sourceSector: {
+              id: 'sec_source',
+              sectorNumber: 221,
+              ring: 2,
+              coord: { q: 0, r: 0 },
+              rotation: 0,
+              wormholes: [true, true, true, true, true, true],
+              planets: [],
+              ships: [],
+            } as any,
+            rotation: 0,
+            onRotate: () => {},
+            onConfirmPlacement: () => {},
+            onDiscard: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(exploreHtml).toContain('Nebula (3 Subsectors)');
+
+        const candidateMapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: currState,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            pendingExplore: {
+              from: { q: 0, r: 0 },
+              target: { q: 1, r: -1 },
+              candidateTile: nebulaCandidate as any,
+              rotation: 0,
+            },
+          })
+        );
+        expect(candidateMapHtml).toContain('Sub 1');
+        expect(candidateMapHtml).toContain('Sub 2');
+        expect(candidateMapHtml).toContain('Sub 3');
+
+        // Bug 135: Pulsar sector action shift without Influence Disc
+        const pulsarGame = createInitialGame(2, ['terran', 'orion'], ['galactic_events']);
+        const pulsarSector = {
+          id: 'sector_394_test',
+          sectorNumber: 394,
+          ring: 3 as const,
+          coord: { q: 2, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, false, true, false, false] as [boolean, boolean, boolean, boolean, boolean, boolean],
+          planets: [{ resource: 'material' as const, isAdvanced: false, hasCube: false }],
+          hasAncient: false,
+          ancientsCount: 0,
+          hasGCDS: false,
+          ships: [],
+          isPulsar: true,
+          pulsarSlot: 'move' as const,
+          discOwner: pulsarGame.players[0].id,
+        };
+        pulsarGame.sectors.push(pulsarSector);
+        pulsarGame.players[0].resources.materials = 10;
+        const initialDiscs = pulsarGame.players[0].influenceDiscs;
+
+        const pulsarRes = executeAction(pulsarGame, {
+          type: 'ACTIVATE_PULSAR',
+          playerId: pulsarGame.players[0].id,
+          sectorId: 'sector_394_test',
+          targetSlot: 'build',
+          build: { sectorId: 'sector_394_test', itemType: 'interceptor' },
+        });
+        expect(pulsarRes.success).toBe(true);
+        expect(pulsarRes.newState.sectors.find((s) => s.id === 'sector_394_test')?.pulsarSlot).toBe('build');
+        // Free shift without disc penalty
+        expect(pulsarRes.newState.players[0].influenceDiscs).toBe(initialDiscs);
+        expect(pulsarRes.newState.galacticEvents?.pulsars['sector_394_test']?.activatedThisRound).toBe(true);
+
+        // Bug 136: Nebula 3 Subsectors Move & Combat differentiation
+        const nebulaGame = createInitialGame(2, ['terran', 'orion'], ['galactic_events']);
+        const nebulaSec = {
+          id: 'sec_nebula_295',
+          sectorNumber: 295,
+          ring: 2 as const,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true] as [boolean, boolean, boolean, boolean, boolean, boolean],
+          planets: [],
+          hasAncient: false,
+          ancientsCount: 0,
+          hasGCDS: false,
+          ships: [
+            { id: 'ship_p1_sub1', ownerId: nebulaGame.players[0].id, type: 'cruiser' as const, subsector: 1 as const },
+            { id: 'ship_p2_sub2', ownerId: nebulaGame.players[1].id, type: 'cruiser' as const, subsector: 2 as const },
+          ],
+          isNebula: true,
+          subsectors: {
+            1: { ships: [], ancientsCount: 0 },
+            2: { ships: [], ancientsCount: 0 },
+            3: { ships: [], ancientsCount: 0 },
+          },
+        };
+        nebulaGame.sectors.push(nebulaSec);
+
+        // Internal shift between subsectors
+        const internalMoveRes = executeAction(nebulaGame, {
+          type: 'MOVE',
+          playerId: nebulaGame.players[0].id,
+          moves: [
+            {
+              shipId: 'ship_p1_sub1',
+              fromSectorId: 'sec_nebula_295',
+              toSectorId: 'sec_nebula_295',
+              targetSubsector: 2,
+            },
+          ],
+        });
+        expect(internalMoveRes.success).toBe(true);
+        const movedShip = internalMoveRes.newState.sectors
+          .find((s) => s.id === 'sec_nebula_295')
+          ?.ships.find((s) => s.id === 'ship_p1_sub1');
+        expect(movedShip?.subsector).toBe(2);
+
+        // Exit edge check: Outer edges 4 & 5 belong to Subsector 1
+        expect(getNebulaSubsectorForOuterEdge(4)).toBe(1);
+        expect(getNebulaSubsectorForOuterEdge(5)).toBe(1);
+        expect(getNebulaSubsectorForOuterEdge(2)).toBe(2);
+        expect(getNebulaSubsectorForOuterEdge(3)).toBe(2);
+        expect(getNebulaSubsectorForOuterEdge(0)).toBe(3);
+        expect(getNebulaSubsectorForOuterEdge(1)).toBe(3);
+
+        // Bug 137: Abandon sector clears shrineOwner during bankruptcy
+        const lyraGame = createInitialGame(2, ['enlightened_of_lyra', 'terran'], ['seekers']);
+        const lyraPlayer = lyraGame.players.find((p) => p.faction.id === 'enlightened_of_lyra')!;
+        const testLyraSector = {
+          id: 'sector_lyra_abandon',
+          sectorNumber: 301,
+          ring: 3 as const,
+          coord: { q: 2, r: 1 },
+          rotation: 0,
+          wormholes: [true, false, true, false, true, false] as [boolean, boolean, boolean, boolean, boolean, boolean],
+          planets: [{ resource: 'money' as const, isAdvanced: false, hasCube: false }],
+          hasAncient: false,
+          ancientsCount: 0,
+          hasGCDS: false,
+          ships: [],
+          discOwner: lyraPlayer.id,
+          shrineOwner: lyraPlayer.id,
+        };
+        lyraGame.sectors.push(testLyraSector);
+        lyraGame.pendingBankruptcy = { playerId: lyraPlayer.id, deficit: 5 };
+
+        const abandonRes = executeAction(lyraGame, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: lyraPlayer.id,
+          sectorId: 'sector_lyra_abandon',
+        });
+        expect(abandonRes.success).toBe(true);
+        const abandonedSec = abandonRes.newState.sectors.find((s) => s.id === 'sector_lyra_abandon')!;
+        expect(abandonedSec.discOwner).toBeUndefined();
+        expect(abandonedSec.shrineOwner).toBeUndefined(); // Cleared so player color does not persist!
+
+        // Bug 138: Warped Universe half-wormholes conduit highlight
+        const warpedGame = createInitialGame(5, ['terran', 'orion', 'descendants_of_draco', 'planta', 'eridani_empire'], ['warped_universe']);
+        const secR1Left = {
+          id: 'test_sec_r1_left',
+          sectorNumber: 105,
+          ring: 1 as const,
+          coord: { q: -1, r: 1 },
+          rotation: 0,
+          wormholes: [true, false, false, false, false, false],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+          discOwner: warpedGame.players[0].id,
+        };
+        const secR1Right = {
+          id: 'test_sec_r1_right',
+          sectorNumber: 106,
+          ring: 1 as const,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [false, false, true, false, false, false],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+        warpedGame.sectors.push(secR1Left, secR1Right);
+        const warpedMapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: warpedGame,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+          })
+        );
+        // Verify half-wormholes connected across conduit are highlighted with fill="rgba(255, 255, 255, 0.9)"
+        expect(warpedMapHtml).toContain('fill="rgba(255, 255, 255, 0.9)"');
+        expect(warpedMapHtml).toContain('CONDUIT 1');
+
+        // Bug 139: Combat battle dice show color name and badge
+        const combatMockSector = {
+          id: 'sec_combat_test',
+          sectorNumber: 201,
+          ring: 2,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ancientsCount: 0,
+          ships: [
+            { id: 'ship_attacker_1', ownerId: draftGame.players[0].id, type: 'cruiser' as const, damage: 0 },
+            { id: 'ship_defender_1', ownerId: draftGame.players[1].id, type: 'cruiser' as const, damage: 0 },
+          ],
+        };
+        const combatMockState = {
+          ...draftGame,
+          sectors: [...draftGame.sectors, combatMockSector],
+          activeCombat: {
+            sectorId: 'sec_combat_test',
+            roundNumber: 1,
+            stage: 'regular' as const,
+            currentTurnIndex: 0,
+            initiativeOrder: [],
+            lastRolls: [
+              { dieColor: 'yellow', roll: 6, isHit: true, damage: 1, selfDamage: 0 },
+              { dieColor: 'orange', roll: 5, isHit: true, damage: 2, selfDamage: 0 },
+              { dieColor: 'blue', roll: 4, isHit: false, damage: 0, selfDamage: 0 },
+              { dieColor: 'red', roll: 6, isHit: true, damage: 4, selfDamage: 0 },
+              { dieColor: 'purple', roll: 2, isHit: true, damage: 2, selfDamage: 1 },
+            ],
+            retreatDeclared: {},
+            participatingPlayerIds: [draftGame.players[0].id, draftGame.players[1].id],
+            defenderOwnerId: draftGame.players[1].id,
+            pendingDamageAssignment: {
+              attackerOwnerId: draftGame.players[0].id,
+              attackerShipType: 'cruiser',
+              attackerShipIds: ['ship_attacker_1'],
+              computerBonus: 1,
+              isMissile: false,
+              rolls: [
+                { dieColor: 'yellow', roll: 6, damage: 1 },
+                { dieColor: 'orange', roll: 5, damage: 2 },
+                { dieColor: 'blue', roll: 4, damage: 0 },
+                { dieColor: 'red', roll: 6, damage: 4 },
+                { dieColor: 'purple', roll: 2, damage: 2 },
+              ],
+            },
+          },
+        };
+        const combatHtml = renderToString(
+          React.createElement(CombatModal, {
+            state: combatMockState as any,
+            combat: combatMockState.activeCombat as any,
+            onStepCombat: () => {},
+            onRerollDie: () => {},
+            onAutoResolve: () => {},
+          })
+        );
+        // Verify color indicators and text labels exist in UI
+        expect(combatHtml).toContain('Yellow');
+        expect(combatHtml).toContain('Orange');
+        expect(combatHtml).toContain('Blue');
+        expect(combatHtml).toContain('Red');
+        expect(combatHtml).toContain('Rift');
+
+        // Bug 140: Strict post-combat modal order
+        // pendingReputationDraw -> pendingCombatConquest -> pendingDiscovery
+        const combatOrderState = {
+          ...draftGame,
+          pendingReputationDraw: { playerId: draftGame.players[0].id, count: 2, drawnTiles: [] },
+          pendingCombatConquest: {
+            playerId: draftGame.players[0].id,
+            sectorId: 'sector_conquest_test',
+            hasOpponentPop: true,
+            needsInfluenceDecision: true,
+          },
+          pendingDiscovery: {
+            playerId: draftGame.players[0].id,
+            sectorId: 'sector_conquest_test',
+            discovery: { id: 'disc_test', type: 'resource', resource: 'money', amount: 5 },
+          },
+        };
+        // Verify guarding conditions from App.tsx:
+        const showConquest = !combatOrderState.pendingReputationDraw && Boolean(combatOrderState.pendingCombatConquest);
+        const showDiscovery =
+          !combatOrderState.pendingReputationDraw &&
+          !combatOrderState.pendingCombatConquest &&
+          Boolean(combatOrderState.pendingDiscovery);
+
+        // When reputation draw is active, conquest and discovery are blocked
+        expect(showConquest).toBe(false);
+        expect(showDiscovery).toBe(false);
+
+        // Once reputation is resolved:
+        const afterRepState = { ...combatOrderState, pendingReputationDraw: null };
+        const showConquestAfterRep = !afterRepState.pendingReputationDraw && Boolean(afterRepState.pendingCombatConquest);
+        const showDiscoveryAfterRep =
+          !afterRepState.pendingReputationDraw &&
+          !afterRepState.pendingCombatConquest &&
+          Boolean(afterRepState.pendingDiscovery);
+        expect(showConquestAfterRep).toBe(true);
+        expect(showDiscoveryAfterRep).toBe(false);
+
+        // Once conquest is resolved:
+        const afterConquestState = { ...afterRepState, pendingCombatConquest: null };
+        const showDiscoveryAfterConquest =
+          !afterConquestState.pendingReputationDraw &&
+          !afterConquestState.pendingCombatConquest &&
+          Boolean(afterConquestState.pendingDiscovery);
+        expect(showDiscoveryAfterConquest).toBe(true);
+      });
+
+      it('70. verifies Bankruptcy resolution: batch sector abandonment, validation of sectorIds array, and plan confirmation', () => {
+        // Create game with Wardens of Magellan
+        const game = createInitialGame(2, ['wardens_of_magellan', 'terran_republic'], ['seekers']);
+        const magellan = game.players[0]!;
+        expect(magellan.faction.id).toBe('wardens_of_magellan');
+
+        // Set up player in deficit with 2 controlled sectors beyond home sector
+        const homeSector = game.sectors.find((s) => s.discOwner === magellan.id)!;
+        expect(homeSector).toBeDefined();
+
+        const secA: SectorTile = {
+          id: 'magellan_sec_a',
+          sectorNumber: 301,
+          ring: 3,
+          coord: { q: 2, r: 0 },
+          rotation: 0,
+          wormholes: [true, false, false, false, false, false],
+          planets: [{ id: 'p_a1', resource: 'material', isAdvanced: false, colonizedBy: magellan.id }],
+          victoryPoints: 1,
+          ancientsCount: 0,
+          hasDiscovery: false,
+          hasArtifact: false,
+          ships: [],
+          discOwner: magellan.id,
+        };
+
+        const secB: SectorTile = {
+          id: 'magellan_sec_b',
+          sectorNumber: 302,
+          ring: 3,
+          coord: { q: 2, r: 1 },
+          rotation: 0,
+          wormholes: [true, false, false, false, false, false],
+          planets: [{ id: 'p_b1', resource: 'science', isAdvanced: false, colonizedBy: magellan.id }],
+          victoryPoints: 2,
+          ancientsCount: 0,
+          hasDiscovery: false,
+          hasArtifact: false,
+          ships: [],
+          discOwner: magellan.id,
+        };
+
+        game.sectors.push(secA, secB);
+
+        // Discs on track = 5 (upkeep is 10)
+        magellan.influenceTrack.discsOnTrack = 5;
+        // Deficit: player has -4 money
+        magellan.resources.money = -4;
+        game.pendingBankruptcy = { playerId: magellan.id, deficit: 4 };
+
+        // Test validateAction rejects abandonment if sector is not owned
+        const invalidValidation = validateAction(game, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: magellan.id,
+          sectorIds: ['unowned_sector_xyz'],
+        });
+        expect(invalidValidation.valid).toBe(false);
+
+        // Test validateAction rejects if empty sector array
+        const emptyValidation = validateAction(game, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: magellan.id,
+          sectorIds: [],
+        });
+        expect(emptyValidation.valid).toBe(false);
+
+        // Test validateAction succeeds with multiple sectorIds array
+        const validValidation = validateAction(game, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: magellan.id,
+          sectorIds: [secA.id, secB.id],
+        });
+        expect(validValidation.valid).toBe(true);
+
+        // Test deduplication: passing duplicate IDs in array does not error
+        const dedupValidation = validateAction(game, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: magellan.id,
+          sectorIds: [secA.id, secA.id, secB.id],
+        });
+        expect(dedupValidation.valid).toBe(true);
+
+        // Record initial material and science pop cubes
+        const initialMatPop = magellan.population.material.cubesOnBoard;
+        const initialSciPop = magellan.population.science.cubesOnBoard;
+
+        // Test step 1: Abandoning only 1 sector when deficit is 4 (saved upkeep = 3, deficit = 1)
+        const partialResult = executeAction(game, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: magellan.id,
+          sectorIds: [secA.id],
+        });
+        expect(partialResult.success).toBe(true);
+        const partialGame = partialResult.newState;
+        const partialMagellan = partialGame.players.find((p) => p.id === magellan.id)!;
+
+        // 1 disc returned (5 + 1 = 6 discs on track)
+        expect(partialMagellan.influenceTrack.discsOnTrack).toBe(6);
+        expect(partialMagellan.resources.money).toBe(-1);
+        expect(partialGame.pendingBankruptcy).toEqual({
+          playerId: magellan.id,
+          deficit: 1,
+        });
+
+        // Test step 2: Batch abandoning both sectors directly from initial game state
+        const abandonResult = executeAction(game, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: magellan.id,
+          sectorIds: [secA.id, secB.id],
+        });
+
+        expect(abandonResult.success).toBe(true);
+        const updatedGame = abandonResult.newState;
+        const updatedMagellan = updatedGame.players.find((p) => p.id === magellan.id)!;
+
+        // Sectors discOwner and planet colonization cleared
+        const abandonedSecA = updatedGame.sectors.find((s) => s.id === secA.id)!;
+        const abandonedSecB = updatedGame.sectors.find((s) => s.id === secB.id)!;
+        expect(abandonedSecA.discOwner).toBeUndefined();
+        expect(abandonedSecB.discOwner).toBeUndefined();
+        expect(abandonedSecA.planets[0]?.colonizedBy).toBeUndefined();
+        expect(abandonedSecB.planets[0]?.colonizedBy).toBeUndefined();
+
+        // Solvency restored! Pending bankruptcy cleared.
+        expect(updatedMagellan.resources.money).toBeGreaterThanOrEqual(0);
+        expect(updatedGame.pendingBankruptcy).toBeNull();
+
+        // Round transition: Upkeep completed, Cleanup ran, Round 2 Action Phase started!
+        expect(updatedGame.round).toBe(2);
+        expect(updatedGame.phase).toBe('ACTION_PHASE');
+        // Action discs refreshed: 13 total - 1 claimed home sector = 12 discs on track
+        expect(updatedMagellan.influenceTrack.discsOnTrack).toBe(12);
+      });
+
+      it('72. verifies Pulsar action integration with standard BUILD, UPGRADE, and MOVE actions', () => {
+        const game = createInitialGame(2, ['terran', 'orion'], ['galactic_events']);
+        const p1 = game.players[0];
+        const pulsarSec = {
+          id: 'sec_pulsar_393',
+          sectorNumber: 393,
+          ring: 3 as const,
+          coord: { q: 2, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true] as [boolean, boolean, boolean, boolean, boolean, boolean],
+          planets: [],
+          hasAncient: false,
+          ancientsCount: 0,
+          hasGCDS: false,
+          ships: [],
+          isPulsar: true,
+          pulsarSlot: 'move' as const,
+          discOwner: p1.id,
+        };
+        game.sectors.push(pulsarSec);
+        if (!game.galacticEvents) {
+          game.galacticEvents = {
+            pulsars: {},
+            supernovas: {},
+            blackHoles: {},
+            blackHoleDelayedShips: [],
+            nebulaTokens: {},
+          };
+        }
+        game.galacticEvents.pulsars[pulsarSec.id] = {
+          currentSlot: 'move',
+          activatedThisRound: false,
+        };
+
+        p1.resources.materials = 20;
+        const initialDiscs = p1.influenceTrack.discsOnTrack;
+
+        // 1. Validation: Rejects moving to the same slot ('move')
+        const sameSlotRes = validateAction(game, {
+          type: 'MOVE',
+          playerId: p1.id,
+          pulsarSectorId: pulsarSec.id,
+          moves: [],
+        });
+        expect(sameSlotRes.valid).toBe(false);
+        expect(sameSlotRes.error).toContain('Must move the Pulsar Influence Disc to a different action space');
+
+        // 2. Validation: Rejects building more than 1 item with Pulsar
+        const overBuildRes = validateAction(game, {
+          type: 'BUILD',
+          playerId: p1.id,
+          pulsarSectorId: pulsarSec.id,
+          items: [
+            { sectorId: pulsarSec.id, itemType: 'interceptor' },
+            { sectorId: pulsarSec.id, itemType: 'interceptor' },
+          ],
+        });
+        expect(overBuildRes.valid).toBe(false);
+        expect(overBuildRes.error).toContain('allows building at most 1 item');
+
+        // 3. Execution: BUILD action with pulsarSectorId succeeds, shifts disc to 'build', does not consume influence track disc
+        const buildRes = executeAction(game, {
+          type: 'BUILD',
+          playerId: p1.id,
+          pulsarSectorId: pulsarSec.id,
+          items: [{ sectorId: pulsarSec.id, itemType: 'interceptor' }],
+        });
+        expect(buildRes.success).toBe(true);
+        expect(buildRes.newState.players[0].influenceTrack.discsOnTrack).toBe(initialDiscs);
+        expect(buildRes.newState.sectors.find((s) => s.id === pulsarSec.id)?.pulsarSlot).toBe('build');
+        expect(buildRes.newState.galacticEvents?.pulsars[pulsarSec.id]?.activatedThisRound).toBe(true);
+        expect(buildRes.newState.galacticEvents?.pulsars[pulsarSec.id]?.currentSlot).toBe('build');
+
+        // 4. Validation: Cannot activate again in the same round
+        buildRes.newState.activePlayerId = p1.id;
+        buildRes.newState.activePlayerIndex = 0;
+        const secondActivateRes = validateAction(buildRes.newState, {
+          type: 'UPGRADE',
+          playerId: p1.id,
+          pulsarSectorId: pulsarSec.id,
+          upgrades: [{ shipType: 'interceptor', slotIndex: 0, partId: 'nuclear_source' }],
+        });
+        expect(secondActivateRes.valid).toBe(false);
+        expect(secondActivateRes.error).toContain('already been activated this round');
+
+        // 5. Validation: Cannot activate after passing
+        const passedState = JSON.parse(JSON.stringify(game));
+        passedState.players[0].hasPassed = true;
+        const passPulsarRes = validateAction(passedState, {
+          type: 'BUILD',
+          playerId: passedState.players[0].id,
+          pulsarSectorId: pulsarSec.id,
+          items: [{ sectorId: pulsarSec.id, itemType: 'interceptor' }],
+        });
+        expect(passPulsarRes.valid).toBe(false);
+        expect(passPulsarRes.error).toContain('after you have passed');
+      });
+
+      it('73. verifies Draco sector combat sequence: invader fights Draco first, then Ancients second, then attacks population', () => {
+        const game = createInitialGame(2, ['descendants_of_draco', 'wardens_of_magellan']);
+        const draco = game.players[0];
+        const magellan = game.players[1];
+
+        // Ensure Draco has population cube on planet in sector 301
+        const sector301 = {
+          id: 'sec_301',
+          sectorNumber: 301,
+          ring: 2 as const,
+          coord: { q: 1, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true] as [boolean, boolean, boolean, boolean, boolean, boolean],
+          planets: [
+            { id: 'p_301_1', resource: 'material' as const, isAdvanced: false, colonizedBy: draco.id, colonizedResource: 'material' as const },
+          ],
+          hasAncient: true,
+          ancientsCount: 1,
+          hasGCDS: false,
+          discOwner: draco.id,
+          ships: [
+            { id: 'ancient_301_0', ownerId: 'ancient', type: 'ancient' as const, damage: 0 },
+            { id: 'draco_int_1', ownerId: draco.id, type: 'interceptor' as const, damage: 0 },
+            { id: 'magellan_cruiser_1', ownerId: magellan.id, type: 'cruiser' as const, damage: 0 },
+          ],
+          playerEntryOrder: [draco.id, magellan.id],
+        };
+        game.sectors.push(sector301);
+
+        // Give Magellan neutron bombs so population attack is deterministic
+        magellan.techTrack.researched.push({
+          id: 'neutron_bombs',
+          name: 'Neutron Bombs',
+          category: 'military',
+          cost: 2,
+          minCost: 2,
+        });
+
+        // 1. Initial combat trigger
+        checkAndTriggerCombat(game);
+        expect(game.activeCombat).not.toBeNull();
+        expect(game.activeCombat!.sectorId).toBe('sec_301');
+        // Magellan must fight Draco FIRST!
+        expect(game.activeCombat!.participatingPlayerIds).toContain(magellan.id);
+        expect(game.activeCombat!.participatingPlayerIds).toContain(draco.id);
+        expect(game.activeCombat!.participatingPlayerIds).not.toContain('ancient');
+        expect(game.activeCombat!.attackerOwnerId).toBe(magellan.id);
+        expect(game.activeCombat!.defenderOwnerId).toBe(draco.id);
+
+        // 2. Resolve Duel 1: Draco interceptor is destroyed by Magellan
+        sector301.ships = sector301.ships.filter((s) => s.id !== 'draco_int_1');
+        game.activeCombat!.stage = 'resolved';
+        game.activeCombat!.destroyedShips = [
+          { shipId: 'draco_int_1', ownerId: draco.id, type: 'interceptor', destroyedByOwnerId: magellan.id },
+        ];
+        (game.activeCombat as any).winnerOwnerId = magellan.id;
+
+        const concludeDuel1Res = executeAction(game, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: magellan.id,
+          concludeCombat: true,
+        });
+        expect(concludeDuel1Res.success).toBe(true);
+        let curState = concludeDuel1Res.newState;
+
+        // Drain any reputation draws from killing Draco's ship
+        while (curState.pendingReputationDraw) {
+          const claimRes = executeAction(curState, {
+            type: 'CLAIM_REPUTATION_TILE',
+            playerId: curState.pendingReputationDraw.playerId,
+            selectedTileIndex: 0,
+          });
+          curState = claimRes.newState;
+        }
+
+        // 3. Second combat trigger: Magellan must now fight the Ancients!
+        expect(curState.activeCombat).not.toBeNull();
+        expect(curState.activeCombat!.sectorId).toBe('sec_301');
+        expect(curState.activeCombat!.participatingPlayerIds).toContain(magellan.id);
+        expect(curState.activeCombat!.participatingPlayerIds).toContain('ancient');
+        expect(curState.activeCombat!.participatingPlayerIds).not.toContain(draco.id);
+        expect(curState.activeCombat!.defenderOwnerId).toBe('ancient');
+
+        // 4. Resolve Duel 2: Ancient ship is destroyed by Magellan
+        const curSec = curState.sectors.find((s) => s.id === 'sec_301')!;
+        curSec.ships = curSec.ships.filter((s) => s.id !== 'ancient_301_0');
+        curSec.ancientsCount = 0;
+        curState.activeCombat!.stage = 'resolved';
+        curState.activeCombat!.destroyedShips = [
+          { shipId: 'ancient_301_0', ownerId: 'ancient', type: 'ancient', destroyedByOwnerId: magellan.id },
+        ];
+        (curState.activeCombat as any).winnerOwnerId = magellan.id;
+
+        const concludeDuel2Res = executeAction(curState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: magellan.id,
+          concludeCombat: true,
+        });
+        expect(concludeDuel2Res.success).toBe(true);
+        curState = concludeDuel2Res.newState;
+
+        // Drain any reputation draws from killing Ancient ship
+        while (curState.pendingReputationDraw) {
+          const claimRes = executeAction(curState, {
+            type: 'CLAIM_REPUTATION_TILE',
+            playerId: curState.pendingReputationDraw.playerId,
+            selectedTileIndex: 0,
+          });
+          curState = claimRes.newState;
+        }
+
+        // 5. Final resolution: Fleet combat complete, now Magellan attacks Draco's population and conquers sector!
+        const finalSec = curState.sectors.find((s) => s.id === 'sec_301')!;
+        // Draco's population cube was destroyed by Magellan's bombardment / neutron bombs
+        expect(finalSec.planets[0].colonizedBy).toBeUndefined();
+        // Draco's influence disc overthrown
+        expect(finalSec.discOwner).toBeUndefined();
+        // Conquest pending for Magellan!
+        expect(curState.pendingCombatConquest).not.toBeNull();
+        expect(curState.pendingCombatConquest!.sectorId).toBe('sec_301');
+        expect(curState.pendingCombatConquest!.winnerPlayerId).toBe(magellan.id);
       });
     });
   });

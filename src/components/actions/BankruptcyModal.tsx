@@ -412,7 +412,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
             </div>
           ) : (
             controlledSectors.map((sector) => {
-              const totalPop = sector.planets.reduce((sum, p) => sum + (p.cube ? 1 : 0), 0);
+              const totalPop = sector.planets.reduce((sum, p) => sum + (p.colonizedBy ? 1 : 0), 0);
               const isSelected = selectedSectorId === sector.id;
               const isMarkedToAbandon = stagedAbandonedSectorIds.includes(sector.id);
 

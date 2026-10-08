@@ -41,6 +41,10 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   const hasDiscsAvailable = winner.influenceTrack.discsOnTrack > 0;
   const canClaim = conquest.canClaimInfluence !== false;
 
+  const [currentStep, setCurrentStep] = useState<'bombardment' | 'conquest'>(
+    conquest.bombardmentSummary ? 'bombardment' : 'conquest'
+  );
+
   // Default to true if user has available discs, can claim, and doesn't already control the sector
   const [claimInfluence, setClaimInfluence] = useState<boolean>(
     canClaim && (alreadyControls || hasDiscsAvailable)
@@ -113,21 +117,23 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
           <div className="flex items-center gap-3">
             <div
               className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 shadow-lg ${
-                canClaim
-                  ? 'bg-amber-500/20 border border-amber-500/40 text-amber-400 shadow-amber-950/40'
-                  : 'bg-rose-500/20 border border-rose-500/40 text-rose-400 shadow-rose-950/40'
+                currentStep === 'bombardment'
+                  ? 'bg-rose-500/20 border border-rose-500/40 text-rose-400 shadow-rose-950/40'
+                  : 'bg-amber-500/20 border border-amber-500/40 text-amber-400 shadow-amber-950/40'
               }`}
             >
-              {canClaim ? (
-                <Trophy className="w-5 h-5 text-amber-400" />
-              ) : (
+              {currentStep === 'bombardment' ? (
                 <Crosshair className="w-5 h-5 text-rose-400" />
+              ) : (
+                <Trophy className="w-5 h-5 text-amber-400" />
               )}
             </div>
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-amber-300 font-display">
-                  {canClaim ? `SECTOR CONQUEST: SECTOR ${sector.sectorNumber}` : `BOMBARDMENT REPORT: SECTOR ${sector.sectorNumber}`}
+                  {currentStep === 'bombardment'
+                    ? `BOMBARDMENT REPORT: SECTOR ${sector.sectorNumber}`
+                    : `SECTOR CONQUEST: SECTOR ${sector.sectorNumber}`}
                 </h2>
                 <span
                   className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
@@ -140,9 +146,13 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                {canClaim ? (
+                {currentStep === 'bombardment' ? (
                   <>
-                    Commander <span className="text-slate-200 font-bold">{winner.name}</span> emerged victorious!
+                    Commander <span className="text-slate-200 font-bold">{winner.name}</span> assaulted defender planetary population.
+                  </>
+                ) : canClaim ? (
+                  <>
+                    Commander <span className="text-slate-200 font-bold">{winner.name}</span> emerged victorious! Choose sector control and colonization.
                   </>
                 ) : (
                   <>
@@ -157,7 +167,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
         {/* Modal Body */}
         <div className="p-5 space-y-4 overflow-y-auto">
           {/* Bombardment Summary Panel */}
-          {conquest.bombardmentSummary && (
+          {currentStep === 'bombardment' && conquest.bombardmentSummary && (
             <div className="bg-slate-950/80 rounded-xl border border-slate-800/90 p-4 space-y-3.5">
               <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-400">
@@ -262,8 +272,8 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
             </div>
           )}
 
-          {/* If canClaim is true: show Step 1 and Step 2 */}
-          {canClaim && (
+          {/* If canClaim is true: show Step 1 and Step 2 during conquest step */}
+          {currentStep === 'conquest' && canClaim && (
             <>
               {/* Step 1: Claim Sector Influence */}
               <div className="bg-slate-950/70 rounded-xl border border-slate-800/90 p-3.5 space-y-3">
@@ -522,32 +532,61 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
 
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t border-slate-800/80 bg-slate-950">
-          {!canClaim ? (
-            <div className="flex items-center justify-end w-full">
-              <button
-                onClick={handleDeclineAll}
-                className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all"
-              >
-                <span>Acknowledge & Continue</span>
-                <ChevronRight className="w-3.5 h-3.5" />
-              </button>
+          {currentStep === 'bombardment' ? (
+            <div className="flex items-center justify-between w-full">
+              {!canClaim ? (
+                <>
+                  <div className="text-xs text-amber-400">
+                    Defender retained control of Sector {sector.sectorNumber}.
+                  </div>
+                  <button
+                    onClick={handleDeclineAll}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <span>Acknowledge & Continue</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <div className="text-xs text-emerald-400">
+                    All defenders neutralized! Ready for sector conquest.
+                  </div>
+                  <button
+                    onClick={() => setCurrentStep('conquest')}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-emerald-950 flex items-center gap-1.5 transition-all cursor-pointer"
+                  >
+                    <span>Proceed to Sector Control</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </>
+              )}
             </div>
           ) : (
             <>
-              {!alreadyControls && (
-                <button
-                  onClick={handleDeclineAll}
-                  className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold transition-colors"
-                >
-                  Leave Unclaimed
-                </button>
-              )}
-              {alreadyControls && <div />}
+              <div className="flex items-center gap-2">
+                {conquest.bombardmentSummary && (
+                  <button
+                    onClick={() => setCurrentStep('bombardment')}
+                    className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold border border-slate-800 transition-colors cursor-pointer"
+                  >
+                    ← Review Bombardment
+                  </button>
+                )}
+                {!alreadyControls && (
+                  <button
+                    onClick={handleDeclineAll}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+                  >
+                    Leave Unclaimed
+                  </button>
+                )}
+              </div>
 
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleConfirm}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all"
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all cursor-pointer"
                 >
                   <span>Confirm Conquest</span>
                   <ChevronRight className="w-3.5 h-3.5" />

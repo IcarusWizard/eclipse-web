@@ -26,8 +26,9 @@ export interface BuildModalProps {
   onChangeSlots: (slots: BuildItemPayload[]) => void;
   activeSlotIndex: number;
   onSelectSlotIndex: (index: number) => void;
-  onBuild: (items: BuildItemPayload[]) => void;
+  onBuild: (items: BuildItemPayload[], pulsarSectorId?: string) => void;
   onClose: () => void;
+  pulsarSectorId?: string;
 }
 
 export const BuildModal: React.FC<BuildModalProps> = ({
@@ -40,8 +41,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   onSelectSlotIndex,
   onBuild,
   onClose,
+  pulsarSectorId,
 }) => {
-  const maxBuild = player.hasPassed ? 1 : getMaxBuildActivations(player);
+  const isPulsarActive = Boolean(pulsarSectorId);
+  const maxBuild = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxBuildActivations(player));
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
   const hasOrbitalTech = player.techTrack.researched.some((t) => t.id === 'orbital');
   const hasMonolithTech = player.techTrack.researched.some((t) => t.id === 'monolith');
@@ -266,16 +269,34 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         onClose();
       } else if (e.key === 'Enter' && canBuild) {
         e.preventDefault();
-        onBuild(slots);
+        onBuild(slots, pulsarSectorId);
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canBuild, slots, onBuild, onClose]);
+  }, [canBuild, slots, onBuild, onClose, pulsarSectorId]);
 
   return (
     <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4 pointer-events-none font-sans">
       <div className="bg-slate-900/95 backdrop-blur-md border border-amber-700/80 rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto text-slate-100 p-4 pointer-events-auto flex flex-col gap-3 transition-all scrollbar-thin">
+        {/* Pulsar Banner */}
+        {isPulsarActive && (
+          <div className="p-2 px-3 rounded-xl bg-cyan-950/60 border border-cyan-500/80 text-cyan-200 text-xs flex items-center justify-between shadow-sm">
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
+              <div>
+                <span className="font-bold">🌟 Pulsar Construction Activation</span>
+                <span className="text-cyan-300/80 text-[11px] block">
+                  1 Free Construction item. No Influence Disc will be deducted from your track.
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-cyan-900 text-cyan-200 font-mono text-[10px] font-bold uppercase border border-cyan-700">
+              1 Item Limit
+            </span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-2.5">
           <div className="flex items-center gap-2.5">
@@ -498,7 +519,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             </button>
             <button
               disabled={!canBuild}
-              onClick={() => onBuild(slots)}
+              onClick={() => onBuild(slots, pulsarSectorId)}
               className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all"
             >
               Construct {slots.length} {slots.length === 1 ? 'Item' : 'Items'} (Enter)

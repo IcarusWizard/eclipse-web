@@ -15,6 +15,7 @@ import {
   RerollCombatDieAction,
   ActivatePulsarAction,
   ReturnBlackHoleShipAction,
+  DraftFactionAction,
 } from '../types/actions';
 import {
   rollYellowDie,
@@ -31,9 +32,16 @@ import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipVa
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack } from './economyEngine';
 import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, sortUnitsByInitiative, getCombatShipTypeGroups } from './combatEngine';
-import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile } from '../types/galaxy';
+import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } from '../types/galaxy';
 import { PlayerState } from '../types/player';
-import { getMaxReputationTilesForPlayer } from './setup';
+import {
+  getMaxReputationTilesForPlayer,
+  buildPlayerAndHomeSector,
+  getWarpedUniverseStartingCoords,
+  STARTING_COORDS_BY_COUNT,
+  ALL_FACTIONS,
+  areFactionsConflictingColor,
+} from './setup';
 import { DISCOVERY_TILES } from './sectorData';
 import {
   ALL_MINOR_SPECIES_TILES,
@@ -585,8 +593,29 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
 
     case 'UPGRADE': {
-      if (player.influenceTrack.discsOnTrack <= 0) {
-        return { valid: false, error: 'No influence discs remaining on track to activate Upgrade.' };
+      if (action.pulsarSectorId) {
+        if (isPassedPlayer) {
+          return { valid: false, error: 'You are not allowed to activate a Pulsar sector after you have passed.' };
+        }
+        const pulsarSec = state.sectors.find((s) => s.id === action.pulsarSectorId);
+        if (!pulsarSec || !pulsarSec.isPulsar) {
+          return { valid: false, error: 'Target sector is not a Pulsar sector.' };
+        }
+        if (pulsarSec.discOwner !== action.playerId) {
+          return { valid: false, error: 'You do not control this Pulsar sector.' };
+        }
+        const pulsarState = state.galacticEvents?.pulsars[pulsarSec.id];
+        if (pulsarState?.activatedThisRound) {
+          return { valid: false, error: 'This Pulsar sector has already been activated this round.' };
+        }
+        const currentSlot = pulsarState?.currentSlot || pulsarSec.pulsarSlot || 'move';
+        if (currentSlot === 'upgrade') {
+          return { valid: false, error: 'Must move the Pulsar Influence Disc to a different action space.' };
+        }
+      } else {
+        if (player.influenceTrack.discsOnTrack <= 0) {
+          return { valid: false, error: 'No influence discs remaining on track to activate Upgrade.' };
+        }
       }
       if (!action.upgrades || action.upgrades.length === 0) {
         return { valid: false, error: 'Must specify at least one blueprint component upgrade.' };
@@ -614,11 +643,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
 
       const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
-      const maxUpgrade = isPassed ? 1 : getMaxUpgradeActivations(player);
+      const maxUpgrade = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxUpgradeActivations(player));
       if (modifiedCount > maxUpgrade) {
         return {
           valid: false,
-          error: isPassed
+          error: action.pulsarSectorId
+            ? 'Pulsar Upgrade allows at most 1 component upgrade.'
+            : isPassed
             ? 'Reaction Upgrade allows at most 1 component upgrade.'
             : `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action. (Attempted ${modifiedCount})`,
         };
@@ -627,19 +658,42 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
 
     case 'BUILD': {
-      if (player.influenceTrack.discsOnTrack <= 0) {
-        return { valid: false, error: 'No influence discs remaining on track to activate Build.' };
+      if (action.pulsarSectorId) {
+        if (isPassedPlayer) {
+          return { valid: false, error: 'You are not allowed to activate a Pulsar sector after you have passed.' };
+        }
+        const pulsarSec = state.sectors.find((s) => s.id === action.pulsarSectorId);
+        if (!pulsarSec || !pulsarSec.isPulsar) {
+          return { valid: false, error: 'Target sector is not a Pulsar sector.' };
+        }
+        if (pulsarSec.discOwner !== action.playerId) {
+          return { valid: false, error: 'You do not control this Pulsar sector.' };
+        }
+        const pulsarState = state.galacticEvents?.pulsars[pulsarSec.id];
+        if (pulsarState?.activatedThisRound) {
+          return { valid: false, error: 'This Pulsar sector has already been activated this round.' };
+        }
+        const currentSlot = pulsarState?.currentSlot || pulsarSec.pulsarSlot || 'move';
+        if (currentSlot === 'build') {
+          return { valid: false, error: 'Must move the Pulsar Influence Disc to a different action space.' };
+        }
+      } else {
+        if (player.influenceTrack.discsOnTrack <= 0) {
+          return { valid: false, error: 'No influence discs remaining on track to activate Build.' };
+        }
       }
       if (!action.items || action.items.length === 0) {
         return { valid: false, error: 'Must specify at least one item to build.' };
       }
 
       const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
-      const maxBuild = isPassed ? 1 : getMaxBuildActivations(player);
+      const maxBuild = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxBuildActivations(player));
       if (action.items.length > maxBuild) {
         return {
           valid: false,
-          error: isPassed
+          error: action.pulsarSectorId
+            ? 'Pulsar Build allows building at most 1 item.'
+            : isPassed
             ? 'Reaction Build allows building at most 1 item.'
             : `Cannot build more than ${maxBuild} items in a single Build action.`,
         };
@@ -744,15 +798,36 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
 
     case 'MOVE': {
-      if (player.influenceTrack.discsOnTrack <= 0) {
-        return { valid: false, error: 'No influence discs remaining on track to activate Move.' };
+      if (action.pulsarSectorId) {
+        if (isPassedPlayer) {
+          return { valid: false, error: 'You are not allowed to activate a Pulsar sector after you have passed.' };
+        }
+        const pulsarSec = state.sectors.find((s) => s.id === action.pulsarSectorId);
+        if (!pulsarSec || !pulsarSec.isPulsar) {
+          return { valid: false, error: 'Target sector is not a Pulsar sector.' };
+        }
+        if (pulsarSec.discOwner !== action.playerId) {
+          return { valid: false, error: 'You do not control this Pulsar sector.' };
+        }
+        const pulsarState = state.galacticEvents?.pulsars[pulsarSec.id];
+        if (pulsarState?.activatedThisRound) {
+          return { valid: false, error: 'This Pulsar sector has already been activated this round.' };
+        }
+        const currentSlot = pulsarState?.currentSlot || pulsarSec.pulsarSlot || 'move';
+        if (currentSlot === 'move') {
+          return { valid: false, error: 'Must move the Pulsar Influence Disc to a different action space.' };
+        }
+      } else {
+        if (player.influenceTrack.discsOnTrack <= 0) {
+          return { valid: false, error: 'No influence discs remaining on track to activate Move.' };
+        }
       }
       if (!action.moves || action.moves.length === 0) {
         return { valid: false, error: 'Must specify at least one ship movement.' };
       }
 
       const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
-      const maxMoveActivations = isPassed ? 1 : getMaxMoveActivations(player);
+      const maxMoveActivations = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxMoveActivations(player));
       const hasWormholeGen = playerHasWormholeGenerator(player);
 
       // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed and Jump Drive
@@ -1333,9 +1408,16 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!state.pendingBankruptcy || state.pendingBankruptcy.playerId !== action.playerId) {
         return { valid: false, error: 'No pending bankruptcy for this player.' };
       }
-      const sector = state.sectors.find((s) => s.id === action.sectorId);
-      if (!sector || sector.discOwner !== action.playerId) {
-        return { valid: false, error: 'Cannot abandon a sector not controlled by this player.' };
+      const rawSectorIds = action.sectorIds || (action.sectorId ? [action.sectorId] : []);
+      const sectorIds = [...new Set(rawSectorIds)];
+      if (sectorIds.length === 0) {
+        return { valid: false, error: 'No sectors specified to abandon.' };
+      }
+      for (const secId of sectorIds) {
+        const sector = state.sectors.find((s) => s.id === secId);
+        if (!sector || sector.discOwner !== action.playerId) {
+          return { valid: false, error: `Cannot abandon sector ${secId} not controlled by this player.` };
+        }
       }
       return { valid: true };
     }
@@ -1363,7 +1445,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
 
       const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints);
-      const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector);
+      const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector, state.players);
       const aliveUnits = sortUnitsByInitiative(
         units.filter((u) => u.currentDamage < u.maxHull),
         defenderId
@@ -1656,6 +1738,33 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           error: delayedShip.blackHoleSectorNumber === 396
             ? 'Cygnus X-1 ships can only return to an Inner (Ring I) sector.'
             : 'V616 Mon ships can only return to a sector with a wormhole facing an empty Zone.',
+        };
+      }
+      return { valid: true };
+    }
+
+    case 'DRAFT_FACTION': {
+      if (state.phase !== 'DRAFT_PHASE' || !state.factionDraft) {
+        return { valid: false, error: 'Not currently in Faction Draft phase.' };
+      }
+      const draft = state.factionDraft;
+      const currentDrafterId = draft.draftOrder[draft.currentDraftIndex];
+      if (action.playerId !== currentDrafterId) {
+        return { valid: false, error: 'Not your turn to draft a faction.' };
+      }
+      if (!draft.availableFactionIds.includes(action.factionId)) {
+        return { valid: false, error: 'Faction is not available to draft.' };
+      }
+      const conflictingPlayer = state.players.find(
+        (p) =>
+          p.faction?.id &&
+          p.faction.id !== 'drafting' &&
+          areFactionsConflictingColor(p.faction.id, action.factionId)
+      );
+      if (conflictingPlayer) {
+        return {
+          valid: false,
+          error: `Color conflict with ${conflictingPlayer.name} (${conflictingPlayer.faction.name}).`,
         };
       }
       return { valid: true };
@@ -2297,7 +2406,20 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     case 'UPGRADE': {
-      player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+      if (action.pulsarSectorId) {
+        const pulsarSec = newState.sectors.find((s) => s.id === action.pulsarSectorId)!;
+        pulsarSec.pulsarSlot = 'upgrade';
+        if (!newState.galacticEvents) {
+          newState.galacticEvents = createGalacticEventsState();
+        }
+        newState.galacticEvents.pulsars[pulsarSec.id] = {
+          currentSlot: 'upgrade',
+          activatedThisRound: true,
+        };
+        addLog(`🌟 ${player.name} activated Pulsar in Sector ${pulsarSec.sectorNumber} (shifted disc to UPGRADE)!`, 'action');
+      } else {
+        player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+      }
       player.actionsTakenThisRound += 1;
 
       const upgradeDetails: string[] = [];
@@ -2329,7 +2451,20 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     case 'BUILD': {
-      player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+      if (action.pulsarSectorId) {
+        const pulsarSec = newState.sectors.find((s) => s.id === action.pulsarSectorId)!;
+        pulsarSec.pulsarSlot = 'build';
+        if (!newState.galacticEvents) {
+          newState.galacticEvents = createGalacticEventsState();
+        }
+        newState.galacticEvents.pulsars[pulsarSec.id] = {
+          currentSlot: 'build',
+          activatedThisRound: true,
+        };
+        addLog(`🌟 ${player.name} activated Pulsar in Sector ${pulsarSec.sectorNumber} (shifted disc to BUILD)!`, 'action');
+      } else {
+        player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+      }
       player.actionsTakenThisRound += 1;
 
       for (const item of action.items) {
@@ -2377,7 +2512,20 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     case 'MOVE': {
-      player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+      if (action.pulsarSectorId) {
+        const pulsarSec = newState.sectors.find((s) => s.id === action.pulsarSectorId)!;
+        pulsarSec.pulsarSlot = 'move';
+        if (!newState.galacticEvents) {
+          newState.galacticEvents = createGalacticEventsState();
+        }
+        newState.galacticEvents.pulsars[pulsarSec.id] = {
+          currentSlot: 'move',
+          activatedThisRound: true,
+        };
+        addLog(`🌟 ${player.name} activated Pulsar in Sector ${pulsarSec.sectorNumber} (shifted disc to MOVE)!`, 'action');
+      } else {
+        player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
+      }
       player.actionsTakenThisRound += 1;
 
       // Group moves by activation index
@@ -3114,7 +3262,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             // Identify duel participants (Bug 57: even if ships destroyed, player participated)
             // Bug 122: The defender must always draw reputation tiles first!
             const rawDuelPlayerIds = (newState.activeCombat?.participatingPlayerIds || Array.from(new Set(currentUnits.map((u) => u.ownerId)))).filter((id) => id.startsWith('player_'));
-            const combatDefenderId = newState.activeCombat?.defenderOwnerId || getSectorDefenderOwnerId(sector);
+            const combatDefenderId = newState.activeCombat?.defenderOwnerId || getSectorDefenderOwnerId(sector, newState.players);
             const duelPlayerIds = combatDefenderId && rawDuelPlayerIds.includes(combatDefenderId)
               ? [combatDefenderId, ...rawDuelPlayerIds.filter((id) => id !== combatDefenderId)]
               : rawDuelPlayerIds;
@@ -3195,7 +3343,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             const remainingOwners = Array.from(new Set(sector.ships.map((s) => s.ownerId)));
             const hasMoreCombatsInSector =
               remainingOwners.length > 1 &&
-              !(remainingOwners.length === 2 && remainingOwners.includes('ancient') && remainingOwners.some((o) => newState.players.find((p) => p.id === o)?.faction.id === 'descendants_of_draco'));
+              !(remainingOwners.length === 2 && remainingOwners.some((o) => ['ancient', 'guardian', 'gcds'].includes(o)) && remainingOwners.some((o) => newState.players.find((p) => p.id === o)?.faction.id === 'descendants_of_draco'));
 
             if (hasMoreCombatsInSector) {
               // Winner continues to fight the next player WITHOUT repairing ship damage!
@@ -3225,10 +3373,25 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             if (!newState.resolvedCombatSectorIds) {
               newState.resolvedCombatSectorIds = [];
             }
-            newState.resolvedCombatSectorIds.push(sector.id);
+            if (sector.isNebula && newState.activeCombat?.subsector) {
+              newState.resolvedCombatSectorIds.push(`${sector.id}_sub_${newState.activeCombat.subsector}`);
+              const hasRemainingCombatInNebula = ([1, 2, 3] as const).some((subIdx) => {
+                if (newState.resolvedCombatSectorIds!.includes(`${sector.id}_sub_${subIdx}`)) return false;
+                const subShips = sector.ships.filter((s) => s.subsector === subIdx);
+                const subOwners = Array.from(new Set(subShips.map((s) => s.ownerId)));
+                return subOwners.length > 1;
+              });
+              if (!hasRemainingCombatInNebula) {
+                newState.resolvedCombatSectorIds.push(sector.id);
+              }
+            } else {
+              newState.resolvedCombatSectorIds.push(sector.id);
+            }
 
-            // 2. Resolve attacking population & influence conquest
-            resolveAttackingPopulationAndConquest(newState, sector, winnerId);
+            // 2. Resolve attacking population & influence conquest (only for non-nebula)
+            if (!sector.isNebula) {
+              resolveAttackingPopulationAndConquest(newState, sector, winnerId);
+            }
 
             newState.activeCombat = null;
 
@@ -3250,7 +3413,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
           // If combat is already in 'resolved' stage or explicitly flagged to conclude:
           if (newState.activeCombat.stage === 'resolved' || action.concludeCombat) {
-            const winnerId = (newState.activeCombat as any).winnerOwnerId || getSectorDefenderOwnerId(sector);
+            const winnerId = (newState.activeCombat as any).winnerOwnerId || getSectorDefenderOwnerId(sector, newState.players);
             concludeEngagement(winnerId, units);
             return { success: true, newState };
           }
@@ -3260,7 +3423,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             return { success: true, newState };
           }
 
-          const defenderId = newState.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector);
+          const defenderId = newState.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector, newState.players);
           const destroyedBeforeCount = newState.activeCombat.destroyedShips?.length || 0;
 
           const combatRes = executeCombatStep(
@@ -3499,40 +3662,50 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         return { newState: state, error: 'No pending bankruptcy for this player.' };
       }
 
-      const sector = newState.sectors.find((s) => s.id === action.sectorId);
-      if (!sector || sector.discOwner !== player.id) {
-        return { newState: state, error: 'Cannot abandon a sector not controlled by this player.' };
+      const rawSectorIds = action.sectorIds || (action.sectorId ? [action.sectorId] : []);
+      const sectorIds = [...new Set(rawSectorIds)];
+      if (sectorIds.length === 0) {
+        return { newState: state, error: 'No sectors specified to abandon.' };
       }
 
-      const { updatedPlayer, savedUpkeep } = abandonSectorForUpkeep(player, sector);
+      let curPlayer = player;
+      let totalSaved = 0;
+      for (const secId of sectorIds) {
+        const sector = newState.sectors.find((s) => s.id === secId);
+        if (sector && sector.discOwner === curPlayer.id) {
+          const { updatedPlayer, savedUpkeep } = abandonSectorForUpkeep(curPlayer, sector);
+          curPlayer = updatedPlayer;
+          totalSaved += savedUpkeep;
+          addLog(
+            `${curPlayer.name} abandoned Sector ${sector.sectorNumber}, returning an Influence Disc and population cubes (saved ${savedUpkeep} upkeep)!`,
+            'economy'
+          );
+        }
+      }
+
       const pIdx = newState.players.findIndex((p) => p.id === player.id);
-      newState.players[pIdx] = updatedPlayer;
+      newState.players[pIdx] = curPlayer;
 
-      addLog(
-        `${player.name} abandoned Sector ${sector.sectorNumber}, returning an Influence Disc and population cubes (saved ${savedUpkeep} upkeep)!`,
-        'economy'
-      );
-
-      if (updatedPlayer.resources.money >= 0) {
-        addLog(`${player.name} restored budget solvency! Deficit cleared.`, 'economy');
+      if (curPlayer.resources.money >= 0) {
+        addLog(`${curPlayer.name} restored budget solvency! Deficit cleared.`, 'economy');
         newState.pendingBankruptcy = null;
         checkNextBankruptcyOrCleanup(newState);
       } else {
-        const remainingControlled = newState.sectors.filter((s) => s.discOwner === updatedPlayer.id);
+        const remainingControlled = newState.sectors.filter((s) => s.discOwner === curPlayer.id);
         if (remainingControlled.length > 0) {
           newState.pendingBankruptcy = {
-            playerId: updatedPlayer.id,
-            deficit: Math.abs(updatedPlayer.resources.money),
+            playerId: curPlayer.id,
+            deficit: Math.abs(curPlayer.resources.money),
           };
         } else {
-          updatedPlayer.isEliminated = true;
-          updatedPlayer.resources.money = 0;
+          curPlayer.isEliminated = true;
+          curPlayer.resources.money = 0;
           for (const sec of newState.sectors) {
-            sec.ships = sec.ships.filter((s) => s.ownerId !== updatedPlayer.id);
-            if (sec.discOwner === updatedPlayer.id) sec.discOwner = undefined;
+            sec.ships = sec.ships.filter((s) => s.ownerId !== curPlayer.id);
+            if (sec.discOwner === curPlayer.id) sec.discOwner = undefined;
           }
           addLog(
-            `🚨 CIVILIZATION COLLAPSE: ${updatedPlayer.name} has no sectors remaining to abandon and is ELIMINATED!`,
+            `🚨 CIVILIZATION COLLAPSE: ${curPlayer.name} has no sectors remaining to abandon and is ELIMINATED!`,
             'economy'
           );
           newState.pendingBankruptcy = null;
@@ -3804,6 +3977,93 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           }
         }
       }
+      return { success: true, newState };
+    }
+
+    case 'DRAFT_FACTION': {
+      if (newState.phase !== 'DRAFT_PHASE' || !newState.factionDraft) {
+        return { newState, error: 'Not currently in Faction Draft phase.' };
+      }
+      const draft = newState.factionDraft;
+      const currentDrafterId = draft.draftOrder[draft.currentDraftIndex];
+      if (action.playerId !== currentDrafterId) {
+        return { newState, error: 'Not your turn to draft.' };
+      }
+      if (!draft.availableFactionIds.includes(action.factionId)) {
+        return { newState, error: 'Faction is not available to draft.' };
+      }
+
+      const faction = ALL_FACTIONS.find((f) => f.id === action.factionId);
+      if (!faction) {
+        return { newState, error: 'Unknown faction.' };
+      }
+
+      const pos = draft.assignedPositions[action.playerId]!;
+      const startingCoords = newState.expansions?.includes('warped_universe')
+        ? getWarpedUniverseStartingCoords(newState.players.length)
+        : (STARTING_COORDS_BY_COUNT[newState.players.length] ?? STARTING_COORDS_BY_COUNT[2]!);
+      const startCoord = startingCoords[pos]!;
+
+      const { player: builtPlayer, homeSector: builtHomeSector } = buildPlayerAndHomeSector(
+        action.playerId,
+        faction.name,
+        faction.defaultColor,
+        faction,
+        startCoord,
+        newState.reputationBag,
+        newState.discoveryBag,
+        newState.expansions
+      );
+
+      const pIdx = newState.players.findIndex((p) => p.id === action.playerId);
+      newState.players[pIdx] = builtPlayer;
+
+      const secIdx = newState.sectors.findIndex((s) => s.id === `draft_slot_${action.playerId}`);
+      if (secIdx >= 0) {
+        newState.sectors[secIdx] = builtHomeSector;
+      } else {
+        newState.sectors.push(builtHomeSector);
+      }
+
+      draft.availableFactionIds = draft.availableFactionIds.filter(
+        (id) => !areFactionsConflictingColor(id, action.factionId)
+      );
+      draft.currentDraftIndex += 1;
+
+      addLog(
+        `🏛️ ${builtPlayer.name} drafted ${faction.name}! (Seated at Ring 2 Position ${pos + 1})`,
+        'action'
+      );
+
+      if (draft.currentDraftIndex >= draft.draftOrder.length) {
+        newState.phase = 'ACTION_PHASE';
+        newState.activePlayerIndex = newState.players.findIndex((p) => p.id === newState.turnOrder[0]);
+        newState.firstPlayerIndex = newState.activePlayerIndex;
+
+        const exilePlayer = newState.players.find((p) => p.faction.id === 'the_exiles');
+        if (exilePlayer) {
+          const homeSector = newState.sectors.find(
+            (s) => s.id === `home_sector_${exilePlayer.id}` || s.sectorNumber === 234
+          );
+          const orbitalPlanet = homeSector?.planets.find((p) => p.isOrbital);
+          if (orbitalPlanet && homeSector) {
+            newState.pendingExilesOrbitalSetup = {
+              playerId: exilePlayer.id,
+              sectorId: homeSector.id,
+              planetId: orbitalPlanet.id,
+            };
+          }
+        }
+
+        addLog(
+          `⚔️ Faction Draft complete! Round 1 begins with ${newState.players[newState.activePlayerIndex]?.name}.`,
+          'action'
+        );
+      } else {
+        const nextDrafterId = draft.draftOrder[draft.currentDraftIndex];
+        newState.activePlayerIndex = newState.players.findIndex((p) => p.id === nextDrafterId);
+      }
+
       return { success: true, newState };
     }
   }
@@ -4266,8 +4526,9 @@ export function checkAndTriggerCombat(state: GameState): void {
     .filter((sec) => {
       if (state.resolvedCombatSectorIds!.includes(sec.id)) return false;
       if (sec.isNebula) {
-        return [1, 2, 3].some((subIdx) => {
-          const subShips = sec.ships.filter((s) => s.subsector === subIdx);
+        return ([1, 2, 3] as const).some((subIdx) => {
+          if (state.resolvedCombatSectorIds!.includes(`${sec.id}_sub_${subIdx}`)) return false;
+          const subShips = sec.ships.filter((s) => (s.subsector ?? 1) === subIdx);
           const subOwners = Array.from(new Set(subShips.map((s) => s.ownerId)));
           if (subOwners.length === 2 && subOwners.includes('ancient')) {
             const otherOwner = subOwners.find((o) => o !== 'ancient');
@@ -4295,14 +4556,23 @@ export function checkAndTriggerCombat(state: GameState): void {
   if (shipCombatSectors.length > 0) {
     const sector = shipCombatSectors[0]!;
     let relevantShips = sector.ships;
+    let activeSub: 1 | 2 | 3 | undefined;
     if (sector.isNebula) {
-      const activeSub = [1, 2, 3].find((subIdx) => {
-        const subShips = sector.ships.filter((s) => s.subsector === subIdx);
+      activeSub = ([1, 2, 3] as const).find((subIdx) => {
+        if (state.resolvedCombatSectorIds!.includes(`${sector.id}_sub_${subIdx}`)) return false;
+        const subShips = sector.ships.filter((s) => (s.subsector ?? 1) === subIdx);
         const subOwners = Array.from(new Set(subShips.map((s) => s.ownerId)));
+        if (subOwners.length === 2 && subOwners.includes('ancient')) {
+          const otherOwner = subOwners.find((o) => o !== 'ancient');
+          const otherPlayer = state.players.find((p) => p.id === otherOwner);
+          if (otherPlayer?.faction.id === 'descendants_of_draco') {
+            return false;
+          }
+        }
         return subOwners.length > 1;
       });
       if (activeSub) {
-        relevantShips = sector.ships.filter((s) => s.subsector === activeSub);
+        relevantShips = sector.ships.filter((s) => (s.subsector ?? 1) === activeSub);
       }
     }
     const distinctOwners = Array.from(new Set(relevantShips.map((s) => s.ownerId)));
@@ -4310,15 +4580,38 @@ export function checkAndTriggerCombat(state: GameState): void {
     // Order owners by entry order (Rulebook page 20 & Bug 66):
     // "the person who last enter the system is the first attacker then attack the player who enter the system second last,
     // then the winner continue to attack the next player without repairing the ship. The player who control the sector is always consider the one who enter the system first."
+    // Descendants of Draco faction ability:
+    // "If other players enter a sector containing your ships and Ancients, they must fight you first. If they defeat your ships, they then fight the Ancients."
+    const dracoPlayerInSector = state.players.find(
+      (p) => p.faction.id === 'descendants_of_draco' && distinctOwners.includes(p.id)
+    );
+    const hasNpcShips = distinctOwners.some((o) => ['ancient', 'guardian', 'gcds'].includes(o));
+
     const orderedOwners: string[] = [];
-    if (sector.discOwner && distinctOwners.includes(sector.discOwner)) {
-      orderedOwners.push(sector.discOwner);
-    }
-    for (const npc of ['ancient', 'guardian', 'gcds']) {
-      if (distinctOwners.includes(npc) && !orderedOwners.includes(npc)) {
-        orderedOwners.push(npc);
+    if (dracoPlayerInSector && hasNpcShips) {
+      // Ancients/NPCs are placed before Draco so that in reverse entry order, Draco is fought first!
+      for (const npc of ['ancient', 'guardian', 'gcds']) {
+        if (distinctOwners.includes(npc) && !orderedOwners.includes(npc)) {
+          orderedOwners.push(npc);
+        }
+      }
+      if (sector.discOwner && distinctOwners.includes(sector.discOwner) && !orderedOwners.includes(sector.discOwner)) {
+        orderedOwners.push(sector.discOwner);
+      }
+      if (!orderedOwners.includes(dracoPlayerInSector.id)) {
+        orderedOwners.push(dracoPlayerInSector.id);
+      }
+    } else {
+      if (sector.discOwner && distinctOwners.includes(sector.discOwner)) {
+        orderedOwners.push(sector.discOwner);
+      }
+      for (const npc of ['ancient', 'guardian', 'gcds']) {
+        if (distinctOwners.includes(npc) && !orderedOwners.includes(npc)) {
+          orderedOwners.push(npc);
+        }
       }
     }
+
     for (const o of distinctOwners) {
       if (!orderedOwners.includes(o) && !(sector.playerEntryOrder || []).includes(o)) {
         orderedOwners.push(o);
@@ -4333,8 +4626,21 @@ export function checkAndTriggerCombat(state: GameState): void {
     let attackerOwnerId = orderedOwners[orderedOwners.length - 1];
     let defenderOwnerId = orderedOwners[orderedOwners.length - 2];
 
-    // Draco does not battle Ancients
-    if (
+    // Draco does not battle Ancients/GCDS/Guardians.
+    // Also, if other players enter a sector containing Draco's ships and Ancients, they must fight Draco first!
+    if (dracoPlayerInSector && hasNpcShips) {
+      if (['ancient', 'gcds', 'guardian'].includes(attackerOwnerId) || ['ancient', 'gcds', 'guardian'].includes(defenderOwnerId)) {
+        const nonDracoPlayerId = [attackerOwnerId, defenderOwnerId].find(
+          (id) => !['ancient', 'gcds', 'guardian'].includes(id) && id !== dracoPlayerInSector.id
+        ) || orderedOwners.slice().reverse().find(
+          (id) => !['ancient', 'gcds', 'guardian'].includes(id) && id !== dracoPlayerInSector.id
+        );
+        if (nonDracoPlayerId) {
+          attackerOwnerId = nonDracoPlayerId;
+          defenderOwnerId = dracoPlayerInSector.id;
+        }
+      }
+    } else if (
       attackerOwnerId &&
       defenderOwnerId &&
       ((attackerOwnerId === 'ancient' && state.players.find((p) => p.id === defenderOwnerId)?.faction.id === 'descendants_of_draco') ||
@@ -4360,8 +4666,9 @@ export function checkAndTriggerCombat(state: GameState): void {
 
     state.activeCombat = {
       sectorId: sector.id,
+      subsector: activeSub,
       attackerOwnerId,
-      defenderOwnerId: defenderOwnerId || getSectorDefenderOwnerId(sector),
+      defenderOwnerId: defenderOwnerId || getSectorDefenderOwnerId(sector, state.players),
       participatingPlayerIds: duelParticipants,
       roundNumber: 1,
       stage: hasMissiles ? 'missile' : 'regular',

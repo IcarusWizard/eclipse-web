@@ -178,6 +178,7 @@ export function abandonSectorForUpkeep(
 
   // Abandon this sector
   sector.discOwner = undefined;
+  sector.shrineOwner = undefined;
   updatedPlayer.influenceTrack.discsOnTrack = Math.min(
     updatedPlayer.influenceTrack.totalDiscs,
     updatedPlayer.influenceTrack.discsOnTrack + 1
@@ -196,6 +197,10 @@ export function abandonSectorForUpkeep(
       }
       p.colonizedBy = undefined;
       p.colonizedResource = undefined;
+    }
+    // Bug 137: Clear Lyra shrine marker when abandoning sector
+    if (p.shrineOwner === updatedPlayer.id) {
+      p.shrineOwner = undefined;
     }
   }
 
