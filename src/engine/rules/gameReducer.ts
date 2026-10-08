@@ -711,8 +711,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
       let totalMaterialsCost = 0;
       for (const item of action.items) {
-        if (player.faction.id === 'the_exiles' && item.itemType === 'starbase') {
-          return { valid: false, error: 'The Exiles cannot construct Starbases.' };
+        if (item.itemType === 'starbase') {
+          if (player.faction.id === 'the_exiles') {
+            return { valid: false, error: 'The Exiles cannot construct Starbases.' };
+          }
+          if (!player.techTrack.researched.some((t) => t.id === 'starbase')) {
+            return { valid: false, error: 'Must research Starbase tech before building Starbases.' };
+          }
         }
         if (player.faction.id === 'rho_indi_syndicate' && item.itemType === 'dreadnought') {
           return { valid: false, error: 'Rho Indi Syndicate cannot construct Dreadnoughts.' };
@@ -1693,6 +1698,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (!bSec || bSec.discOwner !== action.playerId) {
           return { valid: false, error: 'Must control target sector to build with Pulsar.' };
         }
+        if (action.build.itemType === 'starbase') {
+          if (player.faction.id === 'the_exiles') {
+            return { valid: false, error: 'The Exiles cannot construct Starbases.' };
+          }
+          if (!player.techTrack.researched.some((t) => t.id === 'starbase')) {
+            return { valid: false, error: 'Must research Starbase tech before building Starbases.' };
+          }
+        }
         const isMechanema = player.faction.id === 'mechanema';
         const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
         const isExiles = player.faction.id === 'the_exiles';
@@ -2569,11 +2582,28 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                     ? step.blackHoleReturnSectorId
                     : (legalReturnSectors[0]?.id || fromSector.id);
                   const returnSec = newState.sectors.find((s) => s.id === returnSecId) || fromSector;
-                  returnSec.ships.push({
-                    ...movedShip,
-                    damage: (movedShip.damage || 0) + bhOutcome.damage,
-                  });
-                  addLog(`🌀 Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face} (Star/Blank)! Returned immediately to Sector ${returnSec.sectorNumber} with 1 damage!`);
+
+                  const bp = player.blueprints[movedShip.type as ShipType];
+                  const maxHull = bp ? calculateBlueprintStats(bp).totalHull : (movedShip.type === 'interceptor' ? 1 : 2);
+                  const totalDamage = (movedShip.damage || 0) + bhOutcome.damage;
+
+                  if (totalDamage >= maxHull) {
+                    player.graveyardShips = player.graveyardShips || [];
+                    player.graveyardShips.push({
+                      ...movedShip,
+                      damage: totalDamage,
+                    });
+                    addLog(
+                      `💥 Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face} (Star/Blank) and sustained ${bhOutcome.damage} damage! Hull breached (${totalDamage}/${maxHull} HP) - destroyed by gravitational shear before returning to board! (Bug 147)`,
+                      'combat'
+                    );
+                  } else {
+                    returnSec.ships.push({
+                      ...movedShip,
+                      damage: totalDamage,
+                    });
+                    addLog(`🌀 Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face} (Star/Blank)! Returned immediately to Sector ${returnSec.sectorNumber} with 1 damage!`);
+                  }
                 } else {
                   if (!newState.galacticEvents) {
                     newState.galacticEvents = createGalacticEventsState(toSector.sectorNumber);
@@ -2982,6 +3012,17 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         return { success: false, newState: state, error: 'No pending discovery choice for this player.' };
       }
       const disc = newState.pendingDiscovery.discovery;
+      const grantShip = disc.immediateReward?.grantShipType || (disc.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
+      if (!action.keepForVictoryPoints && grantShip) {
+        const currentShips = countPlayerShips(newState.sectors, player.id);
+        if (currentShips[grantShip] >= SHIP_LIMITS[grantShip]) {
+          return {
+            success: false,
+            newState: state,
+            error: `Cannot take free ${grantShip.toUpperCase()}: all ${SHIP_LIMITS[grantShip]} are already deployed. You must keep the tile for 2 VP instead.`,
+          };
+        }
+      }
       const sector = newState.sectors.find((s) => s.id === newState.pendingDiscovery!.sectorId);
       if (sector) {
         sector.discoveryClaimed = true;
@@ -3487,7 +3528,10 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           // Update sector ship damage / casualties
           sector.ships = sector.ships.filter((s) => {
             const u = combatRes.updatedUnits.find((unit) => unit.id === s.id);
-            if (!u) return false;
+            if (!u) {
+              // Ship was not a participant in this duel (e.g. Ancient ships coexisting with Draco) - preserve it! (Bug 151)
+              return true;
+            }
             s.damage = u.currentDamage;
             return s.damage < u.maxHull;
           });
@@ -5003,19 +5047,46 @@ export function transitionToCleanup(state: GameState): void {
     }
   }
 
-  // Galactic Events: Expired delayed Black Hole ships lost in spacetime
+  // Galactic Events: Delayed Black Hole ships emerging or remaining (Bug 145)
   if (state.galacticEvents?.blackHoleDelayedShips) {
     const remaining: BlackHoleDelayedShip[] = [];
     for (const ship of state.galacticEvents.blackHoleDelayedShips) {
-      if (ship.returnRound <= state.round || ship.returnRound > 8) {
-        state.log.unshift({
-          id: `log_${Date.now()}_bh_lost_${ship.shipId}`,
-          timestamp: Date.now(),
-          round: state.round,
-          phase: 'CLEANUP_PHASE',
-          message: `⚠️ Commander ${ship.ownerId}'s ${ship.shipType} was lost in spacetime from Black Hole ${ship.blackHoleSectorNumber} and returned to reserve.`,
-          type: 'system',
-        });
+      if (ship.returnRound <= state.round) {
+        // Automatically return any unreturned ship to the best legal sector instead of discarding it!
+        const legalSectors = getLegalBlackHoleReturnSectors(ship.blackHoleSectorNumber, state.sectors);
+        const ownerPlayer = state.players.find((p) => p.id === ship.ownerId);
+        const ownerName = ownerPlayer ? ownerPlayer.name : ship.ownerId;
+        const targetSec =
+          legalSectors.find((s) => s.discOwner === ship.ownerId) ||
+          legalSectors.find((s) => s.ships.some((sh) => sh.ownerId === ship.ownerId)) ||
+          legalSectors[0];
+
+        if (targetSec) {
+          targetSec.ships.push({
+            id: ship.shipId,
+            ownerId: ship.ownerId,
+            type: ship.shipType,
+            damage: ship.damage || 0,
+          });
+          state.log.unshift({
+            id: `log_${Date.now()}_bh_returned_${ship.shipId}`,
+            timestamp: Date.now(),
+            round: state.round,
+            phase: 'CLEANUP_PHASE',
+            message: `🌀 ${ownerName}'s ${ship.shipType.toUpperCase()} emerged from Black Hole ${ship.blackHoleSectorNumber} spacetime anomaly and returned to Sector ${targetSec.sectorNumber}!`,
+            type: 'system',
+          });
+        } else {
+          // If no legal sector exists, return to reserve
+          state.log.unshift({
+            id: `log_${Date.now()}_bh_lost_${ship.shipId}`,
+            timestamp: Date.now(),
+            round: state.round,
+            phase: 'CLEANUP_PHASE',
+            message: `⚠️ Commander ${ownerName}'s ${ship.shipType} could not find a legal return sector from Black Hole ${ship.blackHoleSectorNumber} and returned to reserve.`,
+            type: 'system',
+          });
+        }
       } else {
         remaining.push(ship);
       }

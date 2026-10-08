@@ -48,6 +48,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
   const hasOrbitalTech = player.techTrack.researched.some((t) => t.id === 'orbital');
   const hasMonolithTech = player.techTrack.researched.some((t) => t.id === 'monolith');
+  const hasStarbaseTech = player.techTrack.researched.some((t) => t.id === 'starbase');
 
   // Deployed ships across the galaxy
   const deployedShips = countPlayerShips(sectors, player.id);
@@ -163,13 +164,15 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       cost: getItemCost('starbase'),
       limit: isExiles ? 0 : SHIP_LIMITS.starbase,
       supplyLeft: getAvailableSupply('starbase'),
-      unlocked: getAvailableSupply('starbase') > 0,
+      unlocked: !isExiles && hasStarbaseTech && getAvailableSupply('starbase') > 0,
       disabledReason: isExiles
         ? 'The Exiles cannot construct Starbases.'
+        : !hasStarbaseTech
+        ? 'Requires Starbase tech'
         : getAvailableSupply('starbase') <= 0
         ? `Max limit of ${SHIP_LIMITS.starbase} reached`
         : undefined,
-      description: `Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats).`,
+      description: `Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats, requires Starbase tech).`,
     },
     {
       type: 'orbital',
@@ -197,6 +200,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     slots.length > 0 &&
     slots.every((s) => {
       if (!s.sectorId) return false;
+      if (s.itemType === 'starbase' && !hasStarbaseTech) return false;
       if (s.itemType === 'orbital' && !hasOrbitalTech) return false;
       if (s.itemType === 'monolith' && !hasMonolithTech) return false;
       return true;

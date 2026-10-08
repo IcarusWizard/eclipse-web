@@ -38,6 +38,7 @@ interface PlayerBoardProps {
   traitorPlayerId?: string | null;
   gamePhase?: string;
   onInitiateDiplomacy?: (targetPlayerId: string) => void;
+  delayedBlackHoleShips?: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip[];
 }
 
 export const PlayerBoard: React.FC<PlayerBoardProps> = ({
@@ -53,6 +54,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   traitorPlayerId = null,
   gamePhase = 'ACTION_PHASE',
   onInitiateDiplomacy,
+  delayedBlackHoleShips = [],
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -710,6 +712,20 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                   {deployed.starbase}/{SHIP_LIMITS.starbase}
                 </div>
               </div>
+
+              {delayedBlackHoleShips && delayedBlackHoleShips.filter((s) => s.ownerId === player.id).length > 0 && (
+                <div className="col-span-4 mt-1 p-1 rounded bg-indigo-950/60 border border-indigo-700/50 text-[9px] text-indigo-200 text-left flex items-center justify-between">
+                  <span className="flex items-center gap-1 font-sans font-semibold">
+                    <span>🌀</span> In Black Hole:
+                  </span>
+                  <span className="font-mono font-bold">
+                    {delayedBlackHoleShips
+                      .filter((s) => s.ownerId === player.id)
+                      .map((s) => `${s.shipType.slice(0, 3).toUpperCase()} (R${s.returnRound})`)
+                      .join(', ')}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>

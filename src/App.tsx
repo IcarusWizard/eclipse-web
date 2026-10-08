@@ -38,6 +38,8 @@ import { FactionDraftModal } from './components/setup/FactionDraftModal';
 import { PulsarModal } from './components/actions/PulsarModal';
 import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
+import { BlackHoleReturnModal } from './components/actions/BlackHoleReturnModal';
+import { BlackHoleDelayedShip, getLegalBlackHoleReturnSectors } from './engine/rules/galacticEvents';
 import { SectorInspector } from './components/map/SectorInspector';
 import { PhysicalPlayerBoardModal } from './components/dashboard/PhysicalPlayerBoardModal';
 import { LiveScoreboardModal } from './components/dashboard/LiveScoreboardModal';
@@ -112,6 +114,7 @@ export const App: React.FC = () => {
   const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
   const [pulsarSectorIdForModal, setPulsarSectorIdForModal] = useState<string | null>(null);
   const [activePulsarSectorId, setActivePulsarSectorId] = useState<string | null>(null);
+  const [selectedBlackHoleShipForReturn, setSelectedBlackHoleShipForReturn] = useState<BlackHoleDelayedShip | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
 
@@ -1519,6 +1522,23 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleReturnBlackHoleShip = (shipId: string, targetSectorId: string) => {
+    const ownerId = selectedBlackHoleShipForReturn?.ownerId || activePlayer.id;
+    const res = executeAction(state, {
+      type: 'RETURN_BLACK_HOLE_SHIP',
+      playerId: ownerId,
+      shipId,
+      targetSectorId,
+    });
+    if (res.success) {
+      setState(res.newState);
+      setSelectedBlackHoleShipForReturn(null);
+      showToast('Ship returned from Black Hole spacetime anomaly!');
+    } else {
+      showToast(res.error || 'Failed to return ship from Black Hole.');
+    }
+  };
+
   // Find candidate tile for exploration preview if pending
   const candidateTile = React.useMemo(() => {
     if (!pendingExploreCoords) return null;
@@ -1702,11 +1722,12 @@ export const App: React.FC = () => {
             traitorPlayerId={state.traitorPlayerId}
             gamePhase={state.phase}
             onInitiateDiplomacy={handleExchangeAmbassador}
+            delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
           />
         </div>
 
         {/* Floating Sector Detail & Fleet Inspector (Top-Right) */}
-        {selectedSector && (
+        {selectedSector && !isInfluenceOpen && (
           <div className="absolute top-4 right-4 z-20 max-h-[calc(100vh-140px)] overflow-y-auto scrollbar-thin pointer-events-auto">
             <SectorInspector
               sector={state.sectors.find((s) => s.id === selectedSector.id) || selectedSector}
@@ -1725,6 +1746,9 @@ export const App: React.FC = () => {
                   ? Boolean(state.galacticEvents?.pulsars?.[selectedSector.id]?.activatedThisRound)
                   : false
               }
+              currentRound={state.round}
+              blackHoleDelayedShips={state.galacticEvents?.blackHoleDelayedShips}
+              onReturnBlackHoleShip={(ship) => setSelectedBlackHoleShipForReturn(ship)}
             />
           </div>
         )}
@@ -1757,6 +1781,9 @@ export const App: React.FC = () => {
               }
             }}
             hasPulsarAvailable={hasPulsarAvailable}
+            currentRound={state.round}
+            delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
+            onOpenBlackHoleReturn={(ship) => setSelectedBlackHoleShipForReturn(ship)}
           />
         )}
 
@@ -1981,6 +2008,7 @@ export const App: React.FC = () => {
             activePlayer
           }
           techSupply={state.techSupply}
+          sectors={state.sectors}
           onChoice={handleDiscoveryChoice}
         />
       )}
@@ -2144,6 +2172,23 @@ export const App: React.FC = () => {
             onRespond={handleRespondDiplomacy}
           />
         )}
+
+      {selectedBlackHoleShipForReturn && (
+        <BlackHoleReturnModal
+          player={
+            state.players.find((p) => p.id === selectedBlackHoleShipForReturn.ownerId) ||
+            activePlayer
+          }
+          ship={selectedBlackHoleShipForReturn}
+          currentRound={state.round}
+          legalSectors={getLegalBlackHoleReturnSectors(
+            selectedBlackHoleShipForReturn.blackHoleSectorNumber,
+            state.sectors
+          )}
+          onReturn={handleReturnBlackHoleShip}
+          onClose={() => setSelectedBlackHoleShipForReturn(null)}
+        />
+      )}
 
       {/* Bug 88: Prominent hint about new round start */}
       {newRoundHint && (

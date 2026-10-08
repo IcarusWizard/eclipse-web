@@ -842,8 +842,8 @@ export const RING_2_CONFIGS = [
       ancients: 0,
       planets: [
         { resource: 'money' as const, isAdvanced: false },
-        { resource: 'science' as const, isAdvanced: false },
-        { resource: 'material' as const, isAdvanced: false },
+        { resource: 'money' as const, isAdvanced: true },
+        { resource: 'science' as const, isAdvanced: true },
       ],
       vp: 1,
       artifact: true,
@@ -913,7 +913,7 @@ export const RING_2_CONFIGS = [
       planets: [
         { resource: 'money' as const, isAdvanced: false },
         { resource: 'any' as const, isAdvanced: false },
-        { resource: 'any' as const, isAdvanced: true },
+        { resource: 'material' as const, isAdvanced: true },
       ],
       vp: 1,
       artifact: false,
@@ -1151,7 +1151,7 @@ export const RING_3_CONFIGS = [
       ancients: 0,
       planets: [
         { resource: 'money' as const, isAdvanced: false },
-        { resource: 'science' as const, isAdvanced: false },
+        { resource: 'money' as const, isAdvanced: true },
       ],
       vp: 2,
       artifact: false,

@@ -47,6 +47,9 @@ interface SectorInspectorProps {
   onToggleAbandonSector?: (sectorId: string) => void;
   onActivatePulsar?: (sectorId: string) => void;
   isPulsarActivatedThisRound?: boolean;
+  currentRound?: number;
+  blackHoleDelayedShips?: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip[];
+  onReturnBlackHoleShip?: (ship: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip) => void;
 }
 
 export const SectorInspector: React.FC<SectorInspectorProps> = ({
@@ -62,6 +65,9 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   onToggleAbandonSector,
   onActivatePulsar,
   isPulsarActivatedThisRound = false,
+  currentRound,
+  blackHoleDelayedShips = [],
+  onReturnBlackHoleShip,
 }) => {
   const isStagedForAbandonment = stagedAbandonedSectorIds.includes(sector.id);
   const discOwner = players.find((p) => p.id === sector.discOwner);
@@ -584,6 +590,66 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                     <span>Activate Pulsar (Shift Slot)</span>
                   </button>
                 )}
+              </div>
+            )}
+
+            {sector.isBlackHole && (
+              <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-700/60 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-indigo-300 font-bold flex items-center gap-1.5 text-xs">
+                    <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
+                    Black Hole Anomaly ({sector.sectorNumber === 396 ? 'Cygnus X-1' : 'V616 Mon'})
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-200 font-mono font-bold border border-indigo-600">
+                    {sector.sectorNumber === 396 ? 'Ring I Return' : 'Empty Zone Return'}
+                  </span>
+                </div>
+                <div className="text-[11px] text-slate-300">
+                  {blackHoleDelayedShips && blackHoleDelayedShips.length > 0 ? (
+                    <div className="space-y-1.5 mt-1">
+                      <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider">
+                        Ships in Spacetime Anomaly:
+                      </div>
+                      {blackHoleDelayedShips.map((ds) => {
+                        const owner = players.find((p) => p.id === ds.ownerId);
+                        const canReturn = currentRound !== undefined && currentRound >= ds.returnRound;
+                        const isMine = ds.ownerId === activePlayer.id;
+                        return (
+                          <div
+                            key={ds.shipId}
+                            className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between text-xs"
+                          >
+                            <div>
+                              <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                                <span className="w-2 h-2 rounded-full inline-block" style={{ backgroundColor: owner?.color || '#94a3b8' }} />
+                                <span>{owner ? owner.name : ds.ownerId}</span>
+                                <span className="text-indigo-300 uppercase font-mono">[{ds.shipType}]</span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-0.5">
+                                {canReturn ? (
+                                  <span className="text-emerald-400 font-bold">Emerging this round (Round {ds.returnRound})!</span>
+                                ) : (
+                                  <span>Returns in Round {ds.returnRound} ({currentRound !== undefined ? ds.returnRound - currentRound : 1} round(s) left)</span>
+                                )}
+                              </div>
+                            </div>
+                            {canReturn && isMine && onReturnBlackHoleShip && (
+                              <button
+                                type="button"
+                                onClick={() => onReturnBlackHoleShip(ds)}
+                                className="px-2.5 py-1 rounded-md bg-indigo-500 hover:bg-indigo-400 text-slate-950 font-bold text-[11px] transition shadow cursor-pointer"
+                              >
+                                Return Now
+                              </button>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <span className="text-slate-400 italic">No ships currently trapped in spacetime anomaly.</span>
+                  )}
+                </div>
               </div>
             )}
 

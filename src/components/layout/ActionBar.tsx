@@ -44,6 +44,9 @@ interface ActionBarProps {
   isTurnOrderVariant?: boolean;
   onOpenPulsar?: () => void;
   hasPulsarAvailable?: boolean;
+  currentRound?: number;
+  delayedBlackHoleShips?: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip[];
+  onOpenBlackHoleReturn?: (ship: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip) => void;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -65,7 +68,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   isTurnOrderVariant = false,
   onOpenPulsar,
   hasPulsarAvailable = false,
+  currentRound,
+  delayedBlackHoleShips = [],
+  onOpenBlackHoleReturn,
 }) => {
+  const readyBlackHoleShip = (delayedBlackHoleShips || []).find(
+    (ds) => ds.ownerId === activePlayer.id && currentRound !== undefined && currentRound >= ds.returnRound
+  );
   if (pendingConfirmation) {
     const isMyAction = !isTurnGated;
     return (
@@ -199,11 +208,50 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             <CircleDot className="w-3 h-3 text-cyan-400" />
             <span>{activePlayer.influenceTrack.discsOnTrack} Discs</span>
           </div>
+
+          {/* Spacetime Anomaly Indicator (Bug 145) */}
+          {delayedBlackHoleShips.length > 0 && (
+            <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-500/40 text-[10px] font-bold text-indigo-300">
+              <span className="text-indigo-400">🌀</span>
+              <span className="hidden sm:inline">Black Hole:</span>
+              {delayedBlackHoleShips.map((ds) => {
+                const canRet = currentRound !== undefined && currentRound >= ds.returnRound;
+                const isMine = ds.ownerId === activePlayer.id;
+                return (
+                  <span
+                    key={ds.shipId}
+                    onClick={() => {
+                      if (canRet && isMine && onOpenBlackHoleReturn) {
+                        onOpenBlackHoleReturn(ds);
+                      }
+                    }}
+                    className={`px-1 py-0.2 rounded font-mono text-[9px] ${
+                      canRet && isMine
+                        ? 'bg-indigo-500 text-slate-950 cursor-pointer animate-pulse font-black shadow'
+                        : 'bg-slate-900 text-slate-300'
+                    }`}
+                    title={`${ds.shipType.toUpperCase()} in Black Hole ${ds.blackHoleSectorNumber}. Returns Round ${ds.returnRound}${canRet && isMine ? ' (Click to Return Now)' : ''}`}
+                  >
+                    {ds.shipType.slice(0, 3).toUpperCase()} &rarr; R{ds.returnRound}
+                    {canRet && isMine && ' ⚡'}
+                  </span>
+                );
+              })}
+            </div>
+          )}
         </div>
       </div>
 
       {/* Action Buttons Grid */}
-      <div className={`grid ${hasPulsarAvailable ? 'grid-cols-8' : 'grid-cols-7'} gap-1 sm:gap-1.5 w-full`}>
+      <div
+        className={`grid ${
+          hasPulsarAvailable && readyBlackHoleShip
+            ? 'grid-cols-9'
+            : hasPulsarAvailable || readyBlackHoleShip
+            ? 'grid-cols-8'
+            : 'grid-cols-7'
+        } gap-1 sm:gap-1.5 w-full`}
+      >
         {/* Explore */}
         <button
           disabled={!canExplore}
@@ -327,6 +375,20 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             <Sparkles className="w-4 h-4 shrink-0 text-cyan-300" />
             <span className="leading-tight">PULSAR</span>
             <span className="text-[8.5px] text-cyan-400 font-mono leading-none">FREE</span>
+          </button>
+        )}
+
+        {/* Black Hole Return Action (Bug 145) */}
+        {readyBlackHoleShip && onOpenBlackHoleReturn && (
+          <button
+            type="button"
+            onClick={() => onOpenBlackHoleReturn(readyBlackHoleShip)}
+            title={`Return ${readyBlackHoleShip.shipType.toUpperCase()} from Black Hole to board (Round ${currentRound})`}
+            className="flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer bg-gradient-to-b from-indigo-950 to-slate-900 border-2 border-indigo-400 text-indigo-200 animate-pulse hover:scale-105 min-w-[44px] sm:min-w-[52px]"
+          >
+            <Sparkles className="w-4 h-4 shrink-0 text-indigo-300 animate-spin" />
+            <span className="leading-tight">RETURN</span>
+            <span className="text-[8.5px] text-indigo-400 font-mono leading-none">FREE</span>
           </button>
         )}
 

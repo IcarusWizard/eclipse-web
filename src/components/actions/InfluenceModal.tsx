@@ -116,36 +116,37 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
   const scienceFull = player.population.science.cubesOnBoard >= 11;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-cyan-500/50 rounded-2xl w-full max-w-2xl shadow-2xl overflow-hidden text-slate-100 flex flex-col max-h-[90vh]">
+    <div className="fixed top-14 right-4 z-40 w-96 sm:w-[440px] max-w-[calc(100vw-32px)] max-h-[calc(100vh-80px)] pointer-events-auto font-sans animate-in fade-in slide-in-from-right-4 duration-200">
+      <div className="bg-slate-950/95 border-2 border-cyan-500/80 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden text-slate-100 flex flex-col max-h-[calc(100vh-80px)]">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950">
+        <div className="flex items-center justify-between p-3.5 border-b border-slate-800 bg-slate-950/90">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-400">
-              <CircleDot className="w-5 h-5" />
+            <div className="w-8 h-8 rounded-full bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-400 shrink-0">
+              <CircleDot className="w-4 h-4" />
             </div>
             <div>
-              <h2 className="text-lg font-bold text-slate-100 font-display flex items-center gap-2">
-                INFLUENCE ACTION
-                <span className="text-xs font-semibold px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700 text-cyan-300">
+              <h2 className="text-base font-bold text-slate-100 font-display flex items-center gap-2">
+                INFLUENCE
+                <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700 text-cyan-300">
                   {totalActivations} / {maxActivations} Activations
                 </span>
               </h2>
-              <p className="text-xs text-slate-400">
-                Flip up to {colonyShipRefreshes} Colony Ship{colonyShipRefreshes === 1 ? '' : 's'} faceup, and modify Control on up to {maxActivations} eligible sectors.
+              <p className="text-[11px] text-slate-400 leading-tight">
+                Flip up to {colonyShipRefreshes} Colony Ship{colonyShipRefreshes === 1 ? '' : 's'}, modify Control on up to {maxActivations} sectors.
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors"
+            className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
+            title="Close Influence window"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
         {/* Content Body */}
-        <div className="p-6 space-y-5 overflow-y-auto">
+        <div className="p-4 space-y-4 overflow-y-auto scrollbar-thin">
           {/* Colony Ships Readying Perk */}
           <div className="bg-indigo-950/30 border border-indigo-500/40 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
@@ -216,7 +217,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                 Station a ship or establish a wormhole connection from a controlled sector.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {eligibleToClaim.map((sec) => {
                   const isSelected = claimSectors.includes(sec.id);
                   const hasShip = sec.ships.some((s) => s.ownerId === player.id);
@@ -275,7 +276,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                 You currently do not control any sectors to abandon.
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2">
                 {controlledSectors.map((sec) => {
                   const isSelected = abandonSectors.includes(sec.id);
                   const popCount = sec.planets.filter((p) => p.colonizedBy === player.id).length;

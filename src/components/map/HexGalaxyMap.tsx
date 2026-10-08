@@ -1314,6 +1314,14 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     <text x="0" y="24" textAnchor="middle" fill="#c7d2fe" fontSize="6.5" fontWeight="bold">
                       {sector.sectorNumber === 396 ? 'Ring I Return' : 'Empty Zone Return'}
                     </text>
+                    {state.galacticEvents?.blackHoleDelayedShips && state.galacticEvents.blackHoleDelayedShips.length > 0 && (
+                      <g transform="translate(0, -22)">
+                        <rect x="-34" y="-6" width="68" height="12" rx="3" fill="#1e1b4b" stroke="#818cf8" strokeWidth="0.9" />
+                        <text x="0" y="2.5" textAnchor="middle" fill="#e0e7ff" fontSize="6.5" fontWeight="bold">
+                          ⏳ {state.galacticEvents.blackHoleDelayedShips.length} Trapped (R{Math.min(...state.galacticEvents.blackHoleDelayedShips.map((s) => s.returnRound))})
+                        </text>
+                      </g>
+                    )}
                   </g>
                 )}
 

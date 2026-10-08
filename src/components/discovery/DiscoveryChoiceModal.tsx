@@ -1,15 +1,16 @@
 import React from 'react';
 import { Rocket, Wrench, Archive, Trophy, Zap, Cpu, AlertTriangle, Minimize2, Maximize2 } from 'lucide-react';
-import { DiscoveryTile, ShipType } from '../../engine/types/galaxy';
+import { SectorTile, DiscoveryTile, ShipType } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
 import { Technology } from '../../engine/types/tech';
 import { SHIP_PARTS } from '../../engine/rules/partData';
-import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
+import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from '../../engine/rules/shipValidation';
 
 interface DiscoveryChoiceModalProps {
   discovery: DiscoveryTile;
   player: PlayerState;
   techSupply?: Technology[];
+  sectors?: SectorTile[];
   onChoice: (
     keepForVictoryPoints: boolean,
     equipShipType?: ShipType,
@@ -24,6 +25,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   discovery,
   player,
   techSupply,
+  sectors,
   onChoice,
 }) => {
   const part = discovery.shipPartId ? SHIP_PARTS[discovery.shipPartId] : null;
@@ -79,6 +81,13 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
       setSelectedTechId(tiedTechs[0].id);
     }
   }, [tiedTechs, selectedTechId]);
+
+  const grantShipType = discovery.immediateReward?.grantShipType || (discovery.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
+  const isShipSupplyDepleted = Boolean(
+    grantShipType &&
+    sectors &&
+    countPlayerShips(sectors, player.id)[grantShipType] >= SHIP_LIMITS[grantShipType]
+  );
 
   // Minimized floating banner at top
   if (isMinimized) {
@@ -500,51 +509,69 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
             </button>
           </div>
         ) : (
-          <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <button
-              type="button"
-              onClick={() => onChoice(true)}
-              className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
-                <Trophy className="w-4 h-4 text-amber-400" /> Keep for Victory Points
+          <div className="w-full">
+            {isShipSupplyDepleted && grantShipType && (
+              <div className="w-full mb-3 p-2.5 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-200 text-xs flex items-center gap-2 text-left">
+                <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                <span>
+                  <strong>Supply Depleted:</strong> All {SHIP_LIMITS[grantShipType]} {grantShipType.toUpperCase()}s are already deployed. You cannot take another {grantShipType}; you must keep this tile for 2 VP instead.
+                </span>
               </div>
-              <span className="text-xs text-slate-400">
-                Score <strong className="text-amber-300">+2 VP</strong> at game end
-              </span>
-            </button>
+            )}
+            <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <button
+                type="button"
+                onClick={() => onChoice(true)}
+                className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
+                  <Trophy className="w-4 h-4 text-amber-400" /> Keep for Victory Points
+                </div>
+                <span className="text-xs text-slate-400">
+                  Score <strong className="text-amber-300">+2 VP</strong> at game end
+                </span>
+              </button>
 
-            <button
-              type="button"
-              onClick={() =>
-                onChoice(
-                  false,
-                  undefined,
-                  undefined,
-                  selectedTechId || tiedTechs[0]?.id,
-                  colonizeOrbitalResource || undefined,
-                  chosenBonusResource
-                )
-              }
-              className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25 transition group cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5 text-cyan-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
-                <Zap className="w-4 h-4 text-cyan-400" /> Take Immediate Reward
-              </div>
-              <span className="text-xs text-slate-400">
-                {discovery.immediateReward?.grantShipType
-                  ? `Deploy free ${discovery.immediateReward.grantShipType} to sector`
-                  : discovery.immediateReward?.ancientTech
-                  ? `Claim ${(selectedTechId && tiedTechs.find((t) => t.id === selectedTechId)?.name) || tiedTechs[0]?.name || 'Tech'}`
-                  : discovery.immediateReward?.artifactCodex
-                  ? 'Activate Artifact Codex (+1 VP per Artifact)'
-                  : discovery.immediateReward?.ancientMight
-                  ? 'Activate Ancient Might (+1 VP per 3 VP Reputation)'
-                  : discovery.immediateReward?.choose3Resource
-                  ? `Collect +3 Money and +3 ${chosenBonusResource.toUpperCase()}`
-                  : 'Collect resources immediately'}
-              </span>
-            </button>
+              <button
+                type="button"
+                disabled={isShipSupplyDepleted}
+                onClick={() =>
+                  onChoice(
+                    false,
+                    undefined,
+                    undefined,
+                    selectedTechId || tiedTechs[0]?.id,
+                    colonizeOrbitalResource || undefined,
+                    chosenBonusResource
+                  )
+                }
+                className={`flex flex-col items-center justify-center p-3.5 rounded-xl border transition group cursor-pointer ${
+                  isShipSupplyDepleted
+                    ? 'border-slate-800 bg-slate-900/50 opacity-40 cursor-not-allowed'
+                    : 'border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25'
+                }`}
+                title={isShipSupplyDepleted ? `Cannot claim: maximum limit of ${SHIP_LIMITS[grantShipType!]} reached` : undefined}
+              >
+                <div className={`flex items-center gap-1.5 font-bold text-sm mb-1 ${isShipSupplyDepleted ? 'text-slate-400' : 'text-cyan-400 group-hover:scale-105 transition-transform'}`}>
+                  <Zap className={`w-4 h-4 ${isShipSupplyDepleted ? 'text-slate-500' : 'text-cyan-400'}`} /> Take Immediate Reward
+                </div>
+                <span className="text-xs text-slate-400">
+                  {isShipSupplyDepleted
+                    ? `Max supply reached (${SHIP_LIMITS[grantShipType!]} deployed)`
+                    : discovery.immediateReward?.grantShipType
+                    ? `Deploy free ${discovery.immediateReward.grantShipType} to sector`
+                    : discovery.immediateReward?.ancientTech
+                    ? `Claim ${(selectedTechId && tiedTechs.find((t) => t.id === selectedTechId)?.name) || tiedTechs[0]?.name || 'Tech'}`
+                    : discovery.immediateReward?.artifactCodex
+                    ? 'Activate Artifact Codex (+1 VP per Artifact)'
+                    : discovery.immediateReward?.ancientMight
+                    ? 'Activate Ancient Might (+1 VP per 3 VP Reputation)'
+                    : discovery.immediateReward?.choose3Resource
+                    ? `Collect +3 Money and +3 ${chosenBonusResource.toUpperCase()}`
+                    : 'Collect resources immediately'}
+                </span>
+              </button>
+            </div>
           </div>
         )}
       </div>

@@ -432,10 +432,10 @@ export function createFactionBlueprints(factionId: string): Record<string, ShipB
           maxSlots: 4,
           baseInitiative: 3, // +1 increased initiative
           baseBuildCost: 3,
-          preprintedPower: 2, // 2 preprinted power balances Ion Cannon (1) + Nuclear Drive (1)
+          preprintedPower: 1, // 1 preprinted power (Bug 146)
           slots: [
             SHIP_PARTS.ion_cannon,
-            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.nuclear_source,
             SHIP_PARTS.gauss_shield,
             SHIP_PARTS.nuclear_drive,
           ],

@@ -1516,8 +1516,15 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
     expect(supply.dreadnought).toBe(2); // 2 - 0
     expect(supply.starbase).toBe(4);    // 4 - 0
 
-    // 2. Give player plenty of materials to test builds
+    // 2. Give player plenty of materials and starbase tech to test builds
     p1.resources.materials = 100;
+    p1.techTrack.researched.push({
+      id: 'starbase',
+      name: 'Starbase',
+      category: 'military',
+      baseCost: 6,
+      minCost: 2,
+    } as any);
 
     // 3. Test Dreadnought Limit of 2:
     // Build 2 dreadnoughts (legal, reaches max 2)
@@ -3370,8 +3377,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(orion.blueprints.dreadnought.baseInitiative).toBe(1); // Human 0 -> Orion 1
         expect(orion.blueprints.starbase.baseInitiative).toBe(5); // Human 4 -> Orion 5
 
-        // Preprinted power
-        expect(orion.blueprints.interceptor.preprintedPower).toBe(2);
+        // Preprinted power (Bug 146)
+        expect(orion.blueprints.interceptor.preprintedPower).toBe(1);
         expect(orion.blueprints.cruiser.preprintedPower).toBe(2);
         expect(orion.blueprints.dreadnought.preprintedPower).toBe(3);
       });
@@ -4933,7 +4940,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           const bp = orion.blueprints[shipType];
           expect(bp.slots.every((s) => s !== null)).toBe(true);
           expect(bp.slots.some((s) => s?.id === 'gauss_shield')).toBe(true);
-          expect(bp.slots.some((s) => s?.id === 'electron_computer')).toBe(true);
+          if (shipType === 'interceptor') {
+            expect(bp.slots.some((s) => s?.id === 'nuclear_source')).toBe(true);
+            expect(bp.preprintedPower).toBe(1);
+          } else {
+            expect(bp.slots.some((s) => s?.id === 'electron_computer')).toBe(true);
+          }
           expect(isShipBlueprintValid(bp)).toBe(true);
         }
         const orionSb = orion.blueprints.starbase;
@@ -12460,6 +12472,323 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(curState.pendingCombatConquest).not.toBeNull();
         expect(curState.pendingCombatConquest!.sectorId).toBe('sec_301');
         expect(curState.pendingCombatConquest!.winnerPlayerId).toBe(magellan.id);
+      });
+
+      it('74. verifies Bug Fixes 145-154: Orion interceptor blueprint, sectors 205/211/317 planets, Draco starbase tech restriction, Draco+Ancient combat preservation, discovery cruiser 4-limit, and Black Hole transit destruction & delayed return', async () => {
+        const { createGalacticEventsState, getLegalBlackHoleReturnSectors } = await import('../rules/galacticEvents');
+
+        // --- Bug 146: Orion Interceptor Blueprint ---
+        const orionGame = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orion = orionGame.players.find((p) => p.faction.id === 'orion_hegemony')!;
+        const orionInterceptor = orion.blueprints.interceptor;
+        expect(orionInterceptor.preprintedPower).toBe(1);
+        expect(orionInterceptor.slots.map((s) => s.id)).toEqual(['ion_cannon', 'nuclear_source', 'gauss_shield', 'nuclear_drive']);
+        expect(orionInterceptor.slots.some((s) => s.id === 'electron_computer')).toBe(false);
+        const orionInterceptorStats = calculateBlueprintStats(orionInterceptor);
+        expect(orionInterceptorStats.totalPowerProduced).toBe(4); // 3 (nuclear_source) + 1 (preprintedPower)
+        expect(orionInterceptorStats.totalPowerConsumed).toBe(2); // 1 (cannon) + 0 (gauss shield) + 1 (drive)
+        expect(orionInterceptorStats.totalPowerProduced >= orionInterceptorStats.totalPowerConsumed).toBe(true);
+
+        // --- Bugs 148, 149, 152: Sector Planet Definitions ---
+        const catalog = getAllSectorsCatalog(true);
+        const sec205Def = catalog.find((s) => s.sectorNumber === 205);
+        expect(sec205Def).toBeDefined();
+        expect(sec205Def?.planets).toEqual([
+          { resource: 'money', isAdvanced: false },
+          { resource: 'money', isAdvanced: true },
+          { resource: 'science', isAdvanced: true },
+        ]);
+
+        const sec211Def = catalog.find((s) => s.sectorNumber === 211);
+        expect(sec211Def).toBeDefined();
+        expect(sec211Def?.planets).toEqual([
+          { resource: 'money', isAdvanced: false },
+          { resource: 'any', isAdvanced: false },
+          { resource: 'material', isAdvanced: true },
+        ]);
+
+        const sec317Def = catalog.find((s) => s.sectorNumber === 317);
+        expect(sec317Def).toBeDefined();
+        expect(sec317Def?.planets).toEqual([
+          { resource: 'money', isAdvanced: false },
+          { resource: 'money', isAdvanced: true },
+        ]);
+
+        // --- Bug 150: Draco Cannot Build Starbase Without Starbase Tech ---
+        const dracoGame = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+        const draco = dracoGame.players.find((p) => p.faction.id === 'descendants_of_draco')!;
+        draco.resources.material = 10;
+        const dracoHomeSector = dracoGame.sectors.find((s) => s.discOwner === draco.id)!;
+        expect(draco.techTrack.researched.some((t) => t.id === 'starbase')).toBe(false);
+
+        // Attempting to build starbase without tech is rejected
+        const buildStarbaseWithoutTechRes = executeAction(dracoGame, {
+          type: 'BUILD',
+          playerId: draco.id,
+          items: [{ itemType: 'starbase', sectorId: dracoHomeSector.id }],
+        });
+        expect(buildStarbaseWithoutTechRes.success).toBe(false);
+        expect(buildStarbaseWithoutTechRes.error).toContain('Starbase tech');
+
+        // Granting starbase tech allows building
+        draco.techTrack.researched.push({
+          id: 'starbase',
+          name: 'Starbase',
+          category: 'military',
+          cost: 4,
+          minCost: 2,
+        });
+        const buildStarbaseWithTechRes = executeAction(dracoGame, {
+          type: 'BUILD',
+          playerId: draco.id,
+          items: [{ itemType: 'starbase', sectorId: dracoHomeSector.id }],
+        });
+        expect(buildStarbaseWithTechRes.success).toBe(true);
+        expect(
+          buildStarbaseWithTechRes.newState.sectors
+            .find((s) => s.id === dracoHomeSector.id)
+            ?.ships.some((s) => s.type === 'starbase')
+        ).toBe(true);
+
+        // --- Bug 151: Invader Fights Draco First, Then Ancient Ship Remains Present ---
+        const combatGame = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+        const dracoPlayer = combatGame.players.find((p) => p.faction.id === 'descendants_of_draco')!;
+        const terranPlayer = combatGame.players.find((p) => p.faction.id === 'terran_federation')!;
+
+        const contestedSec: SectorTile = {
+          id: 'sec_draco_ancient',
+          sectorNumber: 211,
+          ring: 2,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [{ resource: 'money', isAdvanced: false, hasCube: false }],
+          hasAncient: true,
+          ancientsCount: 1,
+          hasGCDS: false,
+          discOwner: dracoPlayer.id,
+          ships: [
+            { id: 'ancient_guard', ownerId: 'ancient', type: 'ancient', damage: 0 },
+            { id: 'draco_patrol', ownerId: dracoPlayer.id, type: 'interceptor', damage: 0 },
+            { id: 'terran_battleship', ownerId: terranPlayer.id, type: 'dreadnought', damage: 0 },
+          ],
+        };
+        combatGame.sectors.push(contestedSec);
+        combatGame.phase = 'COMBAT_PHASE';
+
+        // 1. Trigger combat in the contested sector
+        checkAndTriggerCombat(combatGame);
+        expect(combatGame.activeCombat).not.toBeNull();
+        // First duel must be Terran vs Draco
+        expect(combatGame.activeCombat!.defenderOwnerId).toBe(dracoPlayer.id);
+
+        // 2. Resolve Duel 1: Draco patrol is destroyed by Terran
+        contestedSec.ships = contestedSec.ships.filter((s) => s.id !== 'draco_patrol');
+        combatGame.activeCombat!.stage = 'resolved';
+        combatGame.activeCombat!.destroyedShips = [
+          { shipId: 'draco_patrol', ownerId: dracoPlayer.id, type: 'interceptor', destroyedByOwnerId: terranPlayer.id },
+        ];
+        (combatGame.activeCombat as any).winnerOwnerId = terranPlayer.id;
+
+        const concludeDuel1 = executeAction(combatGame, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: terranPlayer.id,
+          concludeCombat: true,
+        });
+        expect(concludeDuel1.success).toBe(true);
+
+        let curCombatState = concludeDuel1.newState;
+        while (curCombatState.pendingReputationDraw) {
+          const claimRes = executeAction(curCombatState, {
+            type: 'CLAIM_REPUTATION_TILE',
+            playerId: curCombatState.pendingReputationDraw.playerId,
+            selectedTileIndex: 0,
+          });
+          curCombatState = claimRes.newState;
+        }
+
+        // The Ancient ship MUST still be alive and in the sector! (Bug 151)
+        const sectorAfterDuel1 = curCombatState.sectors.find((s) => s.id === 'sec_draco_ancient')!;
+        expect(sectorAfterDuel1.ships.some((s) => s.id === 'ancient_guard')).toBe(true);
+
+        // Subsequent combat duel against Ancient is now triggered
+        expect(curCombatState.activeCombat).not.toBeNull();
+        expect(curCombatState.activeCombat?.defenderOwnerId).toBe('ancient');
+
+        // --- Bug 153: Player Cannot Take Free Cruiser Discovery If 4 Cruisers Are Deployed ---
+        const discGame = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const discPlayer = discGame.players[0];
+        // Deploy all 4 Cruisers for player 0
+        const cruiserSector = discGame.sectors.find((s) => s.discOwner === discPlayer.id)!;
+        cruiserSector.ships = [
+          { id: 'c1', ownerId: discPlayer.id, type: 'cruiser', damage: 0 },
+          { id: 'c2', ownerId: discPlayer.id, type: 'cruiser', damage: 0 },
+          { id: 'c3', ownerId: discPlayer.id, type: 'cruiser', damage: 0 },
+          { id: 'c4', ownerId: discPlayer.id, type: 'cruiser', damage: 0 },
+        ];
+        expect(countPlayerShips(discGame.sectors, discPlayer.id).cruiser).toBe(4);
+
+        discGame.pendingDiscovery = {
+          sectorId: cruiserSector.id,
+          playerId: discPlayer.id,
+          discovery: {
+            id: 'disc_ancient_cruiser',
+            name: 'Ancient Cruiser',
+            description: 'Take a free Cruiser from your supply or keep for 2 VP.',
+            category: 'ship',
+            immediateReward: {
+              grantShipType: 'cruiser',
+            },
+          },
+        };
+
+        // Taking reward when 4 cruisers deployed is rejected
+        const takeCruiserRes = executeAction(discGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: discPlayer.id,
+          keepForVictoryPoints: false,
+        });
+        expect(takeCruiserRes.success).toBe(false);
+        expect(takeCruiserRes.error).toContain('all 4 are already deployed');
+
+        // Taking for 2 VP is allowed
+        const takeVPRes = executeAction(discGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: discPlayer.id,
+          keepForVictoryPoints: true,
+        });
+        expect(takeVPRes.success).toBe(true);
+        expect(takeVPRes.newState.pendingDiscovery).toBeNull();
+
+        // --- Bug 147: 1-Health Ship Destroyed by Lethal Black Hole Damage ---
+        const bhGame = createInitialGame(2, ['terran_federation', 'orion_hegemony'], ['galactic_events']);
+        const bhPlayer = bhGame.players[0];
+        const bhSector: SectorTile = {
+          id: 'sec_bh_396',
+          sectorNumber: 396,
+          ring: 3,
+          coord: { q: 2, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          hasAncient: false,
+          ancientsCount: 0,
+          hasGCDS: false,
+          ships: [],
+          isBlackHole: true,
+        };
+        const adjacentSec: SectorTile = {
+          id: 'sec_adj_bh',
+          sectorNumber: 301,
+          ring: 3,
+          coord: { q: 1, r: -1 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          hasAncient: false,
+          ancientsCount: 0,
+          hasGCDS: false,
+          discOwner: bhPlayer.id,
+          ships: [{ id: 'fragile_interceptor', ownerId: bhPlayer.id, type: 'interceptor', damage: 0 }],
+        };
+        bhGame.sectors.push(bhSector, adjacentSec);
+
+        // Move fragile interceptor (1 max hull) into Black Hole
+        // We evaluate lethal damage branch: if interceptor takes 1 damage, it must be destroyed and routed to graveyard
+        const moveInterceptorRes = executeAction(bhGame, {
+          type: 'MOVE',
+          playerId: bhPlayer.id,
+          moves: [
+            {
+              shipId: 'fragile_interceptor',
+              fromSectorId: 'sec_adj_bh',
+              toSectorId: 'sec_bh_396',
+            },
+          ],
+        });
+        expect(moveInterceptorRes.success).toBe(true);
+        // Interceptor did not remain in Black Hole sector
+        const bhSectorAfter = moveInterceptorRes.newState.sectors.find((s) => s.id === 'sec_bh_396')!;
+        expect(bhSectorAfter.ships.length).toBe(0);
+
+        // If outcome rolled damage (1 HP), it went to graveyardShips; if delayed, it is in blackHoleDelayedShips
+        const wasDestroyed = moveInterceptorRes.newState.players[0].graveyardShips?.some(
+          (s) => s.id === 'fragile_interceptor'
+        );
+        const wasDelayed = moveInterceptorRes.newState.galacticEvents?.blackHoleDelayedShips.some(
+          (s) => s.shipId === 'fragile_interceptor'
+        );
+        expect(wasDestroyed || wasDelayed).toBe(true);
+
+        // --- Bug 145: Black Hole Return and UI Indication ---
+        // Setup a delayed ship in galacticEvents
+        const returnTestGame = createInitialGame(2, ['rho_indi_syndicate', 'terran_federation'], ['galactic_events']);
+        const rhoPlayer = returnTestGame.players.find((p) => p.faction.id === 'rho_indi_syndicate')!;
+        const ring1Sec: SectorTile = {
+          id: 'sec_ring1_test',
+          sectorNumber: 101,
+          ring: 1,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          hasAncient: false,
+          ancientsCount: 0,
+          hasGCDS: false,
+          ships: [],
+          discOwner: rhoPlayer.id,
+        };
+        returnTestGame.sectors.push(ring1Sec);
+
+        returnTestGame.galacticEvents = createGalacticEventsState(396);
+        returnTestGame.galacticEvents.blackHoleDelayedShips.push({
+          shipId: 'rho_dreadnought_delayed',
+          ownerId: rhoPlayer.id,
+          shipType: 'dreadnought',
+          damage: 0,
+          returnRound: returnTestGame.round, // Ready to return this round!
+          blackHoleSectorNumber: 396,
+        });
+
+        // Verify legal return sectors for Cygnus X-1 (396) are ring 1 sectors
+        const legalReturnSectors = getLegalBlackHoleReturnSectors(396, returnTestGame.sectors);
+        expect(legalReturnSectors.length).toBeGreaterThan(0);
+        expect(legalReturnSectors.every((s) => s.ring === 1)).toBe(true);
+
+        // Test RETURN_BLACK_HOLE_SHIP action
+        const returnShipRes = executeAction(returnTestGame, {
+          type: 'RETURN_BLACK_HOLE_SHIP',
+          playerId: rhoPlayer.id,
+          shipId: 'rho_dreadnought_delayed',
+          targetSectorId: legalReturnSectors[0].id,
+        });
+        expect(returnShipRes.success).toBe(true);
+        expect(returnShipRes.newState.galacticEvents?.blackHoleDelayedShips.length).toBe(0);
+        const targetSec = returnShipRes.newState.sectors.find((s) => s.id === legalReturnSectors[0].id)!;
+        expect(targetSec.ships.some((s) => s.id === 'rho_dreadnought_delayed')).toBe(true);
+
+        // Test advanceRound auto-return if player did not manually return before round end
+        const autoReturnGame = createInitialGame(2, ['rho_indi_syndicate', 'terran_federation'], ['galactic_events']);
+        const rhoPlayer2 = autoReturnGame.players.find((p) => p.faction.id === 'rho_indi_syndicate')!;
+        autoReturnGame.sectors.push({ ...ring1Sec, id: 'sec_ring1_auto', ships: [] });
+        autoReturnGame.galacticEvents = createGalacticEventsState(396);
+        autoReturnGame.galacticEvents.blackHoleDelayedShips.push({
+          shipId: 'rho_cruiser_auto',
+          ownerId: rhoPlayer2.id,
+          shipType: 'cruiser',
+          damage: 0,
+          returnRound: autoReturnGame.round,
+          blackHoleSectorNumber: 396,
+        });
+
+        // Cleanup phase triggers emergence of ready delayed ships
+        transitionToCleanup(autoReturnGame);
+        // Cruiser emerged into a sector rather than being lost!
+        expect(autoReturnGame.galacticEvents?.blackHoleDelayedShips.length).toBe(0);
+        const foundEmerging = autoReturnGame.sectors.some((s) =>
+          s.ships.some((sh) => sh.id === 'rho_cruiser_auto')
+        );
+        expect(foundEmerging).toBe(true);
       });
     });
   });
