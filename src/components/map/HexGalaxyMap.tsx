@@ -1348,29 +1348,35 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 )}
 
                 {/* Galactic Events: Nebula Subsectors */}
-                {sector.isNebula && (
-                  <g transform={`translate(${x}, ${y})`} className="pointer-events-none">
-                    <line x1="0" y1="0" x2={HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
-                    <line x1="0" y1="0" x2="0" y2={HEX_RADIUS * 0.9} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
-                    <line x1="0" y1="0" x2={-HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
-                    <g transform="translate(0, -28)">
-                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
-                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 1</text>
+                {sector.isNebula && (() => {
+                  const sub1HasDisc = sector.subsectors ? Boolean(sector.subsectors[0]?.discoveryTile) : true;
+                  const sub2HasDisc = sector.subsectors ? Boolean(sector.subsectors[1]?.discoveryTile) : true;
+                  const sub3HasAncient = sector.ships.some((s) => s.ownerId === 'ancient' && (s.subsector === 3 || !s.subsector));
+                  return (
+                    <g transform={`translate(${x}, ${y})`} className="pointer-events-none">
+                      <line x1="0" y1="0" x2={HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                      <line x1="0" y1="0" x2="0" y2={HEX_RADIUS * 0.9} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                      <line x1="0" y1="0" x2={-HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
+                      <g transform="translate(0, -28)">
+                        <rect x="-18" y="-6" width="36" height="12" rx="3" fill="rgba(6, 78, 59, 0.9)" stroke="#10b981" strokeWidth="0.8" />
+                        <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6.5" fontWeight="bold">{`Sub 1 ${sub1HasDisc ? '❓' : '✓'}`}</text>
+                      </g>
+                      <g transform="translate(-25, 18)">
+                        <rect x="-18" y="-6" width="36" height="12" rx="3" fill="rgba(6, 78, 59, 0.9)" stroke="#10b981" strokeWidth="0.8" />
+                        <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6.5" fontWeight="bold">{`Sub 2 ${sub2HasDisc ? '❓' : '✓'}`}</text>
+                      </g>
+                      <g transform="translate(25, 18)">
+                        <rect x="-18" y="-6" width="36" height="12" rx="3" fill={sub3HasAncient ? 'rgba(88, 28, 28, 0.9)' : 'rgba(6, 78, 59, 0.9)'} stroke={sub3HasAncient ? '#f43f5e' : '#10b981'} strokeWidth="0.8" />
+                        <text x="0" y="2.5" textAnchor="middle" fill={sub3HasAncient ? '#fca5a5' : '#a7f3d0'} fontSize="6.5" fontWeight="bold">{`Sub 3 ${sub3HasAncient ? '👾' : '✓'}`}</text>
+                      </g>
                     </g>
-                    <g transform="translate(-24, 18)">
-                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
-                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 2</text>
-                    </g>
-                    <g transform="translate(24, 18)">
-                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
-                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 3</text>
-                    </g>
-                  </g>
-                )}
+                  );
+                })()}
 
                 {/* Planets Display */}
-                <g transform={`translate(${x}, ${y + (isCenter ? 10 : 6)})`}>
-                  {sector.planets.map((planet, pIdx) => {
+                {!sector.isSupernovaExploded && (
+                  <g transform={`translate(${x}, ${y + (isCenter ? 10 : 6)})`}>
+                    {sector.planets.map((planet, pIdx) => {
                     const totalPlanets = sector.planets.length;
                     const isMultiRow = totalPlanets > 4;
                     const row = isMultiRow ? Math.floor(pIdx / 3) : 0;
@@ -1511,6 +1517,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     );
                   })}
                 </g>
+                )}
 
                 {/* Ships and Fleet Badges: Grouped by Owner with Ship Class and Counts */}
                 {sector.ships.length > 0 && (() => {
@@ -2030,16 +2037,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     <line x1="0" y1="0" x2="0" y2={HEX_RADIUS * 0.9} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
                     <line x1="0" y1="0" x2={-HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
                     <g transform="translate(0, -28)">
-                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
-                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 1</text>
+                      <rect x="-18" y="-6" width="36" height="12" rx="3" fill="rgba(6, 78, 59, 0.9)" stroke="#10b981" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6.5" fontWeight="bold">Sub 1 ❓</text>
                     </g>
-                    <g transform="translate(-24, 18)">
-                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
-                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 2</text>
+                    <g transform="translate(-25, 18)">
+                      <rect x="-18" y="-6" width="36" height="12" rx="3" fill="rgba(6, 78, 59, 0.9)" stroke="#10b981" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6.5" fontWeight="bold">Sub 2 ❓</text>
                     </g>
-                    <g transform="translate(24, 18)">
-                      <rect x="-14" y="-5" width="28" height="10" rx="2" fill="rgba(6, 78, 59, 0.85)" stroke="#10b981" strokeWidth="0.8" />
-                      <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6" fontWeight="bold">Sub 3</text>
+                    <g transform="translate(25, 18)">
+                      <rect x="-18" y="-6" width="36" height="12" rx="3" fill="rgba(88, 28, 28, 0.9)" stroke="#f43f5e" strokeWidth="0.8" />
+                      <text x="0" y="2.5" textAnchor="middle" fill="#fca5a5" fontSize="6.5" fontWeight="bold">Sub 3 👾</text>
                     </g>
                   </g>
                 )}

@@ -100,6 +100,8 @@ export interface BombardmentRoll {
   shipType: string;
   diceColor: string;
   roll: number;
+  symbol?: string;
+  selfDamage?: number;
   isHit: boolean;
   damage: number;
 }

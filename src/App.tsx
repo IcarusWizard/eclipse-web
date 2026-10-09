@@ -959,6 +959,15 @@ export const App: React.FC = () => {
     const destSec = state.sectors.find((s) => s.id === destSectorId);
     if (!destSec) return;
 
+    let finalTargetSubsector = targetSubsector;
+    if (!finalTargetSubsector && destSec.isNebula && currentSimSector.id !== destSec.id) {
+      const edgeFromTo = getEdgeBetween(currentSimSector.coord, destSec.coord);
+      if (edgeFromTo !== null) {
+        const entryEdgeOnTile = ((edgeFromTo + 3) % 6 - (destSec.rotation || 0) + 6) % 6;
+        finalTargetSubsector = getNebulaSubsectorForOuterEdge(entryEdgeOnTile as HexEdge);
+      }
+    }
+
     const stepNumber = currentActivationMoves.length + 1;
     const newMove: PlannedMove = {
       id: `move_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
@@ -971,7 +980,7 @@ export const App: React.FC = () => {
       activationIndex: activeActivationIndex,
       stepInActivation: stepNumber,
       driveSpeed: currentShipMaxSteps,
-      targetSubsector,
+      targetSubsector: finalTargetSubsector,
     };
 
     setPlannedMoves((prev) => [...prev, newMove]);
@@ -1361,14 +1370,11 @@ export const App: React.FC = () => {
     if (!state.activeCombat) return;
 
     // Determine commanding player ID
-    let commandingPlayerId = typeof currentSeat === 'number' && state.players[currentSeat]
-      ? state.players[currentSeat].id
-      : undefined;
+    let commandingPlayerId: string | undefined;
 
     if (state.activeCombat.pendingDamageAssignment) {
       commandingPlayerId = state.activeCombat.pendingDamageAssignment.attackerOwnerId;
-    } else if (!commandingPlayerId && !concludeCombat && state.activeCombat.stage !== 'resolved') {
-      // In 'all' mode: automatically use the active group's owner (or activePlayer if neutral)
+    } else if (!concludeCombat && state.activeCombat.stage !== 'resolved') {
       const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
       if (sec) {
         const units = buildCombatUnitsForSector(
@@ -1396,6 +1402,12 @@ export const App: React.FC = () => {
           commandingPlayerId = activeGroup.ownerId;
         }
       }
+    }
+
+    if (!commandingPlayerId) {
+      commandingPlayerId = typeof currentSeat === 'number' && state.players[currentSeat]
+        ? state.players[currentSeat].id
+        : activePlayer.id;
     }
 
     const res = executeAction(state, {
@@ -1459,9 +1471,42 @@ export const App: React.FC = () => {
     while (currentState.activeCombat && iterations < 100) {
       iterations++;
       const isResolved = currentState.activeCombat.stage === 'resolved';
+      let commandingId = activePlayer.id;
+      if (currentState.activeCombat.pendingDamageAssignment) {
+        commandingId = currentState.activeCombat.pendingDamageAssignment.attackerOwnerId;
+      } else if (!isResolved) {
+        const sec = currentState.sectors.find((s) => s.id === currentState.activeCombat!.sectorId);
+        if (sec) {
+          const units = buildCombatUnitsForSector(
+            sec,
+            currentState.players,
+            currentState.activeCombat.participatingPlayerIds,
+            currentState.neutralShipBlueprints
+          );
+          const defenderId = currentState.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, currentState.players);
+          const aliveUnits = sortUnitsByInitiative(
+            units.filter((u) => u.currentDamage < u.maxHull),
+            defenderId
+          );
+          const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
+          const isMissileStage = currentState.activeCombat.stage === 'missile';
+          const pendingMissileGroups = isMissileStage
+            ? groups.filter(
+                (g) => g.weapons.some((w) => w.isMissile) && !g.shipIds.every((id) => currentState.activeCombat!.missileFiredShipIds?.includes(id))
+              )
+            : [];
+          const activeGroup = isMissileStage
+            ? (pendingMissileGroups[0] || null)
+            : (groups.length > 0 ? groups[currentState.activeCombat.currentTurnIndex % groups.length] : null);
+          if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
+            commandingId = activeGroup.ownerId;
+          }
+        }
+      }
+
       const res = executeAction(currentState, {
         type: 'RESOLVE_COMBAT_STEP',
-        playerId: activePlayer.id,
+        playerId: commandingId,
         sectorId: currentState.activeCombat.sectorId,
         concludeCombat: isResolved,
       });
@@ -1920,6 +1965,7 @@ export const App: React.FC = () => {
           onRerollDie={handleRerollCombatDie}
           onAutoResolve={handleAutoResolveCombat}
           currentSeat={currentSeat}
+          onChangeSeat={handleChangeSeat}
         />
       )}
 

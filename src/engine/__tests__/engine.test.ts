@@ -12790,6 +12790,235 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(foundEmerging).toBe(true);
       });
+
+      it('75. verifies Bug Fixes 155-158: Rift Cannon population bombardment purple dice & self-damage, Nebula entry direction & subsector indicators, Supernova explosion empty void cleanup, and multiplayer combat command turn-order permissions', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+
+        // --- Bug 155: Rift Cannon population bombardment purple dice ---
+        const game155 = createInitialGame(2, ['rho_indi_syndicate', 'terran_federation'], ['rift_cannon']);
+        const attackerPlayer = game155.players[0];
+        const defenderPlayer = game155.players[1];
+
+        // Equip attacker cruiser with rift cannon
+        attackerPlayer.blueprints.cruiser.slots = [
+          SHIP_PARTS.rift_cannon,
+          SHIP_PARTS.nuclear_drive,
+          SHIP_PARTS.hull,
+          SHIP_PARTS.electron_computer,
+        ];
+
+        const targetSector155: any = {
+          id: 'sec_155_target',
+          sectorNumber: 202,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [
+            { id: 'p_155_1', resource: 'money', colonizedBy: defenderPlayer.id },
+            { id: 'p_155_2', resource: 'science', colonizedBy: defenderPlayer.id },
+          ],
+          discOwner: defenderPlayer.id,
+          ships: [
+            { id: 'att_cruiser_1', ownerId: attackerPlayer.id, type: 'cruiser', damage: 0 },
+          ],
+        };
+        game155.sectors.push(targetSector155);
+
+        // Resolve population attack
+        resolveAttackingPopulationAndConquest(game155, targetSector155, attackerPlayer.id, defenderPlayer.id);
+        const conquest = game155.pendingCombatConquest;
+        expect(conquest).toBeDefined();
+        if (conquest && conquest.bombardmentRolls) {
+          const purpleRolls = conquest.bombardmentRolls.filter((r) => r.diceColor === 'purple');
+          expect(purpleRolls.length).toBeGreaterThan(0);
+          for (const pr of purpleRolls) {
+            expect(pr.symbol).toBeDefined();
+            expect(['miss', '1', '2', '3+💥', 'self_only']).toContain(pr.symbol!);
+            expect(typeof pr.selfDamage).toBe('number');
+          }
+        }
+
+        // Verify CombatConquestModal renders purple dice symbols correctly without numeric dice confusion
+        const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+        const conquestModalHtml = renderToString(
+          React.createElement(CombatConquestModal, {
+            state: game155,
+            conquest: {
+              sectorId: targetSector155.id,
+              winnerPlayerId: attackerPlayer.id,
+              loserPlayerId: defenderPlayer.id,
+              cannonDamage: 4,
+              bombardmentSummary: {
+                hasNeutronBombs: false,
+                totalDamage: 4,
+                rolls: [
+                  { shipType: 'cruiser', diceColor: 'purple', roll: 3, symbol: '1', damage: 1, isHit: true, selfDamage: 0 },
+                  { shipType: 'cruiser', diceColor: 'purple', roll: 5, symbol: '3+💥', damage: 3, isHit: true, selfDamage: 1 },
+                  { shipType: 'cruiser', diceColor: 'purple', roll: 6, symbol: 'self_only', damage: 0, isHit: false, selfDamage: 1 },
+                ],
+                cubesDestroyed: [],
+              },
+              canClaimInfluence: true,
+            },
+            onConfirm: () => {},
+          })
+        );
+        expect(conquestModalHtml).toContain('★');
+        expect(conquestModalHtml).toContain('BACKFIRE');
+
+        // --- Bug 156: Nebula entry direction & subsector indicators ---
+        const game156 = createInitialGame(2, ['descendants_of_draco', 'terran_federation'], ['galactic_events']);
+        const draco = game156.players.find((p) => p.faction.id === 'descendants_of_draco')!;
+
+        // Create Nebula sector at (0, 0)
+        const { createGalacticEventSectorTile } = await import('../rules/galacticEvents');
+        const nebulaSec = createGalacticEventSectorTile(295);
+        nebulaSec.coord = { q: 0, r: 0 };
+        nebulaSec.rotation = 0;
+        nebulaSec.subsectors = [
+          { subsectorIndex: 1, discoveryTile: { id: 'disc_1', name: 'Hypergrid', type: 'tech', victoryPoints: 2 }, hasAncient: false, ships: [] },
+          { subsectorIndex: 2, discoveryTile: { id: 'disc_2', name: 'Flux', type: 'resource_pack', victoryPoints: 2 }, hasAncient: false, ships: [] },
+          { subsectorIndex: 3, discoveryTile: null, hasAncient: true, ships: [{ id: 'anc_sub3', ownerId: 'ancient', type: 'ancient', damage: 0, subsector: 3 }] },
+        ];
+        nebulaSec.ships = [{ id: 'anc_sub3', ownerId: 'ancient', type: 'ancient', damage: 0, subsector: 3 }];
+        game156.sectors.push(nebulaSec);
+
+        // Origin sector at East (1, 0)
+        const eastSec: any = {
+          id: 'sec_east_156',
+          sectorNumber: 211,
+          ring: 2,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [{ id: 'draco_interceptor_east', ownerId: draco.id, type: 'interceptor', damage: 0 }],
+          discOwner: draco.id,
+        };
+        game156.sectors.push(eastSec);
+
+        // Move ship from (1, 0) into Nebula (0, 0) without specifying targetSubsector
+        const moveRes156 = executeAction(game156, {
+          type: 'MOVE',
+          playerId: draco.id,
+          moves: [
+            {
+              shipId: 'draco_interceptor_east',
+              fromSectorId: eastSec.id,
+              toSectorId: nebulaSec.id,
+            },
+          ],
+        });
+        expect(moveRes156.success).toBe(true);
+        const movedDracoShip = moveRes156.newState.sectors.find((s) => s.id === nebulaSec.id)!.ships.find((s) => s.id === 'draco_interceptor_east');
+        expect(movedDracoShip).toBeDefined();
+        // Entering from the right (East edge) must land in Subsector 3!
+        expect(movedDracoShip!.subsector).toBe(3);
+
+        // Verify map indicators for Nebula
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const map156Html = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: moveRes156.newState,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+          })
+        );
+        expect(map156Html).toContain('Sub 1 ❓');
+        expect(map156Html).toContain('Sub 2 ❓');
+        expect(map156Html).toContain('Sub 3 👾');
+
+        // Verify SectorInspector Nebula breakdown
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        const inspector156Html = renderToString(
+          React.createElement(SectorInspector, {
+            sector: moveRes156.newState.sectors.find((s) => s.id === nebulaSec.id)!,
+            players: moveRes156.newState.players,
+            activePlayer: draco,
+            onClose: () => {},
+          })
+        );
+        expect(inspector156Html).toContain('Nebula Sector (3 Subsectors)');
+        expect(inspector156Html).toContain('Ancient Ship Stationed');
+
+        // --- Bug 157: Supernova explosion empty void cleanup ---
+        const game157 = createInitialGame(2, ['rho_indi_syndicate', 'terran_federation'], ['galactic_events']);
+        const rhoPlayer157 = game157.players.find((p) => p.faction.id === 'rho_indi_syndicate')!;
+        const supernovaSec = createGalacticEventSectorTile(397);
+        supernovaSec.coord = { q: 0, r: 1 };
+        supernovaSec.discOwner = rhoPlayer157.id;
+        supernovaSec.planets[0].colonizedBy = rhoPlayer157.id;
+        supernovaSec.planets[0].colonizedResource = 'money';
+        rhoPlayer157.population.money.cubesOnBoard = 5;
+        game157.sectors.push(supernovaSec);
+
+        // Manually trigger explosion
+        supernovaSec.isSupernovaExploded = false;
+        // Set round = 99 so instability sum is guaranteed < round, triggering explosion
+        game157.round = 99;
+        transitionToCleanup(game157);
+        const explodedSec = game157.sectors.find((s) => s.id === supernovaSec.id)!;
+        expect(explodedSec.isSupernovaExploded).toBe(true);
+        expect(explodedSec.planets.length).toBe(0);
+        expect(explodedSec.wormholes.every((w) => !w)).toBe(true);
+        expect(explodedSec.discOwner).toBeUndefined();
+        // Population cube returned
+        expect(rhoPlayer157.population.money.cubesOnBoard).toBe(6);
+
+        // Verify Map and Inspector hide planets and show void
+        const inspector157Html = renderToString(
+          React.createElement(SectorInspector, {
+            sector: explodedSec,
+            players: game157.players,
+            activePlayer: rhoPlayer157,
+            onClose: () => {},
+          })
+        );
+        expect(inspector157Html).toContain('Supernova Collapsed Void');
+        expect(inspector157Html).not.toContain('Planetary Population Squares');
+
+        // --- Bug 158: Combat mode turn-order command permissions ---
+        const game158 = createInitialGame(2, ['descendants_of_draco', 'rho_indi_syndicate']);
+        const p0 = game158.players[0]; // Draco
+        const p1 = game158.players[1]; // Rho Indi
+
+        const combatSec158: any = {
+          id: 'sec_combat_158',
+          sectorNumber: 105,
+          coord: { q: 0, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [
+            { id: 'p0_cruiser', ownerId: p0.id, type: 'cruiser', damage: 0 },
+            { id: 'p1_interceptor', ownerId: p1.id, type: 'interceptor', damage: 0 },
+          ],
+        };
+        game158.sectors.push(combatSec158);
+
+        // Trigger combat
+        checkAndTriggerCombat(game158);
+        expect(game158.activeCombat).toBeDefined();
+
+        // P1's interceptor has initiative 3, P0's cruiser has initiative 2
+        // When P1 executes their combat step, it succeeds
+        const stepP1Res = executeAction(game158, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+          sectorId: combatSec158.id,
+        });
+        expect(stepP1Res.success).toBe(true);
+
+        // Also test autoAssign: true or concludeCombat: true allows execution without blocking
+        const stepAutoRes = executeAction(game158, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p0.id,
+          sectorId: combatSec158.id,
+          autoAssign: true,
+        });
+        expect(stepAutoRes.success).toBe(true);
+      });
     });
   });
 });

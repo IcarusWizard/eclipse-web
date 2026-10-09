@@ -25,6 +25,7 @@ interface CombatModalProps {
   onRerollDie?: (rollIndex: number) => void;
   onAutoResolve?: () => void;
   currentSeat?: number | 'all' | 'spectator';
+  onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
 }
 
 export const CombatModal: React.FC<CombatModalProps> = ({
@@ -34,6 +35,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   onRerollDie,
   onAutoResolve,
   currentSeat = 'all',
+  onChangeSeat,
 }) => {
   const sector = state.sectors.find((s) => s.id === combat.sectorId);
   if (!sector) return null;
@@ -829,8 +831,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   <span className="text-[11px] font-medium text-slate-300">Auto-assign</span>
                 </label>
 
-                {/* Auto-Resolve Option - only in 'all' / sandbox mode to prevent skipping human decisions */}
-                {onAutoResolve && currentSeat === 'all' && !isAlreadyRetreating && (
+                {/* Auto-Resolve Option */}
+                {onAutoResolve && !isAlreadyRetreating && (
                   <button
                     type="button"
                     onClick={onAutoResolve}
@@ -841,11 +843,25 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 )}
 
                 {!canCommandActiveShip ? (
-                  <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
-                    <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                    <span>
-                      Waiting for Commander <strong className="text-amber-300">{attackerOwner?.name || 'opponent'}</strong> to command their {activeGroup?.type.toUpperCase()}...
-                    </span>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
+                      <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                      <span>
+                        Waiting for Commander <strong className="text-amber-300">{attackerOwner?.name || 'opponent'}</strong> to command their {activeGroup?.type.toUpperCase()}...
+                      </span>
+                    </div>
+                    {onChangeSeat && attackerOwner && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const seatIdx = state.players.findIndex((p) => p.id === attackerOwner.id);
+                          if (seatIdx >= 0) onChangeSeat(seatIdx);
+                        }}
+                        className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs tracking-wider uppercase transition cursor-pointer shadow font-sans"
+                      >
+                        Switch Seat to {attackerOwner.name}
+                      </button>
+                    )}
                   </div>
                 ) : (
                   <>

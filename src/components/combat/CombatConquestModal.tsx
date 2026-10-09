@@ -208,20 +208,49 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                         >
                           <div className="flex items-center gap-2">
                             <div
-                              className={`w-5 h-5 rounded flex items-center justify-center font-mono font-bold text-xs border ${getDiceColorBadge(
+                              className={`min-w-5 h-5 px-1 rounded flex items-center justify-center font-mono font-bold text-xs border ${getDiceColorBadge(
                                 r.diceColor
                               )}`}
+                              title={
+                                r.diceColor === 'purple'
+                                  ? `Rift Cannon Die: ${
+                                      r.roll === 1 || r.roll === 2
+                                        ? 'Blank (Miss)'
+                                        : r.roll === 3
+                                        ? '1 Hit'
+                                        : r.roll === 4
+                                        ? '2 Hits'
+                                        : r.roll === 5
+                                        ? '3 Hits + 1 Self-Damage'
+                                        : '1 Self-Damage'
+                                    }`
+                                  : `Cannon Die Roll: ${r.roll}`
+                              }
                             >
-                              {r.roll}
+                              {r.diceColor === 'purple'
+                                ? r.roll === 1 || r.roll === 2 || r.symbol === 'miss'
+                                  ? '—'
+                                  : r.roll === 3 || r.symbol === '1'
+                                  ? '★'
+                                  : r.roll === 4 || r.symbol === '2'
+                                  ? '★★'
+                                  : r.roll === 5 || r.symbol === '3+💥'
+                                  ? '★💥'
+                                  : '💥'
+                                : r.roll}
                             </div>
                             <span className="text-[11px] capitalize text-slate-300 font-medium">
                               {r.shipType}
                             </span>
                           </div>
                           <div>
-                            {r.isHit ? (
+                            {r.diceColor === 'purple' && (r.selfDamage || 0) > 0 && !r.isHit ? (
+                              <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-950/80 border border-purple-700/60 text-purple-300">
+                                BACKFIRE (💥)
+                              </span>
+                            ) : r.isHit ? (
                               <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-700/60 text-rose-300">
-                                HIT (+{r.damage})
+                                HIT (+{r.damage}){r.diceColor === 'purple' && (r.selfDamage || 0) > 0 ? ' 💥' : ''}
                               </span>
                             ) : (
                               <span className="text-[10px] font-mono text-slate-500 px-1 py-0.5">
@@ -239,7 +268,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
               )}
 
               {/* Casualty Slot Callout */}
-              {conquest.bombardmentSummary.cubesDestroyed.length > 0 && (
+              {(conquest.bombardmentSummary.cubesDestroyed?.length || 0) > 0 && (
                 <div className="p-3 rounded-lg bg-purple-950/30 border border-purple-800/40 text-xs space-y-1.5">
                   <div className="flex items-center gap-2 text-purple-300 font-bold uppercase tracking-wider text-[11px]">
                     <Shield className="w-3.5 h-3.5 text-purple-400" />

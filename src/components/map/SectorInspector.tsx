@@ -184,6 +184,103 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
           )}
         </div>
 
+        {/* Supernova Collapsed Alert */}
+        {sector.isSupernovaExploded && (
+          <div className="p-3 rounded-xl bg-red-950/70 border border-red-700/80 space-y-1 shadow-inner">
+            <div className="flex items-center gap-1.5 text-xs font-bold text-red-400 uppercase tracking-wide">
+              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              Supernova Collapsed Void
+            </div>
+            <p className="text-[11px] text-slate-300">
+              This star went supernova and collapsed into empty space. All planets, population slots, and wormholes have been completely obliterated.
+            </p>
+          </div>
+        )}
+
+        {/* Galactic Events: Nebula Subsectors Breakdown */}
+        {sector.isNebula && (
+          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-600/60 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-emerald-300 font-bold flex items-center gap-1.5 text-xs">
+                <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
+                Nebula Sector (3 Subsectors)
+              </span>
+              <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-200 font-mono font-bold border border-emerald-600 uppercase">
+                Internal Wormholes
+              </span>
+            </div>
+            <div className="text-[11px] text-slate-300 space-y-1.5">
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                    <span className="text-emerald-400 font-mono font-bold">Subsector 1</span>
+                    <span className="text-[10px] text-slate-400">(Edges 4-NW & 5-NE)</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    {sector.subsectors ? (
+                      sector.subsectors[0]?.discoveryTile ? (
+                        <span className="text-amber-300 font-semibold">❓ Discovery Tile Present</span>
+                      ) : (
+                        <span className="text-slate-500 italic">Discovery Tile Claimed</span>
+                      )
+                    ) : (
+                      <span className="text-amber-300 font-semibold">❓ Discovery Tile Present</span>
+                    )}
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                  {sector.ships.filter((s) => (s.subsector || 1) === 1).length} ship(s)
+                </span>
+              </div>
+
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                    <span className="text-emerald-400 font-mono font-bold">Subsector 2</span>
+                    <span className="text-[10px] text-slate-400">(Edges 2-SW & 3-W)</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    {sector.subsectors ? (
+                      sector.subsectors[1]?.discoveryTile ? (
+                        <span className="text-amber-300 font-semibold">❓ Discovery Tile Present</span>
+                      ) : (
+                        <span className="text-slate-500 italic">Discovery Tile Claimed</span>
+                      )
+                    ) : (
+                      <span className="text-amber-300 font-semibold">❓ Discovery Tile Present</span>
+                    )}
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                  {sector.ships.filter((s) => s.subsector === 2).length} ship(s)
+                </span>
+              </div>
+
+              <div className="p-2 rounded-lg bg-slate-900/80 border border-slate-800 flex items-center justify-between">
+                <div>
+                  <div className="font-bold text-slate-200 flex items-center gap-1.5">
+                    <span className="text-emerald-400 font-mono font-bold">Subsector 3</span>
+                    <span className="text-[10px] text-slate-400">(Edges 0-E & 1-SE)</span>
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-0.5">
+                    {sector.ships.some((s) => s.ownerId === 'ancient' && (s.subsector === 3 || !s.subsector)) ? (
+                      <span className="text-rose-400 font-semibold">👾 Ancient Ship Stationed</span>
+                    ) : (
+                      <span className="text-slate-500 italic">Ancient Defeated</span>
+                    )}
+                  </div>
+                </div>
+                <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                  {sector.ships.filter((s) => s.subsector === 3).length} ship(s)
+                </span>
+              </div>
+            </div>
+            <p className="text-[10px] text-slate-400 leading-snug">
+              Note: Ships entering from outside land in the subsector matching their entry edge. Moving between subsectors takes 1 MP.
+            </p>
+          </div>
+        )}
+
         {/* Hostile Contest Alert */}
         {hasHostiles && (
           <div className="p-2.5 rounded-xl bg-rose-950/40 border border-rose-800/60 flex items-center gap-2 text-rose-300 font-bold animate-pulse">
@@ -283,6 +380,11 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                                     Damaged
                                   </span>
                                 )}
+                                {sector.isNebula && (
+                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+                                    Sub {Array.from(new Set(typeShips.map((s) => s.subsector || 1))).sort().join(', ')}
+                                  </span>
+                                )}
                               </div>
 
                               {/* Stats / Weapons Preview */}
@@ -330,11 +432,12 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
         </div>
 
         {/* Planetary Colonies Grid */}
-        <div>
-          <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] mb-2 flex items-center gap-1.5">
-            <Layers className="w-3.5 h-3.5 text-yellow-400" />
-            Planetary Population Squares ({sector.planets.length})
-          </h4>
+        {!sector.isSupernovaExploded && (
+          <div>
+            <h4 className="font-bold text-slate-200 uppercase tracking-wider text-[11px] mb-2 flex items-center gap-1.5">
+              <Layers className="w-3.5 h-3.5 text-yellow-400" />
+              Planetary Population Squares ({sector.planets.length})
+            </h4>
 
           {sector.planets.length === 0 ? (
             <div className="p-3 bg-slate-900/40 border border-slate-900 rounded-xl text-center text-slate-500 text-[11px] italic">
@@ -549,6 +652,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
             </div>
           )}
         </div>
+        )}
 
         {/* Special Features & Structures */}
         {(sector.isPulsar || sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile || sector.structures?.monolith || (sector.guardiansCount && sector.guardiansCount > 0)) && (

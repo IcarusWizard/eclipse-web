@@ -31,7 +31,7 @@ import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack } from './economyEngine';
-import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, sortUnitsByInitiative, getCombatShipTypeGroups } from './combatEngine';
+import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import {
@@ -1047,13 +1047,20 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             };
           }
 
+          let targetSub = step.targetSubsector;
+          if (!targetSub && toSec.isNebula && fromSec.id !== toSec.id) {
+            const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
+            const entryEdgeOnTile = edgeFromTo !== null ? ((edgeFromTo + 3) % 6 - (toSec.rotation || 0) + 6) % 6 : 0;
+            targetSub = getNebulaSubsectorForOuterEdge(entryEdgeOnTile as HexEdge);
+          }
+
           // Advance ship's simulated location in simSectorShips
           const fromList = simSectorShips.get(fromSec.id) || [];
           const shipInFromIdx = fromList.findIndex((s) => s.id === act.shipId);
           if (shipInFromIdx >= 0) {
             const [moved] = fromList.splice(shipInFromIdx, 1);
             if (toSec.isNebula) {
-              moved!.subsector = step.targetSubsector ?? (moved!.subsector || 1);
+              moved!.subsector = targetSub ?? (moved!.subsector || 1);
             } else {
               moved!.subsector = undefined;
             }
@@ -1062,18 +1069,18 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             simSectorShips.set(toSec.id, toList);
           }
           shipInfo.currentSectorId = step.toSectorId;
-          if (toSec.isNebula && step.targetSubsector) {
-            shipInfo.ship.subsector = step.targetSubsector;
+          if (toSec.isNebula && targetSub) {
+            shipInfo.ship.subsector = targetSub;
           }
 
           // Check if destination has hostiles -> GCDS pins all; other hostiles pin 1:1 (or 2:1 with Cloaking Device)
           const shipsInTo = simSectorShips.get(toSec.id) || [];
-          const targetSub = toSec.isNebula ? (step.targetSubsector ?? shipInfo.ship.subsector ?? 1) : undefined;
+          const finalTargetSub = toSec.isNebula ? (targetSub ?? shipInfo.ship.subsector ?? 1) : undefined;
           const hasLiveGcdsInTo = !toSec.isNebula && (toSec.hasGCDS || shipsInTo.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
-          const friendlyInTo = toSec.isNebula && targetSub
-            ? shipsInTo.filter((s) => s.ownerId === action.playerId && s.subsector === targetSub).length
+          const friendlyInTo = toSec.isNebula && finalTargetSub
+            ? shipsInTo.filter((s) => s.ownerId === action.playerId && s.subsector === finalTargetSub).length
             : shipsInTo.filter((s) => s.ownerId === action.playerId).length;
-          const hostilesInTo = getHostilesInSec(toSec, shipsInTo, targetSub);
+          const hostilesInTo = getHostilesInSec(toSec, shipsInTo, finalTargetSub);
           const hasCloakingInTo = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
           const pinningThresholdInTo = hasCloakingInTo ? friendlyInTo * 2 : friendlyInTo;
           if (hasLiveGcdsInTo || (hostilesInTo > 0 && hostilesInTo >= pinningThresholdInTo)) {
@@ -1435,12 +1442,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!sector) {
         return { valid: false, error: 'Combat sector not found.' };
       }
-      if (state.activeCombat.stage === 'resolved' || (action as any).concludeCombat) {
+      if (state.activeCombat.stage === 'resolved' || (action as any).concludeCombat || (action as any).autoAssign) {
         return { valid: true };
       }
 
       if (state.activeCombat.pendingDamageAssignment) {
-        if (action.playerId && action.playerId !== state.activeCombat.pendingDamageAssignment.attackerOwnerId) {
+        if (action.playerId && action.playerId !== state.activeCombat.pendingDamageAssignment.attackerOwnerId && !(action as any).autoAssign) {
           return {
             valid: false,
             error: `Only player ${state.activeCombat.pendingDamageAssignment.attackerOwnerId} can assign damage for their ${state.activeCombat.pendingDamageAssignment.attackerShipType}.`,
@@ -1472,7 +1479,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
           if (activeGroup) {
             const isPlayerShip = state.players.some((p) => p.id === activeGroup.ownerId);
-            if (isPlayerShip && action.playerId && action.playerId !== activeGroup.ownerId) {
+            if (isPlayerShip && action.playerId && action.playerId !== activeGroup.ownerId && !(action as any).autoAssign && !(action as any).concludeCombat) {
               return {
                 valid: false,
                 error: `Only player ${activeGroup.ownerId} can command their ${activeGroup.type}.`,
@@ -4287,19 +4294,49 @@ export function resolveAttackingPopulationAndConquest(
             for (const d of slot.dice) {
               if (d.isMissile) continue; // Missiles cannot bombard population
               for (let r = 0; r < d.count; r++) {
-                const roll = rollD6();
-                const modified = roll + compBonus;
-                const isHit = roll === 6 || (roll > 1 && modified >= 6);
-                const dmg = isHit ? d.damagePerHit : 0;
-                rolls.push({
-                  shipType: s.type,
-                  diceColor: d.color,
-                  roll,
-                  isHit,
-                  damage: dmg,
-                });
-                if (isHit) {
-                  cannonDamage += d.damagePerHit;
+                if (d.color === 'purple') {
+                  const pRes = rollPurpleDie();
+                  const dmg = pRes.targetDamage;
+                  rolls.push({
+                    shipType: s.type,
+                    diceColor: 'purple',
+                    roll: pRes.rawRoll,
+                    symbol: pRes.symbol,
+                    selfDamage: pRes.selfDamage,
+                    isHit: pRes.isHit,
+                    damage: dmg,
+                  });
+                  if (pRes.isHit) {
+                    cannonDamage += dmg;
+                  }
+                  if (pRes.selfDamage > 0) {
+                    const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints);
+                    const dummyCombat: any = { destroyedShips: [] };
+                    applyRiftSelfDamage(units, winnerId, pRes.selfDamage, dummyCombat);
+                    sector.ships = sector.ships.filter((sh) => !dummyCombat.destroyedShips.some((ds: any) => ds.shipId === sh.id));
+                    for (const sh of sector.ships) {
+                      const u = units.find((unit) => unit.id === sh.id);
+                      if (u) sh.damage = u.currentDamage;
+                    }
+                    if (dummyCombat.destroyedShips.length > 0) {
+                      addLog(`💥 Rift Cannon backfire during bombardment destroyed ${dummyCombat.destroyedShips.length} ship(s) of ${attackerPlayer.name}!`, 'combat');
+                    }
+                  }
+                } else {
+                  const roll = rollD6();
+                  const modified = roll + compBonus;
+                  const isHit = roll === 6 || (roll > 1 && modified >= 6);
+                  const dmg = isHit ? d.damagePerHit : 0;
+                  rolls.push({
+                    shipType: s.type,
+                    diceColor: d.color,
+                    roll,
+                    isHit,
+                    damage: dmg,
+                  });
+                  if (isHit) {
+                    cannonDamage += d.damagePerHit;
+                  }
                 }
               }
             }
@@ -4490,9 +4527,16 @@ export function computePinningState(
     }
     const toList = simSectorShips.get(m.toSectorId) || [];
     const toSec = state.sectors.find((s) => s.id === m.toSectorId);
+    const fromSec = state.sectors.find((s) => s.id === m.fromSectorId);
+    let resolvedSub = (m as any).targetSubsector;
+    if (!resolvedSub && toSec?.isNebula && fromSec && fromSec.id !== toSec.id) {
+      const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
+      const entryEdgeOnTile = edgeFromTo !== null ? ((edgeFromTo + 3) % 6 - (toSec.rotation || 0) + 6) % 6 : 0;
+      resolvedSub = getNebulaSubsectorForOuterEdge(entryEdgeOnTile as HexEdge);
+    }
     if (movedShip) {
       if (toSec?.isNebula) {
-        movedShip.subsector = (m as any).targetSubsector ?? (movedShip.subsector || 1);
+        movedShip.subsector = resolvedSub ?? (movedShip.subsector || 1);
       } else {
         movedShip.subsector = undefined;
       }
@@ -4501,7 +4545,7 @@ export function computePinningState(
     }
 
     if (toSec) {
-      const targetSub = toSec.isNebula ? ((m as any).targetSubsector ?? movedShip?.subsector ?? 1) : undefined;
+      const targetSub = toSec.isNebula ? (resolvedSub ?? movedShip?.subsector ?? 1) : undefined;
       const hasLiveGcdsInTo = !toSec.isNebula && (toSec.hasGCDS || toList.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
       const friendlyInTo = toSec.isNebula && targetSub
         ? toList.filter((s) => s.ownerId === playerId && s.subsector === targetSub).length
@@ -5019,6 +5063,11 @@ export function transitionToCleanup(state: GameState): void {
             pl.colonizedResource = undefined;
           }
         }
+        sec.planets = [];
+        sec.victoryPoints = 0;
+        sec.hasArtifact = false;
+        sec.hasDiscovery = false;
+        sec.discoveryTile = undefined;
         state.log.unshift({
           id: `log_${Date.now()}_supernova_exploded_${sec.sectorNumber}`,
           timestamp: Date.now(),

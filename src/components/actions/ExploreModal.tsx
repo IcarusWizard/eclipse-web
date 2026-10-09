@@ -399,7 +399,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 </span>
                 {activeTile.isNebula && (
                   <span className="text-[9px] font-bold text-emerald-400 mt-0.5">
-                    Nebula (3 Subsectors)
+                    Nebula (3 Subsectors) - Sub 1 & 2 (Disc ❓), Sub 3 (Ancient 👾)
                   </span>
                 )}
                 <span className="text-[8.5px] font-mono text-cyan-400 mt-0.5">
