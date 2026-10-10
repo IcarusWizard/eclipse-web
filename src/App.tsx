@@ -70,7 +70,7 @@ export const App: React.FC = () => {
     return loaded || createInitialGame(2);
   });
   const [selectedSector, setSelectedSector] = useState<SectorTile | null>(null);
-  const [selectedViewIndex, setSelectedViewIndex] = useState<number>(0);
+  const [selectedViewIndex, setSelectedViewIndex] = useState<number>(() => state.activePlayerIndex || 0);
 
   const isRemoteSyncRef = React.useRef<boolean>(false);
   const lastStateFingerprintRef = React.useRef<string>(getStateFingerprint(state));
@@ -189,6 +189,26 @@ export const App: React.FC = () => {
     return isNaN(num) ? 'all' : num;
   });
 
+  // Hotseat View: When activePlayerIndex changes in hot seat mode (currentSeat === 'all' or 'spectator'),
+  // automatically update the top-left player dashboard to the active player by default
+  const prevActivePlayerIndexRef = React.useRef<number>(state.activePlayerIndex);
+  useEffect(() => {
+    if (
+      (currentSeat === 'all' || currentSeat === 'spectator') &&
+      state.activePlayerIndex !== prevActivePlayerIndexRef.current
+    ) {
+      setSelectedViewIndex(state.activePlayerIndex);
+    }
+    prevActivePlayerIndexRef.current = state.activePlayerIndex;
+  }, [state.activePlayerIndex, currentSeat]);
+
+  // Ensure selectedViewIndex stays within valid player bounds
+  useEffect(() => {
+    if (selectedViewIndex >= state.players.length) {
+      setSelectedViewIndex(state.activePlayerIndex);
+    }
+  }, [state.players.length, state.activePlayerIndex, selectedViewIndex]);
+
   const isTurnGated =
     currentSeat !== 'all' &&
     currentSeat !== 'spectator' &&
@@ -277,6 +297,8 @@ export const App: React.FC = () => {
     setCurrentSeat(seat);
     if (typeof seat === 'number') {
       setSelectedViewIndex(seat);
+    } else {
+      setSelectedViewIndex(newGame.activePlayerIndex || 0);
     }
     setInGame(true);
 
@@ -304,6 +326,8 @@ export const App: React.FC = () => {
     setCurrentSeat(seat);
     if (typeof seat === 'number' && loaded.players[seat]) {
       setSelectedViewIndex(seat);
+    } else {
+      setSelectedViewIndex(loaded.activePlayerIndex || 0);
     }
     setInGame(true);
 
@@ -325,6 +349,8 @@ export const App: React.FC = () => {
     setCurrentSeat(seat);
     if (typeof seat === 'number' && state.players[seat]) {
       setSelectedViewIndex(seat);
+    } else {
+      setSelectedViewIndex(state.activePlayerIndex || 0);
     }
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -986,14 +1012,25 @@ export const App: React.FC = () => {
     setPlannedMoves((prev) => [...prev, newMove]);
 
     // Pinning or speed limit check
-    const isHostile =
-      destSec.id !== currentSimSector.id &&
-      (destSec.ancientsCount > 0 ||
-        destSec.hasGCDS ||
-        destSec.ships.some((sh) => sh.ownerId !== activePlayer.id));
+    const nextPlannedMoves = [...plannedMoves, newMove];
+    const nextPinningState = computePinningState(state, activePlayer.id, nextPlannedMoves);
+    const isPinnedInDest = nextPinningState.isShipPinned(currentMoveShip.id);
+    const isBlackHoleTerminated = Boolean(destSec.isBlackHole && destSec.id !== currentSimSector.id);
 
-    if (isHostile || stepNumber >= currentShipMaxSteps) {
+    if (isPinnedInDest || isBlackHoleTerminated || stepNumber >= currentShipMaxSteps) {
       setActiveActivationIndex((prev) => prev + 1);
+      // Auto-select next unpinned movable ship if available for next activation
+      const nextMovable = playerShips.find((ps) => {
+        if (ps.ship.id === currentMoveShip.id) return false;
+        if (nextPinningState.isShipPinned(ps.ship.id)) return false;
+        const bp = activePlayer.blueprints[ps.ship.type];
+        const stats = bp ? calculateBlueprintStats(bp) : null;
+        const spd = (stats ? stats.totalDriveSpeed : 1) + (stats?.hasJumpDrive ? 1 : 0);
+        return spd > 0;
+      });
+      if (nextMovable) {
+        setSelectedMoveShipId(nextMovable.ship.id);
+      }
     }
   };
 
@@ -1040,15 +1077,14 @@ export const App: React.FC = () => {
     const actMoves = nextPlanned.filter((m) => m.activationIndex === lastMove.activationIndex);
     const ship = playerShips.find((p) => p.ship.id === lastMove.shipId)?.ship;
     const bp = ship ? activePlayer.blueprints[ship.type] : null;
-    const spd = bp ? calculateBlueprintStats(bp).totalDriveSpeed : 1;
+    const stats = bp ? calculateBlueprintStats(bp) : null;
+    const spd = (stats ? stats.totalDriveSpeed : 1) + (stats?.hasJumpDrive ? 1 : 0);
     const lastDestSec = state.sectors.find((s) => s.id === lastMove.toSectorId);
-    const isHostile =
-      lastDestSec &&
-      (lastDestSec.ancientsCount > 0 ||
-        lastDestSec.hasGCDS ||
-        lastDestSec.ships.some((sh) => sh.ownerId !== activePlayer.id));
+    const pinStateAfterRemoval = computePinningState(state, activePlayer.id, nextPlanned);
+    const isPinned = pinStateAfterRemoval.isShipPinned(lastMove.shipId);
+    const isBlackHole = Boolean(lastDestSec?.isBlackHole && lastDestSec.id !== lastMove.fromSectorId);
 
-    if (isHostile || actMoves.length >= spd) {
+    if (isPinned || isBlackHole || actMoves.length >= spd) {
       setActiveActivationIndex(lastMove.activationIndex + 1);
     } else {
       setActiveActivationIndex(lastMove.activationIndex);

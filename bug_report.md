@@ -156,3 +156,6 @@
 - [x] currently the nebula sector does match the direction when entered, for example enter from the right should in sub3 but it is land in sub1, and we also don't know which sub has ancient and which 2 has discovery tiles (Round 4, ACTION_PHASE, Player: Descendants of Draco, Table #648)
 - [x] after explode, supernova should become empty without the population slots show on them (Round 6, ACTION_PHASE, Player: Rho Indi Syndicate, Table #648)
 - [x] the game stuck in combat mode, says only player player_1 can command their interceptor (Round 6, COMBAT_PHASE, Player: Descendants of Draco, Table #648)
+- [x] in the hot seat viewing mode, when change to the next player, the up left windows should also change to that player by default (Round 2, ACTION_PHASE, Player: Descendants of Draco, Table #284)
+- [x] one cannot exchange ambsador when they are on the same sector, since the aliance will break immediately (Round 5, ACTION_PHASE, Player: Descendants of Draco, Table #284)
+- [x] when moving to a sector with 1 enermy ship, the first ship moved in is pinned, but the second ship should be able to pass through (Round 6, ACTION_PHASE, Player: Orion Hegemony, Table #514)

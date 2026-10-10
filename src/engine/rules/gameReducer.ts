@@ -218,6 +218,23 @@ export function canExchangeAmbassadors(
     return { canExchange: false, reason: `${p2.name} has no population cubes available on their tracks.` };
   }
 
+  // Rulebook p. 15 (Diplomatic Relations):
+  // Neither player may have any Ships in a Sector where the other player has Ships, Control (Influence Disc), or Population Cubes.
+  const hasSharedSectorConflict = state.sectors.some((s) => {
+    const p1HasShips = s.ships.some((sh) => sh.ownerId === p1.id);
+    const p2HasShips = s.ships.some((sh) => sh.ownerId === p2.id);
+    const p1Present = s.discOwner === p1.id || p1HasShips || s.planets.some((p) => p.colonizedBy === p1.id);
+    const p2Present = s.discOwner === p2.id || p2HasShips || s.planets.some((p) => p.colonizedBy === p2.id);
+
+    return (p1HasShips && p2Present) || (p2HasShips && p1Present);
+  });
+  if (hasSharedSectorConflict) {
+    return {
+      canExchange: false,
+      reason: 'Cannot establish diplomatic relations while ships are present in the same sector as the other player.',
+    };
+  }
+
   const p1Sectors = state.sectors.filter((s) => s.discOwner === p1.id || s.ships.some((shp) => shp.ownerId === p1.id));
   const p2Sectors = state.sectors.filter((s) => s.discOwner === p2.id || s.ships.some((shp) => shp.ownerId === p2.id));
   const hasWormholeGen =
@@ -225,7 +242,7 @@ export function canExchangeAmbassadors(
     playerHasWormholeGenerator(p2);
 
   const areConnected = p1Sectors.some((s1) =>
-    p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen, state.warpedUniverse?.conduits))
+    p2Sectors.some((s2) => s1.id !== s2.id && areSectorsConnected(s1, s2, hasWormholeGen, state.warpedUniverse?.conduits))
   );
   if (!areConnected) {
     return { canExchange: false, reason: 'Players must control adjacent or connected sectors via wormholes/warp portals to establish diplomacy.' };
@@ -868,7 +885,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           list.push(m);
           grouped.set(m.activationIndex!, list);
         }
-        for (const [idx, steps] of grouped) {
+        const sortedEntries = Array.from(grouped.entries()).sort(([a], [b]) => a - b);
+        for (const [idx, steps] of sortedEntries) {
           const firstShip = steps[0]!.shipId;
           if (steps.some((s) => s.shipId !== firstShip)) {
             return { valid: false, error: 'A single move activation can only move one ship.' };
@@ -1311,6 +1329,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Only the invited player can respond to this proposal.' };
       }
       if (action.accept) {
+        const initiator = state.players.find((p) => p.id === state.pendingDiplomacyProposal!.initiatorId);
+        if (initiator) {
+          const check = canExchangeAmbassadors(state, initiator.id, player.id);
+          if (!check.canExchange) {
+            return { valid: false, error: check.reason || 'Cannot exchange ambassadors.' };
+          }
+        }
         if (!action.targetCube || player.population[action.targetCube].cubesOnBoard <= 0) {
           return { valid: false, error: `${player.name} has no available population cubes on the ${action.targetCube} track.` };
         }
@@ -2559,8 +2584,11 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         stepsByActivation[actIdx]!.push(step);
       }
 
-      for (const actIdxStr of Object.keys(stepsByActivation)) {
-        const actSteps = stepsByActivation[Number(actIdxStr)]!;
+      const sortedActKeys = Object.keys(stepsByActivation)
+        .map(Number)
+        .sort((a, b) => a - b);
+      for (const actIdx of sortedActKeys) {
+        const actSteps = stepsByActivation[actIdx]!;
         for (const step of actSteps) {
           const fromSector = newState.sectors.find((s) => s.id === step.fromSectorId)!;
           const toSector = newState.sectors.find((s) => s.id === step.toSectorId)!;
@@ -2770,6 +2798,12 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       const responder = player;
 
       if (action.accept && initiator) {
+        const check = canExchangeAmbassadors(newState, initiator.id, responder.id);
+        if (!check.canExchange) {
+          newState.pendingDiplomacyProposal = null;
+          addLog(`🤝 Diplomatic proposal between ${initiator.name} and ${responder.name} cancelled: ${check.reason}`, 'action');
+          return { success: false, newState: state, error: check.reason || 'Cannot exchange ambassadors.' };
+        }
         const initCube = proposal.initiatorCube;
         const tgtCube = action.targetCube || 'money';
 

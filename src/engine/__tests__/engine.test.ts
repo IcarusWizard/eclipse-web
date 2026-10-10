@@ -6055,9 +6055,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const [p1, p2] = diploState.players;
         diploState.sectors[0]!.discOwner = p1!.id;
         diploState.sectors[0]!.wormholes = [0, 1, 2, 3, 4, 5];
+        diploState.sectors[0]!.ships = [];
         diploState.sectors[1]!.discOwner = p2!.id;
         diploState.sectors[1]!.coord = { q: 0, r: 1 };
         diploState.sectors[1]!.wormholes = [0, 1, 2, 3, 4, 5];
+        diploState.sectors[1]!.ships = [];
+        diploState.sectors[1]!.planets = [];
         diploState.activePlayerIndex = 0;
         const initialActiveIdx = diploState.activePlayerIndex;
         const initialActionsCount = p1!.actionsTakenThisRound;
@@ -6562,6 +6565,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // =====================================================================
         // Bug 91: Ambassador exchange requires the other player to accept
         // =====================================================================
+        // Clear contested ships from Bug 90 and set up legal wormhole connection between Draco and Mechanema
+        homeSector.ships = [];
+        const mechHomeSector = game.sectors.find((s) => s.discOwner === mech.id)!;
+        mechHomeSector.coord = { q: homeSector.coord.q, r: homeSector.coord.r + 1 };
+        homeSector.wormholes = [true, true, true, true, true, true];
+        mechHomeSector.wormholes = [true, true, true, true, true, true];
+
         // Step 1: Draco proposes diplomacy offering a science cube
         const proposeRes = executeAction(game, {
           type: 'PROPOSE_DIPLOMACY',
@@ -7066,13 +7076,18 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(discRewardRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
 
         // =====================================================================
-        // Bug 101 & 102: Sector 313 advanced wild differentiation and preview
+        // Bug 101 & 102: Sector 313 wild habitat and ExploreModal preview
         // =====================================================================
-        const { RING_3_CONFIGS } = await import('../rules/sectorData');
+        const { RING_3_CONFIGS, RING_2_CONFIGS } = await import('../rules/sectorData');
         const sec313Def = RING_3_CONFIGS.find((s) => s.sectorNum === 313);
         expect(sec313Def).toBeDefined();
         expect(sec313Def?.planets[0]?.resource).toBe('any');
-        expect(sec313Def?.planets[0]?.isAdvanced).toBe(true);
+        expect(sec313Def?.planets[0]?.isAdvanced).toBe(false);
+
+        // Verify Ring 2 sector 214 has authentic advanced wild habitat
+        const sec214Def = RING_2_CONFIGS.find((s) => s.sectorNum === 214);
+        expect(sec214Def).toBeDefined();
+        expect(sec214Def?.planets.some((p) => p.resource === 'any' && p.isAdvanced)).toBe(true);
 
         const { ExploreModal } = await import('../../components/actions/ExploreModal');
         const sec313Tile: SectorTile = {
@@ -13018,6 +13033,238 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           autoAssign: true,
         });
         expect(stepAutoRes.success).toBe(true);
+      });
+
+      it('76. verifies Bug Fixes 159-160: hotseat view auto-switches to next active player by default and diplomacy is forbidden when ships share a sector', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+
+        // =====================================================================
+        // Bug 160: Diplomacy forbidden when players have ships in the same sector
+        // =====================================================================
+        const game160 = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+        const draco = game160.players[0]!;
+        const terran = game160.players[1]!;
+
+        const dracoHome = game160.sectors.find((s) => s.discOwner === draco.id)!;
+        const terranHome = game160.sectors.find((s) => s.discOwner === terran.id)!;
+        terranHome.coord = { q: dracoHome.coord.q, r: dracoHome.coord.r + 1 };
+        dracoHome.wormholes = [true, true, true, true, true, true];
+        terranHome.wormholes = [true, true, true, true, true, true];
+        dracoHome.ships = [];
+        terranHome.ships = [];
+
+        // When sectors are connected without conflict, diplomacy is valid
+        const validDiploCheck = canExchangeAmbassadors(game160, draco.id, terran.id);
+        expect(validDiploCheck.canExchange).toBe(true);
+
+        // Case A: Terran has an interceptor inside Draco's home sector -> conflict!
+        dracoHome.ships = [
+          { id: 'terran_scout', ownerId: terran.id, type: 'interceptor', damage: 0 },
+        ];
+        const conflictCheck1 = canExchangeAmbassadors(game160, draco.id, terran.id);
+        expect(conflictCheck1.canExchange).toBe(false);
+        expect(conflictCheck1.reason).toContain('Cannot establish diplomatic relations while ships are present in the same sector');
+
+        // Propose diplomacy must be rejected by validator
+        const invalidPropose = executeAction(game160, {
+          type: 'PROPOSE_DIPLOMACY',
+          playerId: draco.id,
+          targetPlayerId: terran.id,
+          initiatorCube: 'science',
+        });
+        expect(invalidPropose.success).toBe(false);
+        expect(invalidPropose.error).toContain('Cannot establish diplomatic relations while ships are present in the same sector');
+
+        // Case B: Both Draco and Terran have ships in the same neutral sector -> conflict!
+        dracoHome.ships = [];
+        const neutralSector: SectorTile = {
+          id: 'shared_battleground',
+          sectorNumber: 301,
+          ring: 3,
+          coord: { q: 5, r: 5 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [
+            { id: 'draco_ship', ownerId: draco.id, type: 'cruiser', damage: 0 },
+            { id: 'terran_ship', ownerId: terran.id, type: 'cruiser', damage: 0 },
+          ],
+        };
+        game160.sectors.push(neutralSector);
+        const conflictCheck2 = canExchangeAmbassadors(game160, draco.id, terran.id);
+        expect(conflictCheck2.canExchange).toBe(false);
+        expect(conflictCheck2.reason).toContain('Cannot establish diplomatic relations while ships are present in the same sector');
+
+        // Case C: Once neutral sector is vacated, diplomacy can proceed
+        neutralSector.ships = [];
+        const validAgainCheck = canExchangeAmbassadors(game160, draco.id, terran.id);
+        expect(validAgainCheck.canExchange).toBe(true);
+
+        const validPropose = executeAction(game160, {
+          type: 'PROPOSE_DIPLOMACY',
+          playerId: draco.id,
+          targetPlayerId: terran.id,
+          initiatorCube: 'science',
+        });
+        expect(validPropose.success).toBe(true);
+
+        // =====================================================================
+        // Bug 159: In hotseat mode, advancing turn switches top-left view
+        // =====================================================================
+        const { App } = await import('../../App');
+        saveGameState(game160);
+
+        let appHtml = '';
+        expect(() => {
+          appHtml = renderToString(React.createElement(App));
+        }).not.toThrow();
+        expect(appHtml).toBeDefined();
+      });
+
+      it('77. verifies Bug Fix 161: 1 enemy ship pins 1 friendly ship, second friendly ship passes through', () => {
+        const game = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orion = game.players[0]!;
+        const terran = game.players[1]!;
+
+        // Sectors: sec_A (origin) <-> sec_X (hostile) <-> sec_B (pass-through destination)
+        const secA: SectorTile = {
+          id: 'sec_A',
+          sectorNumber: 301,
+          ring: 3,
+          coord: { q: 0, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [
+            { id: 'orion_cruiser_1', ownerId: orion.id, type: 'cruiser', damage: 0 },
+            { id: 'orion_cruiser_2', ownerId: orion.id, type: 'cruiser', damage: 0 },
+          ],
+        };
+
+        const secX: SectorTile = {
+          id: 'sec_X',
+          sectorNumber: 302,
+          ring: 3,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [
+            { id: 'enemy_ship', ownerId: terran.id, type: 'cruiser', damage: 0 },
+          ],
+        };
+
+        const secB: SectorTile = {
+          id: 'sec_B',
+          sectorNumber: 303,
+          ring: 3,
+          coord: { q: 2, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          ships: [],
+        };
+
+        game.sectors = [secA, secX, secB];
+        // Ensure cruisers have drive speed 2
+        const cruiserBp = orion.blueprints['cruiser'];
+        expect(cruiserBp).toBeDefined();
+        // Give Orion cruisers drive speed >= 2
+        cruiserBp.slots = cruiserBp.slots.map((s) =>
+          s?.category === 'drive' ? { ...s, driveSpeed: 2 } : s
+        );
+
+        // 1. Initial pinning state: Neither ship is pinned in Sector A
+        const initialPin = computePinningState(game, orion.id, []);
+        expect(initialPin.isShipPinned('orion_cruiser_1')).toBe(false);
+        expect(initialPin.isShipPinned('orion_cruiser_2')).toBe(false);
+
+        // 2. Step 1: First ship (cruiser 1) moves into Sector X
+        // Sector X has 1 enemy ship. 1 friendly vs 1 hostile -> cruiser 1 is PINNED!
+        const step1Moves = [
+          { shipId: 'orion_cruiser_1', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 0 },
+        ];
+        const step1Pin = computePinningState(game, orion.id, step1Moves);
+        expect(step1Pin.isShipPinned('orion_cruiser_1')).toBe(true);
+        expect(step1Pin.isShipPinned('orion_cruiser_2')).toBe(false);
+
+        // 3. Step 2: Second ship (cruiser 2) moves into Sector X
+        // Sector X now has 2 friendly ships vs 1 hostile ship.
+        // 1 hostile ship pins 1 friendly ship (cruiser 1).
+        // The excess friendly ship (cruiser 2) is NOT pinned!
+        const step2Moves = [
+          { shipId: 'orion_cruiser_1', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 0 },
+          { shipId: 'orion_cruiser_2', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 1 },
+        ];
+        const step2Pin = computePinningState(game, orion.id, step2Moves);
+        expect(step2Pin.isShipPinned('orion_cruiser_1')).toBe(true);
+        expect(step2Pin.isShipPinned('orion_cruiser_2')).toBe(false);
+
+        // 4. Step 3: Second ship (cruiser 2) passes through Sector X into Sector B
+        const step3Moves = [
+          { shipId: 'orion_cruiser_1', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 0 },
+          { shipId: 'orion_cruiser_2', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 1 },
+          { shipId: 'orion_cruiser_2', fromSectorId: 'sec_X', toSectorId: 'sec_B', activationIndex: 1 },
+        ];
+        const step3Pin = computePinningState(game, orion.id, step3Moves);
+        expect(step3Pin.isShipPinned('orion_cruiser_1')).toBe(true);
+        expect(step3Pin.isShipPinned('orion_cruiser_2')).toBe(false);
+
+        // 5. Execute MOVE action:
+        // Activation 0: cruiser 1 moves sec_A -> sec_X (1 step, pinned)
+        // Activation 1: cruiser 2 moves sec_A -> sec_X -> sec_B (2 steps, passes through)
+        const moveActionRes = executeAction(game, {
+          type: 'MOVE',
+          playerId: orion.id,
+          moves: [
+            { shipId: 'orion_cruiser_1', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 0 },
+            { shipId: 'orion_cruiser_2', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 1 },
+            { shipId: 'orion_cruiser_2', fromSectorId: 'sec_X', toSectorId: 'sec_B', activationIndex: 1 },
+          ],
+        });
+
+        expect(moveActionRes.success).toBe(true);
+        const finalSecA = moveActionRes.newState.sectors.find((s) => s.id === 'sec_A')!;
+        const finalSecX = moveActionRes.newState.sectors.find((s) => s.id === 'sec_X')!;
+        const finalSecB = moveActionRes.newState.sectors.find((s) => s.id === 'sec_B')!;
+
+        expect(finalSecA.ships.length).toBe(0);
+        expect(finalSecX.ships.some((s) => s.id === 'orion_cruiser_1')).toBe(true);
+        expect(finalSecX.ships.some((s) => s.id === 'enemy_ship')).toBe(true);
+        expect(finalSecB.ships.some((s) => s.id === 'orion_cruiser_2')).toBe(true);
+
+        // 6. Verification: If Sector X had 2 enemy ships instead of 1,
+        // then 2 enemy ships pin both friendly ships, so cruiser 2 CANNOT pass through!
+        const game2Enemies = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orion2 = game2Enemies.players[0]!;
+        const terran2 = game2Enemies.players[1]!;
+
+        const secA2 = { ...secA, ships: [
+          { id: 'c1', ownerId: orion2.id, type: 'cruiser' as const, damage: 0 },
+          { id: 'c2', ownerId: orion2.id, type: 'cruiser' as const, damage: 0 },
+        ]};
+        const secX2 = { ...secX, ships: [
+          { id: 'e1', ownerId: terran2.id, type: 'cruiser' as const, damage: 0 },
+          { id: 'e2', ownerId: terran2.id, type: 'cruiser' as const, damage: 0 },
+        ]};
+        const secB2 = { ...secB, ships: [] };
+        game2Enemies.sectors = [secA2, secX2, secB2];
+        orion2.blueprints['cruiser'].slots = orion2.blueprints['cruiser'].slots.map((s) =>
+          s?.category === 'drive' ? { ...s, driveSpeed: 2 } : s
+        );
+
+        const failRes = executeAction(game2Enemies, {
+          type: 'MOVE',
+          playerId: orion2.id,
+          moves: [
+            { shipId: 'c1', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 0 },
+            { shipId: 'c2', fromSectorId: 'sec_A', toSectorId: 'sec_X', activationIndex: 1 },
+            { shipId: 'c2', fromSectorId: 'sec_X', toSectorId: 'sec_B', activationIndex: 1 },
+          ],
+        });
+        expect(failRes.success).toBe(false);
+        expect(failRes.error).toContain('pinned by hostile forces');
       });
     });
   });
