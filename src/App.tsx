@@ -113,6 +113,7 @@ export const App: React.FC = () => {
   const [isMinorSpeciesOpen, setIsMinorSpeciesOpen] = useState<boolean>(false);
   const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
   const [pulsarSectorIdForModal, setPulsarSectorIdForModal] = useState<string | null>(null);
+  const [dismissedIntelTimestamp, setDismissedIntelTimestamp] = useState<number | null>(null);
   const [activePulsarSectorId, setActivePulsarSectorId] = useState<string | null>(null);
   const [selectedBlackHoleShipForReturn, setSelectedBlackHoleShipForReturn] = useState<BlackHoleDelayedShip | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
@@ -378,6 +379,15 @@ export const App: React.FC = () => {
 
   const handleEmergencyTradeBankruptcy = (from: 'materials' | 'science') => {
     if (!state.pendingBankruptcy) return;
+    if (
+      currentSeat !== 'all' &&
+      currentSeat !== 'spectator' &&
+      typeof currentSeat === 'number' &&
+      state.players[currentSeat]?.id !== state.pendingBankruptcy.playerId
+    ) {
+      showToast('It is not your turn to resolve treasury deficit!');
+      return;
+    }
     const player =
       state.players.find((p) => p.id === state.pendingBankruptcy!.playerId) || activePlayer;
     const ratio = player.faction.tradeRatio || 2;
@@ -405,6 +415,15 @@ export const App: React.FC = () => {
 
   const handleAbandonSectorBankruptcy = (sectorId: string) => {
     if (!state.pendingBankruptcy) return;
+    if (
+      currentSeat !== 'all' &&
+      currentSeat !== 'spectator' &&
+      typeof currentSeat === 'number' &&
+      state.players[currentSeat]?.id !== state.pendingBankruptcy.playerId
+    ) {
+      showToast('It is not your turn to resolve treasury deficit!');
+      return;
+    }
     const result = executeAction(state, {
       type: 'ABANDON_SECTOR_BANKRUPTCY',
       playerId: state.pendingBankruptcy.playerId,
@@ -432,6 +451,14 @@ export const App: React.FC = () => {
   }, [state.pendingBankruptcy]);
 
   const handleStageBankruptcyTrade = (from: 'materials' | 'science', delta: 1 | -1) => {
+    if (
+      currentSeat !== 'all' &&
+      currentSeat !== 'spectator' &&
+      typeof currentSeat === 'number' &&
+      state.players[currentSeat]?.id !== state.pendingBankruptcy?.playerId
+    ) {
+      return;
+    }
     setStagedBankruptcyTrades((prev) => ({
       ...prev,
       [from]: Math.max(0, prev[from] + delta),
@@ -439,6 +466,14 @@ export const App: React.FC = () => {
   };
 
   const handleToggleAbandonSectorBankruptcy = (sectorId: string) => {
+    if (
+      currentSeat !== 'all' &&
+      currentSeat !== 'spectator' &&
+      typeof currentSeat === 'number' &&
+      state.players[currentSeat]?.id !== state.pendingBankruptcy?.playerId
+    ) {
+      return;
+    }
     setStagedBankruptcySectors((prev) =>
       prev.includes(sectorId) ? prev.filter((id) => id !== sectorId) : [...prev, sectorId]
     );
@@ -454,6 +489,15 @@ export const App: React.FC = () => {
     abandonedSectorIds: string[];
   }) => {
     if (!state.pendingBankruptcy) return;
+    if (
+      currentSeat !== 'all' &&
+      currentSeat !== 'spectator' &&
+      typeof currentSeat === 'number' &&
+      state.players[currentSeat]?.id !== state.pendingBankruptcy.playerId
+    ) {
+      showToast('It is not your turn to resolve treasury deficit!');
+      return;
+    }
     const playerId = state.pendingBankruptcy.playerId;
     let currentState = state;
 
@@ -539,6 +583,16 @@ export const App: React.FC = () => {
     if (!draft) return;
     const currentDrafterId = draft.draftOrder[draft.currentDraftIndex];
     if (!currentDrafterId) return;
+
+    if (
+      currentSeat !== 'all' &&
+      currentSeat !== 'spectator' &&
+      typeof currentSeat === 'number' &&
+      state.players[currentSeat]?.id !== currentDrafterId
+    ) {
+      showToast('It is not your turn to draft a faction!');
+      return;
+    }
 
     const res = executeAction(state, {
       type: 'DRAFT_FACTION',
@@ -1311,6 +1365,15 @@ export const App: React.FC = () => {
     chosenResource?: 'money' | 'science' | 'material'
   ) => {
     if (!state.pendingDiscovery) return;
+    if (
+      currentSeat !== 'all' &&
+      currentSeat !== 'spectator' &&
+      typeof currentSeat === 'number' &&
+      state.players[currentSeat]?.id !== state.pendingDiscovery.playerId
+    ) {
+      showToast('It is not your turn to resolve this Discovery Tile!');
+      return;
+    }
     const res = executeAction(state, {
       type: 'DISCOVERY_CHOICE',
       playerId: state.pendingDiscovery.playerId,
@@ -1560,6 +1623,15 @@ export const App: React.FC = () => {
     planetResourceChoices?: Record<number, 'money' | 'science' | 'material'>
   ) => {
     if (!state.pendingCombatConquest) return;
+    if (
+      currentSeat !== 'all' &&
+      currentSeat !== 'spectator' &&
+      typeof currentSeat === 'number' &&
+      state.players[currentSeat]?.id !== state.pendingCombatConquest.winnerPlayerId
+    ) {
+      showToast('It is not your turn to resolve combat conquest!');
+      return;
+    }
     const res = executeAction(state, {
       type: 'COMBAT_CONQUEST',
       playerId: state.pendingCombatConquest.winnerPlayerId,
@@ -1924,6 +1996,8 @@ export const App: React.FC = () => {
           activePlayer={activePlayer}
           players={state.players}
           sectors={state.sectors}
+          currentSeat={currentSeat}
+          phase={state.phase}
           techSupply={state.techSupply}
           techBagCount={state.techBag.length}
           onResearchTech={handleResearchTech}
@@ -2056,6 +2130,7 @@ export const App: React.FC = () => {
       {state.phase === 'DRAFT_PHASE' && (
         <FactionDraftModal
           state={state}
+          currentSeat={currentSeat}
           onDraftFaction={handleDraftFaction}
         />
       )}
@@ -2078,21 +2153,37 @@ export const App: React.FC = () => {
         <CombatConquestModal
           state={state}
           conquest={state.pendingCombatConquest}
+          currentSeat={currentSeat}
           onConfirm={handleCombatConquest}
         />
       )}
 
       {!state.pendingReputationDraw && !state.pendingCombatConquest && state.pendingDiscovery && (
-        <DiscoveryChoiceModal
-          discovery={state.pendingDiscovery.discovery}
-          player={
-            state.players.find((p) => p.id === state.pendingDiscovery!.playerId) ||
-            activePlayer
-          }
-          techSupply={state.techSupply}
-          sectors={state.sectors}
-          onChoice={handleDiscoveryChoice}
-        />
+        currentSeat === 'all' ||
+        (typeof currentSeat === 'number' &&
+          state.players[currentSeat]?.id === state.pendingDiscovery.playerId) ? (
+          <DiscoveryChoiceModal
+            discovery={state.pendingDiscovery.discovery}
+            player={
+              state.players.find((p) => p.id === state.pendingDiscovery!.playerId) ||
+              activePlayer
+            }
+            techSupply={state.techSupply}
+            sectors={state.sectors}
+            onChoice={handleDiscoveryChoice}
+          />
+        ) : (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
+            <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
+            <span>
+              Waiting for{' '}
+              <strong className="text-indigo-300">
+                {state.players.find((p) => p.id === state.pendingDiscovery!.playerId)?.name || 'Commander'}
+              </strong>{' '}
+              to resolve Discovery Tile ({state.pendingDiscovery.discovery.name})...
+            </span>
+          </div>
+        )
       )}
 
       {state.pendingArtifactReward && (
@@ -2108,24 +2199,40 @@ export const App: React.FC = () => {
       )}
 
       {state.pendingBankruptcy && (
-        <BankruptcyModal
-          player={
-            state.players.find((p) => p.id === state.pendingBankruptcy!.playerId) ||
-            activePlayer
-          }
-          deficit={state.pendingBankruptcy.deficit}
-          sectors={state.sectors}
-          onAbandonSector={handleAbandonSectorBankruptcy}
-          onEmergencyTrade={handleEmergencyTradeBankruptcy}
-          onSelectSector={(s) => setSelectedSector(s)}
-          selectedSectorId={selectedSector?.id || null}
-          stagedTrades={stagedBankruptcyTrades}
-          stagedAbandonedSectorIds={stagedBankruptcySectors}
-          onStageTrade={handleStageBankruptcyTrade}
-          onToggleAbandonSector={handleToggleAbandonSectorBankruptcy}
-          onResetPlan={handleResetBankruptcyPlan}
-          onConfirmPlan={handleConfirmBankruptcyPlan}
-        />
+        currentSeat === 'all' ||
+        (typeof currentSeat === 'number' &&
+          state.players[currentSeat]?.id === state.pendingBankruptcy.playerId) ? (
+          <BankruptcyModal
+            player={
+              state.players.find((p) => p.id === state.pendingBankruptcy!.playerId) ||
+              activePlayer
+            }
+            deficit={state.pendingBankruptcy.deficit}
+            sectors={state.sectors}
+            onAbandonSector={handleAbandonSectorBankruptcy}
+            onEmergencyTrade={handleEmergencyTradeBankruptcy}
+            onSelectSector={(s) => setSelectedSector(s)}
+            selectedSectorId={selectedSector?.id || null}
+            stagedTrades={stagedBankruptcyTrades}
+            stagedAbandonedSectorIds={stagedBankruptcySectors}
+            onStageTrade={handleStageBankruptcyTrade}
+            onToggleAbandonSector={handleToggleAbandonSectorBankruptcy}
+            onResetPlan={handleResetBankruptcyPlan}
+            onConfirmPlan={handleConfirmBankruptcyPlan}
+          />
+        ) : (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-rose-500/80 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-pulse">
+            <Coins className="w-5 h-5 text-rose-400 shrink-0" />
+            <div>
+              <div className="font-bold text-rose-300">
+                Treasury Deficit Resolution (Upkeep Phase)
+              </div>
+              <div className="text-xs text-slate-300">
+                Waiting for <strong className="text-white">{state.players.find((p) => p.id === state.pendingBankruptcy!.playerId)?.name || 'Player'}</strong> to resolve treasury deficit ({state.pendingBankruptcy.deficit} Credits)...
+              </div>
+            </div>
+          </div>
+        )
       )}
 
       {state.phase === 'GAME_OVER' && (
@@ -2302,24 +2409,35 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* Bug 87: Other player action highlight banner */}
+      {/* Bug 87 & Bug 169: Other player action highlight banner */}
       {state.lastConfirmedAction &&
+        state.lastConfirmedAction.timestamp !== dismissedIntelTimestamp &&
         (currentSeat !== 'all' &&
           (typeof currentSeat === 'number'
             ? state.players[currentSeat]?.id !== state.lastConfirmedAction.playerId
             : true)) &&
         Date.now() - state.lastConfirmedAction.timestamp < 12000 && (
-          <div className="fixed top-20 right-4 z-40 max-w-sm w-full animate-fade-in pointer-events-none">
-            <div className="bg-slate-900/95 border border-amber-500/60 rounded-xl p-3 shadow-2xl backdrop-blur-md flex items-start gap-2.5 text-slate-200">
-              <span className="text-lg">✨</span>
-              <div className="min-w-0">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
-                  Galaxy Intel Update
-                </div>
-                <div className="text-xs font-semibold leading-tight text-slate-100">
-                  {state.lastConfirmedAction.summary}
+          <div className="fixed top-24 right-4 z-40 max-w-sm w-full animate-fade-in pointer-events-auto">
+            <div className="bg-slate-900/95 border border-amber-500/60 rounded-xl p-3 shadow-2xl backdrop-blur-md flex items-start justify-between gap-2.5 text-slate-200">
+              <div className="flex items-start gap-2.5 min-w-0">
+                <span className="text-lg shrink-0">✨</span>
+                <div className="min-w-0">
+                  <div className="text-[10px] font-bold uppercase tracking-wider text-amber-400">
+                    Galaxy Intel Update
+                  </div>
+                  <div className="text-xs font-semibold leading-tight text-slate-100">
+                    {state.lastConfirmedAction.summary}
+                  </div>
                 </div>
               </div>
+              <button
+                type="button"
+                onClick={() => setDismissedIntelTimestamp(state.lastConfirmedAction!.timestamp)}
+                className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition shrink-0 cursor-pointer"
+                title="Close Intel"
+              >
+                <X className="w-4 h-4" />
+              </button>
             </div>
           </div>
         )}

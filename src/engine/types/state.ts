@@ -213,6 +213,11 @@ export interface GameState {
   pendingExilesOrbitalSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];
+  sectorCombatRecords?: Record<string, {
+    participatingPlayerIds: string[];
+    retreatedPlayerIds: string[];
+    destroyedShips: { type: string; killerId: string; ownerId: string }[];
+  }>;
   traitorPlayerId?: string;
   log: GameLogEntry[];
   winnerId?: string;

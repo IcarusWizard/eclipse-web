@@ -13266,6 +13266,180 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(failRes.success).toBe(false);
         expect(failRes.error).toContain('pinned by hostile forces');
       });
+
+      it('78. verifies Bug Fixes 162-170: multi-combat reputation pooling per sector, discovery tile log & bag removal, and explore multi-sector adjacency', () => {
+        // --- 1. Bug 170: Multi-combat in same sector pools kills and draws rep tiles only after all duels end ---
+        const game = createInitialGame(3, ['planta', 'orion_hegemony', 'terran_federation']);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+        const p3 = game.players[2]!;
+
+        const combatSec: SectorTile = {
+          id: 'sec_multi_combat',
+          sectorNumber: 301,
+          ring: 3,
+          coord: { q: 1, r: -2 },
+          rotation: 0,
+          victoryPoints: 1,
+          planets: [],
+          wormholes: [true, true, true, true, true, true],
+          ships: [
+            { id: 's1', ownerId: p1.id, type: 'cruiser', damage: 0 },
+            { id: 's2', ownerId: p2.id, type: 'interceptor', damage: 0 },
+            { id: 's3', ownerId: p3.id, type: 'interceptor', damage: 0 },
+          ],
+          playerEntryOrder: [p1.id, p2.id, p3.id],
+        };
+        game.sectors.push(combatSec);
+        game.phase = 'COMBAT_PHASE';
+
+        // P1 fights P2 first (first duel)
+        // Simulate P1 killing P2's interceptor and P2 eliminated from battle
+        game.activeCombat = {
+          sectorId: combatSec.id,
+          round: 1,
+          step: 'cannons',
+          units: [],
+          currentInitiative: 2,
+          currentUnitIndex: 0,
+          pendingDamage: [],
+          combatLog: [],
+          participatingPlayerIds: [p1.id, p2.id],
+          destroyedShips: [
+            { id: 's2', ownerId: p2.id, killerId: p1.id, type: 'interceptor' },
+          ],
+        };
+        combatSec.ships = combatSec.ships.filter((s) => s.id !== 's2'); // P2 dead, P1 and P3 remain
+
+        // Resolve first duel
+        (game.activeCombat as any).winnerOwnerId = p1.id;
+        const endDuel1Res = executeAction(game, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+          sectorId: combatSec.id,
+          concludeCombat: true,
+        });
+        expect(endDuel1Res.success).toBe(true);
+
+        // Since P3 is still in the sector with P1, more combats remain!
+        // Reputation tiles should NOT be drawn yet!
+        expect(endDuel1Res.newState.pendingReputationDraw).toBeFalsy();
+        expect(endDuel1Res.newState.sectorCombatRecords?.[combatSec.id]).toBeDefined();
+        expect(endDuel1Res.newState.sectorCombatRecords![combatSec.id]!.participatingPlayerIds).toContain(p1.id);
+        expect(endDuel1Res.newState.sectorCombatRecords![combatSec.id]!.participatingPlayerIds).toContain(p2.id);
+        expect(endDuel1Res.newState.sectorCombatRecords![combatSec.id]!.destroyedShips.length).toBe(1);
+
+        // Now simulate second duel: P1 vs P3. P1 destroys P3's interceptor.
+        endDuel1Res.newState.activeCombat = {
+          sectorId: combatSec.id,
+          round: 1,
+          step: 'cannons',
+          units: [],
+          currentInitiative: 2,
+          currentUnitIndex: 0,
+          pendingDamage: [],
+          combatLog: [],
+          participatingPlayerIds: [p1.id, p3.id],
+          destroyedShips: [
+            { id: 's3', ownerId: p3.id, killerId: p1.id, type: 'interceptor' },
+          ],
+        };
+        const curCombatSec = endDuel1Res.newState.sectors.find((s) => s.id === combatSec.id)!;
+        curCombatSec.ships = curCombatSec.ships.filter((s) => s.id !== 's3'); // P3 dead, P1 is sole survivor!
+
+        const endDuel2Res = executeAction(endDuel1Res.newState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1.id,
+          sectorId: combatSec.id,
+          concludeCombat: true,
+        });
+        expect(endDuel2Res.success).toBe(true);
+
+        // All duels in this sector finished!
+        // P1 killed 2 interceptors across the battles in this sector (1 kill in duel 1 + 1 kill in duel 2)
+        // P1 should draw 1 (participation) + 2 (kills) = 3 reputation tiles!
+        expect(endDuel2Res.newState.pendingReputationDraw).not.toBeNull();
+        expect(endDuel2Res.newState.pendingReputationDraw!.playerId).toBe(p1.id);
+        expect(endDuel2Res.newState.pendingReputationDraw!.drawnTiles.length).toBe(3);
+
+        // Sector combat record should be cleaned up
+        expect(endDuel2Res.newState.sectorCombatRecords?.[combatSec.id]).toBeUndefined();
+
+        // --- 2. Bug 163 & Bug 165: Discovery tile in public log & kept for VP ---
+        const discGame = createInitialGame(2, ['planta', 'orion_hegemony']);
+        const discPlayer = discGame.players[0]!;
+        const discBagCountBefore = discGame.discoveryBag.length;
+
+        // Reveal a discovery tile via DISCOVERY_CHOICE
+        discGame.pendingDiscovery = {
+          sectorId: discGame.sectors[0]!.id,
+          playerId: discPlayer.id,
+          discovery: {
+            id: 'disc_ancient_monolith',
+            name: 'Ancient Monolith',
+            description: '+2 Victory Points or instant knowledge',
+          },
+        };
+
+        const keepVpRes = executeAction(discGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: discPlayer.id,
+          sectorId: discGame.sectors[0]!.id,
+          keepForVictoryPoints: true,
+        });
+
+        expect(keepVpRes.success).toBe(true);
+        expect(keepVpRes.newState.players[0]!.keptDiscoveryTiles.length).toBe(1);
+        expect(keepVpRes.newState.players[0]!.keptDiscoveryTiles[0]!.name).toBe('Ancient Monolith');
+        // Bag count should not increase (never returned to bag)
+        expect(keepVpRes.newState.discoveryBag.length).toBe(discBagCountBefore);
+        // Log should record keeping it for 2 VP
+        expect(keepVpRes.newState.log.some((l) => l.message.includes('Ancient Monolith') && l.message.includes('2 Victory Points'))).toBe(true);
+
+        // --- 3. Bug 167: Exploration valid if legally connecting to ANY adjacent controlled sector ---
+        const exploreGame = createInitialGame(2, ['planta', 'orion_hegemony']);
+        const expPlayer = exploreGame.players[0]!;
+        expPlayer.influenceTrack.discsOnTrack = 5;
+
+        // Setup: expPlayer controls Sector A at (0, 1) and Sector B at (1, 0)
+        // Both adjacent to targetCoord (1, 1)
+        const secA: SectorTile = {
+          id: 'sec_adj_A',
+          sectorNumber: 201,
+          ring: 2,
+          coord: { q: 0, r: 1 },
+          rotation: 0,
+          victoryPoints: 1,
+          discOwner: expPlayer.id,
+          planets: [],
+          wormholes: [false, false, true, false, false, false], // wormhole facing (1, 1) or other
+          ships: [],
+        };
+        const secB: SectorTile = {
+          id: 'sec_adj_B',
+          sectorNumber: 202,
+          ring: 2,
+          coord: { q: 1, r: 0 },
+          rotation: 0,
+          victoryPoints: 1,
+          discOwner: expPlayer.id,
+          planets: [],
+          wormholes: [false, false, false, true, false, false], // wormhole facing (1, 1)
+          ships: [],
+        };
+        exploreGame.sectors.push(secA, secB);
+
+        // Explore target (1, 1) from secA's coord
+        const expRes = executeAction(exploreGame, {
+          type: 'EXPLORE',
+          playerId: expPlayer.id,
+          fromCoord: secA.coord,
+          targetCoord: { q: 1, r: 1 },
+          rotation: 0,
+          requireConfirmation: false,
+        });
+        expect(expRes.success).toBe(true);
+      });
     });
   });
 });

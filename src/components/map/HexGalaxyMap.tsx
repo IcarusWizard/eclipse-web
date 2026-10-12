@@ -6,7 +6,9 @@ import {
   getHexCornerPoints,
   getHexEdgeCenter,
   areCoordsEqual,
+  areCoordsAdjacent,
   areSectorsConnected,
+  isLegallyConnectedToPlayerSectors,
   getNeighborCoord,
   hasWormholeOnEdge,
   HEX_DIRECTIONS,
@@ -1985,9 +1987,28 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             const hasWormholeGen =
               activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
             const sourceSector = state.sectors.find((s) => areCoordsEqual(s.coord, pendingExplore.from));
-            const isConnectedToSource = sourceSector
-              ? areSectorsConnected(sourceSector, simulatedTile, hasWormholeGen, state.warpedUniverse?.conduits)
-              : false;
+            const isConnected = isLegallyConnectedToPlayerSectors(
+              state.sectors,
+              pendingExplore.target,
+              simulatedTile,
+              activePlayer?.id,
+              hasWormholeGen,
+              sourceSector,
+              state.warpedUniverse?.conduits
+            );
+
+            const connectedPlayerSectors = state.sectors.filter((s) => {
+              const isAdjacent = areCoordsAdjacent(s.coord, pendingExplore.target);
+              const hasConduit = state.warpedUniverse?.conduits && state.warpedUniverse.conduits.some(
+                (c) =>
+                  (areCoordsEqual(s.coord, c.coordA) && areCoordsEqual(pendingExplore.target, c.coordB)) ||
+                  (areCoordsEqual(s.coord, c.coordB) && areCoordsEqual(pendingExplore.target, c.coordA))
+              );
+              if (!isAdjacent && !hasConduit) return false;
+              const isPlayerSector = s.discOwner === activePlayer?.id || s.ships?.some((ship) => ship.ownerId === activePlayer?.id);
+              if (!isPlayerSector) return false;
+              return areSectorsConnected(s, simulatedTile, hasWormholeGen, state.warpedUniverse?.conduits);
+            });
 
             return (
               <g
@@ -1998,23 +2019,42 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   onRotateExplore?.(1);
                 }}
               >
-                {/* Connection Vector between Origin and Candidate */}
-                <line
-                  x1={fromPixel.x}
-                  y1={fromPixel.y}
-                  x2={x}
-                  y2={y}
-                  stroke={isConnectedToSource ? '#38bdf8' : '#f43f5e'}
-                  strokeWidth="3"
-                  strokeDasharray="6 4"
-                  strokeOpacity="0.8"
-                />
+                {/* Connection Vectors between Connected Player Sectors and Candidate */}
+                {connectedPlayerSectors.length > 0 ? (
+                  connectedPlayerSectors.map((cs) => {
+                    const csPixel = hexToPixel(cs.coord, HEX_RADIUS);
+                    return (
+                      <line
+                        key={`conn_${cs.id}`}
+                        x1={csPixel.x}
+                        y1={csPixel.y}
+                        x2={x}
+                        y2={y}
+                        stroke="#38bdf8"
+                        strokeWidth="3"
+                        strokeDasharray="6 4"
+                        strokeOpacity="0.85"
+                      />
+                    );
+                  })
+                ) : (
+                  <line
+                    x1={fromPixel.x}
+                    y1={fromPixel.y}
+                    x2={x}
+                    y2={y}
+                    stroke="#f43f5e"
+                    strokeWidth="3"
+                    strokeDasharray="6 4"
+                    strokeOpacity="0.8"
+                  />
+                )}
 
                 {/* Outer animated halo ring */}
                 <polygon
                   points={getHexCornerPoints(x, y, HEX_RADIUS + 3)}
                   fill="none"
-                  stroke={isConnectedToSource ? '#06b6d4' : '#fb7185'}
+                  stroke={isConnected ? '#06b6d4' : '#fb7185'}
                   strokeWidth="1.5"
                   strokeOpacity="0.5"
                   className="animate-pulse"
@@ -2024,9 +2064,9 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 <polygon
                   points={getHexCornerPoints(x, y, HEX_RADIUS - 2)}
                   fill={pendingExplore.candidateTile.isNebula ? 'rgba(6, 78, 59, 0.45)' : 'rgba(15, 23, 42, 0.95)'}
-                  stroke={isConnectedToSource ? (pendingExplore.candidateTile.isNebula ? '#10b981' : '#38bdf8') : '#f43f5e'}
+                  stroke={isConnected ? (pendingExplore.candidateTile.isNebula ? '#10b981' : '#38bdf8') : '#f43f5e'}
                   strokeWidth="3"
-                  strokeDasharray={isConnectedToSource ? undefined : '6 4'}
+                  strokeDasharray={isConnected ? undefined : '6 4'}
                   className="transition-colors"
                 />
 
@@ -2244,7 +2284,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     height="24"
                     rx="12"
                     fill="rgba(15, 23, 42, 0.92)"
-                    stroke={isConnectedToSource ? '#38bdf8' : '#f43f5e'}
+                    stroke={isConnected ? '#38bdf8' : '#f43f5e'}
                     strokeWidth="1.2"
                   />
                   <text

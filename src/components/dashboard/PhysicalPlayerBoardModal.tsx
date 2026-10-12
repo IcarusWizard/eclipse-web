@@ -823,6 +823,51 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   })}
                 </div>
               </div>
+
+              {/* Kept Discovery Tiles for VP (Bug 165) */}
+              <div className="bg-slate-900/90 border border-amber-950/80 rounded-xl p-3.5 shadow-md">
+                <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5 mb-3">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-amber-400" />
+                    <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                      KEPT DISCOVERY TILES FOR VICTORY POINTS
+                      <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-600/70 text-amber-300">
+                        {player.keptDiscoveryTiles?.length || 0} Tiles (+{((player.keptDiscoveryTiles?.length || 0) * 2)} VP)
+                      </span>
+                    </h3>
+                  </div>
+                  <span className="text-[11px] text-slate-400 font-mono">
+                    Official Rules: 2 VP per tile kept facedown on player board
+                  </span>
+                </div>
+
+                {player.keptDiscoveryTiles && player.keptDiscoveryTiles.length > 0 ? (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {player.keptDiscoveryTiles.map((tile, tIdx) => (
+                      <div
+                        key={`kept_disc_${tile.id}_${tIdx}`}
+                        className="p-2.5 rounded-lg bg-amber-950/30 border border-amber-800/40 flex items-center justify-between gap-2"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-xs font-bold text-amber-200 truncate">
+                            {tile.name}
+                          </div>
+                          <div className="text-[10px] text-slate-400 truncate">
+                            {tile.description || 'Ancient Artifact Cache'}
+                          </div>
+                        </div>
+                        <span className="text-xs font-mono font-bold text-amber-400 px-1.5 py-0.5 rounded bg-amber-900/50 border border-amber-700/60 shrink-0">
+                          +2 VP
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <div className="text-xs text-slate-500 italic py-1">
+                    No discovery tiles currently kept for Victory Points. When claiming Discovery Tiles, choose "Keep for 2 VP" to store them here.
+                  </div>
+                )}
+              </div>
             </div>
           )}
 

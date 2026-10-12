@@ -20,6 +20,7 @@ import {
 interface CombatConquestModalProps {
   state: GameState;
   conquest: PendingCombatConquest;
+  currentSeat?: number | 'all' | 'spectator';
   onConfirm: (
     claimInfluence: boolean,
     colonizePlanetIndices: number[],
@@ -30,12 +31,17 @@ interface CombatConquestModalProps {
 export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   state,
   conquest,
+  currentSeat = 'all',
   onConfirm,
 }) => {
   const sector = state.sectors.find((s) => s.id === conquest.sectorId);
   const winner = state.players.find((p) => p.id === conquest.winnerPlayerId);
 
   if (!sector || !winner) return null;
+
+  const canControl =
+    currentSeat === 'all' ||
+    (typeof currentSeat === 'number' && state.players[currentSeat]?.id === winner.id);
 
   const alreadyControls = sector.discOwner === winner.id;
   const hasDiscsAvailable = winner.influenceTrack.discsOnTrack > 0;
@@ -69,6 +75,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   const remainingColonyShips = readyColonyShips - selectedPlanetIndices.length;
 
   const handleTogglePlanet = (idx: number) => {
+    if (!canControl) return;
     if (selectedPlanetIndices.includes(idx)) {
       setSelectedPlanetIndices(selectedPlanetIndices.filter((i) => i !== idx));
     } else {
@@ -79,6 +86,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   };
 
   const handleConfirm = () => {
+    if (!canControl) return;
     // If not claiming influence or cannot claim, clear planet colonization
     const effectivePlanets = canClaim && (claimInfluence || alreadyControls) ? selectedPlanetIndices : [];
     onConfirm(
@@ -89,6 +97,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   };
 
   const handleDeclineAll = () => {
+    if (!canControl) return;
     onConfirm(false, []);
   };
 
@@ -162,6 +171,12 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
               </p>
             </div>
           </div>
+
+          {!canControl && (
+            <div className="px-3 py-1.5 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
+              Waiting for {winner.name} to choose control options...
+            </div>
+          )}
         </div>
 
         {/* Modal Body */}
@@ -605,7 +620,8 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 {!alreadyControls && (
                   <button
                     onClick={handleDeclineAll}
-                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold transition-colors cursor-pointer"
+                    disabled={!canControl}
+                    className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
                     Leave Unclaimed
                   </button>
@@ -615,10 +631,17 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
               <div className="flex items-center gap-2">
                 <button
                   onClick={handleConfirm}
-                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all cursor-pointer"
+                  disabled={!canControl}
+                  className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                 >
-                  <span>Confirm Conquest</span>
-                  <ChevronRight className="w-3.5 h-3.5" />
+                  {canControl ? (
+                    <>
+                      <span>Confirm Conquest</span>
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </>
+                  ) : (
+                    <span>Waiting for {winner.name}...</span>
+                  )}
                 </button>
               </div>
             </>

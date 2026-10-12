@@ -26,7 +26,7 @@ import {
   createGalacticEventsState,
   BlackHoleDelayedShip,
 } from './galacticEvents';
-import { areCoordsEqual, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors, getExplorableHexes } from './hexMath';
+import { areCoordsEqual, areCoordsAdjacent, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors, getExplorableHexes } from './hexMath';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
@@ -392,16 +392,28 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
   switch (action.type) {
     case 'EXPLORE': {
-      // 1. Check if source coord exists and is controlled or contains player's ship
-      const sourceSector = state.sectors.find((s) => areCoordsEqual(s.coord, action.fromCoord));
-      if (!sourceSector) {
-        return { valid: false, error: 'Invalid source coordinate for exploration.' };
-      }
-      const hasShipOrDisc =
-        sourceSector.discOwner === action.playerId ||
-        sourceSector.ships.some((ship) => ship.ownerId === action.playerId);
-      if (!hasShipOrDisc) {
-        return { valid: false, error: 'Must have a ship or influence disc in source sector to explore adjacent hexes.' };
+      // 1. Check if source coord exists and is controlled or contains player's ship, OR any adjacent sector to targetCoord has player presence (Bug 167)
+      const sourceSector = action.fromCoord ? state.sectors.find((s) => areCoordsEqual(s.coord, action.fromCoord)) : null;
+      const hasPresenceInSource = Boolean(
+        sourceSector && (
+          sourceSector.discOwner === action.playerId ||
+          sourceSector.ships.some((ship) => ship.ownerId === action.playerId)
+        )
+      );
+
+      const hasAnyAdjacentPresence = state.sectors.some((s) => {
+        const isAdj = areCoordsAdjacent(s.coord, action.targetCoord) ||
+          Boolean(state.warpedUniverse?.conduits?.some(
+            (c) =>
+              (areCoordsEqual(s.coord, c.coordA) && areCoordsEqual(action.targetCoord, c.coordB)) ||
+              (areCoordsEqual(s.coord, c.coordB) && areCoordsEqual(action.targetCoord, c.coordA))
+          ));
+        if (!isAdj) return false;
+        return s.discOwner === action.playerId || s.ships.some((ship) => ship.ownerId === action.playerId);
+      });
+
+      if (!hasPresenceInSource && !hasAnyAdjacentPresence) {
+        return { valid: false, error: 'Must have a ship or influence disc in an adjacent sector to explore.' };
       }
 
       // 2. Check target coord is empty
@@ -2268,7 +2280,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 discovery: disc,
                 playerId: player.id,
               };
-              addLog(`${player.name} discovered an Ancient artifact in Sector ${drawnTile.sectorNumber}! Awaiting commander's decision...`);
+              addLog(`${player.name} discovered Ancient artifact "${disc.name}" in Sector ${drawnTile.sectorNumber}! Awaiting commander's decision...`);
             } else {
               addLog(`${player.name} revealed Sector ${drawnTile.sectorNumber} containing a Discovery Tile, guarded by ${drawnTile.ancientsCount} Ancient ship(s)!`);
             }
@@ -2914,7 +2926,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 discovery: sec.discoveryTile,
                 playerId: player.id,
               };
-              addLog(`${player.name} discovered an Ancient artifact in Sector ${sec.sectorNumber}! Awaiting commander's decision...`);
+              addLog(`${player.name} discovered Ancient artifact "${sec.discoveryTile.name}" in Sector ${sec.sectorNumber}! Awaiting commander's decision...`);
             }
           }
         }
@@ -3309,7 +3321,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           discovery: conquestInfo.discoveryToClaim,
           playerId: player.id,
         };
-        addLog(`${player.name} secured Sector ${sector.sectorNumber} and uncovered an Ancient Discovery Cache!`, 'system');
+        addLog(`${player.name} secured Sector ${sector.sectorNumber} and uncovered Ancient Discovery Cache "${conquestInfo.discoveryToClaim.name}"! Awaiting commander's decision...`, 'system');
       } else if (newState.phase === 'COMBAT_PHASE' && !newState.activeCombat) {
         checkAndTriggerCombat(newState);
       }
@@ -3349,70 +3361,37 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               ? [combatDefenderId, ...rawDuelPlayerIds.filter((id) => id !== combatDefenderId)]
               : rawDuelPlayerIds;
 
-            // Compute reputation tiles for participating players
-            const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string }[] = [];
-
+            // Accumulate combat records for this sector across sequential duels (Bug 170)
+            if (!newState.sectorCombatRecords) {
+              newState.sectorCombatRecords = {};
+            }
+            const secRecord = newState.sectorCombatRecords[sector.id] || {
+              participatingPlayerIds: [],
+              retreatedPlayerIds: [],
+              destroyedShips: [],
+            };
             for (const pId of duelPlayerIds) {
+              if (!secRecord.participatingPlayerIds.includes(pId)) {
+                secRecord.participatingPlayerIds.push(pId);
+              }
               const attemptedRetreat = Boolean(
                 newState.activeCombat?.retreatAttemptedPlayerIds?.includes(pId) ||
                 (newState.activeCombat?.retreatDeclared && Object.keys(newState.activeCombat.retreatDeclared).some((sid) => currentUnits.find((u) => u.id === sid)?.ownerId === pId))
               );
-              
-              const isLoser = Boolean(winnerId && pId !== winnerId);
-              const playerKills = (newState.activeCombat?.destroyedShips || []).filter(
-                (casualty) => casualty.killerId === pId && casualty.ownerId !== pId
-              );
-
-              // Official Rulebook p. 21 & p. 30:
-              // "RETREAT PENALTY: If all of your remaining Ships attempt to Retreat from a battle,
-              // you do not draw a Reputation Tile for participating in the battle, but still draw
-              // Reputation Tiles for any Ships you destroyed."
-              let tilesCount = attemptedRetreat ? 0 : 1;
-
-              if (isLoser && playerKills.length === 0) {
-                // Bug 70: loser of the battle draws 1 rep tile if he didn't retreat, or 0 if he retreated
-                tilesCount = attemptedRetreat ? 0 : 1;
-              } else {
-                // Kills tiles
-                for (const casualty of playerKills) {
-                  if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient' || casualty.type === 'orbital') {
-                    tilesCount += 1;
-                  } else if (casualty.type === 'cruiser' || casualty.type === 'guardian') {
-                    tilesCount += 2;
-                  } else if (casualty.type === 'dreadnought' || casualty.type === 'gcds') {
-                    tilesCount += 3;
-                  }
-                }
-              }
-
-              if (attemptedRetreat && playerKills.length === 0) {
-                tilesCount = 0;
-              }
-
-              tilesCount = Math.min(5, tilesCount); // Maximum 5 tiles drawn per battle
-
-              if (tilesCount > 0 && newState.reputationBag.length > 0) {
-                const drawn: number[] = [];
-                for (let k = 0; k < tilesCount && newState.reputationBag.length > 0; k++) {
-                  drawn.push(newState.reputationBag.pop()!);
-                }
-                if (drawn.length > 0) {
-                  repDrawQueue.push({
-                    playerId: pId,
-                    drawnTiles: drawn,
-                    sectorId: sector.id,
-                  });
-                  const participant = newState.players.find((p) => p.id === pId);
-                  if (participant?.faction.id === 'rho_indi_syndicate') {
-                    const bountyMoney = Math.max(0, drawn.length - 1);
-                    if (bountyMoney > 0) {
-                      participant.resources.money += bountyMoney;
-                      addLog(`💰 Rho Indi Syndicate gained ${bountyMoney} Money from drawing ${drawn.length} Reputation Tiles!`, 'economy');
-                    }
-                  }
-                }
+              if (attemptedRetreat && !secRecord.retreatedPlayerIds.includes(pId)) {
+                secRecord.retreatedPlayerIds.push(pId);
               }
             }
+            if (newState.activeCombat?.destroyedShips) {
+              for (const c of newState.activeCombat.destroyedShips) {
+                secRecord.destroyedShips.push({
+                  type: c.type,
+                  killerId: c.killerId || '',
+                  ownerId: c.ownerId,
+                });
+              }
+            }
+            newState.sectorCombatRecords[sector.id] = secRecord;
 
             // Remove eliminated / retreated participants from sector.playerEntryOrder
             if (sector.playerEntryOrder) {
@@ -3434,13 +3413,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 'combat'
               );
               newState.activeCombat = null;
-
-              if (repDrawQueue.length > 0) {
-                newState.pendingReputationDraw = repDrawQueue[0];
-                newState.pendingReputationDrawQueue = repDrawQueue.slice(1);
-              } else {
-                checkAndTriggerCombat(newState);
-              }
+              checkAndTriggerCombat(newState);
               return;
             }
 
@@ -3477,7 +3450,67 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
             newState.activeCombat = null;
 
-            // 3. Enqueue reputation draws
+            // 3. Compute reputation tiles for participating players across all battles in this sector (Bug 170)
+            const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string }[] = [];
+
+            for (const pId of secRecord.participatingPlayerIds) {
+              const isLoser = Boolean(winnerId && pId !== winnerId);
+              const playerKills = secRecord.destroyedShips.filter(
+                (casualty) => casualty.killerId === pId && casualty.ownerId !== pId
+              );
+              const attemptedRetreat = secRecord.retreatedPlayerIds.includes(pId) && !sector.ships.some((s) => s.ownerId === pId);
+
+              // Official Rulebook p. 21 & p. 30:
+              // "RETREAT PENALTY: If all of your remaining Ships attempt to Retreat from a battle,
+              // you do not draw a Reputation Tile for participating in the battle, but still draw
+              // Reputation Tiles for any Ships you destroyed."
+              let tilesCount = attemptedRetreat ? 0 : 1;
+
+              if (isLoser && playerKills.length === 0) {
+                tilesCount = attemptedRetreat ? 0 : 1;
+              } else {
+                for (const casualty of playerKills) {
+                  if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient' || casualty.type === 'orbital') {
+                    tilesCount += 1;
+                  } else if (casualty.type === 'cruiser' || casualty.type === 'guardian') {
+                    tilesCount += 2;
+                  } else if (casualty.type === 'dreadnought' || casualty.type === 'gcds') {
+                    tilesCount += 3;
+                  }
+                }
+              }
+
+              if (attemptedRetreat && playerKills.length === 0) {
+                tilesCount = 0;
+              }
+
+              tilesCount = Math.min(5, tilesCount); // Maximum 5 tiles drawn per sector
+
+              if (tilesCount > 0 && newState.reputationBag.length > 0) {
+                const drawn: number[] = [];
+                for (let k = 0; k < tilesCount && newState.reputationBag.length > 0; k++) {
+                  drawn.push(newState.reputationBag.pop()!);
+                }
+                if (drawn.length > 0) {
+                  repDrawQueue.push({
+                    playerId: pId,
+                    drawnTiles: drawn,
+                    sectorId: sector.id,
+                  });
+                  const participant = newState.players.find((p) => p.id === pId);
+                  if (participant?.faction.id === 'rho_indi_syndicate') {
+                    const bountyMoney = Math.max(0, drawn.length - 1);
+                    if (bountyMoney > 0) {
+                      participant.resources.money += bountyMoney;
+                      addLog(`💰 Rho Indi Syndicate gained ${bountyMoney} Money from drawing ${drawn.length} Reputation Tiles!`, 'economy');
+                    }
+                  }
+                }
+              }
+            }
+
+            delete newState.sectorCombatRecords[sector.id];
+
             if (repDrawQueue.length > 0) {
               newState.pendingReputationDraw = repDrawQueue[0];
               newState.pendingReputationDrawQueue = repDrawQueue.slice(1);
@@ -4848,6 +4881,15 @@ export function checkAndTriggerCombat(state: GameState): void {
           discovery: sec.discoveryTile,
           playerId: shipOwners[0]!,
         };
+        const pClaimant = state.players.find((p) => p.id === shipOwners[0]!);
+        state.log.unshift({
+          id: `log_${Date.now()}_claim_${sec.sectorNumber}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: 'COMBAT_PHASE',
+          message: `✨ ${pClaimant?.name || shipOwners[0]} uncovered Ancient Discovery Cache "${sec.discoveryTile.name}" in Sector ${sec.sectorNumber}! Awaiting commander's decision...`,
+          type: 'system',
+        });
         return;
       }
     }

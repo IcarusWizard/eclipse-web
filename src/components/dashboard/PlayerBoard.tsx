@@ -771,13 +771,23 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         {/* Kept Discoveries Badge */}
         {((player.keptDiscoveryTiles && player.keptDiscoveryTiles.length > 0) ||
           (player.unlockedAncientParts && player.unlockedAncientParts.length > 0)) && (
-          <div className="px-2 py-1 bg-amber-950/30 border border-amber-800/40 rounded-lg flex items-center justify-between text-[9.5px]">
-            <span className="text-amber-400 font-semibold flex items-center gap-1">
-              ★ Discoveries
-            </span>
-            <span className="text-amber-300 font-bold font-mono">
-              +{((player.keptDiscoveryTiles?.length || 0) * 2)} VP
-            </span>
+          <div
+            className="px-2 py-1 bg-amber-950/30 border border-amber-800/40 rounded-lg flex flex-col gap-0.5 text-[9.5px]"
+            title={player.keptDiscoveryTiles?.map((t) => `${t.name} (+2 VP)`).join('\n')}
+          >
+            <div className="flex items-center justify-between">
+              <span className="text-amber-400 font-semibold flex items-center gap-1">
+                ★ Kept Discoveries ({player.keptDiscoveryTiles?.length || 0})
+              </span>
+              <span className="text-amber-300 font-bold font-mono">
+                +{((player.keptDiscoveryTiles?.length || 0) * 2)} VP
+              </span>
+            </div>
+            {player.keptDiscoveryTiles && player.keptDiscoveryTiles.length > 0 && (
+              <div className="text-[8.5px] text-amber-200/70 truncate">
+                {player.keptDiscoveryTiles.map((t) => t.name).join(', ')}
+              </div>
+            )}
           </div>
         )}
       </div>

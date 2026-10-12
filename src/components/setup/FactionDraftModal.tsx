@@ -16,11 +16,13 @@ import {
 
 interface FactionDraftModalProps {
   state: GameState;
+  currentSeat?: number | 'all' | 'spectator';
   onDraftFaction: (factionId: string) => void;
 }
 
 export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
   state,
+  currentSeat = 'all',
   onDraftFaction,
 }) => {
   const draft = state.factionDraft;
@@ -28,6 +30,10 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
 
   const currentDrafterId = draft.draftOrder[draft.currentDraftIndex];
   const currentDrafter = state.players.find((p) => p.id === currentDrafterId) || state.players[0];
+
+  const isCurrentDrafter =
+    currentSeat === 'all' ||
+    (typeof currentSeat === 'number' && state.players[currentSeat]?.id === currentDrafterId);
 
   const availableFactions = getAvailableFactions(state.expansions || []);
   const [selectedFactionId, setSelectedFactionId] = useState<string>(
@@ -50,6 +56,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
   const selectedFaction = ALL_FACTIONS.find((f) => f.id === selectedFactionId);
 
   const handleConfirmDraft = () => {
+    if (!isCurrentDrafter) return;
     if (!selectedFactionId || !draft.availableFactionIds.includes(selectedFactionId)) return;
     onDraftFaction(selectedFactionId);
   };
@@ -79,6 +86,11 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
+            {!isCurrentDrafter && (
+              <span className="px-2.5 py-1 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
+                Waiting for {currentDrafter.name} to select...
+              </span>
+            )}
             <div className="px-3 py-1 rounded-xl bg-indigo-950/60 border border-indigo-600/60 flex items-center gap-2">
               <span
                 className="w-3 h-3 rounded-full border border-white/40"
@@ -246,13 +258,15 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                 <div
                   key={f.id}
                   onClick={() => {
-                    if (isAvailable) setSelectedFactionId(f.id);
+                    if (isAvailable && isCurrentDrafter) setSelectedFactionId(f.id);
                   }}
                   className={`p-3.5 rounded-2xl border transition flex flex-col justify-between ${
                     isSelected
                       ? 'bg-indigo-950/70 border-indigo-400 ring-2 ring-indigo-400/50 shadow-lg cursor-pointer'
-                      : isAvailable
+                      : isAvailable && isCurrentDrafter
                       ? 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60 cursor-pointer'
+                      : isAvailable
+                      ? 'bg-slate-950/60 border-slate-800/80 cursor-default opacity-85'
                       : 'bg-slate-950/30 border-slate-900 opacity-40 cursor-not-allowed'
                   }`}
                 >
@@ -306,27 +320,33 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
 
                   <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between">
                     {isAvailable ? (
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedFactionId(f.id);
-                        }}
-                        className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                          isSelected
-                            ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'
-                            : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                        }`}
-                      >
-                        {isSelected ? (
-                          <>
-                            <CheckCircle2 className="w-3.5 h-3.5" />
-                            <span>Selected for Pick</span>
-                          </>
-                        ) : (
-                          <span>Select {f.shortName || f.name}</span>
-                        )}
-                      </button>
+                      isCurrentDrafter ? (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedFactionId(f.id);
+                          }}
+                          className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
+                          }`}
+                        >
+                          {isSelected ? (
+                            <>
+                              <CheckCircle2 className="w-3.5 h-3.5" />
+                              <span>Selected for Pick</span>
+                            </>
+                          ) : (
+                            <span>Select {f.shortName || f.name}</span>
+                          )}
+                        </button>
+                      ) : (
+                        <span className="text-[11px] text-slate-500 font-medium italic flex items-center gap-1.5 w-full justify-center py-1">
+                          Available to Draft
+                        </span>
+                      )
                     ) : (
                       <span className="text-[11px] text-slate-500 font-medium italic flex items-center gap-1.5 w-full justify-center py-1">
                         <Lock className="w-3 h-3" />
@@ -358,11 +378,17 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           <button
             type="button"
             onClick={handleConfirmDraft}
-            disabled={!selectedFactionId || !draft.availableFactionIds.includes(selectedFactionId)}
+            disabled={!isCurrentDrafter || !selectedFactionId || !draft.availableFactionIds.includes(selectedFactionId)}
             className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-bold text-xs tracking-wide shadow-lg shadow-indigo-950 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
           >
-            <span>Confirm Draft Pick ({selectedFaction?.shortName || selectedFaction?.name})</span>
-            <ArrowRight className="w-4 h-4" />
+            {isCurrentDrafter ? (
+              <>
+                <span>Confirm Draft Pick ({selectedFaction?.shortName || selectedFaction?.name})</span>
+                <ArrowRight className="w-4 h-4" />
+              </>
+            ) : (
+              <span>Waiting for {currentDrafter.name} to choose...</span>
+            )}
           </button>
         </div>
       </div>

@@ -31,6 +31,8 @@ interface TechMarketModalProps {
   activePlayer?: PlayerState;
   players?: PlayerState[];
   sectors?: SectorTile[];
+  currentSeat?: number | 'all' | 'spectator';
+  phase?: string;
   techSupply: Technology[];
   techBagCount?: number;
   onResearchTech: (
@@ -49,6 +51,8 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   activePlayer,
   players,
   sectors,
+  currentSeat = 'all',
+  phase = 'ACTION_PHASE',
   techSupply,
   techBagCount = 0,
   onResearchTech,
@@ -58,9 +62,18 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   const [selectedRareTrack, setSelectedRareTrack] = useState<Record<string, 'military' | 'grid' | 'nano'>>({});
   const [warpPortalSectorId, setWarpPortalSectorId] = useState<string>('');
 
-  // Acting player is activePlayer if provided, else viewed player
-  const commander = activePlayer || player;
-  const isCommanderTurn = !activePlayer || activePlayer.id === player.id;
+  const initialCommanderId =
+    typeof currentSeat === 'number' && players?.[currentSeat]
+      ? players[currentSeat].id
+      : (player?.id || activePlayer?.id || '');
+
+  const [viewedCommanderId, setViewedCommanderId] = useState<string>(initialCommanderId);
+  const commander = (players || []).find((p) => p.id === viewedCommanderId) || (typeof currentSeat === 'number' && players?.[currentSeat]) || player || activePlayer;
+  const isActionPhase = !phase || phase === 'ACTION_PHASE';
+  const isCommanderTurn =
+    isActionPhase &&
+    Boolean(activePlayer && activePlayer.id === commander.id) &&
+    (currentSeat === 'all' || (typeof currentSeat === 'number' && players?.[currentSeat]?.id === commander.id));
   const hasActionDiscs = commander.influenceTrack.discsOnTrack > 0;
   const hasPassed = commander.hasPassed;
   const maxResearch = commander.faction.researchActivations ?? 1;
@@ -228,6 +241,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     const selectedIdx = selectedForResearch.findIndex((s) => s.techId === tech.id);
 
     const toggleSelect = () => {
+      if (!isCommanderTurn) return;
       if (isSelected) {
         setSelectedForResearch((prev) => prev.filter((s) => s.techId !== tech.id));
       } else {
@@ -535,10 +549,44 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           </div>
         </div>
 
-        {/* Player Tech Track Discounts & Status Banner */}
-        <div className="bg-slate-900/40 px-5 py-2.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
-          <div className="flex items-center gap-2 text-slate-400">
-            <span className="font-bold text-slate-200">{commander.name}&apos;s Tech Tracks:</span>
+        {/* Player Switcher & Tech Track Discounts Status Banner */}
+        <div className="bg-slate-900/60 px-5 py-2.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="font-bold text-slate-400">Viewing Commander:</span>
+            {players && players.length > 1 ? (
+              <div className="flex items-center gap-1.5 flex-wrap">
+                {players.map((p, idx) => {
+                  const isSelected = p.id === commander.id;
+                  const isSeat = typeof currentSeat === 'number' && currentSeat === idx;
+                  return (
+                    <button
+                      key={p.id}
+                      type="button"
+                      onClick={() => {
+                        setViewedCommanderId(p.id);
+                        setSelectedForResearch([]);
+                      }}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1.5 cursor-pointer ${
+                        isSelected
+                          ? 'bg-indigo-600 text-white shadow-sm ring-1 ring-indigo-400'
+                          : 'bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700'
+                      }`}
+                    >
+                      <span className="w-2.5 h-2.5 rounded-full border border-white/40" style={{ backgroundColor: p.color }} />
+                      <span>{p.name}</span>
+                      {isSeat && <span className="text-[10px] text-indigo-200 font-mono font-normal">(You)</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            ) : (
+              <span className="font-bold text-slate-200">{commander.name}</span>
+            )}
+            {phase && phase !== 'ACTION_PHASE' && (
+              <span className="px-2 py-0.5 rounded bg-amber-950/70 border border-amber-700/60 text-amber-300 text-[10px] font-mono font-bold">
+                {phase.replace('_', ' ')} (Read-Only)
+              </span>
+            )}
           </div>
 
           <div className="flex items-center gap-4 flex-wrap font-mono font-bold">
@@ -866,6 +914,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               </div>
               <button
                 disabled={
+                  !isActionPhase ||
                   selectedForResearch.length === 0 ||
                   stagedResearches.totalScience > commander.resources.science ||
                   !hasActionDiscs ||
@@ -881,7 +930,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg shadow-cyan-950/50 transition-all flex items-center gap-1.5 font-sans"
               >
                 <Check className="w-4 h-4 stroke-[3]" />
-                Research Selected ({stagedResearches.totalScience} 🔬, 1 Disc)
+                {isActionPhase
+                  ? isCommanderTurn
+                    ? `Research Selected (${stagedResearches.totalScience} 🔬, 1 Disc)`
+                    : `Waiting for ${activePlayer?.name || 'Commander'}...`
+                  : `Research Unavailable (${phase.replace('_', ' ')})`}
               </button>
             </div>
           </div>
