@@ -168,3 +168,4 @@
 - [x] one the bankcrupt player should see the bankcrupt panel, the other player should see that waiting for which player(s) to resolve their bankcrupt (Round 5, UPKEEP_PHASE, Player: Orion Hegemony, Table #659)
 - [x] They is no way to close the galactical intel which conver the decks information (Round 6, ACTION_PHASE, Player: Orion Hegemony, Table #659)
 - [x] if multiple player is fighting in the same sector, the rep tile is only draw after all the combat are finished. The number of tiles drawn take into account all the ship destroyed by the player (Round 8, COMBAT_PHASE, Player: Planta, Table #659)
+- [x] there shouldn't be a button to switch seat during battle (Round 3, COMBAT_PHASE, Player: Orion Hegemony, Table #392)

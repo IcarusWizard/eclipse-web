@@ -4386,7 +4386,14 @@ export function resolveAttackingPopulationAndConquest(
                       if (u) sh.damage = u.currentDamage;
                     }
                     if (dummyCombat.destroyedShips.length > 0) {
-                      addLog(`💥 Rift Cannon backfire during bombardment destroyed ${dummyCombat.destroyedShips.length} ship(s) of ${attackerPlayer.name}!`, 'combat');
+                      state.log.unshift({
+                        id: `log_${Date.now()}_${Math.random()}`,
+                        timestamp: Date.now(),
+                        round: state.round,
+                        phase: state.phase,
+                        message: `💥 Rift Cannon backfire during bombardment destroyed ${dummyCombat.destroyedShips.length} ship(s) of ${attackerPlayer.name}!`,
+                        type: 'combat',
+                      });
                     }
                   }
                 } else {

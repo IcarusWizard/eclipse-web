@@ -25,7 +25,6 @@ interface CombatModalProps {
   onRerollDie?: (rollIndex: number) => void;
   onAutoResolve?: () => void;
   currentSeat?: number | 'all' | 'spectator';
-  onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
 }
 
 export const CombatModal: React.FC<CombatModalProps> = ({
@@ -35,7 +34,6 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   onRerollDie,
   onAutoResolve,
   currentSeat = 'all',
-  onChangeSeat,
 }) => {
   const sector = state.sectors.find((s) => s.id === combat.sectorId);
   if (!sector) return null;
@@ -850,18 +848,6 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         Waiting for Commander <strong className="text-amber-300">{attackerOwner?.name || 'opponent'}</strong> to command their {activeGroup?.type.toUpperCase()}...
                       </span>
                     </div>
-                    {onChangeSeat && attackerOwner && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          const seatIdx = state.players.findIndex((p) => p.id === attackerOwner.id);
-                          if (seatIdx >= 0) onChangeSeat(seatIdx);
-                        }}
-                        className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs tracking-wider uppercase transition cursor-pointer shadow font-sans"
-                      >
-                        Switch Seat to {attackerOwner.name}
-                      </button>
-                    )}
                   </div>
                 ) : (
                   <>

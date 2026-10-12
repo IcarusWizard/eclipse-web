@@ -14,7 +14,7 @@ import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoo
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups } from './engine/rules/combatEngine';
 import { getNebulaSubsectorForOuterEdge } from './engine/rules/galacticEvents';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
-import { X } from 'lucide-react';
+import { X, Sparkles, Coins } from 'lucide-react';
 
 // UI Components
 import { Header } from './components/layout/Header';
@@ -2075,7 +2075,6 @@ export const App: React.FC = () => {
           onRerollDie={handleRerollCombatDie}
           onAutoResolve={handleAutoResolveCombat}
           currentSeat={currentSeat}
-          onChangeSeat={handleChangeSeat}
         />
       )}
 
