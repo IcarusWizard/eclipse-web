@@ -169,3 +169,6 @@
 - [x] They is no way to close the galactical intel which conver the decks information (Round 6, ACTION_PHASE, Player: Orion Hegemony, Table #659)
 - [x] if multiple player is fighting in the same sector, the rep tile is only draw after all the combat are finished. The number of tiles drawn take into account all the ship destroyed by the player (Round 8, COMBAT_PHASE, Player: Planta, Table #659)
 - [x] there shouldn't be a button to switch seat during battle (Round 3, COMBAT_PHASE, Player: Orion Hegemony, Table #392)
+- [ ] chronicle should has highlight the event since the player last check and when there are new events, on the main interface marks with red! and how many new events are there (Round 4, ACTION_PHASE, Player: Hydran Progress, Table #869)
+- [ ] In this game, mech score 17 for discovery tiles, which doesn't make sense. The player board shows also 16 points for discovery. Maybe the wormhole tech is scored in discovery? If so, it should actually score in the sector since the wormhole gives +1 score for the sector (Round 8, GAME_OVER, Player: Hydran Progress, Table #869)
+- [ ] when there is no possible slot to explore for ring 1 or ring 2, maybe we can dim the R<>: <number> to hint they are not possible anymore (Round 8, GAME_OVER, Player: Hydran Progress, Table #869)
