@@ -38,6 +38,7 @@ interface PlayerBoardProps {
   traitorPlayerId?: string | null;
   gamePhase?: string;
   onInitiateDiplomacy?: (targetPlayerId: string) => void;
+  onBetrayAlliance?: (targetPlayerId: string) => void;
   delayedBlackHoleShips?: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip[];
 }
 
@@ -54,6 +55,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   traitorPlayerId = null,
   gamePhase = 'ACTION_PHASE',
   onInitiateDiplomacy,
+  onBetrayAlliance,
   delayedBlackHoleShips = [],
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -583,9 +585,21 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                         <span className="font-medium text-slate-400 truncate">{other.name}</span>
                         <span className="text-[9px] text-slate-600 truncate">({other.faction.name})</span>
                       </div>
-                      <span className="font-mono text-[9.5px] text-slate-500 flex items-center gap-1 shrink-0">
-                        <Handshake className="w-3 h-3 text-slate-600" /> Allied {cubeIcon} (+1★)
-                      </span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        <span className="font-mono text-[9.5px] text-slate-500 flex items-center gap-1 shrink-0">
+                          <Handshake className="w-3 h-3 text-slate-600" /> Allied {cubeIcon} (+1★)
+                        </span>
+                        {isActive && onBetrayAlliance && (
+                          <button
+                            type="button"
+                            onClick={() => onBetrayAlliance(other.id)}
+                            className="px-1.5 py-0.5 rounded bg-rose-950/70 hover:bg-rose-900 border border-rose-700/60 text-rose-300 hover:text-white text-[9px] font-bold transition cursor-pointer"
+                            title={`Betray alliance with ${other.name} and take Traitor Tile (-2 VP)`}
+                          >
+                            Betray
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 }

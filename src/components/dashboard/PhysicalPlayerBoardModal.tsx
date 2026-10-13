@@ -16,7 +16,7 @@ import { calculateBlueprintStats, countPlayerShips, SHIP_LIMITS } from '../../en
 import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
 import { ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
-import { getPlayerShortName } from '../../engine/rules/gameReducer';
+import { getPlayerShortName, playerHasWormholeGenerator, canExchangeAmbassadors } from '../../engine/rules/gameReducer';
 import {
   X,
   Zap,
@@ -44,7 +44,6 @@ import {
   Handshake,
 } from 'lucide-react';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
-import { playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
 
 interface PhysicalPlayerBoardModalProps {
   player: PlayerState;
@@ -58,6 +57,7 @@ interface PhysicalPlayerBoardModalProps {
   hideOpponentReputation?: boolean;
   traitorPlayerId?: string | null;
   onExchangeAmbassador?: (targetPlayerId: string) => void;
+  onBetrayAlliance?: (targetPlayerId: string) => void;
   onConvertColonyShip?: (resource: 'money' | 'science' | 'materials') => void;
   activeExpansions?: string[];
 }
@@ -74,6 +74,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   hideOpponentReputation = false,
   traitorPlayerId,
   onExchangeAmbassador,
+  onBetrayAlliance,
   onConvertColonyShip,
   activeExpansions,
 }) => {
@@ -727,7 +728,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       Diplomatic Relations & Ambassadors
                     </h3>
                     <p className="text-[11px] text-slate-400">
-                      Exchange ambassadors with connected species for +1 VP each. Moving into allied space forfeits the alliance and claims the Traitor Tile (-2 VP).
+                      Exchange ambassadors with connected species in games with 4+ players (+1 VP each). Moving into allied space or betraying breaks the alliance and claims the Traitor Tile (-2 VP).
                     </p>
                   </div>
                   <div className="text-xs font-mono text-slate-400">
@@ -735,54 +736,23 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   </div>
                 </div>
 
+                {players.length < 4 && (
+                  <div className="text-xs text-amber-400/90 bg-amber-950/30 border border-amber-900/50 rounded-lg p-2.5 mb-3 flex items-center gap-2">
+                    <Info className="w-4 h-4 shrink-0 text-amber-400" />
+                    <span>Diplomatic Relations (Ambassador Exchange) are only allowed in games with 4 or more players.</span>
+                  </div>
+                )}
+
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                   {players.filter((other) => other.id !== player.id).map((other) => {
                     const isAllied = player.ambassadorTiles?.includes(other.id);
-                    const isTraitorSelf = traitorPlayerId === player.id;
-                    const isTraitorOther = traitorPlayerId === other.id;
-                    const selfAmbSlots = player.faction.ambassadorSlots ?? 3;
-                    const otherAmbSlots = other.faction.ambassadorSlots ?? 3;
-                    const selfRepSlots = player.faction.reputationSlots ?? 5;
-                    const otherRepSlots = other.faction.reputationSlots ?? 5;
-
-                    const selfAmbFull = (player.ambassadorTiles?.length || 0) >= selfAmbSlots;
-                    const otherAmbFull = (other.ambassadorTiles?.length || 0) >= otherAmbSlots;
-                    const selfRepFull = (player.ambassadorTiles?.length || 0) + player.reputationTiles.length >= selfRepSlots;
-                    const otherRepFull = (other.ambassadorTiles?.length || 0) + other.reputationTiles.length >= otherRepSlots;
-
-                    // Connectivity check
-                    const p1Sectors = sectors.filter((s) => s.discOwner === player.id || s.ships.some((shp) => shp.ownerId === player.id));
-                    const p2Sectors = sectors.filter((s) => s.discOwner === other.id || s.ships.some((shp) => shp.ownerId === other.id));
-                    const hasWormholeGen =
-                      playerHasWormholeGenerator(player) ||
-                      playerHasWormholeGenerator(other);
-                    const isConnected = p1Sectors.some((s1) =>
-                      p2Sectors.some((s2) => s1.id === s2.id || areSectorsConnected(s1, s2, hasWormholeGen))
+                    const check = canExchangeAmbassadors(
+                      { phase: 'ACTION_PHASE', traitorPlayerId, players, sectors },
+                      player.id,
+                      other.id
                     );
-
-                    const canExchange =
-                      !isAllied &&
-                      !isTraitorSelf &&
-                      !isTraitorOther &&
-                      selfAmbSlots > 0 &&
-                      otherAmbSlots > 0 &&
-                      !selfAmbFull &&
-                      !otherAmbFull &&
-                      !selfRepFull &&
-                      !otherRepFull &&
-                      isConnected;
-
-                    let reason = '';
-                    if (isAllied) reason = 'Allied (+1 VP)';
-                    else if (selfAmbSlots === 0) reason = `${player.faction.name} cannot form alliances (0 slots)`;
-                    else if (otherAmbSlots === 0) reason = `${other.faction.name} cannot form alliances (0 slots)`;
-                    else if (isTraitorSelf) reason = 'You hold Traitor tile';
-                    else if (isTraitorOther) reason = `${other.name} holds Traitor tile`;
-                    else if (selfAmbFull) reason = 'Your ambassador slots full';
-                    else if (otherAmbFull) reason = `${other.name} ambassador slots full`;
-                    else if (selfRepFull) reason = 'Your reputation track full';
-                    else if (otherRepFull) reason = `${other.name} reputation track full`;
-                    else if (!isConnected) reason = 'Borders not connected';
+                    const canExchange = check.canExchange;
+                    const reason = isAllied ? 'Allied (+1 VP)' : (check.reason || 'Not eligible for diplomacy');
 
                     return (
                       <div
@@ -803,9 +773,21 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
 
                         <div>
                           {isAllied ? (
-                            <span className="px-2 py-1 rounded bg-indigo-900/80 text-indigo-300 text-[10px] font-bold border border-indigo-700/60 flex items-center gap-1 shrink-0">
-                              <Handshake className="w-3 h-3 text-indigo-400" /> Allied (+1 VP)
-                            </span>
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <span className="px-2 py-1 rounded bg-indigo-900/80 text-indigo-300 text-[10px] font-bold border border-indigo-700/60 flex items-center gap-1 shrink-0">
+                                <Handshake className="w-3 h-3 text-indigo-400" /> Allied (+1 VP)
+                              </span>
+                              {onBetrayAlliance && (isActive || player.id === activePlayerId) && (
+                                <button
+                                  type="button"
+                                  onClick={() => onBetrayAlliance(other.id)}
+                                  className="px-2 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-600/60 text-rose-300 hover:text-white font-bold text-[10px] uppercase tracking-wider transition shadow-sm hover:shadow cursor-pointer flex items-center gap-1 shrink-0"
+                                  title={`Betray alliance with ${other.name}, reclaim population cube, and take Traitor Tile (-2 VP)`}
+                                >
+                                  Betray
+                                </button>
+                              )}
+                            </div>
                           ) : canExchange && onExchangeAmbassador && (isActive || player.id === activePlayerId) ? (
                             <button
                               type="button"

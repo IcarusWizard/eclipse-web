@@ -153,12 +153,15 @@ export function canColonizePlanetSlot(
 }
 
 export function canExchangeAmbassadors(
-  state: { phase?: string; traitorPlayerId?: string | null; players: PlayerState[]; sectors: SectorTile[] },
+  state: { phase?: string; traitorPlayerId?: string | null; players: PlayerState[]; sectors: SectorTile[]; warpedUniverse?: { conduits: any } },
   p1Id: string,
   p2Id: string
 ): { canExchange: boolean; reason?: string } {
   if (state.phase && state.phase !== 'ACTION_PHASE') {
     return { canExchange: false, reason: 'Diplomacy is only available in Action Phase.' };
+  }
+  if (state.players.length < 4) {
+    return { canExchange: false, reason: 'Diplomacy is only allowed in games with 4 or more players.' };
   }
   const p1 = state.players.find((p) => p.id === p1Id);
   const p2 = state.players.find((p) => p.id === p2Id);
@@ -178,25 +181,33 @@ export function canExchangeAmbassadors(
     return { canExchange: false, reason: `${p2.name} holds the Traitor Tile.` };
   }
 
+  const p1PlayerAmbCount = (p1.ambassadorTiles || []).filter((id) => !id.startsWith('minor_species_')).length;
   const p1AmbSlots = p1.faction.ambassadorSlots ?? 3;
   const p1RepSlots = p1.faction.reputationSlots ?? 5;
   if (p1AmbSlots <= 0) {
     return { canExchange: false, reason: `${p1.name} cannot exchange ambassadors (${p1.faction.name} has 0 ambassador slots).` };
   }
-  if ((p1.ambassadorTiles?.length || 0) >= p1AmbSlots) {
+  if ((p1.ambassadorTiles?.length || 0) >= p1AmbSlots || getAvailableAmbassadorSlotsCount(p1) <= 0) {
     return { canExchange: false, reason: `${p1.name} has no available ambassador slots.` };
+  }
+  if (p1PlayerAmbCount >= 3) {
+    return { canExchange: false, reason: `${p1.name} has already exchanged all 3 ambassador tiles.` };
   }
   if ((p1.ambassadorTiles?.length || 0) + p1.reputationTiles.length >= p1RepSlots) {
     return { canExchange: false, reason: `${p1.name}'s reputation track is full.` };
   }
 
+  const p2PlayerAmbCount = (p2.ambassadorTiles || []).filter((id) => !id.startsWith('minor_species_')).length;
   const p2AmbSlots = p2.faction.ambassadorSlots ?? 3;
   const p2RepSlots = p2.faction.reputationSlots ?? 5;
   if (p2AmbSlots <= 0) {
     return { canExchange: false, reason: `${p2.name} cannot exchange ambassadors (${p2.faction.name} has 0 ambassador slots).` };
   }
-  if ((p2.ambassadorTiles?.length || 0) >= p2AmbSlots) {
+  if ((p2.ambassadorTiles?.length || 0) >= p2AmbSlots || getAvailableAmbassadorSlotsCount(p2) <= 0) {
     return { canExchange: false, reason: `${p2.name} has no available ambassador slots.` };
+  }
+  if (p2PlayerAmbCount >= 3) {
+    return { canExchange: false, reason: `${p2.name} has already exchanged all 3 ambassador tiles.` };
   }
   if ((p2.ambassadorTiles?.length || 0) + p2.reputationTiles.length >= p2RepSlots) {
     return { canExchange: false, reason: `${p2.name}'s reputation track is full.` };
@@ -317,7 +328,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CONVERT_COLONY_SHIP' &&
       action.type !== 'REROLL_COMBAT_DIE' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
-      action.type !== 'CLAIM_MINOR_SPECIES'
+      action.type !== 'CLAIM_MINOR_SPECIES' &&
+      action.type !== 'BETRAY_ALLIANCE'
     ) {
       return {
         valid: false,
@@ -347,7 +359,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CONVERT_COLONY_SHIP' &&
       action.type !== 'REROLL_COMBAT_DIE' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
-      action.type !== 'CLAIM_MINOR_SPECIES'
+      action.type !== 'CLAIM_MINOR_SPECIES' &&
+      action.type !== 'BETRAY_ALLIANCE'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -1362,6 +1375,23 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'BETRAY_ALLIANCE': {
+      if (state.phase && state.phase !== 'ACTION_PHASE') {
+        return { valid: false, error: 'Diplomatic relations can only be betrayed during the Action Phase.' };
+      }
+      if (!action.targetPlayerId) {
+        return { valid: false, error: 'Must specify a target ally to betray.' };
+      }
+      const targetPlayer = state.players.find((p) => p.id === action.targetPlayerId);
+      if (!targetPlayer) {
+        return { valid: false, error: 'Target player not found.' };
+      }
+      if (!player.ambassadorTiles?.includes(action.targetPlayerId)) {
+        return { valid: false, error: `You do not have an active alliance with ${targetPlayer.name}.` };
+      }
+      return { valid: true };
+    }
+
     case 'DISCOVERY_CHOICE': {
       if (!state.pendingDiscovery) {
         return { valid: false, error: 'No pending discovery tile to claim.' };
@@ -2145,7 +2175,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     action.type !== 'CONVERT_COLONY_SHIP' &&
     action.type !== 'REROLL_COMBAT_DIE' &&
     action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
-    action.type !== 'CLAIM_MINOR_SPECIES'
+    action.type !== 'CLAIM_MINOR_SPECIES' &&
+    action.type !== 'BETRAY_ALLIANCE'
   ) {
     newState.consecutivePasses = 0;
   }
@@ -2887,6 +2918,33 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         );
       }
       newState.pendingDiplomacyProposal = null;
+      return { success: true, newState };
+    }
+
+    case 'BETRAY_ALLIANCE': {
+      const targetPlayer = newState.players.find((p) => p.id === action.targetPlayerId);
+      if (!targetPlayer) {
+        return { success: false, newState: state, error: 'Target player not found.' };
+      }
+      player.ambassadorTiles = (player.ambassadorTiles || []).filter((id) => id !== targetPlayer.id);
+      if (player.ambassadorCubes?.[targetPlayer.id]) {
+        const pRes = player.ambassadorCubes[targetPlayer.id];
+        player.population[pRes].cubesOnBoard = Math.min(11, player.population[pRes].cubesOnBoard + 1);
+        delete player.ambassadorCubes[targetPlayer.id];
+      }
+
+      targetPlayer.ambassadorTiles = (targetPlayer.ambassadorTiles || []).filter((id) => id !== player.id);
+      if (targetPlayer.ambassadorCubes?.[player.id]) {
+        const tgtRes = targetPlayer.ambassadorCubes[player.id];
+        targetPlayer.population[tgtRes].cubesOnBoard = Math.min(11, targetPlayer.population[tgtRes].cubesOnBoard + 1);
+        delete targetPlayer.ambassadorCubes[player.id];
+      }
+
+      newState.traitorPlayerId = player.id;
+      addLog(
+        `⚔️ ${player.name} betrayed and broke diplomatic relations with ${targetPlayer.name}, claiming the Traitor Tile (-2 VP)!`,
+        'combat'
+      );
       return { success: true, newState };
     }
 

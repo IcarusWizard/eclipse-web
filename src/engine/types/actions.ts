@@ -168,6 +168,11 @@ export interface RespondDiplomacyAction extends BaseAction {
   targetCube?: 'money' | 'science' | 'material';
 }
 
+export interface BetrayAllianceAction extends BaseAction {
+  type: 'BETRAY_ALLIANCE';
+  targetPlayerId: string;
+}
+
 export interface ResolveCombatStepAction extends BaseAction {
   type: 'RESOLVE_COMBAT_STEP';
   sectorId: string;
@@ -302,4 +307,5 @@ export type GameAction =
   | ClaimMinorSpeciesAction
   | ActivatePulsarAction
   | ReturnBlackHoleShipAction
-  | DraftFactionAction;
+  | DraftFactionAction
+  | BetrayAllianceAction;

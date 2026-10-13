@@ -40,6 +40,7 @@ import {
   FACTION_COLOR_GROUP,
   FACTION_COLOR_MAP,
   getPlayerReputationTrackSlots,
+  getMaxReputationTilesForPlayer,
   isFactionAvailable,
   getAvailableFactions,
 } from '../rules/setup';
@@ -5323,7 +5324,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // --- Bug 54: Explore preview planet sockets are rectangles (verified in component) ---
 
         // --- Bug 55: Ambassador exchange diplomacy, slot distinction, and Traitor tile ---
-        const diploGame = createInitialGame(3, ['terran_directorate', 'planta', 'orion_hegemony']);
+        const diploGame = createInitialGame(4, ['terran_directorate', 'planta', 'orion_hegemony', 'eridani_empire']);
         const terran = diploGame.players[0]!;
         const planta = diploGame.players[1]!;
         const orion = diploGame.players[2]!;
@@ -5691,7 +5692,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(resetPlayer.population.money.cubesOnBoard).toBe(mech.population.money.cubesOnBoard);
 
         // --- Bug 68: Diplomacy Ambassador Exchange with Population Cube Selection ---
-        const diplo3Game = createInitialGame(3, ['terran_directorate', 'planta', 'orion_hegemony']);
+        const diplo3Game = createInitialGame(4, ['terran_directorate', 'planta', 'orion_hegemony', 'eridani_empire']);
         const pTerran = diplo3Game.players[0]!;
         const pPlanta = diplo3Game.players[1]!;
         const pOrion = diplo3Game.players[2]!;
@@ -6070,7 +6071,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // --- Bug 77: DIPLOMACY_EXCHANGE is a free action ---
         // Set up connected sectors for diplomacy
-        const diploState = createInitialGame(2, ['terran_directorate', 'planta']);
+        const diploState = createInitialGame(4, ['terran_directorate', 'planta', 'orion_hegemony', 'eridani_empire']);
         const [p1, p2] = diploState.players;
         diploState.sectors[0]!.discOwner = p1!.id;
         diploState.sectors[0]!.wormholes = [0, 1, 2, 3, 4, 5];
@@ -6479,7 +6480,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       it('47. verifies Bug Fixes 87-92: action confirmation sync isolation & highlights, new round announcement, orbital cube slots, building ships amidst enemy presence, diplomacy proposal acceptance, and secret reputation draw privacy', async () => {
         const { renderToString } = await import('react-dom/server');
         const React = await import('react');
-        const game = createInitialGame(2, ['descendants_of_draco', 'mechanema']);
+        const game = createInitialGame(4, ['descendants_of_draco', 'mechanema', 'terran_directorate', 'planta']);
         const draco = game.players[0]!;
         const mech = game.players[1]!;
 
@@ -13061,7 +13062,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // =====================================================================
         // Bug 160: Diplomacy forbidden when players have ships in the same sector
         // =====================================================================
-        const game160 = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+        const game160 = createInitialGame(4, ['descendants_of_draco', 'terran_federation', 'planta', 'eridani_empire']);
         const draco = game160.players[0]!;
         const terran = game160.players[1]!;
 
@@ -14195,6 +14196,231 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         for (const vp of repDraw3.drawnTiles) {
           expect(vp).toBeLessThanOrEqual(4); // Can draw up to 4 VP
         }
+      });
+
+      it('84. verifies Ambassador Diplomacy constraints: 4+ player restriction, 3 ambassador component limit, Minor Species 2p/3p exemption, and ambassador shifting from both to amb-only slot upon betrayal', async () => {
+        const { getAvailableAmbassadorSlotsCount } = await import('../rules/minorSpecies');
+
+        // Part 1: Diplomacy forbidden in 2-player and 3-player games
+        const game2p = createInitialGame(2, ['terran_directorate', 'planta']);
+        const [p1_2p, p2_2p] = game2p.players;
+        const check2p = canExchangeAmbassadors(game2p, p1_2p!.id, p2_2p!.id);
+        expect(check2p.canExchange).toBe(false);
+        expect(check2p.reason).toBe('Diplomacy is only allowed in games with 4 or more players.');
+
+        const valPropose2p = validateAction(game2p, {
+          type: 'PROPOSE_DIPLOMACY',
+          playerId: p1_2p!.id,
+          targetPlayerId: p2_2p!.id,
+          initiatorCube: 'science',
+        });
+        expect(valPropose2p.valid).toBe(false);
+        expect(valPropose2p.error).toBe('Diplomacy is only allowed in games with 4 or more players.');
+
+        const valExchange2p = validateAction(game2p, {
+          type: 'DIPLOMACY_EXCHANGE',
+          playerId: p1_2p!.id,
+          targetPlayerId: p2_2p!.id,
+        });
+        expect(valExchange2p.valid).toBe(false);
+        expect(valExchange2p.error).toBe('Diplomacy is only allowed in games with 4 or more players.');
+
+        // 3-player game also forbidden
+        const game3p = createInitialGame(3, ['terran_directorate', 'planta', 'orion_hegemony']);
+        const check3p = canExchangeAmbassadors(game3p, game3p.players[0]!.id, game3p.players[1]!.id);
+        expect(check3p.canExchange).toBe(false);
+        expect(check3p.reason).toBe('Diplomacy is only allowed in games with 4 or more players.');
+
+        // Part 2: Minor Species alliance is NOT diplomacy and is completely valid in 2p / 3p games
+        const game2pMinor = createInitialGame(2, ['hydran_progress', 'terran_directorate'], ['minor_species']);
+        expect(game2pMinor.minorSpeciesSupply).toBeDefined();
+        expect(game2pMinor.minorSpeciesSupply!.length).toBeGreaterThan(0);
+        const hydran2p = game2pMinor.players[0]!;
+        hydran2p.resources.money = 20;
+        const msTile = game2pMinor.minorSpeciesSupply![0]!;
+        const claimMsRes = executeAction(game2pMinor, {
+          type: 'CLAIM_MINOR_SPECIES',
+          playerId: hydran2p.id,
+          speciesId: msTile.id,
+        });
+        expect(claimMsRes.success).toBe(true);
+        expect(claimMsRes.newState.players[0]!.ambassadorTiles).toContain(msTile.id);
+
+        // Part 3: In a 4+ player game, players have only 3 physical ambassador tiles to exchange
+        const game5p = createInitialGame(5, ['orion_hegemony', 'terran_directorate', 'planta', 'eridani_empire', 'mechanema']);
+        const [orion, terran4p, planta4p, eridani4p, mech5p] = game5p.players;
+        // Orion Hegemony has 4 ambassador-eligible slots on their faction board
+        expect(orion!.faction.ambassadorSlots).toBe(4);
+        expect(orion!.faction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both', 'rep_only']);
+
+        // Give Orion 3 player ambassadors (all 3 physical ambassador tiles exchanged)
+        orion!.ambassadorTiles = [terran4p!.id, planta4p!.id, eridani4p!.id];
+        // Orion still has 1 ambassador-eligible slot physically empty on track
+        expect(getAvailableAmbassadorSlotsCount(orion!)).toBe(1);
+
+        // Now if a 4th exchange is attempted with mech5p, it must be blocked because Orion has already used all 3 ambassador tiles
+        const check4thExchange = canExchangeAmbassadors(game5p, orion!.id, mech5p!.id);
+        expect(check4thExchange.canExchange).toBe(false);
+        expect(check4thExchange.reason).toContain('has already exchanged all 3 ambassador tiles');
+
+        // Part 4: Hydran Progress slot shifting from 'both' to 'amb_only' upon betrayal
+        // Hydran has reputationSlotTypes: ['amb_only', 'both', 'both', 'both']
+        const gameHydran = createInitialGame(4, ['hydran_progress', 'terran_directorate', 'planta', 'eridani_empire']);
+        const hydran = gameHydran.players[0]!;
+        const ally1 = gameHydran.players[1]!;
+        const ally2 = gameHydran.players[2]!;
+
+        // Hydran has 2 ambassadors: ally1 and ally2
+        hydran.ambassadorTiles = [ally1.id, ally2.id];
+        hydran.ambassadorCubes = {
+          [ally1.id]: 'science',
+          [ally2.id]: 'money',
+        };
+        // ally1 and ally2 also have Hydran
+        ally1.ambassadorTiles = [hydran.id];
+        ally1.ambassadorCubes = { [hydran.id]: 'material' };
+        ally2.ambassadorTiles = [hydran.id];
+        ally2.ambassadorCubes = { [hydran.id]: 'money' };
+
+        // Hydran also has 2 reputation tiles [3, 2]
+        hydran.reputationTiles = [3, 2];
+
+        // Hydran's reputation track has 4 slots total:
+        // Slot 0 (amb_only) -> holds ally1 (VP: 1)
+        // Slot 1 (both) -> holds ally2 (VP: 1)
+        // Slot 2 (both) -> holds reputation tile 3 (VP: 3)
+        // Slot 3 (both) -> holds reputation tile 2 (VP: 2)
+        const initialHydranSlots = getPlayerReputationTrackSlots(hydran, gameHydran.players);
+        expect(initialHydranSlots.length).toBe(4);
+        expect(initialHydranSlots[0]!.slotType).toBe('amb_only');
+        expect(initialHydranSlots[0]!.tile?.type).toBe('ambassador');
+        if (initialHydranSlots[0]!.tile?.type === 'ambassador') {
+          expect(initialHydranSlots[0]!.tile?.allyId).toBe(ally1.id);
+        }
+
+        expect(initialHydranSlots[1]!.slotType).toBe('both');
+        expect(initialHydranSlots[1]!.tile?.type).toBe('ambassador');
+        if (initialHydranSlots[1]!.tile?.type === 'ambassador') {
+          expect(initialHydranSlots[1]!.tile?.allyId).toBe(ally2.id);
+        }
+
+        expect(initialHydranSlots[2]!.slotType).toBe('both');
+        expect(initialHydranSlots[2]!.tile?.type).toBe('reputation');
+        if (initialHydranSlots[2]!.tile?.type === 'reputation') {
+          expect(initialHydranSlots[2]!.tile?.vp).toBe(3);
+        }
+
+        expect(initialHydranSlots[3]!.slotType).toBe('both');
+        expect(initialHydranSlots[3]!.tile?.type).toBe('reputation');
+        if (initialHydranSlots[3]!.tile?.type === 'reputation') {
+          expect(initialHydranSlots[3]!.tile?.vp).toBe(2);
+        }
+
+        // All 4 slots are full: max reputation tiles is 2, and reputation track is full
+        expect(getMaxReputationTilesForPlayer(hydran)).toBe(2);
+
+        // Betrayal is triggered: Hydran betrays ally1 (the one in amb_only slot 0)
+        const betrayRes = executeAction(gameHydran, {
+          type: 'BETRAY_ALLIANCE',
+          playerId: hydran.id,
+          targetPlayerId: ally1.id,
+        });
+        expect(betrayRes.success).toBe(true);
+
+        const postBetrayHydran = betrayRes.newState.players[0]!;
+        const postBetrayAlly1 = betrayRes.newState.players[1]!;
+
+        // Hydran claimed Traitor Tile
+        expect(betrayRes.newState.traitorPlayerId).toBe(hydran.id);
+
+        // Ambassador tiles and cubes cleanly removed/restored
+        expect(postBetrayHydran.ambassadorTiles).toEqual([ally2.id]);
+        expect(postBetrayHydran.ambassadorCubes?.[ally1.id]).toBeUndefined();
+        expect(postBetrayHydran.ambassadorCubes?.[ally2.id]).toBe('money');
+        expect(postBetrayAlly1.ambassadorTiles).not.toContain(hydran.id);
+
+        // AUTOMATIC SHIFTING:
+        // ally2, which was previously on Slot 1 ('both'), has automatically shifted to Slot 0 ('amb_only')!
+        // Slot 1 ('both') now holds the 3 VP reputation tile!
+        // Slot 2 ('both') now holds the 2 VP reputation tile!
+        // Slot 3 ('both') is now completely empty!
+        const updatedHydranSlots = getPlayerReputationTrackSlots(postBetrayHydran, betrayRes.newState.players);
+        expect(updatedHydranSlots.length).toBe(4);
+
+        expect(updatedHydranSlots[0]!.slotType).toBe('amb_only');
+        expect(updatedHydranSlots[0]!.tile?.type).toBe('ambassador');
+        if (updatedHydranSlots[0]!.tile?.type === 'ambassador') {
+          expect(updatedHydranSlots[0]!.tile?.allyId).toBe(ally2.id); // ally2 moved to amb_only!
+        }
+
+        expect(updatedHydranSlots[1]!.slotType).toBe('both');
+        expect(updatedHydranSlots[1]!.tile?.type).toBe('reputation');
+        if (updatedHydranSlots[1]!.tile?.type === 'reputation') {
+          expect(updatedHydranSlots[1]!.tile?.vp).toBe(3);
+        }
+
+        expect(updatedHydranSlots[2]!.slotType).toBe('both');
+        expect(updatedHydranSlots[2]!.tile?.type).toBe('reputation');
+        if (updatedHydranSlots[2]!.tile?.type === 'reputation') {
+          expect(updatedHydranSlots[2]!.tile?.vp).toBe(2);
+        }
+
+        expect(updatedHydranSlots[3]!.slotType).toBe('both');
+        expect(updatedHydranSlots[3]!.tile).toBeUndefined(); // Freed slot!
+
+        // Hydran's capacity for reputation tiles increased from 2 to 3!
+        expect(getMaxReputationTilesForPlayer(postBetrayHydran)).toBe(3);
+
+        // Now Hydran can claim another reputation tile into the freed slot!
+        betrayRes.newState.pendingReputationDraw = {
+          playerId: postBetrayHydran.id,
+          drawnTiles: [4, 1],
+          drawnCount: 2,
+        };
+        const claimRepRes = executeAction(betrayRes.newState, {
+          type: 'CLAIM_REPUTATION_TILE',
+          playerId: postBetrayHydran.id,
+          selectedTileIndex: 0, // Keep 4 VP
+        });
+        expect(claimRepRes.success).toBe(true);
+        expect(claimRepRes.newState.players[0]!.reputationTiles).toEqual([3, 2, 4]);
+
+        // Part 5: UI Modal checks
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+        // In 2p game, diplomacy section shows 4+ players restriction notice
+        const modal2pHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: game2p.players[0]!,
+            players: game2p.players,
+            activePlayerId: game2p.players[0]!.id,
+            sectors: game2p.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        );
+        expect(modal2pHtml).toContain('Diplomatic Relations (Ambassador Exchange) are only allowed in games with 4 or more players');
+
+        // In 4p game with active alliance, shows Allied (+1 VP) and Betray button
+        const modal4pHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: postBetrayHydran,
+            players: betrayRes.newState.players,
+            activePlayerId: postBetrayHydran.id,
+            sectors: betrayRes.newState.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+            onBetrayAlliance: () => {},
+          })
+        );
+        expect(modal4pHtml).toContain('Allied (+1 VP)');
+        expect(modal4pHtml).toContain('Betray');
       });
     });
   });

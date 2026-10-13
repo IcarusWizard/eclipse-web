@@ -1423,6 +1423,24 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleBetrayAlliance = (targetPlayerId: string) => {
+    const targetPlayer = state.players.find((p) => p.id === targetPlayerId);
+    if (!window.confirm(`Are you sure you want to betray your alliance with ${targetPlayer?.name || targetPlayerId}? You will forfeit the +1 VP ambassador, reclaim your population cube, and take the Traitor Tile (-2 VP).`)) {
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'BETRAY_ALLIANCE',
+      playerId: activePlayer.id,
+      targetPlayerId,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(`Alliance with ${targetPlayer?.name || targetPlayerId} betrayed. Claimed Traitor Tile (-2 VP).`);
+    } else {
+      showToast(res.error || 'Failed to betray alliance.');
+    }
+  };
+
   const handleConfirmDiplomacyExchange = (
     initiatorCube: PopulationResourceType,
     targetCube: PopulationResourceType
@@ -2007,6 +2025,7 @@ export const App: React.FC = () => {
             traitorPlayerId={state.traitorPlayerId}
             gamePhase={state.phase}
             onInitiateDiplomacy={handleExchangeAmbassador}
+            onBetrayAlliance={handleBetrayAlliance}
             delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
           />
         </div>
@@ -2398,6 +2417,7 @@ export const App: React.FC = () => {
           hideOpponentReputation={hideOpponentReputation}
           traitorPlayerId={state.traitorPlayerId}
           onExchangeAmbassador={handleExchangeAmbassador}
+          onBetrayAlliance={handleBetrayAlliance}
           onConvertColonyShip={handleConvertColonyShip}
         />
       )}
