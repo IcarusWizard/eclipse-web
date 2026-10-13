@@ -14244,6 +14244,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           type: 'CLAIM_MINOR_SPECIES',
           playerId: hydran2p.id,
           speciesId: msTile.id,
+          populationTrack: 'money',
         });
         expect(claimMsRes.success).toBe(true);
         expect(claimMsRes.newState.players[0]!.ambassadorTiles).toContain(msTile.id);
@@ -14925,7 +14926,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         const nebulaSec = createGalacticEventSectorTile(295);
         nebulaSec.coord = { q: 0, r: 0 };
-        nebulaSec.rotation = 2; // non-zero rotation must NOT alter outer entry edge mapping
+        nebulaSec.rotation = 0;
 
         // Friendly ship enters Nebula from coord { q: 0, r: -1 } (North-West, edgeFromTo = 1 -> entryEdge = 4)
         const fromSec = {
@@ -14998,6 +14999,231 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         });
         expect(pinnedShiftRes.success).toBe(false);
         expect(pinnedShiftRes.error).toContain('is pinned in Subsector 1 of Nebula Sector 295');
+      });
+
+      it('88. verifies Bug Fixes 184-187: Nebula subsector rotation & entry edges, Pulsar tile ExploreModal/map candidate preview, Pulsar action control permissions, and Nebula per-subsector combat resolution', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction, checkAndTriggerCombat } = await import('../rules/gameReducer');
+        const { getNebulaSubsectorForOuterEdge, createGalacticEventSectorTile, createGalacticEventsState } = await import('../rules/galacticEvents');
+        // --- Bug 184: Rotating nebula sector rotates layout of subsectors ---
+        // Rotation 0: Edges 4, 5 -> Sub 1; Edges 2, 3 -> Sub 2; Edges 0, 1 -> Sub 3
+        expect(getNebulaSubsectorForOuterEdge(4, 0)).toBe(1);
+        expect(getNebulaSubsectorForOuterEdge(5, 0)).toBe(1);
+        expect(getNebulaSubsectorForOuterEdge(2, 0)).toBe(2);
+        expect(getNebulaSubsectorForOuterEdge(3, 0)).toBe(2);
+        expect(getNebulaSubsectorForOuterEdge(0, 0)).toBe(3);
+        expect(getNebulaSubsectorForOuterEdge(1, 0)).toBe(3);
+
+        // Rotation 1 (60 deg CW):
+        // Edge 5 rotates into effective edge 4 -> Sub 1
+        // Edge 0 rotates into effective edge 5 -> Sub 1
+        expect(getNebulaSubsectorForOuterEdge(5, 1)).toBe(1);
+        expect(getNebulaSubsectorForOuterEdge(0, 1)).toBe(1);
+        // Edge 3 rotates into effective edge 2 -> Sub 2
+        // Edge 4 rotates into effective edge 3 -> Sub 2
+        expect(getNebulaSubsectorForOuterEdge(3, 1)).toBe(2);
+        expect(getNebulaSubsectorForOuterEdge(4, 1)).toBe(2);
+        // Edge 1 rotates into effective edge 0 -> Sub 3
+        // Edge 2 rotates into effective edge 1 -> Sub 3
+        expect(getNebulaSubsectorForOuterEdge(1, 1)).toBe(3);
+        expect(getNebulaSubsectorForOuterEdge(2, 1)).toBe(3);
+
+        // Verify movement entry with rotated Nebula tile
+        const game = createInitialGame(2, ['terran_directorate', 'wardens_of_magellan'], ['galactic_events']);
+        const rotatedNebula = createGalacticEventSectorTile(295);
+        rotatedNebula.coord = { q: 0, r: 0 };
+        rotatedNebula.rotation = 1; // Rotated by 60 degrees CW
+
+        // Entry from coord { q: 0, r: -1 } (North-West, entryEdge = 4)
+        // With rotation 1, entryEdge 4 has effectiveEdge 3 -> Subsector 2!
+        const fromSecNorth = {
+          ...game.sectors[1]!,
+          id: 'from_sec_north_88',
+          coord: { q: 0, r: -1 },
+          wormholes: [true, true, true, true, true, true],
+          ships: [{ id: 'p1_scout_88', ownerId: game.players[0]!.id, type: 'interceptor' as const, damage: 0 }],
+          discOwner: game.players[0]!.id,
+        };
+
+        const stateWithRotNebula = {
+          ...game,
+          sectors: [...game.sectors, fromSecNorth, rotatedNebula],
+        };
+
+        const moveRotRes = executeAction(stateWithRotNebula, {
+          type: 'MOVE',
+          playerId: game.players[0]!.id,
+          moves: [
+            {
+              shipId: 'p1_scout_88',
+              fromSectorId: 'from_sec_north_88',
+              toSectorId: rotatedNebula.id,
+            },
+          ],
+        });
+        expect(moveRotRes.success).toBe(true);
+        const movedScout = moveRotRes.newState.sectors
+          .find((s) => s.id === rotatedNebula.id)
+          ?.ships.find((s) => s.id === 'p1_scout_88');
+        expect(movedScout?.subsector).toBe(2); // Correctly entered Subsector 2 due to rotation!
+
+        // --- Bug 185: Pulsar Preview in ExploreModal & HexGalaxyMap ---
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+        const pulsarTile = createGalacticEventSectorTile(393);
+        const modalElement = React.createElement(ExploreModal, {
+          player: game.players[0]!,
+          fromCoord: game.sectors[0]!.coord,
+          targetCoord: { q: 1, r: -2 },
+          candidateTile: pulsarTile,
+          sourceSector: game.sectors[0]!,
+          sectors: game.sectors,
+          rotation: 0,
+          onRotate: () => {},
+          onConfirmPlacement: () => {},
+          onDiscard: () => {},
+        });
+        const modalHtml = renderToString(modalElement);
+        expect(modalHtml).toContain('explore-preview-pulsar');
+        expect(modalHtml).toContain('Pulsar (3 Action Spaces)');
+
+        // --- Bug 186: Only the person who controls the pulsar sector can do pulsar action ---
+        const pulsarSec = createGalacticEventSectorTile(394);
+        pulsarSec.coord = { q: 2, r: 0 };
+        pulsarSec.discOwner = game.players[0]!.id; // Owned by Player 0
+        pulsarSec.pulsarSlot = 'move';
+
+        const stateWithPulsar = {
+          ...game,
+          sectors: [...game.sectors, pulsarSec],
+          galacticEvents: {
+            ...createGalacticEventsState(),
+            pulsars: {
+              [pulsarSec.id]: { currentSlot: 'move' as const, activatedThisRound: false },
+            },
+          },
+        };
+
+        // Player 1 (on their turn) tries to activate Pulsar in Sector 394 (which Player 0 controls) -> must fail!
+        const stateWithPulsarForP1 = { ...stateWithPulsar, activePlayerIndex: 1 };
+        const invalidPulsarRes = executeAction(stateWithPulsarForP1, {
+          type: 'BUILD',
+          playerId: game.players[1]!.id,
+          items: [{ sectorId: game.sectors[1]!.id, itemType: 'interceptor' }],
+          pulsarSectorId: pulsarSec.id,
+        });
+        expect(invalidPulsarRes.success).toBe(false);
+        expect(invalidPulsarRes.error).toContain('You do not control this Pulsar sector');
+
+        // Player 0 activates Pulsar -> shifts slot to build, no influence disc spent from track!
+        const p0Sector = stateWithPulsar.sectors.find((s) => s.discOwner === game.players[0]!.id) || game.sectors[0]!;
+        p0Sector.discOwner = game.players[0]!.id;
+        stateWithPulsar.players[0]!.resources.materials = 10;
+        const initialDiscs = stateWithPulsar.players[0]!.influenceTrack.discsOnTrack;
+        const validPulsarRes = executeAction(stateWithPulsar, {
+          type: 'BUILD',
+          playerId: game.players[0]!.id,
+          items: [{ sectorId: p0Sector.id, itemType: 'interceptor' }],
+          pulsarSectorId: pulsarSec.id,
+        });
+        expect(validPulsarRes.success).toBe(true);
+        expect(validPulsarRes.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs); // No disc spent!
+        expect(validPulsarRes.newState.sectors.find((s) => s.id === pulsarSec.id)?.pulsarSlot).toBe('build');
+        expect(validPulsarRes.newState.galacticEvents?.pulsars[pulsarSec.id]?.activatedThisRound).toBe(true);
+
+        // --- Bug 187: Combat in Nebula resolves per subsector ---
+        const combatNebula = createGalacticEventSectorTile(295);
+        combatNebula.coord = { q: -1, r: -1 };
+        combatNebula.subsectors = [
+          { subsectorIndex: 1, discoveryTile: { id: 'disc_sub1', name: 'Discovery 1', type: 'resource_pack', victoryPoints: 2 }, hasAncient: false, ships: [] },
+          { subsectorIndex: 2, discoveryTile: { id: 'disc_sub2', name: 'Discovery 2', type: 'resource_pack', victoryPoints: 2 }, hasAncient: false, ships: [] },
+          { subsectorIndex: 3, discoveryTile: null, hasAncient: false, ships: [] },
+        ];
+        combatNebula.ships = [
+          // Subsector 1: Player 0 vs Player 1
+          { id: 'p0_cruiser_sub1', ownerId: game.players[0]!.id, type: 'cruiser' as const, damage: 0, subsector: 1 as const },
+          { id: 'p1_cruiser_sub1', ownerId: game.players[1]!.id, type: 'cruiser' as const, damage: 0, subsector: 1 as const },
+          // Subsector 2: Player 0 vs Ancient
+          { id: 'p0_cruiser_sub2', ownerId: game.players[0]!.id, type: 'cruiser' as const, damage: 0, subsector: 2 as const },
+          { id: 'anc_cruiser_sub2', ownerId: 'ancient', type: 'ancient' as const, damage: 0, subsector: 2 as const },
+        ];
+
+        let combatState = {
+          ...game,
+          phase: 'COMBAT_PHASE' as const,
+          sectors: [combatNebula],
+          resolvedCombatSectorIds: [],
+          activeCombat: null,
+          reputationBag: [1, 2, 2, 3],
+        };
+
+        // Check that initial combat targets Subsector 1
+        checkAndTriggerCombat(combatState);
+
+        expect(combatState.activeCombat).toBeDefined();
+        expect(combatState.activeCombat?.subsector).toBe(1);
+
+        // Force conclude Subsector 1 combat with Player 0 as winner
+        // Destroy p1_cruiser_sub1
+        combatNebula.ships = combatNebula.ships.filter((s) => s.id !== 'p1_cruiser_sub1');
+        combatState.activeCombat!.stage = 'resolved';
+        (combatState.activeCombat as any).winnerOwnerId = game.players[0]!.id;
+
+        const sub1ConcludeRes = executeAction(combatState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: game.players[0]!.id,
+          concludeCombat: true,
+        });
+        expect(sub1ConcludeRes.success).toBe(true);
+
+        // Subsector 1 is marked resolved
+        expect(sub1ConcludeRes.newState.resolvedCombatSectorIds).toContain(`${combatNebula.id}_sub_1`);
+        // Sector as a whole is NOT resolved yet because Subsector 2 still has hostiles!
+        expect(sub1ConcludeRes.newState.resolvedCombatSectorIds).not.toContain(combatNebula.id);
+
+        // Process reputation draw for Subsector 1
+        let afterRepState = sub1ConcludeRes.newState;
+        while (afterRepState.pendingReputationDraw) {
+          afterRepState = executeAction(afterRepState, {
+            type: 'CLAIM_REPUTATION_TILE',
+            playerId: afterRepState.pendingReputationDraw.playerId,
+            tileIndex: 0,
+          }).newState;
+        }
+
+        // Subsector 2 combat now initiates!
+        expect(afterRepState.activeCombat).toBeDefined();
+        expect(afterRepState.activeCombat?.subsector).toBe(2);
+
+        // Destroy ancient in Subsector 2, conclude combat
+        const sub2Sector = afterRepState.sectors.find((s) => s.id === combatNebula.id)!;
+        sub2Sector.ships = sub2Sector.ships.filter((s) => s.id !== 'anc_cruiser_sub2');
+        afterRepState.activeCombat!.stage = 'resolved';
+        (afterRepState.activeCombat as any).winnerOwnerId = game.players[0]!.id;
+
+        const sub2ConcludeRes = executeAction(afterRepState, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: game.players[0]!.id,
+          concludeCombat: true,
+        });
+        expect(sub2ConcludeRes.success).toBe(true);
+        expect(sub2ConcludeRes.newState.resolvedCombatSectorIds).toContain(`${combatNebula.id}_sub_2`);
+        // Now that Subsector 1 and Subsector 2 are resolved, entire nebula is resolved
+        expect(sub2ConcludeRes.newState.resolvedCombatSectorIds).toContain(combatNebula.id);
+
+        let finalCombatState = sub2ConcludeRes.newState;
+        while (finalCombatState.pendingReputationDraw) {
+          finalCombatState = executeAction(finalCombatState, {
+            type: 'CLAIM_REPUTATION_TILE',
+            playerId: finalCombatState.pendingReputationDraw.playerId,
+            tileIndex: 0,
+          }).newState;
+        }
+
+        // After all combats resolved, Player 0 claims Discovery Tile in Subsector 1
+        expect(finalCombatState.pendingDiscovery).toBeDefined();
+        expect(finalCombatState.pendingDiscovery?.playerId).toBe(game.players[0]!.id);
       });
     });
   });

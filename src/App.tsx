@@ -975,26 +975,38 @@ export const App: React.FC = () => {
   }, [state.sectors, activePlayer.id]);
 
   // --- PULSAR ANOMALY ACTIVATION (Galactic Events) ---
+  const myPlayerId = typeof currentSeat === 'number' ? state.players[currentSeat]?.id : activePlayer.id;
+  const isMyTurn = currentSeat === 'all' || (typeof currentSeat === 'number' && state.players[currentSeat]?.id === activePlayer.id);
+
   const controlledPulsarSectors = useMemo(() => {
     return state.sectors.filter(
-      (s) => s.isPulsar && s.discOwner === activePlayer.id
+      (s) => s.isPulsar && s.discOwner === myPlayerId
     );
-  }, [state.sectors, activePlayer.id]);
+  }, [state.sectors, myPlayerId]);
 
   const hasPulsarAvailable = useMemo(() => {
     return (
+      isMyTurn &&
+      !isTurnGated &&
+      currentSeat !== 'spectator' &&
       !activePlayer.hasPassed &&
       state.phase === 'ACTION_PHASE' &&
       controlledPulsarSectors.some(
         (s) => !state.galacticEvents?.pulsars?.[s.id]?.activatedThisRound
       )
     );
-  }, [controlledPulsarSectors, state.galacticEvents, activePlayer.hasPassed, state.phase]);
+  }, [isMyTurn, isTurnGated, currentSeat, activePlayer.hasPassed, state.phase, controlledPulsarSectors, state.galacticEvents]);
 
   const handleSelectPulsarAction = (
     targetSlot: 'move' | 'build' | 'upgrade',
     sectorId: string
   ) => {
+    const pSec = state.sectors.find((s) => s.id === sectorId);
+    if (!pSec || pSec.discOwner !== myPlayerId || !isMyTurn || isTurnGated) {
+      showToast('Only the commander controlling this Pulsar sector can perform the Pulsar action.');
+      setPulsarSectorIdForModal(null);
+      return;
+    }
     setActivePulsarSectorId(sectorId);
     setPulsarSectorIdForModal(null);
     if (targetSlot === 'build') {
@@ -2078,7 +2090,11 @@ export const App: React.FC = () => {
               pendingBankruptcy={state.pendingBankruptcy}
               stagedAbandonedSectorIds={stagedBankruptcySectors}
               onToggleAbandonSector={handleToggleAbandonSectorBankruptcy}
-              onActivatePulsar={(secId) => setPulsarSectorIdForModal(secId)}
+              onActivatePulsar={
+                isMyTurn && !isTurnGated && currentSeat !== 'spectator' && (state.sectors.find((s) => s.id === selectedSector.id) || selectedSector).discOwner === myPlayerId
+                  ? (secId) => setPulsarSectorIdForModal(secId)
+                  : undefined
+              }
               isPulsarActivatedThisRound={
                 selectedSector
                   ? Boolean(state.galacticEvents?.pulsars?.[selectedSector.id]?.activatedThisRound)
@@ -2323,7 +2339,7 @@ export const App: React.FC = () => {
       {pulsarSectorIdForModal && (
         (() => {
           const pSec = state.sectors.find((s) => s.id === pulsarSectorIdForModal);
-          if (!pSec) return null;
+          if (!pSec || pSec.discOwner !== myPlayerId || !isMyTurn || isTurnGated || currentSeat === 'spectator') return null;
           return (
             <PulsarModal
               sector={pSec}

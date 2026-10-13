@@ -674,14 +674,18 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-300">
-                  {sector.discOwner === activePlayer.id ? (
-                    isPulsarActivatedThisRound ? (
-                      <span className="text-slate-400 italic">Already activated this round.</span>
+                  {sector.discOwner ? (
+                    sector.discOwner === activePlayer.id ? (
+                      isPulsarActivatedThisRound ? (
+                        <span className="text-slate-400 italic">Already activated this round.</span>
+                      ) : (
+                        <span className="text-emerald-300 font-medium">Ready for free action activation this round!</span>
+                      )
                     ) : (
-                      <span className="text-emerald-300 font-medium">Ready for free action activation this round!</span>
+                      <span className="text-slate-400">Controlled by another commander.</span>
                     )
                   ) : (
-                    <span className="text-slate-400">Control this sector to shift the disc for free actions.</span>
+                    <span className="text-slate-400">Control this sector with an Influence Disc to shift the disc for free actions.</span>
                   )}
                 </div>
                 {sector.discOwner === activePlayer.id && !isPulsarActivatedThisRound && !activePlayer.hasPassed && onActivatePulsar && (

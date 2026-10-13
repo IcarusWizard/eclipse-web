@@ -410,13 +410,15 @@ export function getLegalBlackHoleReturnSectors(
 
 /**
  * Subsector mapping for Nebula wedges:
- * Outer edges:
- * - Subsector 1 (Top-Left): outer edges 4 (NW) & 5 (NE)
- * - Subsector 2 (Bottom-Left): outer edges 2 (SW) & 3 (W)
- * - Subsector 3 (Right): outer edges 0 (E) & 1 (SE)
+ * When sector rotation is 0:
+ * - Subsector 1 (North): outer edges 4 (NW) & 5 (NE)
+ * - Subsector 2 (South-West): outer edges 2 (SW) & 3 (W)
+ * - Subsector 3 (South-East): outer edges 0 (E) & 1 (SE)
+ * Rotating the tile rotates the layout of the subsectors accordingly.
  */
-export function getNebulaSubsectorForOuterEdge(edge: HexEdge): 1 | 2 | 3 {
-  if (edge === 4 || edge === 5) return 1;
-  if (edge === 2 || edge === 3) return 2;
+export function getNebulaSubsectorForOuterEdge(edge: HexEdge, sectorRotation: number = 0): 1 | 2 | 3 {
+  const effectiveEdge = ((edge - (sectorRotation || 0)) % 6 + 6) % 6;
+  if (effectiveEdge === 4 || effectiveEdge === 5) return 1;
+  if (effectiveEdge === 2 || effectiveEdge === 3) return 2;
   return 3;
 }

@@ -1080,7 +1080,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (fromSec.isNebula && fromSec.id !== toSec.id) {
             const exitEdge = getEdgeBetween(fromSec.coord, toSec.coord);
             if (exitEdge !== null) {
-              const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge);
+              const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge, fromSec.rotation || 0);
               const shipSub = shipInfo.ship.subsector ?? 1;
               if (allowedSub !== shipSub) {
                 return {
@@ -1103,7 +1103,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (!targetSub && toSec.isNebula && fromSec.id !== toSec.id) {
             const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
             const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
-            targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge);
+            targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSec.rotation || 0);
           }
 
           // Advance ship's simulated location in simSectorShips
@@ -2755,7 +2755,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                   // Entering from outside
                   const edgeFromTo = getEdgeBetween(fromSector.coord, toSector.coord);
                   const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
-                  const targetSub = step.targetSubsector || getNebulaSubsectorForOuterEdge(entryEdge as HexEdge);
+                  const targetSub = step.targetSubsector || getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSector.rotation || 0);
                   movedShip.subsector = targetSub;
                   toSector.ships.push(movedShip);
                   toSector.playerEntryOrder = toSector.playerEntryOrder || [];
@@ -2972,6 +2972,12 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           const sec = newState.sectors.find((s) => s.id === secId);
           if (sec && sec.discOwner === player.id) {
             sec.discOwner = undefined;
+            if (sec.isPulsar) {
+              sec.pulsarSlot = undefined;
+              if (newState.galacticEvents?.pulsars?.[sec.id]) {
+                delete newState.galacticEvents.pulsars[sec.id];
+              }
+            }
             const discsBefore = player.influenceTrack.discsOnTrack;
             player.influenceTrack.discsOnTrack = Math.min(
               player.influenceTrack.totalDiscs,
@@ -3023,6 +3029,11 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           if (sec && !sec.discOwner && player.influenceTrack.discsOnTrack > 0) {
             player.influenceTrack.discsOnTrack -= 1;
             sec.discOwner = player.id;
+            if (sec.isPulsar) {
+              sec.pulsarSlot = 'move';
+              if (!newState.galacticEvents) newState.galacticEvents = createGalacticEventsState();
+              newState.galacticEvents.pulsars[sec.id] = { currentSlot: 'move', activatedThisRound: false };
+            }
             addLog(`${player.name} claimed control of Sector ${sec.sectorNumber} with an Influence Disc!`);
             if (sec.discoveryTile && !sec.discoveryClaimed && (!sec.ancientsCount || sec.ancientsCount === 0) && !newState.pendingDiscovery) {
               newState.pendingDiscovery = {
@@ -3477,11 +3488,15 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               ? [combatDefenderId, ...rawDuelPlayerIds.filter((id) => id !== combatDefenderId)]
               : rawDuelPlayerIds;
 
-            // Accumulate combat records for this sector across sequential duels (Bug 170)
+            const activeSub = sector.isNebula ? newState.activeCombat?.subsector : undefined;
+            const relevantShips = activeSub ? sector.ships.filter((s) => (s.subsector ?? 1) === activeSub) : sector.ships;
+
+            // Accumulate combat records for this sector/subsector across sequential duels (Bug 170 & Bug 187)
             if (!newState.sectorCombatRecords) {
               newState.sectorCombatRecords = {};
             }
-            const secRecord = newState.sectorCombatRecords[sector.id] || {
+            const scopeKey = sector.isNebula && activeSub ? `${sector.id}_sub_${activeSub}` : sector.id;
+            const secRecord = newState.sectorCombatRecords[scopeKey] || {
               participatingPlayerIds: [],
               retreatedPlayerIds: [],
               destroyedShips: [],
@@ -3507,7 +3522,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 });
               }
             }
-            newState.sectorCombatRecords[sector.id] = secRecord;
+            newState.sectorCombatRecords[scopeKey] = secRecord;
 
             // Remove eliminated / retreated participants from sector.playerEntryOrder
             if (sector.playerEntryOrder) {
@@ -3516,8 +3531,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               });
             }
 
-            // Check if more combats remain in this sector (Bug 66: multi-player sequential combat)
-            const remainingOwners = Array.from(new Set(sector.ships.map((s) => s.ownerId)));
+            // Check if more combats remain in this subsector (or sector if not nebula) (Bug 66 & Bug 187)
+            const remainingOwners = Array.from(new Set(relevantShips.map((s) => s.ownerId)));
             const hasMoreCombatsInSector =
               remainingOwners.length > 1 &&
               !(remainingOwners.length === 2 && remainingOwners.some((o) => ['ancient', 'guardian', 'gcds'].includes(o)) && remainingOwners.some((o) => newState.players.find((p) => p.id === o)?.faction.id === 'descendants_of_draco'));
@@ -3525,7 +3540,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             if (hasMoreCombatsInSector) {
               // Winner continues to fight the next player WITHOUT repairing ship damage!
               addLog(
-                `⚔️ Duel in Sector ${sector.sectorNumber} resolved. Victor ${winnerId || 'Unknown'} advances to fight the next opponent without repairing ship damage!`,
+                `⚔️ Duel in Sector ${sector.sectorNumber}${activeSub ? ` (Subsector ${activeSub})` : ''} resolved. Victor ${winnerId || 'Unknown'} advances to fight the next opponent without repairing ship damage!`,
                 'combat'
               );
               newState.activeCombat = null;
@@ -3533,30 +3548,41 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               return;
             }
 
-            // All combats in this sector are complete!
-            // 1. Repair damage on surviving ships
-            for (const ship of sector.ships) {
+            // All combats in this subsector (or sector) are complete!
+            // 1. Repair damage on surviving ships in this scope
+            for (const ship of relevantShips) {
               ship.damage = 0;
             }
 
-            addLog(`Combat in Sector ${sector.sectorNumber} has concluded! Winner: ${winnerId || 'None'}.`, 'combat');
+            addLog(`Combat in Sector ${sector.sectorNumber}${activeSub ? ` (Subsector ${activeSub})` : ''} has concluded! Winner: ${winnerId || 'None'}.`, 'combat');
 
             if (!newState.resolvedCombatSectorIds) {
               newState.resolvedCombatSectorIds = [];
             }
-            if (sector.isNebula && newState.activeCombat?.subsector) {
-              newState.resolvedCombatSectorIds.push(`${sector.id}_sub_${newState.activeCombat.subsector}`);
+            if (sector.isNebula && activeSub) {
+              if (!newState.resolvedCombatSectorIds.includes(`${sector.id}_sub_${activeSub}`)) {
+                newState.resolvedCombatSectorIds.push(`${sector.id}_sub_${activeSub}`);
+              }
               const hasRemainingCombatInNebula = ([1, 2, 3] as const).some((subIdx) => {
                 if (newState.resolvedCombatSectorIds!.includes(`${sector.id}_sub_${subIdx}`)) return false;
-                const subShips = sector.ships.filter((s) => s.subsector === subIdx);
+                const subShips = sector.ships.filter((s) => (s.subsector ?? 1) === subIdx);
                 const subOwners = Array.from(new Set(subShips.map((s) => s.ownerId)));
+                if (subOwners.length === 2 && subOwners.includes('ancient')) {
+                  const otherOwner = subOwners.find((o) => o !== 'ancient');
+                  const otherPlayer = newState.players.find((p) => p.id === otherOwner);
+                  if (otherPlayer?.faction.id === 'descendants_of_draco') {
+                    return false;
+                  }
+                }
                 return subOwners.length > 1;
               });
-              if (!hasRemainingCombatInNebula) {
+              if (!hasRemainingCombatInNebula && !newState.resolvedCombatSectorIds.includes(sector.id)) {
                 newState.resolvedCombatSectorIds.push(sector.id);
               }
             } else {
-              newState.resolvedCombatSectorIds.push(sector.id);
+              if (!newState.resolvedCombatSectorIds.includes(sector.id)) {
+                newState.resolvedCombatSectorIds.push(sector.id);
+              }
             }
 
             // 2. Resolve attacking population & influence conquest (only for non-nebula)
@@ -3566,7 +3592,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
             newState.activeCombat = null;
 
-            // 3. Compute reputation tiles for participating players across all battles in this sector (Bug 170)
+            // 3. Compute reputation tiles for participating players across all battles in this sector (Bug 170 & Bug 187)
             const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string }[] = [];
 
             for (const pId of secRecord.participatingPlayerIds) {
@@ -3574,7 +3600,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               const playerKills = secRecord.destroyedShips.filter(
                 (casualty) => casualty.killerId === pId && casualty.ownerId !== pId
               );
-              const attemptedRetreat = secRecord.retreatedPlayerIds.includes(pId) && !sector.ships.some((s) => s.ownerId === pId);
+              const attemptedRetreat = secRecord.retreatedPlayerIds.includes(pId) && !relevantShips.some((s) => s.ownerId === pId);
 
               // Official Rulebook p. 21 & p. 30:
               // "RETREAT PENALTY: If all of your remaining Ships attempt to Retreat from a battle,
@@ -3629,7 +3655,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                   repDrawQueue.push({
                     playerId: pId,
                     drawnTiles: drawn,
-                    sectorId: sector.id,
+                    sectorId: scopeKey,
                   });
                   const participant = newState.players.find((p) => p.id === pId);
                   if (participant?.faction.id === 'rho_indi_syndicate') {
@@ -3643,7 +3669,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               }
             }
 
-            delete newState.sectorCombatRecords[sector.id];
+            delete newState.sectorCombatRecords[scopeKey];
 
             if (repDrawQueue.length > 0) {
               newState.pendingReputationDraw = repDrawQueue[0];
@@ -3653,8 +3679,11 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             }
           };
 
+          const activeSub = sector.isNebula ? newState.activeCombat.subsector : undefined;
           const units = buildCombatUnitsForSector(
-            sector,
+            sector.isNebula && activeSub
+              ? { ...sector, ships: sector.ships.filter((s) => (s.subsector ?? 1) === activeSub) }
+              : sector,
             newState.players,
             newState.activeCombat.participatingPlayerIds,
             newState.neutralShipBlueprints,
@@ -4742,7 +4771,7 @@ export function computePinningState(
     if (!resolvedSub && toSec?.isNebula && fromSec && fromSec.id !== toSec.id) {
       const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
       const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
-      resolvedSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge);
+      resolvedSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSec.rotation || 0);
     }
     if (movedShip) {
       if (toSec?.isNebula) {
@@ -5104,7 +5133,7 @@ export function checkAndTriggerCombat(state: GameState): void {
     if (sec.isNebula && sec.subsectors) {
       for (const sub of sec.subsectors) {
         if (sub.discoveryTile) {
-          const shipsInSub = sec.ships.filter((s) => s.subsector === sub.subsectorIndex);
+          const shipsInSub = sec.ships.filter((s) => (s.subsector ?? 1) === sub.subsectorIndex);
           const friendlyOwners = Array.from(new Set(shipsInSub.filter((s) => s.ownerId.startsWith('player_')).map((s) => s.ownerId)));
           const hasHostiles = shipsInSub.some((s) => s.ownerId === 'ancient' || s.ownerId === 'gcds' || s.ownerId === 'guardian') || friendlyOwners.length > 1;
           if (friendlyOwners.length === 1 && !hasHostiles) {

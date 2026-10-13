@@ -39,7 +39,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   if (!sector) return null;
 
   const units = buildCombatUnitsForSector(
-    sector,
+    sector.isNebula && combat.subsector
+      ? { ...sector, ships: sector.ships.filter((s) => (s.subsector ?? 1) === combat.subsector) }
+      : sector,
     state.players,
     combat.participatingPlayerIds,
     state.neutralShipBlueprints

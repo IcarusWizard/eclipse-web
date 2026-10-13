@@ -375,7 +375,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                   );
                 })}
                 {activeTile.isNebula && (
-                  <g className="pointer-events-none opacity-70">
+                  <g className="pointer-events-none opacity-70" transform={`rotate(${rotation * 60}, 17, 17)`}>
                     <line x1="17" y1="17" x2={17 + 14 * 0.866} y2={17 - 14 * 0.5} stroke="#10b981" strokeWidth="0.8" strokeDasharray="2 1" />
                     <line x1="17" y1="17" x2="17" y2={17 + 14 * 0.9} stroke="#10b981" strokeWidth="0.8" strokeDasharray="2 1" />
                     <line x1="17" y1="17" x2={17 - 14 * 0.866} y2={17 - 14 * 0.5} stroke="#10b981" strokeWidth="0.8" strokeDasharray="2 1" />
@@ -386,6 +386,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                     <circle cx="0" cy="0" r="3.5" fill="#2e1065" stroke="#a855f7" strokeWidth="0.8" />
                     <circle cx="0" cy="0" r="2" fill="#3b0764" stroke="#c084fc" strokeWidth="0.5" strokeDasharray="1.5 1" />
                     <circle cx="0" cy="0" r="0.75" fill="#f3e8ff" />
+                  </g>
+                )}
+                {(activeTile.isPulsar || activeTile.sectorNumber === 393 || activeTile.sectorNumber === 394) && (
+                  <g data-testid="explore-preview-pulsar" transform="translate(17, 12)">
+                    <circle cx="0" cy="0" r="4.5" fill="#0369a1" stroke="#38bdf8" strokeWidth="0.8" className="animate-pulse" />
+                    <circle cx="0" cy="0" r="2.2" fill="#e0f2fe" />
+                    <text x="0" y="1" textAnchor="middle" fill="#0369a1" fontSize="3.5" fontWeight="bold">P</text>
                   </g>
                 )}
                 <text
@@ -407,6 +414,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 {(activeTile.hasWarpPortal || activeTile.sectorNumber === 281 || activeTile.sectorNumber === 381 || activeTile.sectorNumber === 382) && (
                   <span className="text-[9px] font-bold text-purple-400 mt-0.5">
                     🌀 Warp Portal
+                  </span>
+                )}
+                {(activeTile.isPulsar || activeTile.sectorNumber === 393 || activeTile.sectorNumber === 394) && (
+                  <span className="text-[9px] font-bold text-cyan-400 mt-0.5">
+                    ⚡ Pulsar (3 Action Spaces)
                   </span>
                 )}
                 {activeTile.isNebula && (
