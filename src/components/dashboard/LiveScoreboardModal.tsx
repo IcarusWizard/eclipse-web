@@ -79,7 +79,7 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
                 <tr className="border-b border-slate-800 bg-slate-900/90 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
                   <th className="py-3 px-4 text-center w-14">Rank</th>
                   <th className="py-3 px-4">Commander & Faction</th>
-                  <th className="py-3 px-3 text-center" title="Victory Points from Controlled Sectors">
+                  <th className="py-3 px-3 text-center" title="Victory Points from Controlled Sectors & Rare Warp Portals (+1 VP)">
                     <div className="flex items-center justify-center gap-1">
                       <Globe2 className="w-3.5 h-3.5 text-cyan-400" />
                       <span>Sectors</span>
@@ -109,7 +109,7 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
                       <span>Ambass.</span>
                     </div>
                   </th>
-                  <th className="py-3 px-3 text-center" title="2 VP per Kept Discovery Tile & Warp Portals">
+                  <th className="py-3 px-3 text-center" title="2 VP per Kept Discovery Tile & Discovery Warp Portals">
                     <div className="flex items-center justify-center gap-1">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
                       <span>Discoveries</span>

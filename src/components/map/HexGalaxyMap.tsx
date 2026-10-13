@@ -174,6 +174,22 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
     return list;
   }, [state.sectors, state.warpedUniverse]);
 
+  const ring1SlotsRemaining = useMemo(() => {
+    return unoccupiedCoords.filter((c) => getRingFromCoord(c) === 1).length;
+  }, [unoccupiedCoords]);
+
+  const ring2SlotsRemaining = useMemo(() => {
+    return unoccupiedCoords.filter((c) => getRingFromCoord(c) === 2).length;
+  }, [unoccupiedCoords]);
+
+  const ring3SlotsRemaining = useMemo(() => {
+    return unoccupiedCoords.filter((c) => getRingFromCoord(c) === 3).length;
+  }, [unoccupiedCoords]);
+
+  const isRing1Possible = ring1SlotsRemaining > 0 && (state.sectorDecks?.ring1?.length ?? 0) > 0;
+  const isRing2Possible = ring2SlotsRemaining > 0 && (state.sectorDecks?.ring2?.length ?? 0) > 0;
+  const isRing3Possible = ring3SlotsRemaining > 0 && (state.sectorDecks?.ring3?.length ?? 0) > 0;
+
   const activePlayer = state.players[state.activePlayerIndex];
 
   // Center pan on initial load
@@ -300,11 +316,47 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
         {/* Sector Deck Counter Badge */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-lg text-xs font-mono shadow-md">
           <span className="text-slate-400 font-bold text-[11px]">DECKS:</span>
-          <span className="text-amber-400 font-bold" title="Ring 1 Sector Stack">R1: {state.sectorDecks?.ring1?.length ?? 0}</span>
+          <span
+            data-testid="deck-counter-r1"
+            className={`transition-opacity ${
+              isRing1Possible ? 'text-amber-400 font-bold' : 'text-slate-500 opacity-40 line-through font-bold'
+            }`}
+            title={
+              !isRing1Possible
+                ? `Ring 1: ${ring1SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`
+                : `Ring 1 Sector Stack (${state.sectorDecks?.ring1?.length ?? 0} tiles, ${ring1SlotsRemaining} slots open)`
+            }
+          >
+            R1: {state.sectorDecks?.ring1?.length ?? 0}
+          </span>
           <span className="text-slate-600">|</span>
-          <span className="text-cyan-400 font-bold" title="Ring 2 Sector Stack">R2: {state.sectorDecks?.ring2?.length ?? 0}</span>
+          <span
+            data-testid="deck-counter-r2"
+            className={`transition-opacity ${
+              isRing2Possible ? 'text-cyan-400 font-bold' : 'text-slate-500 opacity-40 line-through font-bold'
+            }`}
+            title={
+              !isRing2Possible
+                ? `Ring 2: ${ring2SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`
+                : `Ring 2 Sector Stack (${state.sectorDecks?.ring2?.length ?? 0} tiles, ${ring2SlotsRemaining} slots open)`
+            }
+          >
+            R2: {state.sectorDecks?.ring2?.length ?? 0}
+          </span>
           <span className="text-slate-600">|</span>
-          <span className="text-indigo-400 font-bold" title="Ring 3 Sector Stack">R3: {state.sectorDecks?.ring3?.length ?? 0}</span>
+          <span
+            data-testid="deck-counter-r3"
+            className={`transition-opacity ${
+              isRing3Possible ? 'text-indigo-400 font-bold' : 'text-slate-500 opacity-40 line-through font-bold'
+            }`}
+            title={
+              !isRing3Possible
+                ? `Ring 3: ${ring3SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`
+                : `Ring 3 Sector Stack (${state.sectorDecks?.ring3?.length ?? 0} tiles, ${ring3SlotsRemaining} slots open)`
+            }
+          >
+            R3: {state.sectorDecks?.ring3?.length ?? 0}
+          </span>
         </div>
 
         {/* Grid Outline Toggle */}

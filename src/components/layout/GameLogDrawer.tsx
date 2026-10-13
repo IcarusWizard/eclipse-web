@@ -4,14 +4,46 @@ import { ScrollText, ChevronDown, ChevronUp, Maximize2, Minimize2, Swords, Coins
 
 interface GameLogDrawerProps {
   logs: GameLogEntry[];
+  initialOpen?: boolean;
+  initialLastCheckedCount?: number;
 }
 
 type FilterType = 'all' | 'action' | 'combat' | 'economy' | 'system';
 
-export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({ logs }) => {
-  const [isOpen, setIsOpen] = useState<boolean>(false);
+export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
+  logs,
+  initialOpen = false,
+  initialLastCheckedCount,
+}) => {
+  const [isOpen, setIsOpen] = useState<boolean>(initialOpen);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
+  const [lastCheckedCount, setLastCheckedCount] = useState<number>(() =>
+    initialLastCheckedCount !== undefined ? initialLastCheckedCount : logs.length
+  );
+  const [highlightFromIndex, setHighlightFromIndex] = useState<number>(() =>
+    initialLastCheckedCount !== undefined ? initialLastCheckedCount : logs.length
+  );
+
+  const unreadCount = Math.max(0, logs.length - lastCheckedCount);
+
+  // Set of log IDs that are new since player's last check
+  const highlightedLogIds = useMemo(() => {
+    if (highlightFromIndex >= logs.length) return new Set<string>();
+    return new Set(logs.slice(highlightFromIndex).map((l) => l.id));
+  }, [logs, highlightFromIndex]);
+
+  const handleToggle = () => {
+    if (!isOpen) {
+      setHighlightFromIndex(lastCheckedCount);
+      setLastCheckedCount(logs.length);
+      setIsOpen(true);
+    } else {
+      setHighlightFromIndex(logs.length);
+      setLastCheckedCount(logs.length);
+      setIsOpen(false);
+    }
+  };
 
   const filteredLogs = useMemo(() => {
     if (activeFilter === 'all') return logs;
@@ -43,6 +75,16 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({ logs }) => {
               <ScrollText className="w-4 h-4 text-cyan-400" /> Galaxy Chronicle & Event Log
             </span>
             <div className="flex items-center gap-1.5">
+              {highlightedLogIds.size > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setHighlightFromIndex(logs.length)}
+                  className="px-1.5 py-0.5 rounded text-[10px] bg-red-950/60 hover:bg-red-900/70 border border-red-700/60 text-red-300 font-bold transition cursor-pointer"
+                  title="Clear New Event Highlights"
+                >
+                  Clear !
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
@@ -53,7 +95,11 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({ logs }) => {
               </button>
               <button
                 type="button"
-                onClick={() => setIsOpen(false)}
+                onClick={() => {
+                  setHighlightFromIndex(logs.length);
+                  setLastCheckedCount(logs.length);
+                  setIsOpen(false);
+                }}
                 className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
                 title="Close Drawer"
               >
@@ -128,40 +174,58 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({ logs }) => {
                 No events recorded for this category yet.
               </div>
             ) : (
-              filteredLogs.map((log) => (
-                <div
-                  key={log.id}
-                  className={`p-2.5 rounded-lg border text-[11px] leading-relaxed transition-all ${
-                    log.type === 'combat'
-                      ? 'bg-rose-950/20 border-rose-900/50 text-rose-100'
-                      : log.type === 'economy'
-                      ? 'bg-amber-950/20 border-amber-900/50 text-amber-100'
-                      : log.type === 'system'
-                      ? 'bg-indigo-950/20 border-indigo-900/50 text-indigo-100'
-                      : 'bg-slate-900/80 border-slate-800 text-slate-200'
-                  }`}
-                >
-                  <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono mb-1">
-                    <span className="bg-slate-800/80 px-1.5 py-0.5 rounded font-bold text-slate-300">
-                      RND {log.round}
-                    </span>
-                    <span
-                      className={`uppercase font-bold tracking-wider ${
-                        log.type === 'combat'
-                          ? 'text-rose-400'
-                          : log.type === 'economy'
-                          ? 'text-amber-400'
-                          : log.type === 'system'
-                          ? 'text-indigo-400'
-                          : 'text-cyan-400'
-                      }`}
-                    >
-                      {log.type}
-                    </span>
+              filteredLogs.map((log) => {
+                const isNew = highlightedLogIds.has(log.id);
+                return (
+                  <div
+                    key={log.id}
+                    data-testid={isNew ? 'chronicle-log-new' : 'chronicle-log'}
+                    className={`p-2.5 rounded-lg border text-[11px] leading-relaxed transition-all ${
+                      isNew
+                        ? 'ring-1 ring-red-500/70 border-red-500/80 bg-red-950/30 text-white shadow-sm shadow-red-500/20'
+                        : log.type === 'combat'
+                        ? 'bg-rose-950/20 border-rose-900/50 text-rose-100'
+                        : log.type === 'economy'
+                        ? 'bg-amber-950/20 border-amber-900/50 text-amber-100'
+                        : log.type === 'system'
+                        ? 'bg-indigo-950/20 border-indigo-900/50 text-indigo-100'
+                        : 'bg-slate-900/80 border-slate-800 text-slate-200'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono mb-1">
+                      <div className="flex items-center gap-1.5">
+                        <span className="bg-slate-800/80 px-1.5 py-0.5 rounded font-bold text-slate-300">
+                          RND {log.round}
+                        </span>
+                        {isNew && (
+                          <span
+                            data-testid="chronicle-new-tag"
+                            className="px-1.5 py-0.2 rounded bg-red-600 text-white font-bold text-[8px] uppercase tracking-wider animate-pulse flex items-center gap-0.5"
+                          >
+                            <span>!</span> NEW
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`uppercase font-bold tracking-wider ${
+                          isNew
+                            ? 'text-red-400 font-extrabold'
+                            : log.type === 'combat'
+                            ? 'text-rose-400'
+                            : log.type === 'economy'
+                            ? 'text-amber-400'
+                            : log.type === 'system'
+                            ? 'text-indigo-400'
+                            : 'text-cyan-400'
+                        }`}
+                      >
+                        {log.type}
+                      </span>
+                    </div>
+                    <div className="break-words">{log.message}</div>
                   </div>
-                  <div className="break-words">{log.message}</div>
-                </div>
-              ))
+                );
+              })
             )}
           </div>
         </div>
@@ -170,11 +234,21 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({ logs }) => {
       {/* Toggle Button */}
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold shadow-lg transition-all cursor-pointer"
+        onClick={handleToggle}
+        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold shadow-lg transition-all cursor-pointer relative"
       >
         <ScrollText className="w-4 h-4 text-cyan-400" />
         <span>Chronicle ({logs.length})</span>
+        {unreadCount > 0 && !isOpen && (
+          <span
+            data-testid="chronicle-unread-badge"
+            className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black tracking-wide shadow-md shadow-red-600/50 animate-pulse"
+            title={`${unreadCount} new events since last check`}
+          >
+            <span className="text-red-200">!</span>
+            <span>{unreadCount}</span>
+          </span>
+        )}
         {isOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
       </button>
     </div>

@@ -5504,8 +5504,10 @@ export function computeCurrentScores(state: GameState): {
 
   for (const p of state.players) {
     // 1. Controlled Sectors VP
+    // Sector printed VP + Rare Tech Warp Portal (+1 VP per controlled sector with a rare warp portal)
     const controlledSectors = state.sectors.filter((s) => s.discOwner === p.id);
-    const sectorVP = controlledSectors.reduce((sum, s) => sum + s.victoryPoints, 0);
+    const rareWarpPortalVP = controlledSectors.filter((s) => s.hasRareWarpPortal).length * 1;
+    const sectorVP = controlledSectors.reduce((sum, s) => sum + s.victoryPoints, 0) + rareWarpPortalVP;
 
     // 2. Monoliths VP (3 per monolith in controlled sectors per official Second Dawn rules)
     const monolithCount = controlledSectors.filter((s) => s.structures?.monolith || s.hasMonolith).length;
@@ -5548,17 +5550,14 @@ export function computeCurrentScores(state: GameState): {
     // 6. Kept Discovery Tiles (2 VP each)
     const discoveryVP = (p.keptDiscoveryTiles?.length || 0) * 2;
 
-    // 7. Warp Portal VP:
-    // Rare Tech warp portal in controlled sector: +1 VP
+    // 7. Discovery Warp Portal VP:
     // Discovery tile warp portal in controlled sector: +2 VP
-    let warpPortalVP = 0;
+    let discoveryWarpPortalVP = 0;
     for (const s of controlledSectors) {
-      if (s.hasRareWarpPortal) {
-        warpPortalVP += 1;
-      } else if (s.hasDiscoveryWarpPortal) {
-        warpPortalVP += 2;
-      } else if (s.hasWarpPortal && s.sectorNumber !== 281 && s.sectorNumber !== 381 && s.sectorNumber !== 382) {
-        warpPortalVP += 2;
+      if (s.hasDiscoveryWarpPortal) {
+        discoveryWarpPortalVP += 2;
+      } else if (s.hasWarpPortal && !s.hasRareWarpPortal && s.sectorNumber !== 281 && s.sectorNumber !== 381 && s.sectorNumber !== 382) {
+        discoveryWarpPortalVP += 2;
       }
     }
 
@@ -5616,7 +5615,7 @@ export function computeCurrentScores(state: GameState): {
     const isRhoIndi = p.faction.id === 'rho_indi_syndicate';
     const traitorVP = state.traitorPlayerId === p.id && !isRhoIndi ? -2 : 0;
 
-    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + warpPortalVP + artifactCodexVP + ancientMightVP + speciesBonus + traitorVP;
+    const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + discoveryWarpPortalVP + artifactCodexVP + ancientMightVP + speciesBonus + traitorVP;
 
     scores[p.id] = {
       sectors: sectorVP,
@@ -5624,7 +5623,7 @@ export function computeCurrentScores(state: GameState): {
       reputation: repVP,
       techs: techVP,
       ambassadors: ambassadorVP,
-      discoveries: discoveryVP + warpPortalVP + artifactCodexVP + ancientMightVP,
+      discoveries: discoveryVP + discoveryWarpPortalVP + artifactCodexVP + ancientMightVP,
       speciesBonus,
       traitor: traitorVP,
       total,

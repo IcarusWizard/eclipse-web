@@ -5602,9 +5602,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(warpRes.success).toBe(true);
         expect(warpRes.newState.sectors[0]!.hasRareWarpPortal).toBe(true);
 
+        const preWarpSectorScore = computeCurrentScores(warpGame).scores[warpPlayer.id]!.sectors;
         const warpScores = computeCurrentScores(warpRes.newState);
-        // Warp portal in controlled sector awards +1 VP
-        expect(warpScores.scores[warpPlayer.id]!.discoveries).toBe(1);
+        // Rare Warp portal in controlled sector awards +1 VP to sectors (not discoveries)
+        expect(warpScores.scores[warpPlayer.id]!.sectors).toBe(preWarpSectorScore + 1);
+        expect(warpScores.scores[warpPlayer.id]!.discoveries).toBe(0);
 
         // --- Bug 62 & 63: 1:1 Movement Pinning Logic ---
         const pinGame = createInitialGame(2);
@@ -14601,6 +14603,148 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(lobbyAdminHtml).toContain('title="Join as Hotseat (Control All)"');
 
         deleteSavedTable('galaxy-999');
+      });
+
+      it('86. verifies Bug Fixes 172, 173, 174: Chronicle unread red! count badge and new events highlight, Rare Warp Portal scoring in controlled sectors rather than discoveries, and Ring 1/2 sector deck dimming when no slots or tiles remain', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { GameLogDrawer } = await import('../../components/layout/GameLogDrawer');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+
+        // Part 1: Bug 172 - Chronicle unread red! count badge and new events highlight
+        const mockLogs = [
+          {
+            id: 'log-1',
+            timestamp: 1000,
+            round: 1,
+            phase: 'ACTION_PHASE' as const,
+            message: 'Player 1 explored sector 201',
+            type: 'action' as const,
+          },
+          {
+            id: 'log-2',
+            timestamp: 2000,
+            round: 1,
+            phase: 'ACTION_PHASE' as const,
+            message: 'Player 2 researched Plasma Cannon',
+            type: 'action' as const,
+          },
+          {
+            id: 'log-3',
+            timestamp: 3000,
+            round: 2,
+            phase: 'COMBAT_PHASE' as const,
+            message: 'Combat resolved in sector 201',
+            type: 'combat' as const,
+          },
+        ];
+
+        // When player last checked at count = 1, there are 2 new unread logs:
+        const drawerClosedHtml = renderToString(
+          React.createElement(GameLogDrawer, {
+            logs: mockLogs,
+            initialOpen: false,
+            initialLastCheckedCount: 1,
+          })
+        );
+        // Toggle button displays red ! badge with unread count 2
+        expect(drawerClosedHtml).toContain('data-testid="chronicle-unread-badge"');
+        expect(drawerClosedHtml).toContain('bg-red-600');
+        expect(drawerClosedHtml).toContain('!</span>');
+        expect(drawerClosedHtml).toContain('<span>2</span>');
+
+        // When drawer is open, logs starting from index 1 (log-2 and log-3) are highlighted as NEW
+        const drawerOpenHtml = renderToString(
+          React.createElement(GameLogDrawer, {
+            logs: mockLogs,
+            initialOpen: true,
+            initialLastCheckedCount: 1,
+          })
+        );
+        expect(drawerOpenHtml).toContain('data-testid="chronicle-log-new"');
+        expect(drawerOpenHtml).toContain('data-testid="chronicle-new-tag"');
+        expect(drawerOpenHtml).toContain('NEW');
+        // Old log-1 is not new
+        expect(drawerOpenHtml).toContain('data-testid="chronicle-log"');
+
+        // Part 2: Bug 173 - Rare Warp Portal scores in controlled sectors, not discoveries
+        const game = createInitialGame(2, ['mechanema', 'terran_federation']);
+        const mech = game.players[0]!;
+        // Give Mechanema 8 kept discovery tiles (16 VP)
+        mech.keptDiscoveryTiles = Array.from({ length: 8 }).map((_, i) => ({
+          id: `disc_cache_${i}`,
+          name: `Ancient Cache ${i}`,
+          description: '+2 Victory Points',
+          category: 'enhancement' as const,
+        }));
+
+        // Mechanema controls a sector with a rare tech warp portal
+        const controlledSec = game.sectors.find((s) => s.discOwner === mech.id)!;
+        controlledSec.hasRareWarpPortal = true;
+
+        const scoresBreakdown = computeCurrentScores(game);
+        const mechScore = scoresBreakdown.scores[mech.id]!;
+
+        // Discovery score strictly reflects the 8 kept discovery tiles (8 * 2 = 16 VP), exactly matching player board
+        expect(mechScore.discoveries).toBe(16);
+        // The +1 VP from rare warp portal is correctly accounted in controlled sectors VP
+        expect(mechScore.sectors).toBe(controlledSec.victoryPoints + 1);
+
+        // Part 3: Bug 174 - Ring 1/2 sector deck dimming when no slots or tiles remain
+        // Initially, Ring 1, Ring 2, and Ring 3 all have empty slots and available cards
+        const mapInitialHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            onSelectSector: () => {},
+          })
+        );
+        expect(mapInitialHtml).toContain('data-testid="deck-counter-r1"');
+        expect(mapInitialHtml).toContain('data-testid="deck-counter-r2"');
+        expect(mapInitialHtml).toContain('data-testid="deck-counter-r3"');
+        // R1 is initially bright and not dimmed
+        expect(mapInitialHtml).not.toContain('Ring 1: No slots remaining to explore');
+
+        // Fill all 6 Ring 1 slots on the galaxy board
+        const ring1Coords = [
+          { q: 1, r: 0 },
+          { q: 0, r: 1 },
+          { q: -1, r: 1 },
+          { q: -1, r: 0 },
+          { q: 0, r: -1 },
+          { q: 1, r: -1 },
+        ];
+        for (const coord of ring1Coords) {
+          if (!game.sectors.some((s) => s.coord.q === coord.q && s.coord.r === coord.r)) {
+            game.sectors.push({
+              id: `sec_r1_fill_${coord.q}_${coord.r}`,
+              sectorNumber: 105,
+              ring: 1,
+              coord,
+              rotation: 0,
+              wormholes: [true, true, true, true, true, true],
+              planets: [],
+              ships: [],
+              ancientsCount: 0,
+              hasDiscovery: false,
+              victoryPoints: 1,
+            });
+          }
+        }
+
+        // Empty Ring 2 deck
+        game.sectorDecks.ring2 = [];
+
+        const mapDimmedHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            onSelectSector: () => {},
+          })
+        );
+        // R1 is now dimmed with line-through because all slots in Ring 1 are occupied
+        expect(mapDimmedHtml).toContain('title="Ring 1: No slots remaining to explore"');
+        expect(mapDimmedHtml).toContain('text-slate-500 opacity-40 line-through');
+        // R2 is dimmed because the deck is empty
+        expect(mapDimmedHtml).toContain('title="Ring 2: Deck empty"');
       });
     });
   });
