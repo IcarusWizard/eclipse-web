@@ -1199,9 +1199,18 @@ export function createInitialGame(
     }
   }
 
+  const enabledExpansions = expansions || [];
+  for (const p of players) {
+    if (p.blueprints) {
+      for (const bp of Object.values(p.blueprints)) {
+        if (bp) (bp as any).activeExpansions = enabledExpansions;
+      }
+    }
+  }
+
   return {
     id: `game_${Date.now()}`,
-    expansions: expansions || [],
+    expansions: enabledExpansions,
     neutralShipBlueprints: resolvedNeutralBlueprints,
     neutralShipSelections: storedNeutralSelections,
     round: 1,

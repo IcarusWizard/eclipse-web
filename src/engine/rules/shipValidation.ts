@@ -3,7 +3,7 @@
  */
 
 import { ShipBlueprint, BlueprintValidationResult } from '../types/blueprints';
-import { SHIP_PARTS } from './partData';
+import { SHIP_PARTS, getEffectiveShipPart } from './partData';
 import { SectorTile, ShipType } from '../types/galaxy';
 
 export const SHIP_LIMITS: Record<ShipType, number> = {
@@ -43,7 +43,10 @@ export function getRemainingShipSupply(sectors: SectorTile[], playerId: string, 
   };
 }
 
-export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintValidationResult {
+export function calculateBlueprintStats(
+  blueprint: ShipBlueprint,
+  activeExpansions?: string[]
+): BlueprintValidationResult {
   let totalPowerProduced = blueprint.preprintedPower ?? 0;
   let totalPowerConsumed = 0;
   let bonusHull = 0;
@@ -55,8 +58,11 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
   let hasMorphShield = false;
   const errors: string[] = [];
 
-  for (const part of blueprint.slots) {
-    if (!part) continue;
+  const expansions = activeExpansions || blueprint.activeExpansions;
+
+  for (const rawPart of blueprint.slots) {
+    if (!rawPart) continue;
+    const part = getEffectiveShipPart(rawPart, expansions);
     if (part.id === 'muon_source') {
       errors.push('Muon Source must be placed outside the blueprint grid, not in a standard slot.');
     }
@@ -81,8 +87,9 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
   }
 
   if (blueprint.externalParts) {
-    for (const part of blueprint.externalParts) {
-      if (!part) continue;
+    for (const rawPart of blueprint.externalParts) {
+      if (!rawPart) continue;
+      const part = getEffectiveShipPart(rawPart, expansions);
       totalPowerProduced += part.powerProduced;
       totalPowerConsumed += part.powerConsumed;
       bonusHull += part.hullBonus;
@@ -136,8 +143,8 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
   };
 }
 
-export function isShipBlueprintValid(blueprint: ShipBlueprint): boolean {
-  return calculateBlueprintStats(blueprint).isValid;
+export function isShipBlueprintValid(blueprint: ShipBlueprint, activeExpansions?: string[]): boolean {
+  return calculateBlueprintStats(blueprint, activeExpansions).isValid;
 }
 
 export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
@@ -201,7 +208,17 @@ export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
   };
 }
 
-export function createFactionBlueprints(factionId: string): Record<string, ShipBlueprint> {
+export function createFactionBlueprints(factionId: string, activeExpansions?: string[]): Record<string, ShipBlueprint> {
+  const bps = getRawFactionBlueprints(factionId);
+  if (activeExpansions && activeExpansions.length > 0) {
+    for (const key of Object.keys(bps)) {
+      (bps[key] as any).activeExpansions = activeExpansions;
+    }
+  }
+  return bps;
+}
+
+function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprint> {
   switch (factionId) {
     case 'eridani_empire':
       return {

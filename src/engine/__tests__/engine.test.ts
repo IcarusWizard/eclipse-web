@@ -20,7 +20,7 @@ import {
   createFactionBlueprints,
   isShipBlueprintValid,
 } from '../rules/shipValidation';
-import { SHIP_PARTS, ANCIENT_PART_IDS, ALL_ANCIENT_PART_IDS } from '../rules/partData';
+import { SHIP_PARTS, ANCIENT_PART_IDS, ALL_ANCIENT_PART_IDS, getEffectiveShipPart } from '../rules/partData';
 import {
   sortUnitsByInitiative,
   getSectorDefenderOwnerId,
@@ -13914,6 +13914,287 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const newAdminLogin = await loginAsAdmin(newAdminPass);
         expect(newAdminLogin.success).toBe(true);
         expect(newAdminLogin.user?.role).toBe('admin');
+      });
+
+      it('83. verifies Community Balance optional expansion: Improved Hull -1 init, negative initiative support, Phase Shield +1 init, and restricted Reputation draw VP scaling', () => {
+        // 1. Part Data initiative adjustments
+        // Standard (without community_balance)
+        const stdImprovedHull = getEffectiveShipPart(SHIP_PARTS.improved_hull, []);
+        expect(stdImprovedHull.initiativeBonus).toBe(0);
+        expect(stdImprovedHull.hullBonus).toBe(2);
+
+        const stdPhaseShield = getEffectiveShipPart(SHIP_PARTS.phase_shield, []);
+        expect(stdPhaseShield.initiativeBonus).toBe(0);
+        expect(stdPhaseShield.shieldBonus).toBe(2);
+
+        // With community_balance
+        const cbImprovedHull = getEffectiveShipPart(SHIP_PARTS.improved_hull, ['community_balance']);
+        expect(cbImprovedHull.initiativeBonus).toBe(-1);
+        expect(cbImprovedHull.hullBonus).toBe(2);
+
+        const cbPhaseShield = getEffectiveShipPart(SHIP_PARTS.phase_shield, ['community_balance']);
+        expect(cbPhaseShield.initiativeBonus).toBe(1);
+        expect(cbPhaseShield.shieldBonus).toBe(2);
+
+        // 2. Blueprint Stats & Negative Initiative Support
+        // Dreadnought baseInitiative is 0
+        const dreadnoughtBase = createFactionBlueprints('terran_federation', ['community_balance']).dreadnought;
+        expect(dreadnoughtBase.baseInitiative).toBe(0);
+
+        // Install Improved Hull onto Dreadnought
+        // Install 2 Improved Hulls onto Dreadnought (Nuclear Drive gives +1 init)
+        const dreadWith2ImpHull = {
+          ...dreadnoughtBase,
+          slots: [
+            SHIP_PARTS.improved_hull,
+            SHIP_PARTS.improved_hull,
+            SHIP_PARTS.fusion_source,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_drive,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.electron_computer,
+            null,
+          ],
+        };
+
+        // Standard calculation (community_balance inactive): 0 base + 1 drive = 1 init
+        const stdStats = calculateBlueprintStats(dreadWith2ImpHull, []);
+        expect(stdStats.totalInitiative).toBe(1);
+
+        // Community Balance calculation (community_balance active): 0 base + 1 drive - 1 - 1 = -1 init
+        const cbStats = calculateBlueprintStats(dreadWith2ImpHull, ['community_balance']);
+        expect(cbStats.totalInitiative).toBe(-1);
+        expect(cbStats.isValid).toBe(true); // Ships with negative initiative are fully valid!
+
+        // Dreadnought with Phase Shield (+1 init)
+        const dreadWithPhaseShield = {
+          ...dreadnoughtBase,
+          slots: [
+            SHIP_PARTS.phase_shield,
+            SHIP_PARTS.fusion_source,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_drive,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.electron_computer,
+            null,
+          ],
+        };
+        expect(calculateBlueprintStats(dreadWithPhaseShield, []).totalInitiative).toBe(1);
+        const cbShieldStats = calculateBlueprintStats(dreadWithPhaseShield, ['community_balance']);
+        expect(cbShieldStats.totalInitiative).toBe(2); // 0 base + 1 drive + 1 phase shield = 2 init
+
+        // 3. Combat Units Initiative Order
+        const units = [
+          { id: 'u_dread', name: 'Dreadnought', ownerId: 'p1', shipType: 'dreadnought', initiative: -1, hp: 4, maxHp: 4, shields: 0, computers: 0, missiles: [], cannons: [], drives: 1, hasRetreated: false, canRetreat: false },
+          { id: 'u_cruiser', name: 'Cruiser', ownerId: 'p2', shipType: 'cruiser', initiative: 1, hp: 2, maxHp: 2, shields: 0, computers: 0, missiles: [], cannons: [], drives: 1, hasRetreated: false, canRetreat: false },
+          { id: 'u_interceptor', name: 'Interceptor', ownerId: 'p1', shipType: 'interceptor', initiative: 3, hp: 1, maxHp: 1, shields: 0, computers: 0, missiles: [], cannons: [], drives: 1, hasRetreated: false, canRetreat: false },
+        ] as any[];
+
+        const sorted = sortUnitsByInitiative(units, 'p2');
+        expect(sorted[0].id).toBe('u_interceptor'); // Init 3
+        expect(sorted[1].id).toBe('u_cruiser');     // Init 1
+        expect(sorted[2].id).toBe('u_dread');       // Init -1 (acts last)
+
+        // 4. Reputation Draw After Battle Scaling
+        // Setup a 2-player game with community_balance enabled
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire'], ['community_balance']);
+        expect(game.expansions).toContain('community_balance');
+
+        const p1Id = game.players[0]!.id;
+        const p2Id = game.players[1]!.id;
+
+        // Test reputation tile selection when drawing 1 tile: max VP <= 1
+        // Bag has mixed values: 1, 2, 3, 4
+        game.reputationBag = [1, 2, 3, 4, 1, 2, 3, 4];
+        
+        // Put player 1 and 2 in conflict sector, player 1 destroys player 2's interceptor
+        const sector = game.sectors[0]!;
+        sector.ships = [{ id: 's1', type: 'cruiser', ownerId: p1Id, damage: 0 }];
+
+        game.activeCombat = {
+          sectorId: sector.id,
+          defenderOwnerId: p1Id,
+          invaderOwnerIds: [p2Id],
+          participatingPlayerIds: [p1Id, p2Id],
+          stage: 'resolved',
+          winnerOwnerId: p1Id,
+          currentRound: 1,
+          combatUnits: [
+            {
+              id: 's1',
+              ownerId: p1Id,
+              shipType: 'cruiser',
+              initiative: 1,
+              hp: 2,
+              maxHp: 2,
+              shields: 0,
+              computers: 0,
+              cannons: [],
+              missiles: [],
+              drives: 1,
+              hasRetreated: false,
+              canRetreat: false,
+            },
+          ],
+          destroyedShips: [
+            { shipId: 'c1', type: 'interceptor', ownerId: p2Id, killerId: p1Id },
+          ],
+        } as any;
+
+        // Conclude engagement to generate pendingReputationDraw
+        const stepRes = executeAction(game, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1Id,
+          sectorId: sector.id,
+          concludeCombat: true,
+        });
+        expect(stepRes.success).toBe(true);
+        expect(stepRes.newState.pendingReputationDraw).toBeDefined();
+
+        const repDraw = stepRes.newState.pendingReputationDraw!;
+        expect(repDraw.playerId).toBe(p1Id);
+        // Player 1 destroyed 1 interceptor and participated -> 2 tiles drawn (1 battle + 1 interceptor)
+        // With Community Balance: 2 tiles drawn -> all drawn tiles <= 2 VP
+        expect(repDraw.drawnTiles.length).toBe(2);
+        for (const vp of repDraw.drawnTiles) {
+          expect(vp).toBeLessThanOrEqual(2);
+        }
+
+        // Test drawing 1 tile directly: when a player retreats without kills, or 1 tile draw
+        // Let's test single tile draw where only 1 tile is drawn
+        const game1Tile = createInitialGame(2, ['terran_federation', 'eridani_empire'], ['community_balance']);
+        game1Tile.reputationBag = [1, 2, 3, 4, 1, 2, 3, 4];
+        const p1Single = game1Tile.players[0]!.id;
+        const p2Single = game1Tile.players[1]!.id;
+        const secSingle = game1Tile.sectors[0]!;
+        secSingle.ships = [{ id: 's1', type: 'cruiser', ownerId: p1Single, damage: 0 }];
+        game1Tile.activeCombat = {
+          sectorId: secSingle.id,
+          defenderOwnerId: p1Single,
+          invaderOwnerIds: [p2Single],
+          participatingPlayerIds: [p1Single],
+          stage: 'resolved',
+          winnerOwnerId: p1Single,
+          currentRound: 1,
+          combatUnits: [
+            { id: 's1', ownerId: p1Single, shipType: 'cruiser', initiative: 1, hp: 2, maxHp: 2, shields: 0, computers: 0, cannons: [], missiles: [], drives: 1, hasRetreated: false, canRetreat: false },
+          ],
+          destroyedShips: [], // 0 kills, 1 participation tile
+        } as any;
+        const resSingle = executeAction(game1Tile, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1Single,
+          sectorId: secSingle.id,
+          concludeCombat: true,
+        });
+        expect(resSingle.success).toBe(true);
+        expect(resSingle.newState.pendingReputationDraw?.drawnTiles.length).toBe(1);
+        expect(resSingle.newState.pendingReputationDraw?.drawnTiles[0]).toBe(1);
+
+        // Test drawing 3 tiles: 1 participation + 2 cruiser kill = 3 tiles (max VP <= 3)
+        const game2 = createInitialGame(2, ['terran_federation', 'eridani_empire'], ['community_balance']);
+        game2.reputationBag = [1, 2, 3, 4, 1, 2, 3, 4];
+        const p1Id_2 = game2.players[0]!.id;
+        const p2Id_2 = game2.players[1]!.id;
+        const sector2 = game2.sectors[0]!;
+        sector2.ships = [{ id: 's1', type: 'cruiser', ownerId: p1Id_2, damage: 0 }];
+
+        game2.activeCombat = {
+          sectorId: sector2.id,
+          defenderOwnerId: p1Id_2,
+          invaderOwnerIds: [p2Id_2],
+          participatingPlayerIds: [p1Id_2, p2Id_2],
+          stage: 'resolved',
+          winnerOwnerId: p1Id_2,
+          currentRound: 1,
+          combatUnits: [
+            {
+              id: 's1',
+              ownerId: p1Id_2,
+              shipType: 'cruiser',
+              initiative: 1,
+              hp: 2,
+              maxHp: 2,
+              shields: 0,
+              computers: 0,
+              cannons: [],
+              missiles: [],
+              drives: 1,
+              hasRetreated: false,
+              canRetreat: false,
+            },
+          ],
+          destroyedShips: [
+            { shipId: 'c1', type: 'cruiser', ownerId: p2Id_2, killerId: p1Id_2 }, // Cruiser gives 2 tiles + 1 participation = 3
+          ],
+        } as any;
+
+        const stepRes2 = executeAction(game2, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1Id_2,
+          sectorId: sector2.id,
+          concludeCombat: true,
+        });
+        expect(stepRes2.success).toBe(true);
+        expect(stepRes2.newState.pendingReputationDraw).toBeDefined();
+        const repDraw2 = stepRes2.newState.pendingReputationDraw!;
+        expect(repDraw2.drawnTiles.length).toBe(3);
+        for (const vp of repDraw2.drawnTiles) {
+          expect(vp).toBeLessThanOrEqual(3); // Only 1, 2, or 3 VP, never 4
+        }
+
+        // Test drawing 4 tiles: 1 participation + 3 dreadnought kill = 4 tiles (can draw up to 4 VP)
+        const game3 = createInitialGame(2, ['terran_federation', 'eridani_empire'], ['community_balance']);
+        game3.reputationBag = [1, 2, 3, 4, 1, 2, 3, 4];
+        const p1Id_3 = game3.players[0]!.id;
+        const p2Id_3 = game3.players[1]!.id;
+        const sector3 = game3.sectors[0]!;
+        sector3.ships = [{ id: 's1', type: 'cruiser', ownerId: p1Id_3, damage: 0 }];
+
+        game3.activeCombat = {
+          sectorId: sector3.id,
+          defenderOwnerId: p1Id_3,
+          invaderOwnerIds: [p2Id_3],
+          participatingPlayerIds: [p1Id_3, p2Id_3],
+          stage: 'resolved',
+          winnerOwnerId: p1Id_3,
+          currentRound: 1,
+          combatUnits: [
+            {
+              id: 's1',
+              ownerId: p1Id_3,
+              shipType: 'cruiser',
+              initiative: 1,
+              hp: 2,
+              maxHp: 2,
+              shields: 0,
+              computers: 0,
+              cannons: [],
+              missiles: [],
+              drives: 1,
+              hasRetreated: false,
+              canRetreat: false,
+            },
+          ],
+          destroyedShips: [
+            { shipId: 'c1', type: 'dreadnought', ownerId: p2Id_3, killerId: p1Id_3 }, // Dreadnought gives 3 tiles + 1 participation = 4
+          ],
+        } as any;
+
+        const stepRes3 = executeAction(game3, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p1Id_3,
+          sectorId: sector3.id,
+          concludeCombat: true,
+        });
+        expect(stepRes3.success).toBe(true);
+        expect(stepRes3.newState.pendingReputationDraw).toBeDefined();
+        const repDraw3 = stepRes3.newState.pendingReputationDraw!;
+        expect(repDraw3.drawnTiles.length).toBe(4);
+        for (const vp of repDraw3.drawnTiles) {
+          expect(vp).toBeLessThanOrEqual(4); // Can draw up to 4 VP
+        }
       });
     });
   });

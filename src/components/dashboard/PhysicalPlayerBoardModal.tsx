@@ -14,7 +14,7 @@ import {
 } from '../../engine/rules/economyEngine';
 import { calculateBlueprintStats, countPlayerShips, SHIP_LIMITS } from '../../engine/rules/shipValidation';
 import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
-import { ANCIENT_PART_IDS } from '../../engine/rules/partData';
+import { ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 import { getPlayerShortName } from '../../engine/rules/gameReducer';
 import {
@@ -59,6 +59,7 @@ interface PhysicalPlayerBoardModalProps {
   traitorPlayerId?: string | null;
   onExchangeAmbassador?: (targetPlayerId: string) => void;
   onConvertColonyShip?: (resource: 'money' | 'science' | 'materials') => void;
+  activeExpansions?: string[];
 }
 
 export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> = ({
@@ -74,6 +75,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   traitorPlayerId,
   onExchangeAmbassador,
   onConvertColonyShip,
+  activeExpansions,
 }) => {
   const [activeTab, setActiveTab] = useState<'all' | 'tracks' | 'tech' | 'blueprints'>('all');
   const [selectedTech, setSelectedTech] = useState<Technology | null>(null);
@@ -114,7 +116,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   const blueprintsWithStats = useMemo(() => {
     return shipClasses.map((sc) => {
       const bp = player.blueprints[sc.type];
-      const stats = bp ? calculateBlueprintStats(bp) : null;
+      const stats = bp ? calculateBlueprintStats(bp, activeExpansions) : null;
       return {
         ...sc,
         blueprint: bp,
@@ -123,7 +125,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
         limit: SHIP_LIMITS[sc.type] || 0,
       };
     });
-  }, [player.blueprints, deployed]);
+  }, [player.blueprints, deployed, activeExpansions]);
 
   // Influence disc track total slots: standard 13 or player totalDiscs
   const maxDiscs = Math.max(13, player.influenceTrack.totalDiscs);
@@ -1379,8 +1381,12 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           </div>
                           <div>
                             <div className="text-[9px] text-slate-500 uppercase font-sans">Init</div>
-                            <div className="text-xs font-bold text-indigo-300">+{stats.totalInitiative}</div>
-                            <div className="text-[7.5px] text-slate-500 font-mono">B+{bp?.baseInitiative ?? 0} P+{stats.totalInitiative - (bp?.baseInitiative ?? 0)}</div>
+                            <div className="text-xs font-bold text-indigo-300">
+                              {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative}
+                            </div>
+                            <div className="text-[7.5px] text-slate-500 font-mono">
+                              B{(bp?.baseInitiative ?? 0) >= 0 ? `+${bp?.baseInitiative ?? 0}` : (bp?.baseInitiative ?? 0)} P{(stats.totalInitiative - (bp?.baseInitiative ?? 0)) >= 0 ? `+${stats.totalInitiative - (bp?.baseInitiative ?? 0)}` : (stats.totalInitiative - (bp?.baseInitiative ?? 0))}
+                            </div>
                           </div>
                           <div>
                             <div className="text-[9px] text-slate-500 uppercase font-sans">Power</div>
@@ -1406,7 +1412,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
 
                         <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
                           {Array.from({ length: sc.maxSlots }).map((_, slotIdx) => {
-                            const part = bp?.slots[slotIdx] || null;
+                            const rawPart = bp?.slots[slotIdx] || null;
+                            const part = rawPart ? getEffectiveShipPart(rawPart, activeExpansions) : null;
 
                             return (
                               <div
@@ -1450,7 +1457,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                         ? `-${part.powerConsumed} PWR`
                                         : '0 PWR'}
                                       {part.hullBonus > 0 && ` | +${part.hullBonus} HP`}
-                                      {part.initiativeBonus > 0 && ` | +${part.initiativeBonus} Init`}
+                                      {part.initiativeBonus !== 0 && ` | ${part.initiativeBonus > 0 ? `+${part.initiativeBonus}` : part.initiativeBonus} Init`}
                                       {part.computerBonus > 0 && ` | +${part.computerBonus} Aim`}
                                       {part.shieldBonus > 0 && ` | -${part.shieldBonus} Shld`}
                                     </div>
@@ -1519,7 +1526,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                 </div>
                                 <div className="text-[8px] text-slate-300 font-mono mt-0.5">
                                   {extPart.powerProduced > 0 && `+${extPart.powerProduced} PWR`}
-                                  {extPart.initiativeBonus > 0 && ` | +${extPart.initiativeBonus} Init`}
+                                  {extPart.initiativeBonus !== 0 && ` | ${extPart.initiativeBonus > 0 ? `+${extPart.initiativeBonus}` : extPart.initiativeBonus} Init`}
                                 </div>
                               </div>
                             </div>

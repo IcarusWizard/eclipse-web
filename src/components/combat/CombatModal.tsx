@@ -352,7 +352,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         )}
                       </div>
                       <span className="text-[10px] text-indigo-400 font-bold">
-                        Init +{unit.initiative}
+                        Init {unit.initiative >= 0 ? `+${unit.initiative}` : unit.initiative}
                       </span>
                     </div>
 
@@ -779,7 +779,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   {activeGroup.ships.length > 1 ? `${activeGroup.ships.length}x ` : ''}
                   {activeGroup.type.toUpperCase()}
                 </strong>{' '}
-                (+{activeGroup.initiative})
+                ({activeGroup.initiative >= 0 ? `+${activeGroup.initiative}` : activeGroup.initiative})
                 {isAlreadyRetreating && (
                   <span className="text-amber-400 ml-1">
                     (Retreating to Sec {retreatDestination?.sectorNumber || '?'})

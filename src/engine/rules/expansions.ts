@@ -2,7 +2,7 @@
  * Official Expansion Modules & Configuration for Eclipse: Second Dawn
  */
 
-export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species' | 'warped_universe' | 'galactic_events';
+export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species' | 'warped_universe' | 'galactic_events' | 'community_balance';
 
 export interface ExpansionDefinition {
   readonly id: ExpansionId;
@@ -120,6 +120,18 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'Supernova (397 & 398): 5 rich planet slots; risks catastrophic explosion during Cleanup if roll + highest tech count < round number',
     ],
   },
+  {
+    id: 'community_balance',
+    name: 'Community Balance',
+    shortName: 'Balance',
+    badge: 'Balance Patch',
+    description: 'Community-vetted balance adjustments for ship components and battle reputation tile draws.',
+    features: [
+      'Improved Hull: gives -1 Initiative (ship initiative can be negative)',
+      'Phase Shield: gives +1 Initiative (in addition to -2 Shields)',
+      'Battle Reputation Draw: can only draw Reputation tiles with VP <= number of tiles drawn (e.g. draw 1 = 1 VP only; draw 3 = 1, 2, or 3 VP; draw 4-5 = 4 VP eligible)',
+    ],
+  },
 ];
 
 export function isExpansionActive(expansions: string[] | undefined, id: ExpansionId): boolean {
@@ -204,6 +216,9 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm.includes('v616')
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'galactic_events') || null;
+  }
+  if (norm === 'community_balance' || norm === 'community balance' || norm === 'community_rebalance' || norm === 'balance') {
+    return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_balance') || null;
   }
   return null;
 }

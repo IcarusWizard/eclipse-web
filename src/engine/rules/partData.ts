@@ -555,3 +555,29 @@ export const ALL_ANCIENT_PART_IDS = new Set<string>([
   'morph_shield',
 ]);
 
+/**
+ * Returns the effective ship part stats, accounting for active expansions.
+ * Under Community Balance ('community_balance'):
+ * - Improved Hull provides -1 Initiative (ship initiative can be negative)
+ * - Phase Shield provides +1 Initiative (in addition to -2 Shield and 1 Power consumed)
+ */
+export function getEffectiveShipPart(part: ShipPart, activeExpansions?: string[]): ShipPart {
+  if (!activeExpansions || !activeExpansions.includes('community_balance')) {
+    return part;
+  }
+  if (part.id === 'improved_hull') {
+    return {
+      ...part,
+      initiativeBonus: -1,
+    };
+  }
+  if (part.id === 'phase_shield') {
+    return {
+      ...part,
+      initiativeBonus: 1,
+    };
+  }
+  return part;
+}
+
+

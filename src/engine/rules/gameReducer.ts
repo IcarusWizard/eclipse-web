@@ -1512,7 +1512,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: true };
       }
 
-      const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints);
+      const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints, state.expansions);
       const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector, state.players);
       const aliveUnits = sortUnitsByInitiative(
         units.filter((u) => u.currentDamage < u.maxHull),
@@ -3541,9 +3541,27 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
               tilesCount = Math.min(5, tilesCount); // Maximum 5 tiles drawn per sector
 
               if (tilesCount > 0 && newState.reputationBag.length > 0) {
+                const isCommunityBalance = Boolean(newState.expansions && newState.expansions.includes('community_balance'));
+                const maxAllowedVp = isCommunityBalance ? tilesCount : 4;
+
                 const drawn: number[] = [];
                 for (let k = 0; k < tilesCount && newState.reputationBag.length > 0; k++) {
-                  drawn.push(newState.reputationBag.pop()!);
+                  if (isCommunityBalance) {
+                    const eligibleIndices: number[] = [];
+                    for (let idx = 0; idx < newState.reputationBag.length; idx++) {
+                      if (newState.reputationBag[idx]! <= maxAllowedVp) {
+                        eligibleIndices.push(idx);
+                      }
+                    }
+                    if (eligibleIndices.length > 0) {
+                      const pick = eligibleIndices[Math.floor(Math.random() * eligibleIndices.length)]!;
+                      drawn.push(newState.reputationBag.splice(pick, 1)[0]!);
+                    } else {
+                      drawn.push(newState.reputationBag.pop()!);
+                    }
+                  } else {
+                    drawn.push(newState.reputationBag.pop()!);
+                  }
                 }
                 if (drawn.length > 0) {
                   repDrawQueue.push({
@@ -3577,7 +3595,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             sector,
             newState.players,
             newState.activeCombat.participatingPlayerIds,
-            newState.neutralShipBlueprints
+            newState.neutralShipBlueprints,
+            newState.expansions
           );
 
           // If combat is already in 'resolved' stage or explicitly flagged to conclude:
@@ -4431,7 +4450,7 @@ export function resolveAttackingPopulationAndConquest(
                     cannonDamage += dmg;
                   }
                   if (pRes.selfDamage > 0) {
-                    const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints);
+                    const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints, state.expansions);
                     const dummyCombat: any = { destroyedShips: [] };
                     applyRiftSelfDamage(units, winnerId, pRes.selfDamage, dummyCombat);
                     sector.ships = sector.ships.filter((sh) => !dummyCombat.destroyedShips.some((ds: any) => ds.shipId === sh.id));
@@ -4876,7 +4895,8 @@ export function checkAndTriggerCombat(state: GameState): void {
       sector.isNebula ? { ...sector, ships: relevantShips } : sector,
       state.players,
       duelParticipants,
-      state.neutralShipBlueprints
+      state.neutralShipBlueprints,
+      state.expansions
     );
     const hasMissiles = combatUnits.some((u) => u.weapons.some((w) => w.isMissile));
 

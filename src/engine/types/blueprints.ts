@@ -50,6 +50,7 @@ export interface ShipBlueprint {
   readonly noDrives?: boolean; // Cannot equip Drive ship parts (Exiles Orbital)
   slots: (ShipPart | null)[];
   externalParts?: ShipPart[];
+  readonly activeExpansions?: string[];
 }
 
 export interface BlueprintValidationResult {

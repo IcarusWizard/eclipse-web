@@ -30,7 +30,8 @@ export function buildCombatUnitsForSector(
   sector: SectorTile,
   players: PlayerState[],
   filterOwnerIds?: string[],
-  neutralShipBlueprints?: Partial<NeutralShipConfig>
+  neutralShipBlueprints?: Partial<NeutralShipConfig>,
+  activeExpansions?: string[]
 ): CombatUnit[] {
   const units: CombatUnit[] = [];
 
@@ -59,7 +60,7 @@ export function buildCombatUnitsForSector(
       if (!player) continue;
       const bp = player.blueprints[ship.type];
       if (!bp) continue;
-      const stats = calculateBlueprintStats(bp);
+      const stats = calculateBlueprintStats(bp, activeExpansions || bp.activeExpansions);
 
       const allParts = [...bp.slots, ...(bp.externalParts || [])];
       const weapons: CombatUnit['weapons'] = [];

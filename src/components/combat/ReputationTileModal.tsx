@@ -143,6 +143,18 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
             </p>
           </div>
 
+          {state.expansions?.includes('community_balance') && (
+            <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-2.5 text-xs text-emerald-200 flex items-center justify-between">
+              <span className="font-semibold flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                Community Balance: Draw Cap
+              </span>
+              <span className="font-mono text-[11px] bg-emerald-900/60 border border-emerald-700/60 text-emerald-300 px-2 py-0.5 rounded font-bold">
+                Max {pendingDraw.drawnTiles.length} VP
+              </span>
+            </div>
+          )}
+
           {/* Drawn Tiles Options */}
           <div>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">

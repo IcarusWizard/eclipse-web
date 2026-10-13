@@ -2113,6 +2113,7 @@ export const App: React.FC = () => {
       {isBlueprintOpen && (
         <ShipBlueprintEditor
           player={viewedPlayer}
+          activeExpansions={state.expansions}
           pulsarSectorId={activePulsarSectorId ?? undefined}
           onSaveBlueprint={handleSaveBlueprint}
           onClose={() => {
@@ -2380,6 +2381,7 @@ export const App: React.FC = () => {
           players={state.players}
           activePlayerId={activePlayer.id}
           sectors={state.sectors}
+          activeExpansions={state.expansions}
           onClose={() => setIsPhysicalBoardOpen(false)}
           onSelectPlayer={(pId) => {
             const idx = state.players.findIndex((p) => p.id === pId);

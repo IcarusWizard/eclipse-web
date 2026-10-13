@@ -3,7 +3,7 @@ import { PlayerState } from '../../engine/types/player';
 import { ShipType } from '../../engine/types/galaxy';
 import { ShipPart } from '../../engine/types/blueprints';
 import { calculateBlueprintStats, SHIP_LIMITS } from '../../engine/rules/shipValidation';
-import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS } from '../../engine/rules/partData';
+import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
 import {
   Zap,
@@ -24,6 +24,7 @@ import {
 
 interface ShipBlueprintEditorProps {
   player: PlayerState;
+  activeExpansions?: string[];
   pulsarSectorId?: string;
   onSaveBlueprint: (
     upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
@@ -34,6 +35,7 @@ interface ShipBlueprintEditorProps {
 
 export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   player,
+  activeExpansions,
   pulsarSectorId,
   onSaveBlueprint,
   onClose,
@@ -119,23 +121,25 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   }, [draftBlueprints, draftExternalParts, player.blueprints]);
 
   const availableParts = useMemo(() => {
-    return Object.values(SHIP_PARTS).filter((part) => {
-      const isStandard = STANDARD_PART_IDS.includes(part.id);
-      const isAncient = ANCIENT_PART_IDS.has(part.id);
-      if (isAncient) {
-        // Ancient parts can NEVER be moved to another ship once installed;
-        // only show them when they are stored without having been placed when taken.
-        return (
-          (player.unlockedAncientParts || []).includes(part.id) &&
-          !installedAncientPartIds.has(part.id)
+    return Object.values(SHIP_PARTS)
+      .map((part) => getEffectiveShipPart(part, activeExpansions))
+      .filter((part) => {
+        const isStandard = STANDARD_PART_IDS.includes(part.id);
+        const isAncient = ANCIENT_PART_IDS.has(part.id);
+        if (isAncient) {
+          // Ancient parts can NEVER be moved to another ship once installed;
+          // only show them when they are stored without having been placed when taken.
+          return (
+            (player.unlockedAncientParts || []).includes(part.id) &&
+            !installedAncientPartIds.has(part.id)
+          );
+        }
+        const isTechResearched = (player.techTrack.researched || []).some(
+          (t) => t.unlocksPartId === part.id || t.id === part.id
         );
-      }
-      const isTechResearched = (player.techTrack.researched || []).some(
-        (t) => t.unlocksPartId === part.id || t.id === part.id
-      );
-      return isStandard || isTechResearched;
-    });
-  }, [player.unlockedAncientParts, player.techTrack.researched, STANDARD_PART_IDS, installedAncientPartIds]);
+        return isStandard || isTechResearched;
+      });
+  }, [player.unlockedAncientParts, player.techTrack.researched, STANDARD_PART_IDS, installedAncientPartIds, activeExpansions]);
 
   const displayedParts = useMemo(() => {
     if (selectedCategory === 'all') return availableParts;
@@ -199,7 +203,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     externalParts: currentExternal,
   };
 
-  const stats = calculateBlueprintStats(currentBlueprint);
+  const stats = calculateBlueprintStats(currentBlueprint, activeExpansions);
 
   // Check that all ship classes with modifications are valid
   const allModifiedShipsValid = useMemo(() => {
@@ -212,12 +216,12 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
           slots: draftBlueprints[st] || [],
           externalParts: draftExternalParts[st] || [],
         };
-        const bpStats = calculateBlueprintStats(bp);
+        const bpStats = calculateBlueprintStats(bp, activeExpansions);
         if (!bpStats.isValid) return false;
       }
     }
     return true;
-  }, [modifiedSlots, draftBlueprints, draftExternalParts, player.blueprints, activeShipType, availableShipTypes]);
+  }, [modifiedSlots, draftBlueprints, draftExternalParts, player.blueprints, activeShipType, availableShipTypes, activeExpansions]);
 
   const handleInstallPart = (part: ShipPart) => {
     if (part.id === 'muon_source') {
@@ -373,7 +377,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
           {availableShipTypes.map((type) => {
             const isActive = activeShipType === type;
             const bp = { ...player.blueprints[type], slots: draftBlueprints[type] || [] };
-            const bpStats = calculateBlueprintStats(bp);
+            const bpStats = calculateBlueprintStats(bp, activeExpansions);
             const shipUpgradeCount = modifiedSlots.filter((m) => m.shipType === type).length;
 
             return (
@@ -456,10 +460,10 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   <Crosshair className="w-3.5 h-3.5 text-indigo-400" /> INITIATIVE
                 </span>
                 <span className="text-base font-bold text-indigo-300 mt-1">
-                  +{stats.totalInitiative} Init
+                  {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative} Init
                 </span>
                 <span className="text-[10px] text-slate-400 font-mono">
-                  Base +{player.blueprints[activeShipType].baseInitiative} | Parts +{stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}
+                  Base {player.blueprints[activeShipType].baseInitiative >= 0 ? `+${player.blueprints[activeShipType].baseInitiative}` : player.blueprints[activeShipType].baseInitiative} | Parts {stats.totalInitiative - player.blueprints[activeShipType].baseInitiative >= 0 ? `+${stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}` : stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}
                 </span>
               </div>
             </div>
@@ -557,41 +561,46 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                         </div>
                       </div>
 
-                      {part ? (
-                        <div className="mt-1">
-                          <div className="font-bold text-xs text-slate-200 leading-tight">
-                            {part.name}
+                      {part ? (() => {
+                        const effectivePart = getEffectiveShipPart(part, activeExpansions);
+                        return (
+                          <div className="mt-1">
+                            <div className="font-bold text-xs text-slate-200 leading-tight">
+                              {effectivePart.name}
+                            </div>
+                            <div className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-1">
+                              {effectivePart.powerProduced > 0 && (
+                                <span className="text-emerald-400">+{effectivePart.powerProduced} Pwr</span>
+                              )}
+                              {effectivePart.powerConsumed > 0 && (
+                                <span className="text-amber-400">-{effectivePart.powerConsumed} Pwr</span>
+                              )}
+                              {effectivePart.dice && (
+                                <span className={effectivePart.dice.some((d) => d.color === 'purple') ? 'text-purple-400 font-semibold' : 'text-orange-400'}>
+                                  {effectivePart.dice.map((d) => (d.color === 'purple' ? `${d.count} Purple (Rift)` : `${d.count} ${d.color}`)).join(', ')}
+                                </span>
+                              )}
+                              {effectivePart.driveSpeed && (
+                                <span className="text-cyan-400">Spd {effectivePart.driveSpeed}</span>
+                              )}
+                              {effectivePart.initiativeBonus !== 0 && (
+                                <span className="text-violet-400 font-bold">
+                                  {effectivePart.initiativeBonus > 0 ? `+${effectivePart.initiativeBonus}` : effectivePart.initiativeBonus} Init
+                                </span>
+                              )}
+                              {effectivePart.computerBonus > 0 && (
+                                <span className="text-indigo-400 font-medium">+{effectivePart.computerBonus} Hit</span>
+                              )}
+                              {effectivePart.shieldBonus > 0 && (
+                                <span className="text-teal-400 font-medium">-{effectivePart.shieldBonus} Shield</span>
+                              )}
+                              {effectivePart.hullBonus > 0 && (
+                                <span className="text-rose-400">+{effectivePart.hullBonus} HP</span>
+                              )}
+                            </div>
                           </div>
-                          <div className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-1">
-                            {part.powerProduced > 0 && (
-                              <span className="text-emerald-400">+{part.powerProduced} Pwr</span>
-                            )}
-                            {part.powerConsumed > 0 && (
-                              <span className="text-amber-400">-{part.powerConsumed} Pwr</span>
-                            )}
-                            {part.dice && (
-                              <span className={part.dice.some((d) => d.color === 'purple') ? 'text-purple-400 font-semibold' : 'text-orange-400'}>
-                                {part.dice.map((d) => (d.color === 'purple' ? `${d.count} Purple (Rift)` : `${d.count} ${d.color}`)).join(', ')}
-                              </span>
-                            )}
-                            {part.driveSpeed && (
-                              <span className="text-cyan-400">Spd {part.driveSpeed}</span>
-                            )}
-                            {part.initiativeBonus > 0 && (
-                              <span className="text-violet-400 font-bold">+{part.initiativeBonus} Init</span>
-                            )}
-                            {part.computerBonus > 0 && (
-                              <span className="text-indigo-400 font-medium">+{part.computerBonus} Hit</span>
-                            )}
-                            {part.shieldBonus > 0 && (
-                              <span className="text-teal-400 font-medium">-{part.shieldBonus} Shield</span>
-                            )}
-                            {part.hullBonus > 0 && (
-                              <span className="text-rose-400">+{part.hullBonus} HP</span>
-                            )}
-                          </div>
-                        </div>
-                      ) : (
+                        );
+                      })() : (
                         <div className="flex flex-col items-center justify-center py-3 text-slate-600">
                           <Plus className="w-5 h-5 mb-1 opacity-60" />
                           <span className="text-[10px]">Empty Slot</span>
@@ -891,8 +900,10 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                         {part.driveSpeed && (
                           <span className="text-cyan-400 font-mono">Speed {part.driveSpeed}</span>
                         )}
-                        {part.initiativeBonus > 0 && (
-                          <span className="text-violet-400 font-bold font-mono">+{part.initiativeBonus} Init</span>
+                        {part.initiativeBonus !== 0 && (
+                          <span className="text-violet-400 font-bold font-mono">
+                            {part.initiativeBonus > 0 ? `+${part.initiativeBonus}` : part.initiativeBonus} Init
+                          </span>
                         )}
                         {part.computerBonus > 0 && (
                           <span className="text-indigo-400 font-mono">+{part.computerBonus} Hit</span>
