@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { GameState } from '../../engine/types/state';
 import { computeCurrentScores, getPlayerShortName } from '../../engine/rules/gameReducer';
-import { getTableNumber, isSeatTaken } from '../../engine/rules/persistence';
+import { getTableNumber, isSeatTaken, canUserUseHotseat } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
   subscribeToUserSession,
@@ -45,6 +45,7 @@ interface HeaderProps {
   onOpenMinorSpecies?: () => void;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
+  initialDrawerOpen?: boolean;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -63,8 +64,9 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenMinorSpecies,
   currentSeat = 'all',
   onChangeSeat,
+  initialDrawerOpen = false,
 }) => {
-  const [isDrawerOpen, setIsDrawerOpen] = useState(false);
+  const [isDrawerOpen, setIsDrawerOpen] = useState(initialDrawerOpen);
   const [copiedSeat, setCopiedSeat] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
@@ -365,12 +367,23 @@ export const Header: React.FC<HeaderProps> = ({
                           value={currentSeat !== undefined ? currentSeat.toString() : 'all'}
                           onChange={(e) => {
                             const val = e.target.value;
-                            if (val === 'all' || val === 'spectator') onChangeSeat(val);
-                            else onChangeSeat(parseInt(val, 10));
+                            if (val === 'all') {
+                              if (!canUserUseHotseat(currentUser.role)) {
+                                alert('Only administrators are allowed to use the hotseat function.');
+                                return;
+                              }
+                              onChangeSeat('all');
+                            } else if (val === 'spectator') {
+                              onChangeSeat(val);
+                            } else {
+                              onChangeSeat(parseInt(val, 10));
+                            }
                           }}
                           className="bg-slate-950 border border-slate-700 text-xs rounded px-2 py-1 text-cyan-300 font-bold focus:outline-none"
                         >
-                          <option value="all">Hotseat (All)</option>
+                          <option value="all" disabled={!canUserUseHotseat(currentUser.role)}>
+                            Hotseat (All){!canUserUseHotseat(currentUser.role) ? ' (Admin Only)' : ''}
+                          </option>
                           {state.players.map((p, idx) => {
                             const seatCheck = isSeatTaken(state.members, idx, currentUser.id);
                             const isTaken = seatCheck.isTaken && !!seatCheck.occupant;

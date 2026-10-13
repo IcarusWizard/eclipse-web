@@ -14422,6 +14422,186 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(modal4pHtml).toContain('Allied (+1 VP)');
         expect(modal4pHtml).toContain('Betray');
       });
+
+      it('85. verifies Hotseat function is restricted strictly to administrators across rules and UI', async () => {
+        const { canUserUseHotseat, registerTableMember, saveGameState, deleteSavedTable } = await import('../rules/persistence');
+        const { saveUserSession } = await import('../rules/userSession');
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { Header } = await import('../../components/layout/Header');
+        const { LobbyView } = await import('../../components/lobby/LobbyView');
+
+        // Part 1: canUserUseHotseat helper checks
+        expect(canUserUseHotseat('admin')).toBe(true);
+        expect(canUserUseHotseat('user')).toBe(false);
+        expect(canUserUseHotseat('guest')).toBe(false);
+        expect(canUserUseHotseat(undefined)).toBe(false);
+        expect(canUserUseHotseat(null)).toBe(false);
+
+        // Part 2: registerTableMember hotseat enforcement
+        const testTableId = 'table-hotseat-auth-test';
+        // Non-admin user cannot register for hotseat
+        const userRes = await registerTableMember(testTableId, {
+          userId: 'u_norm',
+          username: 'NormalUser',
+          role: 'user',
+          seat: 'all',
+          joinedAt: Date.now(),
+        });
+        expect(userRes.success).toBe(false);
+        expect(userRes.error).toBe('Only administrators are allowed to use the hotseat function.');
+
+        // Guest user cannot register for hotseat
+        const guestRes = await registerTableMember(testTableId, {
+          userId: 'u_guest',
+          username: 'GuestUser',
+          role: 'guest',
+          seat: 'all',
+          joinedAt: Date.now(),
+        });
+        expect(guestRes.success).toBe(false);
+        expect(guestRes.error).toBe('Only administrators are allowed to use the hotseat function.');
+
+        // Admin user CAN register for hotseat
+        const adminRes = await registerTableMember(testTableId, {
+          userId: 'u_admin',
+          username: 'AdminCommander',
+          role: 'admin',
+          seat: 'all',
+          joinedAt: Date.now(),
+        });
+        expect(adminRes.success).toBe(true);
+
+        // Non-admin users can still register for individual seats or spectator
+        const seat0Res = await registerTableMember(testTableId, {
+          userId: 'u_norm',
+          username: 'NormalUser',
+          role: 'user',
+          seat: 0,
+          joinedAt: Date.now(),
+        });
+        expect(seat0Res.success).toBe(true);
+
+        const specRes = await registerTableMember(testTableId, {
+          userId: 'u_norm2',
+          username: 'ObserverUser',
+          role: 'user',
+          seat: 'spectator',
+          joinedAt: Date.now(),
+        });
+        expect(specRes.success).toBe(true);
+
+        // Part 3: Header UI enforcement
+        const game = createInitialGame(2);
+
+        // Regular user session
+        saveUserSession({
+          id: 'u_reg',
+          username: 'RegularCommander',
+          name: 'RegularCommander',
+          role: 'user',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        });
+
+        const headerUserHtml = renderToString(
+          React.createElement(Header, {
+            state: game,
+            onSelectActiveViewPlayer: () => {},
+            selectedViewIndex: 0,
+            onNewGame: () => {},
+            currentSeat: 0,
+            onChangeSeat: () => {},
+            initialDrawerOpen: true,
+          })
+        );
+        expect(headerUserHtml).toContain('value="all" disabled=""');
+        expect(headerUserHtml).toContain('(Admin Only)');
+
+        // Admin user session
+        saveUserSession({
+          id: 'u_adm',
+          username: 'AdminCommander',
+          name: 'AdminCommander',
+          role: 'admin',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        });
+
+        const headerAdminHtml = renderToString(
+          React.createElement(Header, {
+            state: game,
+            onSelectActiveViewPlayer: () => {},
+            selectedViewIndex: 0,
+            onNewGame: () => {},
+            currentSeat: 'all',
+            onChangeSeat: () => {},
+            initialDrawerOpen: true,
+          })
+        );
+        expect(headerAdminHtml).toContain('value="all"');
+        expect(headerAdminHtml).not.toContain('value="all" disabled=""');
+        expect(headerAdminHtml).not.toContain('(Admin Only)');
+
+        // Part 4: LobbyView UI enforcement
+        const mockGame = createInitialGame(2);
+        mockGame.id = 'galaxy-999';
+        mockGame.members = [
+          {
+            userId: 'u_reg2',
+            username: 'RegularCommander2',
+            role: 'user',
+            seat: 0,
+            joinedAt: Date.now(),
+          },
+        ];
+        saveGameState(mockGame);
+
+        // Regular user in LobbyView
+        saveUserSession({
+          id: 'u_reg2',
+          username: 'RegularCommander2',
+          name: 'RegularCommander2',
+          role: 'user',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        });
+
+        const lobbyUserHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+        // Table creation modal has disabled Hotseat button with Admin Only
+        expect(lobbyUserHtml).toContain('(Admin Only)');
+        // Direct join select has disabled Hotseat option
+        expect(lobbyUserHtml).toContain('value="all" disabled=""');
+        // Saved table list has disabled Hotseat button with restricted title
+        expect(lobbyUserHtml).toContain('title="Hotseat is restricted to administrators"');
+
+        // Admin user in LobbyView
+        saveUserSession({
+          id: 'u_adm2',
+          username: 'AdminCommander2',
+          name: 'AdminCommander2',
+          role: 'admin',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        });
+
+        const lobbyAdminHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+        expect(lobbyAdminHtml).toContain('Hotseat');
+        expect(lobbyAdminHtml).not.toContain('(Admin Only)');
+        expect(lobbyAdminHtml).toContain('title="Join as Hotseat (Control All)"');
+
+        deleteSavedTable('galaxy-999');
+      });
     });
   });
 });

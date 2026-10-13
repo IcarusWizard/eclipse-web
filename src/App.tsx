@@ -64,6 +64,7 @@ import {
   getStateFingerprint,
   registerTableMember,
   isSeatTaken,
+  canUserUseHotseat,
 } from './engine/rules/persistence';
 import { getCurrentUser, subscribeToUserSession } from './engine/rules/userSession';
 import { UserSession } from './engine/types/user';
@@ -184,25 +185,46 @@ export const App: React.FC = () => {
     return params.has('table');
   });
 
-  const [currentSeat, setCurrentSeat] = useState<number | 'all' | 'spectator'>(() => {
-    if (typeof window === 'undefined') return 'all';
-    const params = new URLSearchParams(window.location.search);
-    const seatParam = params.get('seat');
-    if (!seatParam || seatParam === 'all') return 'all';
-    if (seatParam === 'spectator') return 'spectator';
-    const num = parseInt(seatParam, 10);
-    return isNaN(num) ? 'all' : num;
-  });
-
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
 
+  const [currentSeat, setCurrentSeat] = useState<number | 'all' | 'spectator'>(() => {
+    const user = getCurrentUser();
+    const isAdmin = canUserUseHotseat(user.role);
+    if (typeof window === 'undefined') return isAdmin ? 'all' : 0;
+    const params = new URLSearchParams(window.location.search);
+    const seatParam = params.get('seat');
+    if (!seatParam || seatParam === 'all') {
+      return isAdmin ? 'all' : 0;
+    }
+    if (seatParam === 'spectator') return 'spectator';
+    const num = parseInt(seatParam, 10);
+    return isNaN(num) ? (isAdmin ? 'all' : 0) : num;
+  });
+
   useEffect(() => {
-    return subscribeToUserSession((u) => setCurrentUser(u));
-  }, []);
+    return subscribeToUserSession((u) => {
+      setCurrentUser(u);
+      if (currentSeat === 'all' && !canUserUseHotseat(u.role)) {
+        setCurrentSeat(0);
+        showToast('Only administrators are allowed to use the hotseat function.');
+      }
+    });
+  }, [currentSeat]);
 
   // Register current user as member of active table
   useEffect(() => {
     if (inGame && state.id) {
+      if (currentSeat === 'all' && !canUserUseHotseat(currentUser.role)) {
+        showToast('Only administrators are allowed to use the hotseat function.');
+        setCurrentSeat(0);
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          params.set('seat', '0');
+          window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        }
+        return;
+      }
+
       // Check if currentSeat is already occupied by another player
       const members = state.members || (state as any).members;
       const seatCheck = isSeatTaken(members, currentSeat, currentUser.id);
@@ -374,6 +396,10 @@ export const App: React.FC = () => {
     isDraftMode?: boolean
   ) => {
     const user = getCurrentUser();
+    let effectiveSeat = seat;
+    if (effectiveSeat === 'all' && !canUserUseHotseat(user.role)) {
+      effectiveSeat = 0;
+    }
     const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips, isDraftMode);
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
@@ -383,7 +409,7 @@ export const App: React.FC = () => {
         userId: user.id,
         name: user.name,
         role: user.role,
-        seat,
+        seat: effectiveSeat,
         joinedAt: Date.now(),
       },
     ];
@@ -392,20 +418,20 @@ export const App: React.FC = () => {
       userId: user.id,
       name: user.name,
       role: user.role,
-      seat,
+      seat: effectiveSeat,
       joinedAt: Date.now(),
     });
     setState(newGame);
-    setCurrentSeat(seat);
-    if (typeof seat === 'number') {
-      setSelectedViewIndex(seat);
+    setCurrentSeat(effectiveSeat);
+    if (typeof effectiveSeat === 'number') {
+      setSelectedViewIndex(effectiveSeat);
     } else {
       setSelectedViewIndex(newGame.activePlayerIndex || 0);
     }
     setInGame(true);
 
     if (typeof window !== 'undefined') {
-      const seatParam = seat === 'all' ? '' : `&seat=${seat}`;
+      const seatParam = effectiveSeat === 'all' ? '' : `&seat=${effectiveSeat}`;
       window.history.pushState({}, '', `?table=${tableId}${seatParam}`);
     }
   };
@@ -414,6 +440,11 @@ export const App: React.FC = () => {
     tableId: string,
     seat: number | 'all' | 'spectator'
   ) => {
+    const user = getCurrentUser();
+    if (seat === 'all' && !canUserUseHotseat(user.role)) {
+      alert('Only administrators are allowed to use the hotseat function.');
+      return;
+    }
     let loaded = loadTable(tableId);
     if (!loaded) {
       loaded = await fetchTableFromServer(tableId);
@@ -422,7 +453,6 @@ export const App: React.FC = () => {
       alert(`Table "${tableId}" does not exist.`);
       return;
     }
-    const user = getCurrentUser();
     if (typeof seat === 'number') {
       const seatCheck = isSeatTaken(loaded.members, seat, user.id);
       if (seatCheck.isTaken && seatCheck.occupant) {
@@ -470,6 +500,10 @@ export const App: React.FC = () => {
   };
 
   const handleChangeSeat = (seat: number | 'all' | 'spectator') => {
+    if (seat === 'all' && !canUserUseHotseat(currentUser.role)) {
+      showToast('Only administrators are allowed to use the hotseat function.');
+      return;
+    }
     if (typeof seat === 'number') {
       const seatCheck = isSeatTaken(state.members, seat, currentUser.id);
       if (seatCheck.isTaken && seatCheck.occupant) {

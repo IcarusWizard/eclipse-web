@@ -477,11 +477,27 @@ export function isSeatTaken(
  * persisting to both local storage and server.
  * Returns { success: false, error } if the seat is already taken by another user.
  */
+/**
+ * Checks if a user role is authorized to use the hotseat function.
+ * Only administrators are allowed to use hotseat.
+ */
+export function canUserUseHotseat(role?: UserRole | string | null): boolean {
+  return role === 'admin';
+}
+
 export async function registerTableMember(
   tableId: string,
   member: TableMember
 ): Promise<{ success: boolean; error?: string }> {
   try {
+    // Only administrators are allowed to use the hotseat function
+    if (member.seat === 'all' && !canUserUseHotseat(member.role)) {
+      return {
+        success: false,
+        error: 'Only administrators are allowed to use the hotseat function.',
+      };
+    }
+
     const storage = getStorage();
     const raw = storage.getItem(SAVED_TABLES_KEY);
     const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};

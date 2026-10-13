@@ -10,6 +10,7 @@ import {
   registerTableMember,
   filterTablesForUser,
   isSeatTaken,
+  canUserUseHotseat,
 } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
@@ -87,6 +88,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       setCurrentUser(updated);
       if (updated.role === 'admin') {
         setTableFilterTab('all');
+      } else {
+        setMySeat((prev) => (prev === 'all' ? 0 : prev));
+        setJoinSeat((prev) => (prev === 'all' ? 0 : prev));
       }
     });
   }, []);
@@ -281,6 +285,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       gcds: !hasRemnants && neutralShipSelections.gcds === 'expert' ? 'default' : neutralShipSelections.gcds,
     };
     const tableId = customTableId.trim() || `galaxy-${Date.now() % 1000}`;
+    if (mySeat === 'all' && !canUserUseHotseat(currentUser.role)) {
+      alert('Only administrators are allowed to use the hotseat function.');
+      return;
+    }
     registerTableMember(tableId, {
       userId: currentUser.id,
       username: currentUser.username,
@@ -322,6 +330,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         return;
       }
       const targetId = loaded.id || id;
+      if (joinSeat === 'all' && !canUserUseHotseat(currentUser.role)) {
+        setJoinError('Only administrators are allowed to use the hotseat function.');
+        setIsJoining(false);
+        return;
+      }
       if (typeof joinSeat === 'number') {
         const seatCheck = isSeatTaken(loaded.members, joinSeat, currentUser.id);
         if (seatCheck.isTaken && seatCheck.occupant) {
@@ -352,6 +365,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleJoinFromList = async (tableId: string, seat: number | 'all' | 'spectator') => {
+    if (seat === 'all' && !canUserUseHotseat(currentUser.role)) {
+      alert('Only administrators are allowed to use the hotseat function.');
+      return;
+    }
     const table = savedTables.find((t) => t.id === tableId);
     if (typeof seat === 'number' && table) {
       const seatCheck = isSeatTaken(table.members, seat, currentUser.id);
@@ -661,15 +678,27 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
                   <button
                     type="button"
-                    onClick={() => setMySeat('all')}
-                    className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                      mySeat === 'all'
-                        ? 'bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
+                    disabled={!canUserUseHotseat(currentUser.role)}
+                    onClick={() => {
+                      if (canUserUseHotseat(currentUser.role)) {
+                        setMySeat('all');
+                      }
+                    }}
+                    title={!canUserUseHotseat(currentUser.role) ? 'Hotseat mode is restricted to administrators' : undefined}
+                    className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
+                      !canUserUseHotseat(currentUser.role)
+                        ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
+                        : mySeat === 'all'
+                        ? 'bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20 cursor-pointer'
+                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 cursor-pointer'
                     }`}
                   >
-                    <Users className="w-3.5 h-3.5" />
-                    <span>Hotseat (All)</span>
+                    {!canUserUseHotseat(currentUser.role) ? (
+                      <Lock className="w-3.5 h-3.5" />
+                    ) : (
+                      <Users className="w-3.5 h-3.5" />
+                    )}
+                    <span>Hotseat (All){!canUserUseHotseat(currentUser.role) ? ' (Admin Only)' : ''}</span>
                   </button>
                   {Array.from({ length: Math.min(3, playerCount) }).map((_, sIdx) => (
                     <button
@@ -1165,8 +1194,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   value={joinSeat.toString()}
                   onChange={(e) => {
                     const val = e.target.value;
-                    if (val === 'all' || val === 'spectator') setJoinSeat(val);
-                    else setJoinSeat(parseInt(val, 10));
+                    if (val === 'all') {
+                      if (!canUserUseHotseat(currentUser.role)) {
+                        alert('Only administrators are allowed to use the hotseat function.');
+                        return;
+                      }
+                      setJoinSeat(val);
+                    } else if (val === 'spectator') {
+                      setJoinSeat(val);
+                    } else {
+                      setJoinSeat(parseInt(val, 10));
+                    }
                   }}
                   className="bg-slate-950 border border-slate-700 text-xs font-medium rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-400 flex-1"
                 >
@@ -1176,7 +1214,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <option value="3">Seat 4 (Player 4)</option>
                   <option value="4">Seat 5 (Player 5)</option>
                   <option value="5">Seat 6 (Player 6)</option>
-                  <option value="all">Hotseat / All Players</option>
+                  <option value="all" disabled={!canUserUseHotseat(currentUser.role)}>
+                    Hotseat / All Players{!canUserUseHotseat(currentUser.role) ? ' (Admin Only)' : ''}
+                  </option>
                   <option value="spectator">Spectator / Observer</option>
                 </select>
 
@@ -1359,10 +1399,21 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800/60">
                           <button
                             type="button"
-                            onClick={() => handleJoinFromList(table.id, 'all')}
-                            className="px-2 py-1 bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/60 rounded text-[10px] font-semibold text-purple-300 transition cursor-pointer"
+                            disabled={!canUserUseHotseat(currentUser.role)}
+                            onClick={() => {
+                              if (canUserUseHotseat(currentUser.role)) {
+                                handleJoinFromList(table.id, 'all');
+                              }
+                            }}
+                            title={!canUserUseHotseat(currentUser.role) ? 'Hotseat is restricted to administrators' : 'Join as Hotseat (Control All)'}
+                            className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
+                              !canUserUseHotseat(currentUser.role)
+                                ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
+                                : 'bg-purple-950/40 hover:bg-purple-900/60 border-purple-800/60 text-purple-300 hover:text-white cursor-pointer'
+                            }`}
                           >
-                            Hotseat
+                            {!canUserUseHotseat(currentUser.role) && <Lock className="w-2.5 h-2.5" />}
+                            <span>Hotseat</span>
                           </button>
                           {Array.from({ length: table.playerCount }).map((_, sIdx) => {
                             const isCopied = copiedLinkTableId === `${table.id}_${sIdx}`;
