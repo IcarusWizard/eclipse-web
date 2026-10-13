@@ -1497,6 +1497,33 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               </div>
                             </div>
                           )}
+
+                          {/* External Modules (Outside Grid, e.g. Muon Source) */}
+                          {bp?.externalParts && bp.externalParts.map((extPart, extIdx) => (
+                            <div
+                              key={`ext_pb_${sc.type}_${extIdx}`}
+                              className="min-h-[50px] rounded-lg border border-amber-500/70 bg-amber-950/30 p-1.5 flex flex-col justify-between shadow ring-1 ring-amber-500/30"
+                            >
+                              <div className="text-[8.5px] font-mono font-bold text-amber-400 flex items-center justify-between">
+                                <span className="flex items-center gap-1">
+                                  <Zap className="w-2.5 h-2.5 text-amber-400" />
+                                  Outside Grid
+                                </span>
+                                <span className="text-[7.5px] px-1 rounded bg-amber-900/60 text-amber-300 font-bold">
+                                  EXTERNAL
+                                </span>
+                              </div>
+                              <div>
+                                <div className="text-[10px] font-bold text-amber-300 leading-tight line-clamp-1">
+                                  {extPart.name}
+                                </div>
+                                <div className="text-[8px] text-slate-300 font-mono mt-0.5">
+                                  {extPart.powerProduced > 0 && `+${extPart.powerProduced} PWR`}
+                                  {extPart.initiativeBonus > 0 && ` | +${extPart.initiativeBonus} Init`}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
                     </div>

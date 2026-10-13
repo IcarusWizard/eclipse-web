@@ -1,7 +1,13 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameState } from '../../engine/types/state';
 import { computeCurrentScores, getPlayerShortName } from '../../engine/rules/gameReducer';
-import { getTableNumber } from '../../engine/rules/persistence';
+import { getTableNumber, isSeatTaken } from '../../engine/rules/persistence';
+import {
+  getCurrentUser,
+  subscribeToUserSession,
+} from '../../engine/rules/userSession';
+import { UserSession } from '../../engine/types/user';
+import { UserLoginModal } from '../auth/UserLoginModal';
 import {
   Radio,
   Trophy,
@@ -19,6 +25,8 @@ import {
   ChevronRight,
   ListOrdered,
   Users,
+  Shield,
+  Sparkles,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -58,6 +66,13 @@ export const Header: React.FC<HeaderProps> = ({
 }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(false);
   const [copiedSeat, setCopiedSeat] = useState(false);
+  const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
+  const [showUserModal, setShowUserModal] = useState<boolean>(false);
+
+  useEffect(() => {
+    return subscribeToUserSession((u) => setCurrentUser(u));
+  }, []);
+
   const { scores } = computeCurrentScores(state);
   const tableNum = getTableNumber(state);
 
@@ -228,10 +243,33 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
+          {/* User Profile Pill */}
+          <button
+            type="button"
+            onClick={() => setShowUserModal(true)}
+            className={`hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition shadow cursor-pointer ${
+              currentUser.role === 'admin'
+                ? 'bg-rose-950/70 border-rose-500/60 text-rose-300 hover:bg-rose-900/80'
+                : currentUser.role === 'user'
+                ? 'bg-cyan-950/70 border-cyan-500/60 text-cyan-300 hover:bg-cyan-900/80'
+                : 'bg-amber-950/70 border-amber-500/60 text-amber-300 hover:bg-amber-900/80'
+            }`}
+            title="Switch User / Login"
+          >
+            {currentUser.role === 'admin' ? (
+              <Shield className="w-3.5 h-3.5 text-rose-400" />
+            ) : currentUser.role === 'user' ? (
+              <User className="w-3.5 h-3.5 text-cyan-400" />
+            ) : (
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+            )}
+            <span className="truncate max-w-[80px]">{currentUser.username}</span>
+          </button>
+
           {/* Menu Drawer Toggle Button */}
           <button
             onClick={() => setIsDrawerOpen(true)}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/60 text-slate-200 hover:text-cyan-300 text-xs font-bold transition-all shadow"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/60 text-slate-200 hover:text-cyan-300 text-xs font-bold transition-all shadow cursor-pointer"
             title="Open Galaxy Command Menu"
           >
             <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
@@ -283,6 +321,39 @@ export const Header: React.FC<HeaderProps> = ({
                     Session & Table
                   </span>
                   <div className="bg-slate-900/80 rounded-xl border border-slate-800/80 p-3 space-y-2.5">
+                    {/* User Identity */}
+                    <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-800/80">
+                      <div className="flex items-center gap-1.5 text-slate-300 min-w-0">
+                        {currentUser.role === 'admin' ? (
+                          <Shield className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                        ) : currentUser.role === 'user' ? (
+                          <User className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                        ) : (
+                          <Sparkles className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                        )}
+                        <span className="font-bold text-white truncate max-w-[120px]">{currentUser.username}</span>
+                        <span className={`px-1.5 py-0.2 rounded text-[9px] font-mono uppercase font-bold ${
+                          currentUser.role === 'admin'
+                            ? 'bg-rose-950 border border-rose-600 text-rose-300'
+                            : currentUser.role === 'user'
+                            ? 'bg-cyan-950 border border-cyan-600 text-cyan-300'
+                            : 'bg-amber-950 border border-amber-600 text-amber-300'
+                        }`}>
+                          {currentUser.role}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsDrawerOpen(false);
+                          setShowUserModal(true);
+                        }}
+                        className="text-[11px] font-bold text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                      >
+                        Switch
+                      </button>
+                    </div>
+
                     {/* Seat Selection */}
                     <div className="flex items-center justify-between text-xs">
                       <div className="flex items-center gap-1.5 text-slate-400">
@@ -300,11 +371,18 @@ export const Header: React.FC<HeaderProps> = ({
                           className="bg-slate-950 border border-slate-700 text-xs rounded px-2 py-1 text-cyan-300 font-bold focus:outline-none"
                         >
                           <option value="all">Hotseat (All)</option>
-                          {state.players.map((p, idx) => (
-                            <option key={p.id} value={idx.toString()}>
-                              Seat {idx + 1} ({getPlayerShortName(p)})
-                            </option>
-                          ))}
+                          {state.players.map((p, idx) => {
+                            const seatCheck = isSeatTaken(state.members, idx, currentUser.id);
+                            const isTaken = seatCheck.isTaken && !!seatCheck.occupant;
+                            return (
+                              <option key={p.id} value={idx.toString()} disabled={isTaken}>
+                                Seat {idx + 1} ({getPlayerShortName(p)})
+                                {isTaken
+                                  ? ` [Taken: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
+                                  : ''}
+                              </option>
+                            );
+                          })}
                           <option value="spectator">Spectator</option>
                         </select>
                       ) : (
@@ -590,6 +668,14 @@ export const Header: React.FC<HeaderProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {showUserModal && (
+        <UserLoginModal
+          currentUser={currentUser}
+          onUserChanged={(u) => setCurrentUser(u)}
+          onClose={() => setShowUserModal(false)}
+        />
       )}
     </>
   );

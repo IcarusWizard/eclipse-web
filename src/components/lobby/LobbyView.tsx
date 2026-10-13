@@ -7,7 +7,16 @@ import {
   loadTable,
   loadTableByNumber,
   fetchTableFromServer,
+  registerTableMember,
+  filterTablesForUser,
+  isSeatTaken,
 } from '../../engine/rules/persistence';
+import {
+  getCurrentUser,
+  subscribeToUserSession,
+} from '../../engine/rules/userSession';
+import { UserSession } from '../../engine/types/user';
+import { UserLoginModal } from '../auth/UserLoginModal';
 import {
   ALL_FACTIONS,
   areFactionsConflictingColor,
@@ -37,6 +46,9 @@ import {
   Minimize2,
   Maximize2,
   Compass,
+  User,
+  Lock,
+  Star,
 } from 'lucide-react';
 import {
   NeutralShipType,
@@ -63,9 +75,24 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   onJoinTable,
   onOpenGallery,
 }) => {
+  const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
+  const [showUserModal, setShowUserModal] = useState<boolean>(false);
+  const [tableFilterTab, setTableFilterTab] = useState<'my' | 'all'>(() =>
+    currentUser.role === 'admin' ? 'all' : 'my'
+  );
   const [savedTables, setSavedTables] = useState<SavedTableSummary[]>(() => listSavedTables());
 
   useEffect(() => {
+    return subscribeToUserSession((updated) => {
+      setCurrentUser(updated);
+      if (updated.role === 'admin') {
+        setTableFilterTab('all');
+      }
+    });
+  }, []);
+
+  const refreshTables = () => {
+    setSavedTables(listSavedTables());
     fetchSavedTablesFromServer().then((remoteTables) => {
       if (remoteTables && remoteTables.length > 0) {
         setSavedTables((prev) => {
@@ -76,7 +103,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         });
       }
     });
-  }, []);
+  };
+
+  useEffect(() => {
+    refreshTables();
+  }, [currentUser]);
 
   // Create Table State
   const [playerCount, setPlayerCount] = useState<number>(2);
@@ -249,10 +280,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       guardian: !hasRemnants && neutralShipSelections.guardian === 'expert' ? 'default' : neutralShipSelections.guardian,
       gcds: !hasRemnants && neutralShipSelections.gcds === 'expert' ? 'default' : neutralShipSelections.gcds,
     };
+    const tableId = customTableId.trim() || `galaxy-${Date.now() % 1000}`;
+    registerTableMember(tableId, {
+      userId: currentUser.id,
+      username: currentUser.username,
+      role: currentUser.role,
+      seat: mySeat,
+      joinedAt: Date.now(),
+      isCreator: true,
+    });
     onStartNewGame(
       playerCount,
       isDraftMode ? [] : activeFactions,
-      customTableId.trim() || `galaxy-${Date.now() % 1000}`,
+      tableId,
       mySeat,
       selectedExpansions,
       sanitizedNeutralShips,
@@ -281,12 +321,58 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         setIsJoining(false);
         return;
       }
+      const targetId = loaded.id || id;
+      if (typeof joinSeat === 'number') {
+        const seatCheck = isSeatTaken(loaded.members, joinSeat, currentUser.id);
+        if (seatCheck.isTaken && seatCheck.occupant) {
+          const occ = seatCheck.occupant.username || seatCheck.occupant.name || 'another player';
+          setJoinError(`Seat ${joinSeat + 1} is already taken by ${occ}.`);
+          setIsJoining(false);
+          return;
+        }
+      }
+      const regRes = await registerTableMember(targetId, {
+        userId: currentUser.id,
+        username: currentUser.username,
+        role: currentUser.role,
+        seat: joinSeat,
+        joinedAt: Date.now(),
+      });
+      if (!regRes.success && regRes.error) {
+        setJoinError(regRes.error);
+        setIsJoining(false);
+        return;
+      }
       setIsJoining(false);
-      onJoinTable(loaded.id || id, joinSeat);
+      onJoinTable(targetId, joinSeat);
     } catch {
       setJoinError(`Table "${id}" does not exist.`);
       setIsJoining(false);
     }
+  };
+
+  const handleJoinFromList = async (tableId: string, seat: number | 'all' | 'spectator') => {
+    const table = savedTables.find((t) => t.id === tableId);
+    if (typeof seat === 'number' && table) {
+      const seatCheck = isSeatTaken(table.members, seat, currentUser.id);
+      if (seatCheck.isTaken && seatCheck.occupant) {
+        const occ = seatCheck.occupant.username || seatCheck.occupant.name || 'another player';
+        alert(`Seat ${seat + 1} is already taken by ${occ}.`);
+        return;
+      }
+    }
+    const regRes = await registerTableMember(tableId, {
+      userId: currentUser.id,
+      username: currentUser.username,
+      role: currentUser.role,
+      seat,
+      joinedAt: Date.now(),
+    });
+    if (!regRes.success && regRes.error) {
+      alert(regRes.error);
+      return;
+    }
+    onJoinTable(tableId, seat);
   };
 
   const handleDelete = (tableId: string) => {
@@ -323,18 +409,44 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         <p className="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto leading-relaxed">
           High-fidelity multiplayer web adaptation of Eclipse: Second Dawn. Create tables, distribute private seat links to commanders, or play local hotseat.
         </p>
-        {onOpenGallery && (
-          <div className="mt-4 flex justify-center">
+        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+          {/* Active User Identity Pill */}
+          <button
+            type="button"
+            onClick={() => setShowUserModal(true)}
+            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold tracking-wider uppercase shadow-lg transition-all cursor-pointer ${
+              currentUser.role === 'admin'
+                ? 'bg-rose-950/70 border-rose-500/60 hover:border-rose-400 text-rose-300 hover:bg-rose-900/80 shadow-rose-950/40'
+                : currentUser.role === 'user'
+                ? 'bg-cyan-950/70 border-cyan-500/60 hover:border-cyan-400 text-cyan-300 hover:bg-cyan-900/80 shadow-cyan-950/40'
+                : 'bg-amber-950/70 border-amber-500/60 hover:border-amber-400 text-amber-300 hover:bg-amber-900/80 shadow-amber-950/40'
+            }`}
+          >
+            {currentUser.role === 'admin' ? (
+              <Shield className="w-4 h-4 text-rose-400" />
+            ) : currentUser.role === 'user' ? (
+              <User className="w-4 h-4 text-cyan-400" />
+            ) : (
+              <Sparkles className="w-4 h-4 text-amber-400" />
+            )}
+            <span>{currentUser.username}</span>
+            <span className="text-[10px] font-mono opacity-80 lowercase bg-black/40 px-1.5 py-0.5 rounded">
+              ({currentUser.role})
+            </span>
+            <span className="text-slate-400 text-[10px] underline ml-0.5">Switch</span>
+          </button>
+
+          {onOpenGallery && (
             <button
               type="button"
               onClick={onOpenGallery}
-              className="inline-flex items-center gap-2 px-5 py-2 rounded-xl bg-slate-900/90 border border-cyan-500/40 hover:border-cyan-400 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 text-xs font-bold tracking-wider uppercase shadow-lg shadow-cyan-950/40 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900/90 border border-cyan-500/40 hover:border-cyan-400 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 text-xs font-bold tracking-wider uppercase shadow-lg shadow-cyan-950/40 transition-all cursor-pointer"
             >
               <BookOpen className="w-4 h-4 text-cyan-400" />
-              <span>📚 Galactic Gallery & Compendium</span>
+              <span>📚 Gallery</span>
             </button>
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       {/* Main Grid */}
@@ -1082,90 +1194,250 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
           {/* Saved Tables List */}
           <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 shadow-2xl shadow-cyan-950/10">
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3 mb-3">
+            {/* Header with My Tables vs All Tables tab */}
+            <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 mb-3 gap-2">
               <div className="flex items-center gap-2">
-                <Shield className="w-4 h-4 text-cyan-400" />
+                {currentUser.role === 'admin' ? (
+                  <Shield className="w-4 h-4 text-rose-400" />
+                ) : (
+                  <Users className="w-4 h-4 text-cyan-400" />
+                )}
                 <h3 className="text-sm font-display font-bold uppercase tracking-wider text-slate-200">
-                  Local Galaxy Archives ({savedTables.length})
+                  {currentUser.role === 'admin'
+                    ? `All Galaxy Tables (${savedTables.length})`
+                    : tableFilterTab === 'my'
+                    ? `My Tables (${filterTablesForUser(savedTables, currentUser).length})`
+                    : `All Galaxy Tables (${savedTables.length})`}
                 </h3>
               </div>
+
+              {currentUser.role !== 'admin' ? (
+                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setTableFilterTab('my')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      tableFilterTab === 'my'
+                        ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-500/40 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    My Tables ({filterTablesForUser(savedTables, currentUser).length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTableFilterTab('all')}
+                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      tableFilterTab === 'all'
+                        ? 'bg-blue-500/25 text-blue-200 border border-blue-500/40 shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    All Tables ({savedTables.length})
+                  </button>
+                </div>
+              ) : (
+                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950/90 border border-rose-600 text-rose-300">
+                  ADMIN VIEW
+                </span>
+              )}
             </div>
 
-            {savedTables.length === 0 ? (
-              <div className="p-6 text-center text-slate-500 text-xs">
-                No local tables saved yet. Launch a new table above to start playing!
-              </div>
-            ) : (
-              <div className="space-y-2.5 max-h-72 overflow-y-auto pr-1">
-                {savedTables.map((table) => {
-                  return (
-                    <div
-                      key={table.id}
-                      className="p-3 bg-slate-950/70 border border-slate-800 hover:border-slate-700 rounded-xl transition-all space-y-2"
-                    >
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800/80 text-cyan-300 font-mono font-bold text-xs">
-                            #{table.tableNumber || table.id}
-                          </span>
-                          <span className="text-xs font-semibold text-slate-200 truncate">
-                            Round {table.round}/{table.maxRounds} • {table.playerCount}P
-                          </span>
+            {(() => {
+              const myTables = filterTablesForUser(savedTables, currentUser);
+              const displayed = tableFilterTab === 'my' && currentUser.role !== 'admin' ? myTables : savedTables;
+
+              if (displayed.length === 0) {
+                return (
+                  <div className="p-6 text-center text-slate-500 text-xs space-y-2">
+                    <p>
+                      {tableFilterTab === 'my' && currentUser.role !== 'admin'
+                        ? `You haven't joined any tables yet as ${currentUser.username}.`
+                        : 'No tables found on server.'}
+                    </p>
+                    {tableFilterTab === 'my' && savedTables.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setTableFilterTab('all')}
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold transition"
+                      >
+                        Browse All Tables ({savedTables.length})
+                      </button>
+                    )}
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
+                  {displayed.map((table) => {
+                    const myMembership = (table.members || []).find((m) => m.userId === currentUser.id);
+                    const mySeat = myMembership?.seat;
+                    const hasMySeat = myMembership && typeof mySeat !== 'undefined';
+
+                    return (
+                      <div
+                        key={table.id}
+                        className={`p-3 bg-slate-950/70 rounded-xl transition-all space-y-2.5 border ${
+                          hasMySeat
+                            ? 'border-emerald-500/40 shadow-sm shadow-emerald-950/30'
+                            : 'border-slate-800 hover:border-slate-700'
+                        }`}
+                      >
+                        {/* Table Header Row */}
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800/80 text-cyan-300 font-mono font-bold text-xs">
+                              #{table.tableNumber || table.id}
+                            </span>
+                            <span className="text-xs font-semibold text-slate-200 truncate">
+                              Round {table.round}/{table.maxRounds} • {table.playerCount}P
+                            </span>
+                          </div>
+                          {(currentUser.role === 'admin' || myMembership?.isCreator) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(table.id)}
+                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 transition"
+                              title="Delete Table"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(table.id)}
-                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 transition"
-                          title="Delete Table"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      </div>
 
-                      <div className="text-[11px] text-slate-400 truncate">
-                        Turn: <strong className="text-slate-200">{table.activePlayerName}</strong> • {table.phase.replace('_', ' ')}
-                      </div>
+                        {/* Status & Turn */}
+                        <div className="text-[11px] text-slate-400 truncate">
+                          Turn: <strong className="text-slate-200">{table.activePlayerName}</strong> • {table.phase.replace('_', ' ')}
+                        </div>
 
-                      {/* Direct Seat Launch Links */}
-                      <div className="flex flex-wrap items-center gap-1.5 pt-1 border-t border-slate-800/60">
-                        <button
-                          type="button"
-                          onClick={() => onJoinTable(table.id, 'all')}
-                          className="px-2 py-1 bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/60 rounded text-[10px] font-semibold text-purple-300 transition"
-                        >
-                          Hotseat
-                        </button>
-                        {Array.from({ length: table.playerCount }).map((_, sIdx) => {
-                          const isCopied = copiedLinkTableId === `${table.id}_${sIdx}`;
-                          return (
-                            <div key={sIdx} className="inline-flex items-center rounded border border-slate-700 bg-slate-900 text-[10px]">
-                              <button
-                                type="button"
-                                onClick={() => onJoinTable(table.id, sIdx)}
-                                className="px-2 py-1 text-slate-300 hover:text-white hover:bg-slate-800 transition rounded-l"
-                              >
-                                Seat {sIdx + 1}
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => handleCopySeatLink(table.id, sIdx)}
-                                className="px-1.5 py-1 text-cyan-400 hover:bg-cyan-950/50 border-l border-slate-700 transition rounded-r"
-                                title={`Copy Seat ${sIdx + 1} Link`}
-                              >
-                                {isCopied ? '✓' : <Share2 className="w-2.5 h-2.5" />}
-                              </button>
+                        {/* Rejoin Prompt for Member */}
+                        {hasMySeat && (
+                          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs">
+                            <div className="flex items-center gap-1.5">
+                              <Star className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
+                              <span>
+                                Your Seat: <strong>{typeof mySeat === 'number' ? `Seat ${mySeat + 1}` : mySeat}</strong>
+                              </span>
                             </div>
-                          );
-                        })}
+                            <button
+                              type="button"
+                              onClick={() => handleJoinFromList(table.id, mySeat)}
+                              className="px-2.5 py-0.5 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] uppercase tracking-wider transition cursor-pointer shadow"
+                            >
+                              Rejoin
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Members List */}
+                        {table.members && table.members.length > 0 && (
+                          <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1 pt-1">
+                            <span className="text-slate-500 font-semibold text-[10px] uppercase tracking-wider">
+                              Members:
+                            </span>
+                            {table.members.map((m, mIdx) => (
+                              <span
+                                key={mIdx}
+                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                                  m.userId === currentUser.id
+                                    ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 font-bold'
+                                    : m.role === 'admin'
+                                    ? 'bg-rose-950/80 border-rose-700 text-rose-300'
+                                    : m.role === 'user'
+                                    ? 'bg-cyan-950/80 border-cyan-700 text-cyan-300'
+                                    : 'bg-amber-950/80 border-amber-700 text-amber-300'
+                                }`}
+                              >
+                                {m.username} {typeof m.seat === 'number' ? `(S${m.seat + 1})` : m.seat ? `(${m.seat})` : ''}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Direct Seat Launch Links */}
+                        <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800/60">
+                          <button
+                            type="button"
+                            onClick={() => handleJoinFromList(table.id, 'all')}
+                            className="px-2 py-1 bg-purple-950/40 hover:bg-purple-900/60 border border-purple-800/60 rounded text-[10px] font-semibold text-purple-300 transition cursor-pointer"
+                          >
+                            Hotseat
+                          </button>
+                          {Array.from({ length: table.playerCount }).map((_, sIdx) => {
+                            const isCopied = copiedLinkTableId === `${table.id}_${sIdx}`;
+                            const isMySeatHere = mySeat === sIdx;
+                            const occupant = (table.members || []).find((m) => m.seat === sIdx);
+                            const isTakenByOther = occupant && occupant.userId !== currentUser.id;
+
+                            return (
+                              <div
+                                key={sIdx}
+                                className={`inline-flex items-center rounded border text-[10px] ${
+                                  isMySeatHere
+                                    ? 'border-emerald-500 bg-emerald-950/80'
+                                    : isTakenByOther
+                                    ? 'border-slate-800 bg-slate-950/50 opacity-60'
+                                    : 'border-slate-700 bg-slate-900'
+                                }`}
+                              >
+                                <button
+                                  type="button"
+                                  disabled={Boolean(isTakenByOther)}
+                                  onClick={() => {
+                                    if (!isTakenByOther) {
+                                      handleJoinFromList(table.id, sIdx);
+                                    }
+                                  }}
+                                  title={
+                                    isTakenByOther
+                                      ? `Seat ${sIdx + 1} is already taken by ${occupant?.username || occupant?.name}`
+                                      : isMySeatHere
+                                      ? `Your Seat (Seat ${sIdx + 1})`
+                                      : `Join Seat ${sIdx + 1}`
+                                  }
+                                  className={`px-2 py-1 transition rounded-l ${
+                                    isTakenByOther
+                                      ? 'text-slate-500 cursor-not-allowed line-through'
+                                      : isMySeatHere
+                                      ? 'text-emerald-300 font-bold hover:bg-emerald-900/60 cursor-pointer'
+                                      : 'text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer'
+                                  }`}
+                                >
+                                  Seat {sIdx + 1}{isTakenByOther ? ` (${occupant?.username || occupant?.name})` : ''}
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopySeatLink(table.id, sIdx)}
+                                  className="px-1.5 py-1 text-cyan-400 hover:bg-cyan-950/50 border-l border-slate-700 transition rounded-r cursor-pointer"
+                                  title={`Copy Seat ${sIdx + 1} Link`}
+                                >
+                                  {isCopied ? '✓' : <Share2 className="w-2.5 h-2.5" />}
+                                </button>
+                              </div>
+                            );
+                          })}
+                        </div>
                       </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
+                    );
+                  })}
+                </div>
+              );
+            })()}
           </div>
         </div>
       </div>
+
+      {showUserModal && (
+        <UserLoginModal
+          currentUser={currentUser}
+          onUserChanged={(u) => {
+            setCurrentUser(u);
+            if (u.role === 'admin') setTableFilterTab('all');
+          }}
+          onClose={() => setShowUserModal(false)}
+        />
+      )}
     </div>
   );
 };

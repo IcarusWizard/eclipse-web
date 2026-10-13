@@ -8,7 +8,14 @@ import {
   SavedTableSummary,
   fetchTableFromServer,
   saveGameState,
+  filterTablesForUser,
 } from '../../engine/rules/persistence';
+import {
+  getCurrentUser,
+  subscribeToUserSession,
+} from '../../engine/rules/userSession';
+import { UserSession } from '../../engine/types/user';
+import { UserLoginModal } from '../auth/UserLoginModal';
 import {
   Radio,
   X,
@@ -20,6 +27,10 @@ import {
   Hash,
   Clock,
   Users,
+  User,
+  Shield,
+  Sparkles,
+  Star,
 } from 'lucide-react';
 
 interface TableSessionModalProps {
@@ -36,14 +47,20 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
   onClose,
 }) => {
   const currentTableNumber = getTableNumber(currentState);
+  const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
+  const [showUserModal, setShowUserModal] = useState<boolean>(false);
   const [inputTableNum, setInputTableNum] = useState<string>('');
   const [savedTables, setSavedTables] = useState<SavedTableSummary[]>([]);
   const [copied, setCopied] = useState<boolean>(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
   useEffect(() => {
-    setSavedTables(listSavedTables());
+    return subscribeToUserSession((u) => setCurrentUser(u));
   }, []);
+
+  useEffect(() => {
+    setSavedTables(listSavedTables());
+  }, [currentUser]);
 
   const handleCopyLink = () => {
     const url = `${window.location.origin}${window.location.pathname}?table=${currentTableNumber}`;
@@ -117,7 +134,56 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
         </div>
 
         {/* Modal Body */}
-        <div className="p-6 overflow-y-auto space-y-6 text-xs">
+        <div className="p-6 overflow-y-auto space-y-5 text-xs">
+          {/* User Session Pill */}
+          <div className="bg-slate-900/70 border border-slate-800 rounded-xl p-3 flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div
+                className={`p-1.5 rounded-lg border shrink-0 ${
+                  currentUser.role === 'admin'
+                    ? 'bg-rose-950/80 border-rose-600 text-rose-300'
+                    : currentUser.role === 'user'
+                    ? 'bg-cyan-950/80 border-cyan-600 text-cyan-300'
+                    : 'bg-amber-950/80 border-amber-600 text-amber-300'
+                }`}
+              >
+                {currentUser.role === 'admin' ? (
+                  <Shield className="w-4 h-4" />
+                ) : currentUser.role === 'user' ? (
+                  <User className="w-4 h-4" />
+                ) : (
+                  <Sparkles className="w-4 h-4" />
+                )}
+              </div>
+              <div className="min-w-0">
+                <div className="text-[10px] text-slate-400 uppercase tracking-wider font-semibold">
+                  Player Identity:
+                </div>
+                <div className="font-bold text-white text-xs flex items-center gap-1.5 truncate">
+                  <span className="truncate">{currentUser.username}</span>
+                  <span
+                    className={`px-1.5 py-0.2 rounded text-[10px] font-mono uppercase font-bold ${
+                      currentUser.role === 'admin'
+                        ? 'bg-rose-950 border border-rose-600 text-rose-300'
+                        : currentUser.role === 'user'
+                        ? 'bg-cyan-950 border border-cyan-600 text-cyan-300'
+                        : 'bg-amber-950 border border-amber-600 text-amber-300'
+                    }`}
+                  >
+                    {currentUser.role}
+                  </span>
+                </div>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowUserModal(true)}
+              className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold border border-slate-700 transition shrink-0 cursor-pointer"
+            >
+              Switch User
+            </button>
+          </div>
+
           {/* Active Table Card */}
           <div className="bg-cyan-950/20 border border-cyan-600/40 rounded-xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div>
@@ -171,95 +237,126 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
 
           {/* Saved Tables List */}
           <div>
-            <div className="flex items-center justify-between mb-2">
-              <div className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                <Clock className="w-3.5 h-3.5 text-indigo-400" />
-                <span>Saved Games in Browser ({savedTables.length})</span>
-              </div>
-              <button
-                onClick={() => {
-                  onNewTable();
-                  onClose();
-                }}
-                className="text-cyan-400 hover:text-cyan-300 text-[11px] font-bold flex items-center gap-1 transition-colors"
-              >
-                <PlusCircle className="w-3.5 h-3.5" />
-                <span>Start New Game</span>
-              </button>
-            </div>
+            {(() => {
+              const myTables = filterTablesForUser(savedTables, currentUser);
+              const displayed = currentUser.role === 'admin' ? savedTables : myTables;
 
-            {savedTables.length === 0 ? (
-              <div className="text-center py-6 text-slate-500 bg-slate-900/30 rounded-xl border border-slate-800">
-                No saved table sessions found.
-              </div>
-            ) : (
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
-                {savedTables.map((entry) => {
-                  const isCurrent = entry.tableNumber === currentTableNumber;
-                  const dateStr = new Date(entry.savedAt).toLocaleTimeString([], {
-                    hour: '2-digit',
-                    minute: '2-digit',
-                    month: 'short',
-                    day: 'numeric',
-                  });
-
-                  return (
-                    <div
-                      key={entry.id}
-                      onClick={() => handleRejoin(entry)}
-                      className={`p-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
-                        isCurrent
-                          ? 'bg-cyan-950/30 border-cyan-600/60 shadow-md'
-                          : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800'
-                      }`}
-                    >
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-9 h-9 rounded-lg flex items-center justify-center font-mono font-bold text-xs ${
-                            isCurrent
-                              ? 'bg-cyan-500 text-slate-950'
-                              : 'bg-slate-800 text-slate-300 border border-slate-700'
-                          }`}
-                        >
-                          #{entry.tableNumber}
-                        </div>
-                        <div>
-                          <div className="font-bold text-white flex items-center gap-2">
-                            <span>Table #{entry.tableNumber}</span>
-                            {isCurrent && (
-                              <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-cyan-950 border border-cyan-700 text-cyan-300 rounded">
-                                Active
-                              </span>
-                            )}
-                            <span className="text-slate-500 font-mono text-[10px]">• {dateStr}</span>
-                          </div>
-                          <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2">
-                            <span>
-                              Round {entry.round}/{entry.maxRounds} ({entry.phase.replace('_', ' ')})
-                            </span>
-                            <span>•</span>
-                            <span className="flex items-center gap-1">
-                              <Users className="w-3 h-3" />
-                              {entry.playerCount}p: {entry.activePlayerName}&apos;s turn
-                            </span>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          onClick={(e) => handleDelete(entry.id, e)}
-                          className="p-1.5 hover:bg-rose-950/60 rounded-lg text-slate-500 hover:text-rose-400 transition-colors"
-                          title="Delete saved table"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
-                      </div>
+              return (
+                <>
+                  <div className="flex items-center justify-between mb-2">
+                    <div className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
+                      <Clock className="w-3.5 h-3.5 text-indigo-400" />
+                      <span>
+                        {currentUser.role === 'admin'
+                          ? `All Galaxy Tables (${savedTables.length}) [Admin View]`
+                          : `My Tables (${displayed.length})`}
+                      </span>
                     </div>
-                  );
-                })}
-              </div>
-            )}
+                    <button
+                      onClick={() => {
+                        onNewTable();
+                        onClose();
+                      }}
+                      className="text-cyan-400 hover:text-cyan-300 text-[11px] font-bold flex items-center gap-1 transition-colors cursor-pointer"
+                    >
+                      <PlusCircle className="w-3.5 h-3.5" />
+                      <span>Start New Game</span>
+                    </button>
+                  </div>
+
+                  {displayed.length === 0 ? (
+                    <div className="text-center py-6 text-slate-500 bg-slate-900/30 rounded-xl border border-slate-800 space-y-1">
+                      <p>
+                        {currentUser.role === 'admin'
+                          ? 'No saved table sessions found.'
+                          : `No tables found for ${currentUser.username}.`}
+                      </p>
+                      {currentUser.role !== 'admin' && savedTables.length > 0 && (
+                        <p className="text-[10px] text-slate-400">
+                          (Total {savedTables.length} tables exist on server. Enter a table number above to join.)
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
+                      {displayed.map((entry) => {
+                        const isCurrent = entry.tableNumber === currentTableNumber;
+                        const dateStr = new Date(entry.savedAt).toLocaleTimeString([], {
+                          hour: '2-digit',
+                          minute: '2-digit',
+                          month: 'short',
+                          day: 'numeric',
+                        });
+                        const myMembership = (entry.members || []).find((m) => m.userId === currentUser.id);
+
+                        return (
+                          <div
+                            key={entry.id}
+                            onClick={() => handleRejoin(entry)}
+                            className={`p-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
+                              isCurrent
+                                ? 'bg-cyan-950/30 border-cyan-600/60 shadow-md'
+                                : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800'
+                            }`}
+                          >
+                            <div className="flex items-center gap-3 min-w-0">
+                              <div
+                                className={`w-9 h-9 rounded-lg flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
+                                  isCurrent
+                                    ? 'bg-cyan-500 text-slate-950'
+                                    : 'bg-slate-800 text-slate-300 border border-slate-700'
+                                }`}
+                              >
+                                #{entry.tableNumber}
+                              </div>
+                              <div className="min-w-0">
+                                <div className="font-bold text-white flex items-center gap-2">
+                                  <span>Table #{entry.tableNumber}</span>
+                                  {isCurrent && (
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-cyan-950 border border-cyan-700 text-cyan-300 rounded">
+                                      Active
+                                    </span>
+                                  )}
+                                  {myMembership && typeof myMembership.seat !== 'undefined' && (
+                                    <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-emerald-950 border border-emerald-600 text-emerald-300 rounded flex items-center gap-0.5">
+                                      <Star className="w-2.5 h-2.5 fill-emerald-300" />
+                                      {typeof myMembership.seat === 'number'
+                                        ? `Seat ${myMembership.seat + 1}`
+                                        : myMembership.seat}
+                                    </span>
+                                  )}
+                                  <span className="text-slate-500 font-mono text-[10px]">• {dateStr}</span>
+                                </div>
+                                <div className="text-[11px] text-slate-400 mt-0.5 flex items-center gap-2 truncate">
+                                  <span>
+                                    Round {entry.round}/{entry.maxRounds} ({entry.phase.replace('_', ' ')})
+                                  </span>
+                                  <span>•</span>
+                                  <span className="flex items-center gap-1">
+                                    <Users className="w-3 h-3" />
+                                    {entry.playerCount}p: {entry.activePlayerName}&apos;s turn
+                                  </span>
+                                </div>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 shrink-0">
+                              <button
+                                onClick={(e) => handleDelete(entry.id, e)}
+                                className="p-1.5 hover:bg-rose-950/60 rounded-lg text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                                title="Delete saved table"
+                              >
+                                <Trash2 className="w-4 h-4" />
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </>
+              );
+            })()}
           </div>
         </div>
 
@@ -270,12 +367,20 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
           </span>
           <button
             onClick={onClose}
-            className="px-5 py-2 rounded-xl font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700 font-sans"
+            className="px-5 py-2 rounded-xl font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700 font-sans cursor-pointer"
           >
             Close
           </button>
         </div>
       </div>
+
+      {showUserModal && (
+        <UserLoginModal
+          currentUser={currentUser}
+          onUserChanged={(u) => setCurrentUser(u)}
+          onClose={() => setShowUserModal(false)}
+        />
+      )}
     </div>
   );
 };

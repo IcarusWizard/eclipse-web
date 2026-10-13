@@ -61,8 +61,9 @@ export function buildCombatUnitsForSector(
       if (!bp) continue;
       const stats = calculateBlueprintStats(bp);
 
+      const allParts = [...bp.slots, ...(bp.externalParts || [])];
       const weapons: CombatUnit['weapons'] = [];
-      for (const slot of bp.slots) {
+      for (const slot of allParts) {
         if (slot?.dice) {
           for (const d of slot.dice) {
             weapons.push({
@@ -75,7 +76,7 @@ export function buildCombatUnitsForSector(
         }
       }
 
-      const hasMorphShield = bp.slots.some((s) => s?.id === 'morph_shield' || s?.morphShield);
+      const hasMorphShield = allParts.some((s) => s?.id === 'morph_shield' || s?.morphShield);
 
       units.push({
         id: ship.id,

@@ -652,7 +652,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType];
         if (!bp) return { valid: false, error: `Unknown ship type ${up.shipType}.` };
-        if (up.slotIndex < 0 || up.slotIndex >= bp.maxSlots) {
+        if (up.isExternal || up.slotIndex === -1) {
+          // Valid external slot
+        } else if (up.slotIndex < 0 || up.slotIndex >= bp.maxSlots) {
           return { valid: false, error: `Invalid slot index ${up.slotIndex} for ${up.shipType}.` };
         }
       }
@@ -661,7 +663,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       let modifiedCount = 0;
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType]!;
-        const currentPartId = bp.slots[up.slotIndex]?.id || null;
+        let currentPartId: string | null = null;
+        if (up.isExternal || up.slotIndex === -1) {
+          currentPartId = bp.externalParts && bp.externalParts.length > 0 ? bp.externalParts[0].id : null;
+        } else {
+          currentPartId = bp.slots[up.slotIndex]?.id || null;
+        }
         if (currentPartId !== up.partId) {
           modifiedCount += 1;
         }
@@ -1365,15 +1372,27 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (action.equipShipType) {
         const bp = player.blueprints[action.equipShipType];
         if (!bp) return { valid: false, error: `Invalid ship type ${action.equipShipType}.` };
-        if (action.equipSlotIndex === undefined || action.equipSlotIndex < 0 || action.equipSlotIndex >= bp.maxSlots) {
-          return { valid: false, error: `Invalid slot index for ${action.equipShipType}.` };
-        }
         const disc = state.pendingDiscovery.discovery;
+        const isMuonSource = disc.shipPartId === 'muon_source';
+        if (!isMuonSource) {
+          if (action.equipSlotIndex === undefined || action.equipSlotIndex < 0 || action.equipSlotIndex >= bp.maxSlots) {
+            return { valid: false, error: `Invalid slot index for ${action.equipShipType}.` };
+          }
+        }
         if (disc.shipPartId) {
           const part = SHIP_PARTS[disc.shipPartId];
           if (part) {
-            const testBp = { ...bp, slots: [...bp.slots] };
-            testBp.slots[action.equipSlotIndex] = part;
+            let testBp: ShipBlueprint;
+            if (isMuonSource) {
+              testBp = {
+                ...bp,
+                slots: [...bp.slots],
+                externalParts: [...(bp.externalParts || []), part],
+              };
+            } else {
+              testBp = { ...bp, slots: [...bp.slots] };
+              testBp.slots[action.equipSlotIndex!] = part;
+            }
             const stats = calculateBlueprintStats(testBp);
             if (stats.totalPowerConsumed > stats.totalPowerProduced) {
               return {
@@ -2482,6 +2501,29 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       const upgradeDetails: string[] = [];
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType]!;
+        if (up.isExternal || up.slotIndex === -1) {
+          const oldPart = bp.externalParts && bp.externalParts.length > 0 ? bp.externalParts[0] : null;
+          const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
+          bp.externalParts = part ? [part] : [];
+
+          // When installing an Ancient part from storage, remove it so it cannot be placed again
+          if (up.partId && player.unlockedAncientParts && player.unlockedAncientParts.includes(up.partId)) {
+            player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== up.partId);
+            if (player.faction.id === 'wardens_of_magellan') {
+              player.discoveryTilesUsedAsShipPartsCount = (player.discoveryTilesUsedAsShipPartsCount || 0) + 1;
+            }
+          }
+
+          if (part && oldPart) {
+            upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (outside blueprint grid, replaced ${oldPart.name})`);
+          } else if (part) {
+            upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (outside blueprint grid)`);
+          } else if (oldPart) {
+            upgradeDetails.push(`removed ${oldPart.name} from ${up.shipType.toUpperCase()} (outside blueprint grid)`);
+          }
+          continue;
+        }
+
         const oldPart = bp.slots[up.slotIndex];
         const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
         bp.slots[up.slotIndex] = part;
@@ -3204,18 +3246,30 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         if (disc.shipPartId) {
           player.unlockedAncientParts = player.unlockedAncientParts || [];
 
-          if (action.equipShipType && action.equipSlotIndex !== undefined) {
+          if (disc.shipPartId === 'muon_source' && action.equipShipType) {
+            const bp = player.blueprints[action.equipShipType];
+            const part = SHIP_PARTS.muon_source;
+            if (bp && part) {
+              bp.externalParts = bp.externalParts || [];
+              bp.externalParts.push(part);
+              player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== 'muon_source');
+              if (player.faction.id === 'wardens_of_magellan') {
+                player.discoveryTilesUsedAsShipPartsCount = (player.discoveryTilesUsedAsShipPartsCount || 0) + 1;
+              }
+              addLog(`${player.name} placed Ancient Tech "${part.name}" outside the blueprint grid of their ${action.equipShipType.toUpperCase()} (+2 Power, +1 Initiative)!`);
+            }
+          } else if (action.equipShipType && action.equipSlotIndex !== undefined) {
             const bp = player.blueprints[action.equipShipType];
             const part = SHIP_PARTS[disc.shipPartId];
             if (bp && part && action.equipSlotIndex >= 0 && action.equipSlotIndex < bp.maxSlots) {
               const testBp = { ...bp, slots: [...bp.slots] };
               testBp.slots[action.equipSlotIndex] = part;
               const testStats = calculateBlueprintStats(testBp);
-              if (testStats.powerConsumed > testStats.powerProduced) {
+              if (testStats.totalPowerConsumed > testStats.totalPowerProduced) {
                 return {
                   success: false,
                   newState: state,
-                  error: `Cannot install ${part.name}: power consumed (${testStats.powerConsumed}) exceeds power produced (${testStats.powerProduced}).`,
+                  error: `Cannot install ${part.name}: power consumed (${testStats.totalPowerConsumed}) exceeds power produced (${testStats.totalPowerProduced}).`,
                 };
               }
               bp.slots[action.equipSlotIndex] = part;

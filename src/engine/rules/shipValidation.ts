@@ -57,6 +57,9 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
 
   for (const part of blueprint.slots) {
     if (!part) continue;
+    if (part.id === 'muon_source') {
+      errors.push('Muon Source must be placed outside the blueprint grid, not in a standard slot.');
+    }
     if (blueprint.noDrives && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       errors.push(`${blueprint.type.toUpperCase()} cannot equip Drive Ship Parts.`);
     }
@@ -75,6 +78,27 @@ export function calculateBlueprintStats(blueprint: ShipBlueprint): BlueprintVali
     }
     computerBonus += part.computerBonus;
     shieldBonus += part.shieldBonus;
+  }
+
+  if (blueprint.externalParts) {
+    for (const part of blueprint.externalParts) {
+      if (!part) continue;
+      totalPowerProduced += part.powerProduced;
+      totalPowerConsumed += part.powerConsumed;
+      bonusHull += part.hullBonus;
+      bonusInitiative += part.initiativeBonus;
+      if (part.driveSpeed) {
+        totalDriveSpeed += part.driveSpeed;
+      }
+      if (part.id === 'jump_drive' || part.isJumpDrive) {
+        hasJumpDrive = true;
+      }
+      if (part.id === 'morph_shield' || part.morphShield) {
+        hasMorphShield = true;
+      }
+      computerBonus += part.computerBonus;
+      shieldBonus += part.shieldBonus;
+    }
   }
 
   // Base hull: in Eclipse, all standard ships have a base damage capacity of 1.

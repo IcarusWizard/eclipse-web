@@ -1,4 +1,5 @@
 import { GameState } from '../types/state';
+import { TableMember, UserSession } from '../types/user';
 
 export interface SavedTableSummary {
   id: string;
@@ -10,7 +11,8 @@ export interface SavedTableSummary {
   playerCount: number;
   playerNames: string[];
   activePlayerName: string;
-  stateJson: string;
+  stateJson?: string;
+  members?: TableMember[];
 }
 
 const ACTIVE_GAME_KEY = 'eclipse_active_game';
@@ -118,6 +120,9 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     const existingRaw = storage.getItem(SAVED_TABLES_KEY);
     const tables: Record<string, SavedTableSummary> = existingRaw ? JSON.parse(existingRaw) : {};
 
+    const existingTable = tables[state.id];
+    const members = state.members || (state as any).members || existingTable?.members || [];
+    state.members = members;
     const activePlayer = state.players[state.activePlayerIndex];
 
     tables[state.id] = {
@@ -131,6 +136,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       playerNames: state.players.map((p) => `${p.name} (${p.faction.name})`),
       activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
       stateJson,
+      members,
     };
 
     storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
@@ -446,5 +452,129 @@ export function subscribeToGameSync(
     }
     clearInterval(pollInterval);
   };
+}
+
+/**
+ * Checks if a specific table seat is already taken by another user.
+ */
+export function isSeatTaken(
+  members: TableMember[] | undefined,
+  seat: number | 'all' | 'spectator',
+  currentUserId?: string
+): { isTaken: boolean; occupant?: TableMember } {
+  if (typeof seat !== 'number' || !members || !Array.isArray(members)) {
+    return { isTaken: false };
+  }
+  const occupant = members.find((m) => m.seat === seat && m.userId !== currentUserId);
+  return {
+    isTaken: !!occupant,
+    occupant,
+  };
+}
+
+/**
+ * Registers a user or guest as a member of a table (with their seat and role),
+ * persisting to both local storage and server.
+ * Returns { success: false, error } if the seat is already taken by another user.
+ */
+export async function registerTableMember(
+  tableId: string,
+  member: TableMember
+): Promise<{ success: boolean; error?: string }> {
+  try {
+    const storage = getStorage();
+    const raw = storage.getItem(SAVED_TABLES_KEY);
+    const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
+
+    const table = tables[tableId];
+    const curMembers = table?.members || [];
+
+    // Check if the requested seat is already taken by another user
+    if (typeof member.seat === 'number') {
+      const seatCheck = isSeatTaken(curMembers, member.seat, member.userId);
+      if (seatCheck.isTaken && seatCheck.occupant) {
+        const occName = seatCheck.occupant.username || seatCheck.occupant.name || 'another player';
+        return {
+          success: false,
+          error: `Seat ${member.seat + 1} is already occupied by ${occName}.`,
+        };
+      }
+    }
+
+    if (table) {
+      const existingIdx = curMembers.findIndex((m) => m.userId === member.userId);
+      if (existingIdx >= 0) {
+        curMembers[existingIdx] = {
+          ...curMembers[existingIdx],
+          ...member,
+          joinedAt: Date.now(),
+        };
+      } else {
+        curMembers.push({
+          ...member,
+          joinedAt: Date.now(),
+        });
+      }
+      table.members = curMembers;
+      storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+    } else {
+      tables[tableId] = {
+        id: tableId,
+        tableNumber: parseInt(tableId.replace(/\D/g, ''), 10) || 101,
+        savedAt: Date.now(),
+        round: 1,
+        maxRounds: 8,
+        phase: 'ACTION_PHASE',
+        playerCount: 2,
+        playerNames: [],
+        activePlayerName: 'Unknown',
+        members: [{ ...member, joinedAt: Date.now() }],
+      };
+      storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+    }
+
+    if (typeof fetch !== 'undefined') {
+      const res = await fetch(`/api/tables/${encodeURIComponent(tableId)}/join`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ member }),
+      }).catch(() => null);
+
+      if (res && res.status === 409) {
+        const data = await res.json().catch(() => ({}));
+        return {
+          success: false,
+          error:
+            data.error ||
+            `Seat ${typeof member.seat === 'number' ? member.seat + 1 : member.seat} is already occupied.`,
+        };
+      }
+    }
+
+    return { success: true };
+  } catch (err: any) {
+    console.error('Failed to register table member:', err);
+    return { success: false, error: err?.message || 'Failed to register table member' };
+  }
+}
+
+/**
+ * Filters a list of tables based on the current user's role:
+ * - Admin sees all tables.
+ * - Regular users & guests see only tables where they are a registered member.
+ */
+export function filterTablesForUser(
+  tables: SavedTableSummary[],
+  user: UserSession
+): SavedTableSummary[] {
+  if (user.role === 'admin') {
+    return tables;
+  }
+  return tables.filter((t) => {
+    if (!t.members || t.members.length === 0) {
+      return false;
+    }
+    return t.members.some((m) => m.userId === user.id);
+  });
 }
 

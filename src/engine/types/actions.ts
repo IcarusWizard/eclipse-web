@@ -83,6 +83,7 @@ export interface UpgradeAction extends BaseAction {
     shipType: ShipType;
     slotIndex: number;
     partId: string | null;
+    isExternal?: boolean;
   }[];
   pulsarSectorId?: string;
 }

@@ -73,7 +73,26 @@ import {
   fetchSavedTablesFromServer,
   getStateFingerprint,
   sanitizeLoadedGameState,
+  registerTableMember,
+  filterTablesForUser,
+  isSeatTaken,
+  type SavedTableSummary,
 } from '../rules/persistence';
+import {
+  createGuestUser,
+  loginAsUser,
+  loginAsAdmin,
+  isAdminConfigured,
+  setupInitialAdmin,
+  logoutUser,
+  getCurrentUser,
+  registerUser,
+  loginWithPassword,
+  adminListUsers,
+  adminChangeUserPassword,
+  adminChangeAdminPassword,
+} from '../rules/userSession';
+import { generateSalt, hashPassword, hashPasswordSync } from '../rules/passwordUtils';
 import { formatBugReportLine } from '../rules/bugReport';
 import type { SectorTile } from '../types/sector';
 import type { CombatState, GameState } from '../types/state';
@@ -5267,19 +5286,19 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           SHIP_PARTS.ion_cannon,     // uses 1 power
           null,
         ];
-        // Discovery tile provides Ion Turret (uses 2 power)
+        // Discovery tile provides Plasma Turret (uses 3 power)
         discGame.pendingDiscovery = {
           discovery: {
-            id: 'ion_turret_tile',
+            id: 'plasma_turret_tile',
             type: 'ship_part',
-            shipPartId: 'ion_turret', // power consumption: 2
-            description: 'Ion Turret Discovery',
+            shipPartId: 'plasma_turret', // power consumption: 3
+            description: 'Plasma Turret Discovery',
           },
           sectorId: discGame.sectors[0]!.id,
           playerId: p1.id,
         };
 
-        // Attempting to install Ion Turret into slot 3 causes power consumption (1 + 1 + 2 = 4) > production (2)
+        // Attempting to install Plasma Turret into slot 3 causes power consumption (2 + 1 + 3 = 6) > production (3)
         const invalidPowerVal = validateAction(discGame, {
           type: 'DISCOVERY_CHOICE',
           playerId: p1.id,
@@ -9713,7 +9732,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(stats.isValid).toBe(true);
         expect(stats.totalInitiative).toBe(0);
         expect(stats.totalHull).toBe(3); // 2 preprinted + 1 slot hull
-        expect(stats.totalPowerProduced - stats.totalPowerConsumed).toBe(3); // 4 preprinted - 1 ion_turret
+        expect(stats.totalPowerProduced - stats.totalPowerConsumed).toBe(4); // 4 preprinted - 0 ion_turret
         expect(stats.computerBonus).toBe(1);
 
         // Cannot equip drive to orbital
@@ -13440,8 +13459,465 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         });
         expect(expRes.success).toBe(true);
       });
+
+      it('79. verifies User, Guest, and Admin table management', async () => {
+        // 1. Guest creation and unique ID generation
+        const guest1 = createGuestUser('StarLord');
+        expect(guest1.role).toBe('guest');
+        expect(guest1.name).toBe('StarLord');
+        expect(guest1.id).toBeDefined();
+
+        const guest2 = createGuestUser();
+        expect(guest2.role).toBe('guest');
+        expect(guest2.name).toMatch(/^Guest-\d+$/);
+        expect(guest2.id).not.toBe(guest1.id);
+
+        // 2. User login and logout
+        const user1 = loginAsUser('Commander Shephard');
+        expect(user1.role).toBe('user');
+        expect(user1.name).toBe('Commander Shephard');
+        expect(getCurrentUser().name).toBe('Commander Shephard');
+
+        const guestAfterLogout = logoutUser();
+        expect(guestAfterLogout.role).toBe('guest');
+
+        // 3. Admin login password protection
+        // Dynamically setup admin credentials without hardcoding plaintext passwords into engine code
+        await setupInitialAdmin('TestMasterAdminSecretPass999!');
+        logoutUser();
+
+        const failedAdmin = await loginAsAdmin('wrongpassword');
+        expect(failedAdmin.success).toBe(false);
+        expect(failedAdmin.error).toContain('Invalid administrator password');
+        expect(getCurrentUser().role).toBe('guest');
+
+        const successAdmin = await loginAsAdmin('TestMasterAdminSecretPass999!');
+        expect(successAdmin.success).toBe(true);
+        expect(successAdmin.user?.role).toBe('admin');
+        expect(getCurrentUser().role).toBe('admin');
+
+        // 4. filterTablesForUser: regular user and guest vs admin visibility
+        const sampleTables: SavedTableSummary[] = [
+          {
+            id: 'table-101',
+            tableNumber: 101,
+            savedAt: Date.now(),
+            round: 1,
+            maxRounds: 8,
+            phase: 'ACTION_PHASE',
+            playerCount: 2,
+            playerNames: ['P1', 'P2'],
+            activePlayerName: 'P1',
+            members: [
+              {
+                userId: user1.id,
+                name: user1.name,
+                role: 'user',
+                seat: 0,
+                joinedAt: Date.now(),
+              },
+            ],
+          },
+          {
+            id: 'table-102',
+            tableNumber: 102,
+            savedAt: Date.now(),
+            round: 2,
+            maxRounds: 8,
+            phase: 'ACTION_PHASE',
+            playerCount: 3,
+            playerNames: ['P1', 'P2', 'P3'],
+            activePlayerName: 'P2',
+            members: [
+              {
+                userId: guest1.id,
+                name: guest1.name,
+                role: 'guest',
+                seat: 1,
+                joinedAt: Date.now(),
+              },
+            ],
+          },
+          {
+            id: 'table-103',
+            tableNumber: 103,
+            savedAt: Date.now(),
+            round: 1,
+            maxRounds: 8,
+            phase: 'ACTION_PHASE',
+            playerCount: 2,
+            playerNames: ['P1', 'P2'],
+            activePlayerName: 'P1',
+            members: [],
+          },
+        ];
+
+        // User1 sees only table 101
+        const user1Tables = filterTablesForUser(sampleTables, user1);
+        expect(user1Tables.length).toBe(1);
+        expect(user1Tables[0]!.id).toBe('table-101');
+
+        // Guest1 sees only table 102
+        const guest1Tables = filterTablesForUser(sampleTables, guest1);
+        expect(guest1Tables.length).toBe(1);
+        expect(guest1Tables[0]!.id).toBe('table-102');
+
+        // Admin sees all tables (101, 102, 103)
+        const adminUser = successAdmin.user!;
+        const adminTables = filterTablesForUser(sampleTables, adminUser);
+        expect(adminTables.length).toBe(3);
+
+        // 5. isSeatTaken verification
+        const membersList = [
+          {
+            userId: user1.id,
+            username: user1.name,
+            name: user1.name,
+            role: 'user' as const,
+            seat: 0,
+            joinedAt: Date.now(),
+          },
+        ];
+
+        // Another user checks Seat 0 -> taken
+        const checkOther = isSeatTaken(membersList, 0, guest1.id);
+        expect(checkOther.isTaken).toBe(true);
+        expect(checkOther.occupant?.userId).toBe(user1.id);
+
+        // User1 checks their own seat (Seat 0) -> not taken (own seat)
+        const checkSelf = isSeatTaken(membersList, 0, user1.id);
+        expect(checkSelf.isTaken).toBe(false);
+
+        // Check empty seat (Seat 1) -> not taken
+        const checkEmpty = isSeatTaken(membersList, 1, guest1.id);
+        expect(checkEmpty.isTaken).toBe(false);
+
+        // Hotseat and spectator are never taken
+        expect(isSeatTaken(membersList, 'all', guest1.id).isTaken).toBe(false);
+        expect(isSeatTaken(membersList, 'spectator', guest1.id).isTaken).toBe(false);
+
+        // 6. registerTableMember prevents joining already taken seat
+        const tableId = 'test-collision-table';
+        const user1Reg = await registerTableMember(tableId, {
+          userId: user1.id,
+          username: user1.name,
+          name: user1.name,
+          role: user1.role,
+          seat: 0,
+          joinedAt: Date.now(),
+        });
+        expect(user1Reg.success).toBe(true);
+
+        // Guest1 attempts to take Seat 0 -> BLOCKED!
+        const guest1TakeSameSeat = await registerTableMember(tableId, {
+          userId: guest1.id,
+          username: guest1.name,
+          name: guest1.name,
+          role: guest1.role,
+          seat: 0,
+          joinedAt: Date.now(),
+        });
+        expect(guest1TakeSameSeat.success).toBe(false);
+        expect(guest1TakeSameSeat.error).toContain('Seat 1 is already occupied by Commander Shephard');
+
+        // User1 rejoining their own seat -> Allowed!
+        const user1Rejoin = await registerTableMember(tableId, {
+          userId: user1.id,
+          username: user1.name,
+          name: user1.name,
+          role: user1.role,
+          seat: 0,
+          joinedAt: Date.now(),
+        });
+        expect(user1Rejoin.success).toBe(true);
+
+        // Guest1 takes an empty seat (Seat 1) -> Allowed!
+        const guest1TakeFreeSeat = await registerTableMember(tableId, {
+          userId: guest1.id,
+          username: guest1.name,
+          name: guest1.name,
+          role: guest1.role,
+          seat: 1,
+          joinedAt: Date.now(),
+        });
+        expect(guest1TakeFreeSeat.success).toBe(true);
+      });
+
+      it('80. verifies Discovery Tile Alien Tech stats match physical game rules', () => {
+        // 1. Ion Turret: 2 yellow dice, 0 power consumed, 0 initiative
+        const ionTurret = SHIP_PARTS.ion_turret;
+        expect(ionTurret).toBeDefined();
+        expect(ionTurret.powerConsumed).toBe(0);
+        expect(ionTurret.initiativeBonus).toBe(0);
+        expect(ionTurret.dice).toEqual([{ color: 'yellow', count: 2, damagePerHit: 1 }]);
+
+        // 2. Soliton Charger: 1 blue die (3 dmg), 1 energy consumed, 0 initiative
+        const solitonCharger = SHIP_PARTS.soliton_charger;
+        expect(solitonCharger).toBeDefined();
+        expect(solitonCharger.powerConsumed).toBe(1);
+        expect(solitonCharger.initiativeBonus).toBe(0);
+        expect(solitonCharger.dice).toEqual([{ color: 'blue', count: 1, damagePerHit: 3 }]);
+
+        // 3. Ion Missile: 3 yellow missiles (1 dmg each), 0 Initiative, 0 energy
+        const ionMissile = SHIP_PARTS.ion_missile;
+        expect(ionMissile).toBeDefined();
+        expect(ionMissile.powerConsumed).toBe(0);
+        expect(ionMissile.initiativeBonus).toBe(0);
+        expect(ionMissile.dice).toEqual([{ color: 'yellow', count: 3, damagePerHit: 1, isMissile: true }]);
+
+        // 4. Antimatter Missile: 1 red missile (4 dmg), 0 power consumed, 0 initiative
+        const antimatterMissile = SHIP_PARTS.antimatter_missile;
+        expect(antimatterMissile).toBeDefined();
+        expect(antimatterMissile.powerConsumed).toBe(0);
+        expect(antimatterMissile.initiativeBonus).toBe(0);
+        expect(antimatterMissile.dice).toEqual([{ color: 'red', count: 1, damagePerHit: 4, isMissile: true }]);
+
+        // 5. Verify blueprint calculations with updated parts
+        const blueprint = {
+          type: 'cruiser' as const,
+          maxSlots: 6,
+          baseInitiative: 1,
+          baseBuildCost: 5,
+          preprintedPower: 4,
+          preprintedHull: 1,
+          slots: [
+            ionTurret, // 0 power consumed, 2 yellow dice
+            solitonCharger, // 1 power consumed, 1 blue die
+            ionMissile, // 0 power consumed, 0 initiative, 3 yellow missiles
+            antimatterMissile, // 0 power consumed, 1 red missile
+            SHIP_PARTS.nuclear_drive, // 1 power consumed, speed 1, init 1
+            SHIP_PARTS.hull, // 0 power, +1 hull
+          ],
+        };
+        const stats = calculateBlueprintStats(blueprint);
+        expect(stats.isValid).toBe(true);
+        // Total power consumed: ionTurret (0) + solitonCharger (1) + ionMissile (0) + antimatterMissile (0) + drive (1) = 2
+        expect(stats.totalPowerConsumed).toBe(2);
+        expect(stats.totalPowerProduced).toBe(4); // 4 preprinted
+        // Initiative: base 1 + drive 1 = 2 (missiles and turrets have 0 initiative bonus)
+        expect(stats.totalInitiative).toBe(2);
+        // Cannons: 2 yellow, 1 blue
+        const equippedCannons = blueprint.slots.flatMap((s) => s?.dice?.filter((d) => !d.isMissile) || []);
+        expect(equippedCannons).toEqual([
+          { color: 'yellow', count: 2, damagePerHit: 1 },
+          { color: 'blue', count: 1, damagePerHit: 3 },
+        ]);
+        // Missiles: 3 yellow, 1 red
+        const equippedMissiles = blueprint.slots.flatMap((s) => s?.dice?.filter((d) => d.isMissile) || []);
+        expect(equippedMissiles).toEqual([
+          { color: 'yellow', count: 3, damagePerHit: 1, isMissile: true },
+          { color: 'red', count: 1, damagePerHit: 4, isMissile: true },
+        ]);
+      });
+      it('81. verifies Muon Source is in discovery bag and can be placed outside blueprint grid', () => {
+        // 1. Double check disc_muon_source is in DISCOVERY_TILES
+        const muonTile = DISCOVERY_TILES.find((d) => d.id === 'disc_muon_source');
+        expect(muonTile).toBeDefined();
+        expect(muonTile?.shipPartId).toBe('muon_source');
+        expect(SHIP_PARTS.muon_source).toBeDefined();
+        expect(SHIP_PARTS.muon_source.powerProduced).toBe(2);
+        expect(SHIP_PARTS.muon_source.initiativeBonus).toBe(1);
+
+        // 2. Setup game and verify discovery bag loads disc_muon_source (either remaining in bag or placed on a starting discovery sector)
+        const setupGame = createInitialGame(2);
+        const allGameDiscoveryTiles = [
+          ...setupGame.discoveryBag,
+          ...setupGame.sectors.map((s) => s.discoveryTile).filter(Boolean),
+        ];
+        expect(allGameDiscoveryTiles.some((d) => d!.id === 'disc_muon_source')).toBe(true);
+
+        // 3. Test blueprint calculation with externalParts
+        const cruiserBp = { ...setupGame.players[0]!.blueprints.cruiser! };
+        const baseCruiserStats = calculateBlueprintStats(cruiserBp);
+        expect(cruiserBp.slots.filter(Boolean).length).toBe(5); // 5 default parts
+
+        const cruiserWithMuonExternal: ShipBlueprint = {
+          ...cruiserBp,
+          slots: [...cruiserBp.slots],
+          externalParts: [SHIP_PARTS.muon_source],
+        };
+        const statsWithExternal = calculateBlueprintStats(cruiserWithMuonExternal);
+        expect(statsWithExternal.isValid).toBe(true);
+        expect(statsWithExternal.totalPowerProduced).toBe(baseCruiserStats.totalPowerProduced + 2);
+        expect(statsWithExternal.totalInitiative).toBe(baseCruiserStats.totalInitiative + 1);
+        // Modular slots remain untouched
+        expect(cruiserWithMuonExternal.slots.filter(Boolean).length).toBe(5);
+
+        // 4. Placing muon_source in standard slots should be invalid
+        const invalidCruiserInSlot: ShipBlueprint = {
+          ...cruiserBp,
+          slots: [...cruiserBp.slots],
+        };
+        invalidCruiserInSlot.slots[5] = SHIP_PARTS.muon_source;
+        const invalidStats = calculateBlueprintStats(invalidCruiserInSlot);
+        expect(invalidStats.isValid).toBe(false);
+        expect(invalidStats.errors).toContain(
+          'Muon Source must be placed outside the blueprint grid, not in a standard slot.'
+        );
+
+        // 5. Verify DISCOVERY_CHOICE execution attaches Muon Source outside the grid
+        const discGame = createInitialGame(2);
+        const p1Id = discGame.players[0]!.id;
+        discGame.pendingDiscovery = {
+          playerId: p1Id,
+          sectorId: 'sec_p1_home',
+          discovery: muonTile!,
+        };
+
+        const discRes = executeAction(discGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1Id,
+          sectorId: 'sec_p1_home',
+          keepForVictoryPoints: false,
+          equipShipType: 'cruiser',
+          equipSlotIndex: -1,
+        });
+        expect(discRes.success).toBe(true);
+        const p1Cruiser = discRes.newState.players[0]!.blueprints.cruiser!;
+        expect(p1Cruiser.externalParts).toBeDefined();
+        expect(p1Cruiser.externalParts?.length).toBe(1);
+        expect(p1Cruiser.externalParts![0]!.id).toBe('muon_source');
+        // Standard slots were NOT overwritten
+        expect(p1Cruiser.slots[0]?.id).toBe('ion_cannon');
+        expect(p1Cruiser.slots[1]?.id).toBe('electron_computer');
+
+        // 6. Verify UPGRADE action from reserves into externalParts
+        const upgradeGame = createInitialGame(2);
+        const p1 = upgradeGame.players[0]!;
+        p1.unlockedAncientParts = ['muon_source'];
+        p1.influenceTrack.discsOnTrack = 5;
+
+        const upRes = executeAction(upgradeGame, {
+          type: 'UPGRADE',
+          playerId: p1.id,
+          upgrades: [
+            {
+              shipType: 'interceptor',
+              slotIndex: -1,
+              partId: 'muon_source',
+              isExternal: true,
+            },
+          ],
+        });
+        expect(upRes.success).toBe(true);
+        const p1Interceptor = upRes.newState.players[0]!.blueprints.interceptor!;
+        expect(p1Interceptor.externalParts?.length).toBe(1);
+        expect(p1Interceptor.externalParts![0]!.id).toBe('muon_source');
+        expect(upRes.newState.players[0]!.unlockedAncientParts).not.toContain('muon_source');
+      });
+
+      test('82. verifies secure user registration, encrypted password storage, password login, and admin password change', async () => {
+        // 1. Password Utilities: Salt generation & PBKDF2 hashing
+        const salt1 = generateSalt();
+        const salt2 = generateSalt();
+        expect(salt1.length).toBe(32); // 16 bytes hex
+        expect(salt2.length).toBe(32);
+        expect(salt1).not.toBe(salt2); // Salts must be randomized and distinct
+
+        const hash1 = await hashPassword('GalacticPass123', salt1);
+        const hash1Repeat = await hashPassword('GalacticPass123', salt1);
+        expect(hash1.length).toBe(64); // 32 bytes hex
+        expect(hash1).toBe(hash1Repeat); // Deterministic with same salt
+
+        const hashDiffSalt = await hashPassword('GalacticPass123', salt2);
+        expect(hashDiffSalt).not.toBe(hash1); // Different salt yields completely different hash
+
+        const hashDiffPass = await hashPassword('WrongPass', salt1);
+        expect(hashDiffPass).not.toBe(hash1); // Different password yields completely different hash
+
+        const syncHash = hashPasswordSync('GalacticPass123', salt1);
+        expect(syncHash).toBe(hash1); // Sync implementation produces identical hash
+
+        // 2. User Registration with Encrypted Password (never stores raw password)
+        const uniqueUser = `Commander_${Date.now()}`;
+        const rawPassword = 'StrongPassword!2026';
+
+        // Validation checks
+        const shortUserRes = await registerUser('a', rawPassword);
+        expect(shortUserRes.success).toBe(false);
+
+        const shortPassRes = await registerUser(uniqueUser, '12');
+        expect(shortPassRes.success).toBe(false);
+
+        // Successful registration
+        const regRes = await registerUser(uniqueUser, rawPassword, 'Commander Shepard');
+        expect(regRes.success).toBe(true);
+        expect(regRes.user).toBeDefined();
+        expect(regRes.user!.username).toBe(uniqueUser);
+        expect(regRes.user!.role).toBe('user');
+
+        // Verify raw password is NEVER present on user session object
+        expect((regRes.user as any).password).toBeUndefined();
+        expect((regRes.user as any).rawPassword).toBeUndefined();
+
+        // Duplicate registration check
+        const dupRes = await registerUser(uniqueUser, 'AnotherPass');
+        expect(dupRes.success).toBe(false);
+        expect(dupRes.error).toContain('already registered');
+
+        // 3. User Login with Password
+        // Correct password succeeds
+        const loginSuccess = await loginWithPassword(uniqueUser, rawPassword);
+        expect(loginSuccess.success).toBe(true);
+        expect(loginSuccess.user?.username).toBe(uniqueUser);
+
+        // Wrong password fails
+        const loginFail = await loginWithPassword(uniqueUser, 'IncorrectPassword999');
+        expect(loginFail.success).toBe(false);
+        expect(loginFail.error).toContain('Incorrect password');
+
+        // Non-existent user fails
+        const nonExistentLogin = await loginWithPassword('GhostUserDoesNotExist', rawPassword);
+        expect(nonExistentLogin.success).toBe(false);
+
+        // 4. Admin User Management
+        const listRes = await adminListUsers();
+        expect(listRes.success).toBe(true);
+        expect(Array.isArray(listRes.users)).toBe(true);
+        const listedUser = listRes.users!.find((u) => u.username === uniqueUser);
+        expect(listedUser).toBeDefined();
+        expect(listedUser!.role).toBe('user');
+        // Admin list omits sensitive password and hash fields
+        expect((listedUser as any).password).toBeUndefined();
+        expect((listedUser as any).passwordHash).toBeUndefined();
+        expect((listedUser as any).salt).toBeUndefined();
+
+        // 5. Admin Changes User's Password
+        const newPassword = 'NewResetPassword#2026';
+        const changeRes = await adminChangeUserPassword(regRes.user!.id, newPassword, uniqueUser);
+        expect(changeRes.success).toBe(true);
+
+        // Old password no longer works
+        const oldPassLogin = await loginWithPassword(uniqueUser, rawPassword);
+        expect(oldPassLogin.success).toBe(false);
+
+        // New password works
+        const newPassLogin = await loginWithPassword(uniqueUser, newPassword);
+        expect(newPassLogin.success).toBe(true);
+        expect(newPassLogin.user?.username).toBe(uniqueUser);
+
+        // 6. Admin Changes Admin Password
+        expect(await isAdminConfigured()).toBe(true);
+        const wrongCurrentRes = await adminChangeAdminPassword('WrongCurrentPass#999', 'AnyNewPass#123');
+        expect(wrongCurrentRes.success).toBe(false);
+        expect(wrongCurrentRes.error).toContain('Current administrator password is incorrect');
+
+        const newAdminPass = 'superSecretAdminPass!777';
+        const changeAdminRes = await adminChangeAdminPassword('TestMasterAdminSecretPass999!', newAdminPass);
+        expect(changeAdminRes.success).toBe(true);
+
+        // Old admin password fails
+        const oldAdminLogin = await loginAsAdmin('TestMasterAdminSecretPass999!');
+        expect(oldAdminLogin.success).toBe(false);
+
+        // Authenticate with new admin password
+        const newAdminLogin = await loginAsAdmin(newAdminPass);
+        expect(newAdminLogin.success).toBe(true);
+        expect(newAdminLogin.user?.role).toBe('admin');
+      });
     });
   });
 });
+
 
 

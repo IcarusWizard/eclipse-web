@@ -473,7 +473,7 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
   {
     id: 'disc_ion_turret',
     name: 'Ion Turret',
-    description: 'Ancient weapon module: 2 yellow dice with 1 power consumption.',
+    description: 'Ancient weapon module: 2 yellow dice with 0 power consumption.',
     shipPartId: 'ion_turret',
   },
   {
@@ -485,13 +485,13 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
   {
     id: 'disc_soliton_charger',
     name: 'Soliton Charger',
-    description: 'Ancient heavy weapon: 1 blue die (3 dmg) with 0 energy consumed and 0 initiative.',
+    description: 'Ancient heavy weapon: 1 blue die (3 dmg) with 1 energy consumed and 0 initiative.',
     shipPartId: 'soliton_charger',
   },
   {
     id: 'disc_ion_missile',
     name: 'Ion Missile',
-    description: 'Ancient missile weapon: 2 yellow missiles (1 dmg each), +1 Initiative, 0 energy.',
+    description: 'Ancient missile weapon: 3 yellow missiles (1 dmg each), 0 Initiative, 0 energy.',
     shipPartId: 'ion_missile',
   },
   {
@@ -503,7 +503,7 @@ export const DISCOVERY_TILES: DiscoveryTile[] = [
   {
     id: 'disc_antimatter_missile',
     name: 'Antimatter Missile',
-    description: 'Ancient missile weapon: 1 red missile (4 dmg) with 1 power consumption.',
+    description: 'Ancient missile weapon: 1 red missile (4 dmg) with 0 power consumption.',
     shipPartId: 'antimatter_missile',
   },
   {

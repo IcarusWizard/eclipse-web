@@ -49,15 +49,25 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
     }
   }, [selectedShipType, currentBlueprint]);
 
+  const isMuonSource = part?.id === 'muon_source';
+
   // Bug 53: Validate power for immediate installation
   const testBp = React.useMemo(() => {
-    if (!currentBlueprint || !part || selectedSlotIndex < 0 || selectedSlotIndex >= currentBlueprint.maxSlots) {
+    if (!currentBlueprint || !part) return null;
+    if (isMuonSource) {
+      return {
+        ...currentBlueprint,
+        slots: [...currentBlueprint.slots],
+        externalParts: [...(currentBlueprint.externalParts || []), part],
+      };
+    }
+    if (selectedSlotIndex < 0 || selectedSlotIndex >= currentBlueprint.maxSlots) {
       return null;
     }
     const cloned = { ...currentBlueprint, slots: [...currentBlueprint.slots] };
     cloned.slots[selectedSlotIndex] = part;
     return cloned;
-  }, [currentBlueprint, part, selectedSlotIndex]);
+  }, [currentBlueprint, part, selectedSlotIndex, isMuonSource]);
 
   const testStats = testBp ? calculateBlueprintStats(testBp) : null;
   const isPowerDeficit = testStats ? testStats.totalPowerConsumed > testStats.totalPowerProduced : false;
@@ -401,10 +411,10 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           <div className="w-full bg-slate-950/60 border border-cyan-900/50 rounded-xl p-3 mb-4 text-left">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Wrench className="w-3.5 h-3.5" /> Equip Immediately to Ship (Free)
+                <Wrench className="w-3.5 h-3.5" /> {isMuonSource ? 'Equip Outside Grid (Free)' : 'Equip Immediately to Ship (Free)'}
               </span>
               <span className="text-[10px] text-slate-400 font-medium">
-                Select ship class and slot to equip
+                {isMuonSource ? 'Select ship class to attach outside grid' : 'Select ship class and slot to equip'}
               </span>
             </div>
 
@@ -426,32 +436,44 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               ))}
             </div>
 
-            {/* Slot Grid for Chosen Blueprint */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-1">
-              {currentBlueprint.slots.map((sl, sIdx) => {
-                const isSelected = selectedSlotIndex === sIdx;
-                return (
-                  <button
-                    key={sIdx}
-                    type="button"
-                    onClick={() => setSelectedSlotIndex(sIdx)}
-                    className={`p-1.5 rounded-lg border text-left transition cursor-pointer text-[11px] ${
-                      isSelected
-                        ? 'border-cyan-400 bg-cyan-950/70 ring-1 ring-cyan-400 shadow'
-                        : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
-                    }`}
-                  >
-                    <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                      <span>Slot {sIdx + 1}</span>
-                      {isSelected && <span className="text-cyan-300 font-bold">TARGET</span>}
-                    </div>
-                    <div className="font-bold truncate text-slate-200">
-                      {sl ? sl.name : <span className="text-slate-500 italic">Empty Slot</span>}
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+            {/* Slot Grid for Chosen Blueprint OR External Module Card for Muon Source */}
+            {isMuonSource ? (
+              <div className="p-3 rounded-lg border border-amber-500/70 bg-amber-950/40 text-amber-200">
+                <div className="flex items-center gap-2 font-bold text-xs text-amber-300 mb-1">
+                  <Zap className="w-4 h-4 text-amber-400" />
+                  <span>External Power Module (Placed Outside Blueprint Grid)</span>
+                </div>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  Attaches to <strong>{selectedShipType.toUpperCase()}</strong> outside the component grid without consuming any of its standard modular slots. Grants <strong>+2 Energy Produced</strong> and <strong>+1 Initiative</strong>.
+                </p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-1">
+                {currentBlueprint.slots.map((sl, sIdx) => {
+                  const isSelected = selectedSlotIndex === sIdx;
+                  return (
+                    <button
+                      key={sIdx}
+                      type="button"
+                      onClick={() => setSelectedSlotIndex(sIdx)}
+                      className={`p-1.5 rounded-lg border text-left transition cursor-pointer text-[11px] ${
+                        isSelected
+                          ? 'border-cyan-400 bg-cyan-950/70 ring-1 ring-cyan-400 shadow'
+                          : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
+                        <span>Slot {sIdx + 1}</span>
+                        {isSelected && <span className="text-cyan-300 font-bold">TARGET</span>}
+                      </div>
+                      <div className="font-bold truncate text-slate-200">
+                        {sl ? sl.name : <span className="text-slate-500 italic">Empty Slot</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
 
@@ -460,7 +482,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           <div className="w-full mb-3 p-2.5 rounded-xl bg-rose-950/60 border border-rose-600/70 text-rose-300 text-xs flex items-center gap-2 text-left">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>
-              <strong>Cannot Equip Immediately:</strong> Power consumed ({testStats?.powerConsumed}⚡) exceeds power produced ({testStats?.powerProduced}⚡) on {selectedShipType.toUpperCase()}. Store in reserve or keep for VP.
+              <strong>Cannot Equip Immediately:</strong> Power consumed ({testStats?.totalPowerConsumed}⚡) exceeds power produced ({testStats?.totalPowerProduced}⚡) on {selectedShipType.toUpperCase()}. Store in reserve or keep for VP.
             </span>
           </div>
         )}
@@ -471,14 +493,18 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
             <button
               type="button"
               disabled={isPowerDeficit}
-              onClick={() => onChoice(false, selectedShipType, selectedSlotIndex)}
+              onClick={() => onChoice(false, selectedShipType, isMuonSource ? -1 : selectedSlotIndex)}
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 disabled:opacity-30 disabled:cursor-not-allowed transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
-                <Wrench className="w-3.5 h-3.5" /> Equip Immediately
+                <Wrench className="w-3.5 h-3.5" /> {isMuonSource ? 'Equip Outside Grid' : 'Equip Immediately'}
               </div>
               <span className="text-[10px] text-slate-300">
-                To <strong>{selectedShipType.toUpperCase()}</strong> (Slot {selectedSlotIndex + 1})
+                {isMuonSource ? (
+                  <>To <strong>{selectedShipType.toUpperCase()}</strong> (Outside Grid)</>
+                ) : (
+                  <>To <strong>{selectedShipType.toUpperCase()}</strong> (Slot {selectedSlotIndex + 1})</>
+                )}
               </span>
             </button>
 

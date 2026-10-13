@@ -62,7 +62,11 @@ import {
   getTableNumber,
   fetchTableFromServer,
   getStateFingerprint,
+  registerTableMember,
+  isSeatTaken,
 } from './engine/rules/persistence';
+import { getCurrentUser, subscribeToUserSession } from './engine/rules/userSession';
+import { UserSession } from './engine/types/user';
 
 export const App: React.FC = () => {
   const [state, setState] = useState<GameState>(() => {
@@ -190,6 +194,54 @@ export const App: React.FC = () => {
     return isNaN(num) ? 'all' : num;
   });
 
+  const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
+
+  useEffect(() => {
+    return subscribeToUserSession((u) => setCurrentUser(u));
+  }, []);
+
+  // Register current user as member of active table
+  useEffect(() => {
+    if (inGame && state.id) {
+      // Check if currentSeat is already occupied by another player
+      const members = state.members || (state as any).members;
+      const seatCheck = isSeatTaken(members, currentSeat, currentUser.id);
+      if (seatCheck.isTaken && seatCheck.occupant) {
+        showToast(
+          `Seat ${typeof currentSeat === 'number' ? currentSeat + 1 : currentSeat} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}. Switched to Spectator.`
+        );
+        setCurrentSeat('spectator');
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          params.set('seat', 'spectator');
+          window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        }
+        return;
+      }
+
+      registerTableMember(state.id, {
+        userId: currentUser.id,
+        name: currentUser.name,
+        username: currentUser.username,
+        role: currentUser.role,
+        seat: currentSeat,
+        joinedAt: Date.now(),
+      }).then((res) => {
+        if (!res.success && res.error) {
+          showToast(res.error);
+          if (typeof currentSeat === 'number') {
+            setCurrentSeat('spectator');
+            if (typeof window !== 'undefined') {
+              const params = new URLSearchParams(window.location.search);
+              params.set('seat', 'spectator');
+              window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+            }
+          }
+        }
+      });
+    }
+  }, [inGame, state.id, currentSeat, currentUser, state.members]);
+
   // Hotseat View: When activePlayerIndex changes in hot seat mode (currentSeat === 'all' or 'spectator'),
   // automatically update the top-left player dashboard to the active player by default
   const prevActivePlayerIndexRef = React.useRef<number>(state.activePlayerIndex);
@@ -242,8 +294,40 @@ export const App: React.FC = () => {
           saveGameState(remote, true);
           setState(remote);
           setInGame(true);
+
+          const seatParam = params.get('seat');
+          if (seatParam && seatParam !== 'all' && seatParam !== 'spectator') {
+            const sNum = parseInt(seatParam, 10);
+            if (!isNaN(sNum)) {
+              const seatCheck = isSeatTaken(remote.members, sNum, currentUser.id);
+              if (seatCheck.isTaken && seatCheck.occupant) {
+                showToast(
+                  `Seat ${sNum + 1} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}. Joined as Spectator.`
+                );
+                setCurrentSeat('spectator');
+                params.set('seat', 'spectator');
+                window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+              }
+            }
+          }
         }
       });
+    } else {
+      const seatParam = params.get('seat');
+      if (seatParam && seatParam !== 'all' && seatParam !== 'spectator') {
+        const sNum = parseInt(seatParam, 10);
+        if (!isNaN(sNum)) {
+          const seatCheck = isSeatTaken(state.members, sNum, currentUser.id);
+          if (seatCheck.isTaken && seatCheck.occupant) {
+            showToast(
+              `Seat ${sNum + 1} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}. Joined as Spectator.`
+            );
+            setCurrentSeat('spectator');
+            params.set('seat', 'spectator');
+            window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+          }
+        }
+      }
     }
   }, []);
 
@@ -289,11 +373,28 @@ export const App: React.FC = () => {
     neutralShips?: NeutralShipSelectionConfig,
     isDraftMode?: boolean
   ) => {
+    const user = getCurrentUser();
     const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips, isDraftMode);
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
     newGame.id = tableId;
+    (newGame as any).members = [
+      {
+        userId: user.id,
+        name: user.name,
+        role: user.role,
+        seat,
+        joinedAt: Date.now(),
+      },
+    ];
     saveGameState(newGame);
+    registerTableMember(tableId, {
+      userId: user.id,
+      name: user.name,
+      role: user.role,
+      seat,
+      joinedAt: Date.now(),
+    });
     setState(newGame);
     setCurrentSeat(seat);
     if (typeof seat === 'number') {
@@ -319,6 +420,28 @@ export const App: React.FC = () => {
     }
     if (!loaded) {
       alert(`Table "${tableId}" does not exist.`);
+      return;
+    }
+    const user = getCurrentUser();
+    if (typeof seat === 'number') {
+      const seatCheck = isSeatTaken(loaded.members, seat, user.id);
+      if (seatCheck.isTaken && seatCheck.occupant) {
+        alert(
+          `Seat ${seat + 1} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}.`
+        );
+        return;
+      }
+    }
+    const regRes = await registerTableMember(tableId, {
+      userId: user.id,
+      name: user.name,
+      username: user.username,
+      role: user.role,
+      seat,
+      joinedAt: Date.now(),
+    });
+    if (!regRes.success && regRes.error) {
+      alert(regRes.error);
       return;
     }
     saveGameState(loaded, true);
@@ -347,6 +470,15 @@ export const App: React.FC = () => {
   };
 
   const handleChangeSeat = (seat: number | 'all' | 'spectator') => {
+    if (typeof seat === 'number') {
+      const seatCheck = isSeatTaken(state.members, seat, currentUser.id);
+      if (seatCheck.isTaken && seatCheck.occupant) {
+        showToast(
+          `Seat ${seat + 1} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}.`
+        );
+        return;
+      }
+    }
     setCurrentSeat(seat);
     if (typeof seat === 'number' && state.players[seat]) {
       setSelectedViewIndex(seat);
@@ -781,7 +913,7 @@ export const App: React.FC = () => {
 
   // Blueprint save flow
   const handleSaveBlueprint = (
-    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[],
+    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
     pulsarSectorId?: string
   ) => {
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
@@ -2285,7 +2417,19 @@ export const App: React.FC = () => {
           currentState={state}
           onJoinTable={(loaded) => {
             setState(loaded);
-            setSelectedViewIndex(loaded.activePlayerIndex);
+            const myMem = (loaded.members || []).find((m) => m.userId === currentUser.id);
+            if (myMem && typeof myMem.seat !== 'undefined') {
+              setCurrentSeat(myMem.seat);
+              if (typeof myMem.seat === 'number') {
+                setSelectedViewIndex(myMem.seat);
+              }
+            } else if (typeof currentSeat === 'number') {
+              const seatCheck = isSeatTaken(loaded.members, currentSeat, currentUser.id);
+              if (seatCheck.isTaken) {
+                setCurrentSeat('spectator');
+              }
+            }
+            setSelectedViewIndex(loaded.activePlayerIndex || 0);
           }}
           onNewTable={() => setIsNewGameOpen(true)}
           onClose={() => setIsTableSessionOpen(false)}

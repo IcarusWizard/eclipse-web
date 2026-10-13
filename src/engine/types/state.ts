@@ -9,6 +9,7 @@ import type { NeutralShipConfig, NeutralShipSelectionConfig } from '../rules/neu
 import type { MinorSpeciesTile } from '../rules/minorSpecies';
 import type { WarpedUniverseState } from '../rules/warpedUniverse';
 import type { GalacticEventsState } from '../rules/galacticEvents';
+import type { TableMember } from './user';
 
 export type GamePhase =
   | 'DRAFT_PHASE'
@@ -173,6 +174,7 @@ export interface PendingActionConfirmation {
 export interface GameState {
   id: string;
   tableNumber?: number;
+  members?: TableMember[];
   expansions?: string[];
   neutralShipBlueprints?: NeutralShipConfig;
   neutralShipSelections?: NeutralShipSelectionConfig;

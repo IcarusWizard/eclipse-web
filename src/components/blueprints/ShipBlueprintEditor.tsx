@@ -26,7 +26,7 @@ interface ShipBlueprintEditorProps {
   player: PlayerState;
   pulsarSectorId?: string;
   onSaveBlueprint: (
-    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[],
+    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
     pulsarSectorId?: string
   ) => void;
   onClose: () => void;
@@ -57,6 +57,16 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     return drafts as Record<ShipType, (ShipPart | null)[]>;
   });
 
+  const [draftExternalParts, setDraftExternalParts] = useState<Record<ShipType, ShipPart[]>>(() => {
+    const drafts: Partial<Record<ShipType, ShipPart[]>> = {};
+    for (const [st, bp] of Object.entries(player.blueprints)) {
+      if (bp) {
+        drafts[st as ShipType] = bp.externalParts ? [...bp.externalParts] : [];
+      }
+    }
+    return drafts as Record<ShipType, ShipPart[]>;
+  });
+
   const isPulsarActive = Boolean(pulsarSectorId);
   const maxUpgrades = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxUpgradeActivations(player));
 
@@ -78,17 +88,35 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
         }
       }
     }
+    // draftExternalParts is Record<ShipType, ShipPart[]>
+    for (const parts of Object.values(draftExternalParts)) {
+      if (!Array.isArray(parts)) continue;
+      for (const p of parts) {
+        if (p && ANCIENT_PART_IDS.has(p.id)) {
+          installed.add(p.id);
+        }
+      }
+    }
     // player.blueprints is Record<ShipType, ShipBlueprint>
     for (const bp of Object.values(player.blueprints)) {
-      if (!bp || !Array.isArray(bp.slots)) continue;
-      for (const slot of bp.slots) {
-        if (slot && ANCIENT_PART_IDS.has(slot.id)) {
-          installed.add(slot.id);
+      if (!bp) continue;
+      if (Array.isArray(bp.slots)) {
+        for (const slot of bp.slots) {
+          if (slot && ANCIENT_PART_IDS.has(slot.id)) {
+            installed.add(slot.id);
+          }
+        }
+      }
+      if (Array.isArray(bp.externalParts)) {
+        for (const p of bp.externalParts) {
+          if (p && ANCIENT_PART_IDS.has(p.id)) {
+            installed.add(p.id);
+          }
         }
       }
     }
     return installed;
-  }, [draftBlueprints, player.blueprints]);
+  }, [draftBlueprints, draftExternalParts, player.blueprints]);
 
   const availableParts = useMemo(() => {
     return Object.values(SHIP_PARTS).filter((part) => {
@@ -121,6 +149,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       slotIndex: number;
       oldPart: ShipPart | null;
       newPart: ShipPart | null;
+      isExternal?: boolean;
     }[] = [];
     const shipTypes = availableShipTypes;
     for (const st of shipTypes) {
@@ -138,19 +167,36 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
           });
         }
       }
+
+      // External parts comparison
+      const origExt = player.blueprints[st]?.externalParts || [];
+      const curExt = draftExternalParts[st] || [];
+      const origExtId = origExt[0]?.id || null;
+      const curExtId = curExt[0]?.id || null;
+      if (origExtId !== curExtId) {
+        list.push({
+          shipType: st,
+          slotIndex: -1,
+          oldPart: origExt[0] || null,
+          newPart: curExt[0] || null,
+          isExternal: true,
+        });
+      }
     }
     return list;
-  }, [draftBlueprints, player.blueprints, availableShipTypes]);
+  }, [draftBlueprints, draftExternalParts, player.blueprints, availableShipTypes]);
 
   const usedActivations = modifiedSlots.length;
   const remainingActivations = Math.max(0, maxUpgrades - usedActivations);
 
   const currentSlots = draftBlueprints[activeShipType] || [];
+  const currentExternal = draftExternalParts[activeShipType] || [];
   const baseBp = player.blueprints[activeShipType];
 
   const currentBlueprint = {
     ...baseBp,
     slots: currentSlots,
+    externalParts: currentExternal,
   };
 
   const stats = calculateBlueprintStats(currentBlueprint);
@@ -161,21 +207,29 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     for (const st of shipTypes) {
       const isModified = modifiedSlots.some((m) => m.shipType === st);
       if (isModified || st === activeShipType) {
-        const bp = { ...player.blueprints[st], slots: draftBlueprints[st] || [] };
+        const bp = {
+          ...player.blueprints[st],
+          slots: draftBlueprints[st] || [],
+          externalParts: draftExternalParts[st] || [],
+        };
         const bpStats = calculateBlueprintStats(bp);
         if (!bpStats.isValid) return false;
       }
     }
     return true;
-  }, [modifiedSlots, draftBlueprints, player.blueprints, activeShipType, availableShipTypes]);
+  }, [modifiedSlots, draftBlueprints, draftExternalParts, player.blueprints, activeShipType, availableShipTypes]);
 
   const handleInstallPart = (part: ShipPart) => {
+    if (part.id === 'muon_source') {
+      handleAttachExternalPart(part);
+      return;
+    }
     if (selectedSlotIndex === null) return;
     if (baseBp.noDrives && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       return;
     }
     const isSlotCurrentlyModified = modifiedSlots.some(
-      (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex
+      (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex && !m.isExternal
     );
     if (!isSlotCurrentlyModified && remainingActivations <= 0) return;
 
@@ -186,7 +240,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
   const handleClearSlot = (index: number) => {
     const isSlotCurrentlyModified = modifiedSlots.some(
-      (m) => m.shipType === activeShipType && m.slotIndex === index
+      (m) => m.shipType === activeShipType && m.slotIndex === index && !m.isExternal
     );
     if (!isSlotCurrentlyModified && remainingActivations <= 0) return;
 
@@ -203,12 +257,45 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     setDraftBlueprints((prev) => ({ ...prev, [activeShipType]: newSlots }));
   };
 
+  const handleAttachExternalPart = (part: ShipPart) => {
+    const isCurrentlyModified = modifiedSlots.some(
+      (m) => m.shipType === activeShipType && m.isExternal
+    );
+    if (!isCurrentlyModified && remainingActivations <= 0) return;
+
+    setDraftExternalParts((prev) => ({
+      ...prev,
+      [activeShipType]: [part],
+    }));
+  };
+
+  const handleDetachExternalPart = () => {
+    const isCurrentlyModified = modifiedSlots.some(
+      (m) => m.shipType === activeShipType && m.isExternal
+    );
+    if (!isCurrentlyModified && remainingActivations <= 0) return;
+
+    setDraftExternalParts((prev) => ({
+      ...prev,
+      [activeShipType]: [],
+    }));
+  };
+
+  const handleRevertExternalPart = () => {
+    const origParts = player.blueprints[activeShipType]?.externalParts || [];
+    setDraftExternalParts((prev) => ({
+      ...prev,
+      [activeShipType]: [...origParts],
+    }));
+  };
+
   const handleSave = () => {
     if (usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid) return;
     const upgradesToApply = modifiedSlots.map((m) => ({
       shipType: m.shipType,
       slotIndex: m.slotIndex,
       partId: m.newPart?.id || null,
+      isExternal: m.isExternal,
     }));
     onSaveBlueprint(upgradesToApply, pulsarSectorId);
   };
@@ -574,6 +661,103 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* External Module Slot (Outside Blueprint Grid) */}
+                {currentExternal.map((extPart, extIdx) => {
+                  const isExtModified = modifiedSlots.some(
+                    (m) => m.shipType === activeShipType && m.isExternal
+                  );
+                  return (
+                    <div
+                      key={`ext_${extIdx}`}
+                      className="relative min-h-[100px] rounded-lg border-2 border-amber-500/80 bg-amber-950/30 p-2.5 flex flex-col justify-between shadow-sm"
+                      title="External module placed outside the blueprint grid. Does not consume modular slots."
+                    >
+                      <div className="flex justify-between items-start">
+                        <span className="text-[10px] font-bold text-amber-400 uppercase flex items-center gap-1">
+                          <Zap className="w-3 h-3 text-amber-400" />
+                          External Module
+                        </span>
+                        <div className="flex items-center gap-1">
+                          {isExtModified && (
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRevertExternalPart();
+                              }}
+                              className="text-cyan-400 hover:text-cyan-200 p-0.5"
+                              title="Revert external module"
+                            >
+                              <RotateCcw className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                          <button
+                            disabled={!isExtModified && remainingActivations <= 0}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDetachExternalPart();
+                            }}
+                            className="text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
+                            title="Remove external module"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+
+                      <div className="mt-1">
+                        <div className="font-bold text-xs text-amber-300 leading-tight">
+                          {extPart.name}
+                        </div>
+                        <div className="text-[10px] text-slate-300 mt-1 flex flex-wrap gap-1">
+                          {extPart.powerProduced > 0 && (
+                            <span className="text-emerald-400 font-semibold">+{extPart.powerProduced} Pwr</span>
+                          )}
+                          {extPart.initiativeBonus > 0 && (
+                            <span className="text-amber-300 font-semibold">+{extPart.initiativeBonus} Init</span>
+                          )}
+                        </div>
+                        <div className="text-[9px] text-amber-400/80 mt-1 italic">
+                          Outside blueprint grid
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+
+                {/* Placeholder to attach Muon Source outside grid if available in reserves */}
+                {currentExternal.length === 0 && availableParts.some((p) => p.id === 'muon_source') && (
+                  <div
+                    onClick={() => {
+                      const muon = availableParts.find((p) => p.id === 'muon_source');
+                      if (muon && (modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal) || remainingActivations > 0)) {
+                        handleAttachExternalPart(muon);
+                      }
+                    }}
+                    className={`relative min-h-[100px] rounded-lg border-2 border-dashed p-2.5 flex flex-col justify-between transition-all ${
+                      remainingActivations > 0 || modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal)
+                        ? 'border-amber-600/70 bg-amber-950/20 hover:border-amber-400 hover:bg-amber-950/40 cursor-pointer text-amber-300'
+                        : 'border-slate-800 bg-slate-950/20 opacity-50 cursor-not-allowed text-slate-500'
+                    }`}
+                    title="Click to attach Muon Source outside the blueprint grid"
+                  >
+                    <div className="flex justify-between items-start">
+                      <span className="text-[10px] font-bold uppercase flex items-center gap-1">
+                        <Zap className="w-3 h-3 text-amber-400" />
+                        External Module
+                      </span>
+                      <span className="text-[8px] px-1 py-0.5 rounded bg-amber-900/60 text-amber-300 font-mono">
+                        EMPTY
+                      </span>
+                    </div>
+
+                    <div className="flex flex-col items-center justify-center my-auto py-1">
+                      <Plus className="w-4 h-4 text-amber-400 mb-0.5" />
+                      <span className="text-[10px] font-bold text-center">Attach Muon Source</span>
+                      <span className="text-[8.5px] text-slate-400 text-center">(+2 Pwr, +1 Init outside grid)</span>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -649,17 +833,28 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   const isSelectedSlotModified =
                     selectedSlotIndex !== null &&
                     modifiedSlots.some(
-                      (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex
+                      (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex && !m.isExternal
                     );
-                  const canEquip =
-                    selectedSlotIndex !== null &&
-                    (isSelectedSlotModified || remainingActivations > 0);
+                  const isMuon = part.id === 'muon_source';
+                  const isExtModified = modifiedSlots.some(
+                    (m) => m.shipType === activeShipType && m.isExternal
+                  );
+                  const canAttachMuon = (isExtModified || remainingActivations > 0) && currentExternal.length === 0;
+                  const canEquip = isMuon
+                    ? canAttachMuon
+                    : selectedSlotIndex !== null && (isSelectedSlotModified || remainingActivations > 0);
 
                   return (
                     <button
                       key={part.id}
                       disabled={!canEquip}
-                      onClick={() => handleInstallPart(part)}
+                      onClick={() => {
+                        if (isMuon) {
+                          handleAttachExternalPart(part);
+                        } else {
+                          handleInstallPart(part);
+                        }
+                      }}
                       className={`w-full text-left p-2.5 rounded border transition-all ${
                         isAncientUnlocked
                           ? 'border-amber-500/50 bg-amber-950/20 hover:bg-amber-950/40 hover:border-amber-400'
@@ -669,11 +864,15 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                       <div className="flex justify-between items-center text-xs font-bold text-slate-200">
                         <span className="flex items-center gap-1.5">
                           {part.name}
-                          {isAncientUnlocked && (
+                          {isMuon ? (
+                            <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded font-mono">
+                              OUTSIDE GRID
+                            </span>
+                          ) : isAncientUnlocked ? (
                             <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded font-mono">
                               ANCIENT
                             </span>
-                          )}
+                          ) : null}
                         </span>
                         <span className="text-[10px] text-slate-400 uppercase font-mono">{part.category}</span>
                       </div>

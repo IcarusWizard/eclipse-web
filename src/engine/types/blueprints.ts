@@ -49,6 +49,7 @@ export interface ShipBlueprint {
   readonly preprintedHull?: number; // Pre-printed chassis hull points (Exiles Orbital 2 HP outside slots)
   readonly noDrives?: boolean; // Cannot equip Drive ship parts (Exiles Orbital)
   slots: (ShipPart | null)[];
+  externalParts?: ShipPart[];
 }
 
 export interface BlueprintValidationResult {
