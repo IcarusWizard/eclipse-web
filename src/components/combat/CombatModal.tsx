@@ -100,12 +100,21 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   }, [pendingSalvo, aliveUnits]);
 
   const [selectedTargets, setSelectedTargets] = useState<Record<number, string>>({});
+  const prevSalvoKeyRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (!pendingSalvo) {
+      prevSalvoKeyRef.current = null;
       setSelectedTargets({});
       return;
     }
+
+    const salvoKey = `${pendingSalvo.attackerOwnerId}_${pendingSalvo.rolls.map((r) => `${r.dieColor}:${r.roll}:${r.damage}`).join(',')}`;
+    if (prevSalvoKeyRef.current === salvoKey) {
+      return;
+    }
+    prevSalvoKeyRef.current = salvoKey;
+
     const defaults: Record<number, string> = {};
     const mockTargets = eligibleEnemyTargets.map((u) => ({ ...u }));
     pendingSalvo.rolls.forEach((r, idx) => {
@@ -129,7 +138,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       }
     });
     setSelectedTargets(defaults);
-  }, [pendingSalvo]);
+  }, [pendingSalvo, eligibleEnemyTargets]);
 
   const handleAutoFillAssignments = () => {
     if (!pendingSalvo) return;
