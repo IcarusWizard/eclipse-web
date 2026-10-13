@@ -419,7 +419,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 </div>
 
                 {/* Nebula Subsector Internal Shifts */}
-                {currentSimSector?.isNebula && (
+                {currentSimSector?.isNebula && !isSelectedShipPinned && (
                   <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-900/80">
                     <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider shrink-0">
                       Nebula Subsector Shift (1 MP):

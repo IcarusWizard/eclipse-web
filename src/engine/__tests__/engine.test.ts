@@ -14746,6 +14746,259 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // R2 is dimmed because the deck is empty
         expect(mapDimmedHtml).toContain('title="Ring 2: Deck empty"');
       });
+
+      it('87. verifies Bug Fixes 175-183: Exiles orbital & Artifact Key side windows, Chronicle newest log highlight, Sector 281 warp portal preview, Magellan convert colony ship on HUD, Minor species import, Discovery tech slot selection retention, and Nebula subsector pinning & entry directions', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction, computePinningState } = await import('../rules/gameReducer');
+        const { ExilesOrbitalSetupModal } = await import('../../components/setup/ExilesOrbitalSetupModal');
+        const { ArtifactKeyModal } = await import('../../components/actions/ArtifactKeyModal');
+        const { GameLogDrawer } = await import('../../components/layout/GameLogDrawer');
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+        const { MinorSpeciesModal } = await import('../../components/minorSpecies/MinorSpeciesModal');
+        const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+        const { getNebulaSubsectorForOuterEdge, createGalacticEventSectorTile } = await import('../rules/galacticEvents');
+
+        const game = createInitialGame(2, ['the_exiles', 'wardens_of_magellan'], ['galactic_events', 'minor_species']);
+
+        // Part 1: Bug 175 & Bug 183 - Exiles Orbital Setup & Artifact Key side windows
+        const exilesHtml = renderToString(
+          React.createElement(ExilesOrbitalSetupModal, {
+            player: game.players[0]!,
+            onChooseCube: () => {},
+          })
+        );
+        expect(exilesHtml).toContain('The Exiles — Starting Orbital Colony');
+        expect(exilesHtml).toContain('View Map');
+        expect(exilesHtml).toContain('pointer-events-auto');
+        expect(exilesHtml).not.toContain('fixed inset-0 z-50 bg-black/85');
+
+        const artifactKeyHtml = renderToString(
+          React.createElement(ArtifactKeyModal, {
+            player: game.players[0]!,
+            totalResources: 5,
+            artifactsCount: 1,
+            onAllocate: () => {},
+          })
+        );
+        expect(artifactKeyHtml).toContain('Artifact Key Reward');
+        expect(artifactKeyHtml).toContain('View Map');
+        expect(artifactKeyHtml).toContain('pointer-events-auto');
+        expect(artifactKeyHtml).not.toContain('fixed inset-0 z-50 bg-slate-950/85');
+
+        // Part 2: Bug 176 - Chronicle highlights newest log entries (index 0..count) rather than oldest at the end
+        const mockChronicleLogs = [
+          { id: 'log-newest', timestamp: 3000, round: 2, phase: 'ACTION_PHASE' as const, message: 'Newest Event', type: 'action' as const },
+          { id: 'log-middle', timestamp: 2000, round: 1, phase: 'ACTION_PHASE' as const, message: 'Middle Event', type: 'action' as const },
+          { id: 'log-oldest', timestamp: 1000, round: 1, phase: 'ACTION_PHASE' as const, message: 'Oldest Event', type: 'action' as const },
+        ];
+        // 1 new log was unshifted when lastCheckedCount was 2 (now length is 3)
+        const chronicleHtml = renderToString(
+          React.createElement(GameLogDrawer, {
+            logs: mockChronicleLogs,
+            initialOpen: true,
+            initialLastCheckedCount: 2,
+          })
+        );
+        // The newest log (log-newest at index 0) must have the NEW tag
+        expect(chronicleHtml).toContain('Newest Event');
+        expect(chronicleHtml).toContain('data-testid="chronicle-log-new"');
+
+        // Part 3: Bug 177 - Sector 281 Warp Portal preview in ExploreModal and HexGalaxyMap candidate tile
+        const sec281 = {
+          id: 'sec_281',
+          sectorNumber: 281,
+          ring: 2 as const,
+          coord: { q: 1, r: 1 },
+          rotation: 0,
+          wormholes: [true, true, false, true, true, false],
+          planets: [],
+          ships: [],
+          ancientsCount: 0,
+          hasDiscovery: false,
+          hasWarpPortal: true,
+          victoryPoints: 2,
+        };
+        const exploreHtml = renderToString(
+          React.createElement(ExploreModal, {
+            player: game.players[0]!,
+            fromCoord: { q: 0, r: 0 },
+            targetCoord: { q: 1, r: 1 },
+            candidateTile: sec281,
+            sourceSector: game.sectors[0]!,
+            rotation: 0,
+            onRotate: () => {},
+            onConfirmPlacement: () => {},
+            onDiscard: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(exploreHtml).toContain('data-testid="explore-preview-warp-portal"');
+        expect(exploreHtml).toContain('Warp Portal');
+
+        const mapCandidateHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            pendingExplore: {
+              target: { q: 1, r: 1 },
+              from: game.sectors[0]!.coord,
+              candidateTile: sec281,
+              rotation: 0,
+            },
+            onSelectSector: () => {},
+          })
+        );
+        expect(mapCandidateHtml).toContain('data-testid="candidate-explore-warp-portal"');
+
+        // Part 4: Bug 178 - Magellan convert colony ship to resource in PlayerBoard (up left HUD)
+        const magellanPlayer = game.players[1]!;
+        const playerBoardHtml = renderToString(
+          React.createElement(PlayerBoard, {
+            player: magellanPlayer,
+            isActive: true,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+            onOpenPhysicalBoard: () => {},
+            onConvertColonyShip: () => {},
+          })
+        );
+        expect(playerBoardHtml).toContain('data-testid="magellan-convert-colony-ship-panel"');
+        expect(playerBoardHtml).toContain('Convert Colony Ship:');
+        expect(playerBoardHtml).toContain('+1 🪙 Money');
+        expect(playerBoardHtml).toContain('+1 🔬 Science');
+        expect(playerBoardHtml).toContain('+1 ⚙️ Material');
+
+        // Part 5: Bug 179 - MinorSpeciesModal handles allied minor species with ALL_MINOR_SPECIES_TILES
+        const gameWithAlly = {
+          ...game,
+          players: [
+            {
+              ...game.players[0]!,
+              ambassadorTiles: ['minor_species_cruiser_discount'],
+            },
+            game.players[1]!,
+          ],
+        };
+        const minorSpeciesHtml = renderToString(
+          React.createElement(MinorSpeciesModal, {
+            state: gameWithAlly,
+            activePlayer: gameWithAlly.players[0]!,
+            onClaimMinorSpecies: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(minorSpeciesHtml).toContain('Allied Minor Species Across Galaxy');
+        expect(minorSpeciesHtml).toContain('Cruiser Shipwrights');
+
+        // Part 6: Bug 180 - DiscoveryChoiceModal slot selection retention
+        const discTile = {
+          id: 'disc_ion_turret',
+          name: 'Ancient Ion Turret',
+          vp: 2,
+          shipPartId: 'ion_turret',
+        };
+        const discoveryHtml = renderToString(
+          React.createElement(DiscoveryChoiceModal, {
+            discovery: discTile,
+            player: game.players[0]!,
+            onChoice: () => {},
+          })
+        );
+        expect(discoveryHtml).toContain('Equip Immediately to Ship (Free)');
+        expect(discoveryHtml).toMatch(/Slot.*1/);
+        expect(discoveryHtml).toMatch(/Slot.*2/);
+
+        // Part 7: Bug 181 & Bug 182 - Nebula subsector pinning & geometric entry directions
+        // Geometric entry edges: Edges 4, 5 (North) -> Subsector 1
+        expect(getNebulaSubsectorForOuterEdge(4)).toBe(1);
+        expect(getNebulaSubsectorForOuterEdge(5)).toBe(1);
+        // Edges 2, 3 (South-West) -> Subsector 2
+        expect(getNebulaSubsectorForOuterEdge(2)).toBe(2);
+        expect(getNebulaSubsectorForOuterEdge(3)).toBe(2);
+        // Edges 0, 1 (South-East) -> Subsector 3
+        expect(getNebulaSubsectorForOuterEdge(0)).toBe(3);
+        expect(getNebulaSubsectorForOuterEdge(1)).toBe(3);
+
+        const nebulaSec = createGalacticEventSectorTile(295);
+        nebulaSec.coord = { q: 0, r: 0 };
+        nebulaSec.rotation = 2; // non-zero rotation must NOT alter outer entry edge mapping
+
+        // Friendly ship enters Nebula from coord { q: 0, r: -1 } (North-West, edgeFromTo = 1 -> entryEdge = 4)
+        const fromSec = {
+          ...game.sectors[1]!,
+          id: 'from_sec_north',
+          coord: { q: 0, r: -1 },
+          wormholes: [true, true, true, true, true, true],
+          ships: [{ id: 'p1_cruiser', ownerId: game.players[0]!.id, type: 'cruiser' as const, damage: 0 }],
+          discOwner: game.players[0]!.id,
+        };
+        const nebulaGameState = {
+          ...game,
+          pendingExilesOrbitalSetup: null,
+          sectors: [...game.sectors, fromSec, nebulaSec],
+        };
+
+        const moveRes = executeAction(nebulaGameState, {
+          type: 'MOVE',
+          playerId: game.players[0]!.id,
+          moves: [
+            {
+              shipId: 'p1_cruiser',
+              fromSectorId: 'from_sec_north',
+              toSectorId: nebulaSec.id,
+            },
+          ],
+        });
+        expect(moveRes.success).toBe(true);
+        const movedInCruiser = moveRes.newState.sectors
+          .find((s) => s.id === nebulaSec.id)
+          ?.ships.find((s) => s.id === 'p1_cruiser');
+        // Entered from North-West -> must enter Subsector 1!
+        expect(movedInCruiser?.subsector).toBe(1);
+
+        // Bug 181: Pinning inside Nebula subsectors
+        // Place 2 hostile enemy cruisers in Subsector 1 (Exiles have Cloaking Device requiring 2 hostiles to pin 1 cruiser)
+        const nebulaWithHostile = {
+          ...moveRes.newState,
+          activePlayerIndex: 0,
+          sectors: moveRes.newState.sectors.map((s) => {
+            if (s.id === nebulaSec.id) {
+              return {
+                ...s,
+                ships: [
+                  ...s.ships,
+                  { id: 'p2_hostile_cruiser_1', ownerId: game.players[1]!.id, type: 'cruiser' as const, damage: 0, subsector: 1 as const },
+                  { id: 'p2_hostile_cruiser_2', ownerId: game.players[1]!.id, type: 'cruiser' as const, damage: 0, subsector: 1 as const },
+                ],
+              };
+            }
+            return s;
+          }),
+        };
+
+        const pinState = computePinningState(nebulaWithHostile, game.players[0]!.id);
+        expect(pinState.isShipPinned('p1_cruiser')).toBe(true);
+
+        // Attempting to shift p1_cruiser while pinned in Subsector 1 must fail validation
+        const pinnedShiftRes = executeAction(nebulaWithHostile, {
+          type: 'MOVE',
+          playerId: game.players[0]!.id,
+          moves: [
+            {
+              shipId: 'p1_cruiser',
+              fromSectorId: nebulaSec.id,
+              toSectorId: nebulaSec.id,
+              targetSubsector: 2,
+            },
+          ],
+        });
+        expect(pinnedShiftRes.success).toBe(false);
+        expect(pinnedShiftRes.error).toContain('is pinned in Subsector 1 of Nebula Sector 295');
+      });
     });
   });
 });

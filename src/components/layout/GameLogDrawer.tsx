@@ -21,25 +21,27 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
   const [lastCheckedCount, setLastCheckedCount] = useState<number>(() =>
     initialLastCheckedCount !== undefined ? initialLastCheckedCount : logs.length
   );
-  const [highlightFromIndex, setHighlightFromIndex] = useState<number>(() =>
-    initialLastCheckedCount !== undefined ? initialLastCheckedCount : logs.length
-  );
+  const [highlightCount, setHighlightCount] = useState<number>(() => {
+    if (!initialOpen || initialLastCheckedCount === undefined) return 0;
+    return Math.max(0, logs.length - initialLastCheckedCount);
+  });
 
   const unreadCount = Math.max(0, logs.length - lastCheckedCount);
 
-  // Set of log IDs that are new since player's last check
+  // Set of log IDs that are new since player's last check (state.log has newest entries unshifted to the start)
   const highlightedLogIds = useMemo(() => {
-    if (highlightFromIndex >= logs.length) return new Set<string>();
-    return new Set(logs.slice(highlightFromIndex).map((l) => l.id));
-  }, [logs, highlightFromIndex]);
+    if (highlightCount <= 0) return new Set<string>();
+    return new Set(logs.slice(0, highlightCount).map((l) => l.id));
+  }, [logs, highlightCount]);
 
   const handleToggle = () => {
     if (!isOpen) {
-      setHighlightFromIndex(lastCheckedCount);
+      const newItems = Math.max(0, logs.length - lastCheckedCount);
+      setHighlightCount(newItems);
       setLastCheckedCount(logs.length);
       setIsOpen(true);
     } else {
-      setHighlightFromIndex(logs.length);
+      setHighlightCount(0);
       setLastCheckedCount(logs.length);
       setIsOpen(false);
     }
@@ -78,7 +80,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
               {highlightedLogIds.size > 0 && (
                 <button
                   type="button"
-                  onClick={() => setHighlightFromIndex(logs.length)}
+                  onClick={() => setHighlightCount(0)}
                   className="px-1.5 py-0.5 rounded text-[10px] bg-red-950/60 hover:bg-red-900/70 border border-red-700/60 text-red-300 font-bold transition cursor-pointer"
                   title="Clear New Event Highlights"
                 >
@@ -96,7 +98,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
               <button
                 type="button"
                 onClick={() => {
-                  setHighlightFromIndex(logs.length);
+                  setHighlightCount(0);
                   setLastCheckedCount(logs.length);
                   setIsOpen(false);
                 }}

@@ -32,7 +32,12 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
   const [isMinimized, setIsMinimized] = React.useState<boolean>(false);
   const [selectedShipType, setSelectedShipType] = React.useState<ShipType>('cruiser');
-  const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number>(0);
+  const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number>(() => {
+    const bp = player.blueprints['cruiser'];
+    if (!bp) return 0;
+    const emptyIdx = bp.slots.findIndex((s) => s === null);
+    return emptyIdx !== -1 ? emptyIdx : 0;
+  });
   const [selectedTechId, setSelectedTechId] = React.useState<string>('');
   const [colonizeOrbitalResource, setColonizeOrbitalResource] = React.useState<'money' | 'science' | null>(null);
   const [chosenBonusResource, setChosenBonusResource] = React.useState<'money' | 'science' | 'material'>('money');
@@ -41,13 +46,18 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
   const currentBlueprint = player.blueprints[selectedShipType];
 
-  // Auto-select first empty slot when ship type changes
+  const prevShipTypeRef = React.useRef(selectedShipType);
+  // Auto-select first empty slot ONLY when ship type actually changes
   React.useEffect(() => {
-    if (currentBlueprint) {
-      const emptyIdx = currentBlueprint.slots.findIndex((s) => s === null);
-      setSelectedSlotIndex(emptyIdx !== -1 ? emptyIdx : 0);
+    if (prevShipTypeRef.current !== selectedShipType) {
+      prevShipTypeRef.current = selectedShipType;
+      const bp = player.blueprints[selectedShipType];
+      if (bp) {
+        const emptyIdx = bp.slots.findIndex((s) => s === null);
+        setSelectedSlotIndex(emptyIdx !== -1 ? emptyIdx : 0);
+      }
     }
-  }, [selectedShipType, currentBlueprint]);
+  }, [selectedShipType, player.blueprints]);
 
   const isMuonSource = part?.id === 'muon_source';
 

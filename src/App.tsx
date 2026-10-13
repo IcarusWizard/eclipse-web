@@ -1163,8 +1163,7 @@ export const App: React.FC = () => {
       if (currentSimSector.isNebula && currentSimSubsector) {
         const exitEdge = getEdgeBetween(currentSimSector.coord, s.coord);
         if (exitEdge !== null) {
-          const edgeOnTile = ((exitEdge - currentSimSector.rotation) % 6 + 6) % 6;
-          const allowedSub = getNebulaSubsectorForOuterEdge(edgeOnTile as HexEdge);
+          const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge);
           if (allowedSub !== currentSimSubsector) {
             return false;
           }
@@ -1209,8 +1208,8 @@ export const App: React.FC = () => {
     if (!finalTargetSubsector && destSec.isNebula && currentSimSector.id !== destSec.id) {
       const edgeFromTo = getEdgeBetween(currentSimSector.coord, destSec.coord);
       if (edgeFromTo !== null) {
-        const entryEdgeOnTile = ((edgeFromTo + 3) % 6 - (destSec.rotation || 0) + 6) % 6;
-        finalTargetSubsector = getNebulaSubsectorForOuterEdge(entryEdgeOnTile as HexEdge);
+        const entryEdge = (edgeFromTo + 3) % 6;
+        finalTargetSubsector = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge);
       }
     }
 
@@ -2054,6 +2053,7 @@ export const App: React.FC = () => {
             onOpenTechMarket={() => setIsTechMarketOpen(true)}
             onOpenTrade={() => setIsTradeOpen(true)}
             onOpenPhysicalBoard={() => setIsPhysicalBoardOpen(true)}
+            onConvertColonyShip={handleConvertColonyShip}
             hideOpponentReputation={hideOpponentReputation}
             allPlayers={state.players}
             traitorPlayerId={state.traitorPlayerId}
@@ -2372,15 +2372,30 @@ export const App: React.FC = () => {
       )}
 
       {state.pendingArtifactReward && (
-        <ArtifactKeyModal
-          player={
-            state.players.find((p) => p.id === state.pendingArtifactReward!.playerId) ||
-            activePlayer
-          }
-          totalResources={state.pendingArtifactReward.totalResources}
-          artifactsCount={state.pendingArtifactReward.artifactsCount}
-          onAllocate={handleAllocateArtifactReward}
-        />
+        currentSeat === 'all' ||
+        (typeof currentSeat === 'number' &&
+          state.players[currentSeat]?.id === state.pendingArtifactReward.playerId) ? (
+          <ArtifactKeyModal
+            player={
+              state.players.find((p) => p.id === state.pendingArtifactReward!.playerId) ||
+              activePlayer
+            }
+            totalResources={state.pendingArtifactReward.totalResources}
+            artifactsCount={state.pendingArtifactReward.artifactsCount}
+            onAllocate={handleAllocateArtifactReward}
+          />
+        ) : (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-amber-600/80 px-4 py-2 rounded-xl text-xs text-slate-300 shadow-xl backdrop-blur-md flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>
+              Waiting for Commander{' '}
+              <strong className="text-amber-300">
+                {state.players.find((p) => p.id === state.pendingArtifactReward!.playerId)?.name || 'Active Player'}
+              </strong>{' '}
+              to allocate Artifact Key bounty...
+            </span>
+          </div>
+        )
       )}
 
       {state.pendingBankruptcy && (

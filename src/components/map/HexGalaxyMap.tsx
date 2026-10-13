@@ -2267,6 +2267,29 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   );
                 })()}
 
+                {/* Warp Portal Tile Icon on Candidate Explore Hex (e.g. Sector 281, 381, 382) */}
+                {(pendingExplore.candidateTile.hasWarpPortal ||
+                  pendingExplore.candidateTile.sectorNumber === 281 ||
+                  pendingExplore.candidateTile.sectorNumber === 381 ||
+                  pendingExplore.candidateTile.sectorNumber === 382) && (
+                  <g
+                    data-testid="candidate-explore-warp-portal"
+                    transform={`translate(${
+                      pendingExplore.candidateTile.ancientsCount > 0
+                        ? x - 24
+                        : pendingExplore.candidateTile.hasArtifact || pendingExplore.candidateTile.hasDiscovery
+                        ? x - 24
+                        : x
+                    }, ${y - 12})`}
+                    className="pointer-events-none"
+                  >
+                    <circle cx="0" cy="0" r="10" fill="#2e1065" stroke="#a855f7" strokeWidth="1.5" className="animate-pulse" />
+                    <circle cx="0" cy="0" r="7" fill="#3b0764" stroke="#c084fc" strokeWidth="1" strokeDasharray="3 2" />
+                    <circle cx="0" cy="0" r="4" fill="#0f172a" stroke="#e9d5ff" strokeWidth="0.8" />
+                    <circle cx="0" cy="0" r="1.5" fill="#f3e8ff" />
+                  </g>
+                )}
+
                 {/* Habitable Planets */}
                 <g transform={`translate(${x}, ${y + 6})`}>
                   {pendingExplore.candidateTile.planets.map((planet, pIdx) => {

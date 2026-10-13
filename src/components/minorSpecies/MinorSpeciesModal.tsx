@@ -4,6 +4,7 @@ import { PlayerState } from '../../engine/types/player';
 import {
   MinorSpeciesTile,
   MinorSpeciesId,
+  ALL_MINOR_SPECIES_TILES,
   getAvailableAmbassadorSlotsCount,
   playerHasMinorSpecies,
 } from '../../engine/rules/minorSpecies';

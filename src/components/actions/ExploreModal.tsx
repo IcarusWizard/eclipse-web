@@ -64,7 +64,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   selectedDracoIndex: externalDracoIndex,
   onSelectDracoIndex,
 }) => {
-  const isDraco = player.faction.id === 'descendants_of_draco';
+  const isDraco = player?.faction?.id === 'descendants_of_draco';
   const hasDracoChoice = isDraco && candidateTiles && candidateTiles.length >= 2;
   const [internalDracoIndex, setInternalDracoIndex] = useState<number>(0);
   const selectedDracoIndex = externalDracoIndex !== undefined ? externalDracoIndex : internalDracoIndex;
@@ -86,12 +86,12 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     coord: targetCoord,
   };
 
-  const hasWormholeGen = playerHasWormholeGenerator(player);
+  const hasWormholeGen = player ? playerHasWormholeGenerator(player) : false;
   const isConnected = isLegallyConnectedToPlayerSectors(
     sectors,
     targetCoord,
     simulatedTile,
-    player.id,
+    player?.id || '',
     hasWormholeGen,
     sourceSector,
     warpConduits
@@ -381,6 +381,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                     <line x1="17" y1="17" x2={17 - 14 * 0.866} y2={17 - 14 * 0.5} stroke="#10b981" strokeWidth="0.8" strokeDasharray="2 1" />
                   </g>
                 )}
+                {(activeTile.hasWarpPortal || activeTile.sectorNumber === 281 || activeTile.sectorNumber === 381 || activeTile.sectorNumber === 382) && (
+                  <g data-testid="explore-preview-warp-portal" transform="translate(17, 9)">
+                    <circle cx="0" cy="0" r="3.5" fill="#2e1065" stroke="#a855f7" strokeWidth="0.8" />
+                    <circle cx="0" cy="0" r="2" fill="#3b0764" stroke="#c084fc" strokeWidth="0.5" strokeDasharray="1.5 1" />
+                    <circle cx="0" cy="0" r="0.75" fill="#f3e8ff" />
+                  </g>
+                )}
                 <text
                   x="17"
                   y="20"
@@ -397,6 +404,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 <span className="text-[10px] font-bold text-slate-200">
                   {activeTile.wormholes.filter(Boolean).length} Wormholes
                 </span>
+                {(activeTile.hasWarpPortal || activeTile.sectorNumber === 281 || activeTile.sectorNumber === 381 || activeTile.sectorNumber === 382) && (
+                  <span className="text-[9px] font-bold text-purple-400 mt-0.5">
+                    🌀 Warp Portal
+                  </span>
+                )}
                 {activeTile.isNebula && (
                   <span className="text-[9px] font-bold text-emerald-400 mt-0.5">
                     Nebula (3 Subsectors) - Sub 1 & 2 (Disc ❓), Sub 3 (Ancient 👾)

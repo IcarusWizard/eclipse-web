@@ -33,6 +33,7 @@ interface PlayerBoardProps {
   onOpenTechMarket: () => void;
   onOpenTrade: () => void;
   onOpenPhysicalBoard?: () => void;
+  onConvertColonyShip?: (resource: 'money' | 'science' | 'materials') => void;
   hideOpponentReputation?: boolean;
   allPlayers?: PlayerState[];
   traitorPlayerId?: string | null;
@@ -50,6 +51,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   onOpenTechMarket,
   onOpenTrade,
   onOpenPhysicalBoard,
+  onConvertColonyShip,
   hideOpponentReputation = false,
   allPlayers = [],
   traitorPlayerId = null,
@@ -241,6 +243,37 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             <Ship className="w-3 h-3 text-indigo-400" />
             <span>{player.colonyShips.ready}</span>
           </div>
+
+          {/* Magellan Scavenge Colony Ship Quick Buttons (Collapsed) */}
+          {player.faction.id === 'wardens_of_magellan' && onConvertColonyShip && (
+            <div className="flex items-center gap-1 ml-1 pl-1 border-l border-slate-700 text-[9px]">
+              <span className="text-purple-300 font-bold">Conv:</span>
+              <button
+                onClick={() => onConvertColonyShip('money')}
+                disabled={player.colonyShips.ready <= 0 || !isActive}
+                className="px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 disabled:opacity-40 cursor-pointer"
+                title="Convert 1 ready Colony Ship to 1 Money"
+              >
+                +1 🪙
+              </button>
+              <button
+                onClick={() => onConvertColonyShip('science')}
+                disabled={player.colonyShips.ready <= 0 || !isActive}
+                className="px-1.5 py-0.5 rounded bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/40 disabled:opacity-40 cursor-pointer"
+                title="Convert 1 ready Colony Ship to 1 Science"
+              >
+                +1 🔬
+              </button>
+              <button
+                onClick={() => onConvertColonyShip('materials')}
+                disabled={player.colonyShips.ready <= 0 || !isActive}
+                className="px-1.5 py-0.5 rounded bg-amber-700/20 hover:bg-amber-700/30 text-amber-200 border border-amber-700/40 disabled:opacity-40 cursor-pointer"
+                title="Convert 1 ready Colony Ship to 1 Material"
+              >
+                +1 ⚙️
+              </button>
+            </div>
+          )}
 
           {/* Ambassadors */}
           {allPlayers && allPlayers.length > 1 && (
@@ -542,6 +575,45 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Magellan Scavenge Colony Ship Ability */}
+      {player.faction.id === 'wardens_of_magellan' && onConvertColonyShip && (
+        <div
+          data-testid="magellan-convert-colony-ship-panel"
+          className="bg-purple-950/30 rounded-lg border border-purple-800/50 p-2 mb-2 flex items-center justify-between text-xs"
+        >
+          <div className="flex items-center gap-1 text-[11px] text-purple-300 font-bold">
+            <Ship className="w-3.5 h-3.5 text-purple-400" />
+            <span>Convert Colony Ship:</span>
+          </div>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={() => onConvertColonyShip('money')}
+              disabled={player.colonyShips.ready <= 0 || !isActive}
+              className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors disabled:opacity-40 cursor-pointer"
+              title="Convert 1 ready Colony Ship to 1 Money"
+            >
+              +1 🪙 Money
+            </button>
+            <button
+              onClick={() => onConvertColonyShip('science')}
+              disabled={player.colonyShips.ready <= 0 || !isActive}
+              className="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/40 transition-colors disabled:opacity-40 cursor-pointer"
+              title="Convert 1 ready Colony Ship to 1 Science"
+            >
+              +1 🔬 Science
+            </button>
+            <button
+              onClick={() => onConvertColonyShip('materials')}
+              disabled={player.colonyShips.ready <= 0 || !isActive}
+              className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-700/20 hover:bg-amber-700/30 text-amber-200 border border-amber-700/40 transition-colors disabled:opacity-40 cursor-pointer"
+              title="Convert 1 ready Colony Ship to 1 Material"
+            >
+              +1 ⚙️ Material
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Ambassadors & Diplomatic Relations */}
       {allPlayers && allPlayers.length > 1 && (

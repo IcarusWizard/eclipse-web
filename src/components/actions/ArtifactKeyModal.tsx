@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Player } from '../../engine/types/player';
-import { Key, Coins, FlaskConical, Box, Sparkles, Check } from 'lucide-react';
+import { Key, Coins, FlaskConical, Box, Sparkles, Check, Minimize2, Maximize2 } from 'lucide-react';
 
 interface ArtifactKeyModalProps {
   player: Player;
@@ -15,6 +15,7 @@ export const ArtifactKeyModal: React.FC<ArtifactKeyModalProps> = ({
   artifactsCount,
   onAllocate,
 }) => {
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [money, setMoney] = useState(0);
   const [science, setScience] = useState(0);
   const [materials, setMaterials] = useState(totalResources);
@@ -53,24 +54,63 @@ export const ArtifactKeyModal: React.FC<ArtifactKeyModalProps> = ({
     }
   };
 
+  // Minimized floating banner at top
+  if (isMinimized) {
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-amber-500 rounded-full shadow-2xl backdrop-blur-md text-white">
+          <Key className="w-4 h-4 text-amber-400" />
+          <span className="font-bold text-xs sm:text-sm tracking-wide text-amber-300 font-display">
+            ARTIFACT KEY REWARD ({player.name})
+          </span>
+          <div className="h-4 w-px bg-slate-800" />
+          <button
+            onClick={() => setIsMinimized(false)}
+            className="px-3.5 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-full text-xs font-bold transition-all shadow-md shadow-amber-950/50 flex items-center gap-1.5 cursor-pointer"
+            title="Return to artifact key resolution"
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>Allocate Bounty</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // Side window (non-blocking)
   return (
-    <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-4">
-      <div className="bg-slate-900 border-2 border-amber-500/60 rounded-2xl max-w-lg w-full p-6 shadow-2xl shadow-amber-500/20 text-slate-100 flex flex-col gap-6 animate-in fade-in zoom-in-95 duration-200">
-        {/* Header */}
-        <div className="flex items-center gap-3 border-b border-slate-800 pb-4">
-          <div className="p-3 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-400">
-            <Key className="w-7 h-7" />
+    <div className="fixed top-18 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] sm:w-120 max-w-xl pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200 font-sans">
+      <div className="bg-slate-900/95 border-2 border-amber-500/80 rounded-2xl p-4 sm:p-5 shadow-2xl shadow-amber-500/20 backdrop-blur-md text-slate-100 flex flex-col gap-4 overflow-y-auto max-h-[calc(100vh-90px)]">
+        {/* Header Action Bar */}
+        <div className="w-full flex items-center justify-between pb-2 border-b border-slate-800">
+          <div className="flex items-center gap-2">
+            <span className="text-[10px] uppercase tracking-widest text-amber-400 font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800/80">
+              Technology Reward • Artifact Key
+            </span>
+            <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono">
+              {artifactsCount} Artifact{artifactsCount > 1 ? 's' : ''}
+            </span>
+          </div>
+          <button
+            onClick={() => setIsMinimized(true)}
+            className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-sm cursor-pointer"
+            title="Minimize to view map"
+          >
+            <Minimize2 className="w-3.5 h-3.5" />
+            <span>View Map</span>
+          </button>
+        </div>
+
+        {/* Title */}
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 bg-amber-500/20 border border-amber-500/40 rounded-xl text-amber-400 shrink-0">
+            <Key className="w-6 h-6" />
           </div>
           <div>
-            <div className="flex items-center gap-2">
-              <h2 className="text-xl font-display font-black tracking-wide text-amber-400">
-                Artifact Key Reward
-              </h2>
-              <span className="text-xs px-2 py-0.5 rounded-full bg-amber-500/20 border border-amber-500/40 text-amber-300 font-mono">
-                {artifactsCount} Artifact{artifactsCount > 1 ? 's' : ''}
-              </span>
-            </div>
-            <p className="text-xs text-slate-400 mt-1">
+            <h2 className="text-base font-display font-black tracking-wide text-amber-400">
+              Artifact Key Reward
+            </h2>
+            <p className="text-xs text-slate-400 mt-0.5">
               Commander <span className="font-semibold text-slate-200">{player.name}</span>, your research into the Artifact Key yields{' '}
               <strong className="text-amber-400">5 resources of your choice</strong> for each controlled Artifact!
             </p>

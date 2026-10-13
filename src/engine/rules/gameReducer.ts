@@ -968,7 +968,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         shipsList: { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[],
         subsector?: 1 | 2 | 3
       ) => {
-        const filteredList = sec.isNebula && subsector ? shipsList.filter((s) => s.subsector === subsector) : shipsList;
+        const targetSub = subsector ?? 1;
+        const filteredList = sec.isNebula ? shipsList.filter((s) => (s.subsector ?? 1) === targetSub) : shipsList;
         let ancients = sec.isNebula
           ? filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
           : Math.max(
@@ -980,7 +981,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         const gcdsCount = sec.hasGCDS && !sec.isNebula && gcdsShips === 0 ? 1 : gcdsShips;
         const guardianShips = filteredList.filter((s) => s.ownerId === 'guardian' || s.type === 'guardian').length;
         const otherPlayerShips = filteredList.filter(
-          (s) => s.ownerId !== action.playerId && s.ownerId.startsWith('player_')
+          (s) => s.ownerId !== action.playerId && (s.ownerId.startsWith('player_') || state.players.some((p) => p.id === s.ownerId))
         ).length;
         return ancients + gcdsCount + guardianShips + otherPlayerShips;
       };
@@ -1016,9 +1017,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
               error: `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} by the Galactic Center Defense System (GCDS) and cannot move.`,
             };
           }
-          const shipSub = shipInfo.ship.subsector;
-          const friendlyCount = originSec.isNebula && shipSub
-            ? shipsInOrigin.filter((s) => s.ownerId === action.playerId && s.subsector === shipSub).length
+          const shipSub = shipInfo.ship.subsector ?? 1;
+          const friendlyCount = originSec.isNebula
+            ? shipsInOrigin.filter((s) => s.ownerId === action.playerId && (s.subsector ?? 1) === shipSub).length
             : shipsInOrigin.filter((s) => s.ownerId === action.playerId).length;
           const hostiles = getHostilesInSec(originSec, shipsInOrigin, shipSub);
           const hasCloaking = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
@@ -1026,7 +1027,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (hostiles > 0 && hostiles >= pinningThreshold) {
             return {
               valid: false,
-              error: `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`,
+              error: originSec.isNebula
+                ? `Ship ${shipInfo.ship.type} is pinned in Subsector ${shipSub} of Nebula Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`
+                : `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`,
             };
           }
         }
@@ -1077,8 +1080,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (fromSec.isNebula && fromSec.id !== toSec.id) {
             const exitEdge = getEdgeBetween(fromSec.coord, toSec.coord);
             if (exitEdge !== null) {
-              const edgeOnTile = ((exitEdge - fromSec.rotation) % 6 + 6) % 6;
-              const allowedSub = getNebulaSubsectorForOuterEdge(edgeOnTile as HexEdge);
+              const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge);
               const shipSub = shipInfo.ship.subsector ?? 1;
               if (allowedSub !== shipSub) {
                 return {
@@ -1100,8 +1102,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           let targetSub = step.targetSubsector;
           if (!targetSub && toSec.isNebula && fromSec.id !== toSec.id) {
             const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
-            const entryEdgeOnTile = edgeFromTo !== null ? ((edgeFromTo + 3) % 6 - (toSec.rotation || 0) + 6) % 6 : 0;
-            targetSub = getNebulaSubsectorForOuterEdge(entryEdgeOnTile as HexEdge);
+            const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
+            targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge);
           }
 
           // Advance ship's simulated location in simSectorShips
@@ -1128,7 +1130,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           const finalTargetSub = toSec.isNebula ? (targetSub ?? shipInfo.ship.subsector ?? 1) : undefined;
           const hasLiveGcdsInTo = !toSec.isNebula && (toSec.hasGCDS || shipsInTo.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
           const friendlyInTo = toSec.isNebula && finalTargetSub
-            ? shipsInTo.filter((s) => s.ownerId === action.playerId && s.subsector === finalTargetSub).length
+            ? shipsInTo.filter((s) => s.ownerId === action.playerId && (s.subsector ?? 1) === finalTargetSub).length
             : shipsInTo.filter((s) => s.ownerId === action.playerId).length;
           const hostilesInTo = getHostilesInSec(toSec, shipsInTo, finalTargetSub);
           const hasCloakingInTo = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
@@ -1140,6 +1142,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
                 valid: false,
                 error: hasLiveGcdsInTo
                   ? `Ship ${shipInfo.ship.type} was pinned by the Galactic Center Defense System (GCDS) upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`
+                  : toSec.isNebula
+                  ? `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Subsector ${finalTargetSub} of Nebula Sector ${toSec.sectorNumber} and cannot take further movement steps.`
                   : `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`,
               };
             }
@@ -2750,8 +2754,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 } else {
                   // Entering from outside
                   const edgeFromTo = getEdgeBetween(fromSector.coord, toSector.coord);
-                  const baseEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6 - toSector.rotation + 6) % 6 : 0;
-                  const targetSub = step.targetSubsector || getNebulaSubsectorForOuterEdge(baseEdge as HexEdge);
+                  const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
+                  const targetSub = step.targetSubsector || getNebulaSubsectorForOuterEdge(entryEdge as HexEdge);
                   movedShip.subsector = targetSub;
                   toSector.ships.push(movedShip);
                   toSector.playerEntryOrder = toSector.playerEntryOrder || [];
@@ -4705,7 +4709,8 @@ export function computePinningState(
     shipsList: { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[],
     subsector?: 1 | 2 | 3
   ) => {
-    const filteredList = sec.isNebula && subsector ? shipsList.filter((s) => s.subsector === subsector) : shipsList;
+    const targetSub = subsector ?? 1;
+    const filteredList = sec.isNebula ? shipsList.filter((s) => (s.subsector ?? 1) === targetSub) : shipsList;
     let ancients = sec.isNebula
       ? filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
       : Math.max(
@@ -4717,7 +4722,7 @@ export function computePinningState(
     const gcdsCount = sec.hasGCDS && !sec.isNebula && gcdsShips === 0 ? 1 : gcdsShips;
     const guardianShips = filteredList.filter((s) => s.ownerId === 'guardian' || s.type === 'guardian').length;
     const otherPlayerShips = filteredList.filter(
-      (s) => s.ownerId !== playerId && s.ownerId.startsWith('player_')
+      (s) => s.ownerId !== playerId && (s.ownerId.startsWith('player_') || state.players.some((p) => p.id === s.ownerId))
     ).length;
     return ancients + gcdsCount + guardianShips + otherPlayerShips;
   };
@@ -4736,8 +4741,8 @@ export function computePinningState(
     let resolvedSub = (m as any).targetSubsector;
     if (!resolvedSub && toSec?.isNebula && fromSec && fromSec.id !== toSec.id) {
       const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
-      const entryEdgeOnTile = edgeFromTo !== null ? ((edgeFromTo + 3) % 6 - (toSec.rotation || 0) + 6) % 6 : 0;
-      resolvedSub = getNebulaSubsectorForOuterEdge(entryEdgeOnTile as HexEdge);
+      const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
+      resolvedSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge);
     }
     if (movedShip) {
       if (toSec?.isNebula) {
@@ -4753,7 +4758,7 @@ export function computePinningState(
       const targetSub = toSec.isNebula ? (resolvedSub ?? movedShip?.subsector ?? 1) : undefined;
       const hasLiveGcdsInTo = !toSec.isNebula && (toSec.hasGCDS || toList.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
       const friendlyInTo = toSec.isNebula && targetSub
-        ? toList.filter((s) => s.ownerId === playerId && s.subsector === targetSub).length
+        ? toList.filter((s) => s.ownerId === playerId && (s.subsector ?? 1) === targetSub).length
         : toList.filter((s) => s.ownerId === playerId).length;
       const hostilesInTo = getHostilesInSec(toSec, toList, targetSub);
       const hasCloakingInTo = player?.techTrack.researched.some((t) => t.id === 'cloaking_device');
@@ -4776,7 +4781,7 @@ export function computePinningState(
       }
     } else if (s.isNebula) {
       for (const subIdx of [1, 2, 3] as const) {
-        const friendlyInSub = friendlyShips.filter((sh) => sh.subsector === subIdx);
+        const friendlyInSub = friendlyShips.filter((sh) => (sh.subsector ?? 1) === subIdx);
         const hostilesInSub = getHostilesInSec(s, shipsInSec, subIdx);
         const hasCloaking = player?.techTrack.researched.some((t) => t.id === 'cloaking_device');
         const pinningThreshold = hasCloaking ? friendlyInSub.length * 2 : friendlyInSub.length;
