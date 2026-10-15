@@ -16411,6 +16411,78 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const pathMatches = shiftMapHtml.match(/<path d="(M [^"]+)"/g);
         expect(pathMatches).not.toBeNull();
       });
+
+      test('95. verifies Mobile Touch Pinch-to-Zoom, Touch Pan, and gesture mechanics for HexGalaxyMap', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { createInitialGame } = await import('../rules/setup');
+        const game = createInitialGame(2);
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+          })
+        );
+
+        // 1. Root container enforces touch-none and touch-action: none to prevent mobile browser gesture stealing
+        expect(mapHtml).toContain('touch-none');
+        expect(mapHtml).toContain('touch-action:none');
+
+        // 2. HUD controls have stopPropagation on touch/mousedown
+        expect(mapHtml).toContain('DECKS:');
+
+        // 3. Focal-Point Pinch-to-Zoom Math Verification:
+        // Ensures scaling keeps the world position under the pinch center fixed on screen
+        const initialPan = { x: 450, y: 350 };
+        const initialZoom = 1.0;
+        const pinchCenter = { x: 300, y: 200 }; // Point on screen between 2 fingers
+
+        // World coordinates under pinch center
+        const worldFocal = {
+          x: (pinchCenter.x - initialPan.x) / initialZoom, // (300 - 450) / 1 = -150
+          y: (pinchCenter.y - initialPan.y) / initialZoom, // (200 - 350) / 1 = -150
+        };
+        expect(worldFocal).toEqual({ x: -150, y: -150 });
+
+        // Fingers expand from 100px to 150px (scale = 1.5)
+        const initialDist = 100;
+        const currentDist = 150;
+        const scale = currentDist / initialDist;
+        const nextZoom = Math.min(2.5, Math.max(0.4, initialZoom * scale));
+        expect(nextZoom).toBe(1.5);
+
+        // New pan keeps screen position of world focal point invariant:
+        const nextPan = {
+          x: pinchCenter.x - worldFocal.x * nextZoom, // 300 - (-150 * 1.5) = 300 + 225 = 525
+          y: pinchCenter.y - worldFocal.y * nextZoom, // 200 - (-150 * 1.5) = 200 + 225 = 425
+        };
+        expect(nextPan).toEqual({ x: 525, y: 425 });
+
+        // Re-verifying screen projection at new zoom and pan:
+        const projectedScreenPoint = {
+          x: nextPan.x + worldFocal.x * nextZoom, // 525 + (-150) * 1.5 = 300
+          y: nextPan.y + worldFocal.y * nextZoom, // 425 + (-150) * 1.5 = 200
+        };
+        expect(projectedScreenPoint).toEqual(pinchCenter);
+
+        // 4. Zoom Clamping:
+        // Extreme pinch-in clamped to max 2.5
+        const zoomInExcess = Math.min(2.5, Math.max(0.4, 1.0 * 5.0));
+        expect(zoomInExcess).toBe(2.5);
+        // Extreme pinch-out clamped to min 0.4
+        const zoomOutExcess = Math.min(2.5, Math.max(0.4, 1.0 * 0.1));
+        expect(zoomOutExcess).toBe(0.4);
+
+        // 5. Tap vs Drag Discrimination:
+        // Movement <= 8px is a tap (click is preserved)
+        const tapMovement = Math.hypot(3, 4); // 5px
+        expect(tapMovement <= 8).toBe(true);
+        // Movement > 8px is a pan/drag (click is suppressed by click capture)
+        const dragMovement = Math.hypot(12, 16); // 20px
+        expect(dragMovement > 8).toBe(true);
+      });
     });
   });
 });

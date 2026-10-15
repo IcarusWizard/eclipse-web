@@ -164,8 +164,34 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 450, y: 350 });
   const [isDragging, setIsDragging] = useState(false);
+  const [isInteracting, setIsInteracting] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
   const [showGrid, setShowGrid] = useState(false);
+
+  const panRef = useRef(pan);
+  panRef.current = pan;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+
+  const hasMovedRef = useRef(false);
+  const mouseDragDistanceRef = useRef(0);
+  const touchStateRef = useRef<{
+    mode: 'none' | 'pan' | 'pinch';
+    startX: number;
+    startY: number;
+    initialPan: { x: number; y: number };
+    initialDist: number;
+    initialZoom: number;
+    focalPoint: { x: number; y: number };
+  }>({
+    mode: 'none',
+    startX: 0,
+    startY: 0,
+    initialPan: { x: 450, y: 350 },
+    initialDist: 0,
+    initialZoom: 1,
+    focalPoint: { x: 0, y: 0 },
+  });
 
   const unoccupiedCoords = useMemo(() => {
     const list: HexCoord[] = [];
@@ -244,12 +270,18 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   const handleMouseDown = (e: React.MouseEvent) => {
     if (e.button === 0) {
       setIsDragging(true);
+      setIsInteracting(true);
       setDragStart({ x: e.clientX - pan.x, y: e.clientY - pan.y });
+      mouseDragDistanceRef.current = 0;
     }
   };
 
   const handleMouseMove = (e: React.MouseEvent) => {
     if (isDragging) {
+      mouseDragDistanceRef.current += Math.hypot(e.movementX, e.movementY);
+      if (mouseDragDistanceRef.current > 6) {
+        hasMovedRef.current = true;
+      }
       setPan({
         x: e.clientX - dragStart.x,
         y: e.clientY - dragStart.y,
@@ -257,7 +289,134 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
     }
   };
 
-  const handleMouseUp = () => setIsDragging(false);
+  const handleMouseUp = () => {
+    setIsDragging(false);
+    setIsInteracting(false);
+    if (hasMovedRef.current) {
+      setTimeout(() => {
+        hasMovedRef.current = false;
+      }, 120);
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    setIsInteracting(true);
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      hasMovedRef.current = false;
+      touchStateRef.current = {
+        mode: 'pan',
+        startX: touch.clientX,
+        startY: touch.clientY,
+        initialPan: { ...panRef.current },
+        initialDist: 0,
+        initialZoom: zoomRef.current,
+        focalPoint: { x: 0, y: 0 },
+      };
+    } else if (e.touches.length >= 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      const cx = (t1.clientX + t2.clientX) / 2 - rect.left;
+      const cy = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+      hasMovedRef.current = true;
+      touchStateRef.current = {
+        mode: 'pinch',
+        startX: cx,
+        startY: cy,
+        initialPan: { ...panRef.current },
+        initialDist: Math.max(dist, 1),
+        initialZoom: zoomRef.current,
+        focalPoint: {
+          x: (cx - panRef.current.x) / zoomRef.current,
+          y: (cy - panRef.current.y) / zoomRef.current,
+        },
+      };
+    }
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (e.touches.length === 1 && touchStateRef.current.mode === 'pan') {
+      const touch = e.touches[0];
+      const dx = touch.clientX - touchStateRef.current.startX;
+      const dy = touch.clientY - touchStateRef.current.startY;
+      if (Math.hypot(dx, dy) > 8) {
+        hasMovedRef.current = true;
+      }
+      setPan({
+        x: touchStateRef.current.initialPan.x + dx,
+        y: touchStateRef.current.initialPan.y + dy,
+      });
+    } else if (e.touches.length >= 2) {
+      const t1 = e.touches[0];
+      const t2 = e.touches[1];
+      const dist = Math.hypot(t2.clientX - t1.clientX, t2.clientY - t1.clientY);
+      const rect = containerRef.current?.getBoundingClientRect() ?? { left: 0, top: 0 };
+      const currentCenterX = (t1.clientX + t2.clientX) / 2 - rect.left;
+      const currentCenterY = (t1.clientY + t2.clientY) / 2 - rect.top;
+
+      if (touchStateRef.current.mode !== 'pinch' || touchStateRef.current.initialDist <= 0) {
+        touchStateRef.current = {
+          mode: 'pinch',
+          startX: currentCenterX,
+          startY: currentCenterY,
+          initialPan: { ...panRef.current },
+          initialDist: Math.max(dist, 1),
+          initialZoom: zoomRef.current,
+          focalPoint: {
+            x: (currentCenterX - panRef.current.x) / zoomRef.current,
+            y: (currentCenterY - panRef.current.y) / zoomRef.current,
+          },
+        };
+        return;
+      }
+
+      const scale = dist / touchStateRef.current.initialDist;
+      const nextZoom = Math.min(2.5, Math.max(0.4, touchStateRef.current.initialZoom * scale));
+      const worldX = touchStateRef.current.focalPoint.x;
+      const worldY = touchStateRef.current.focalPoint.y;
+
+      const nextPanX = currentCenterX - worldX * nextZoom;
+      const nextPanY = currentCenterY - worldY * nextZoom;
+
+      hasMovedRef.current = true;
+      setZoom(nextZoom);
+      setPan({ x: nextPanX, y: nextPanY });
+    }
+  };
+
+  const handleTouchEnd = (e: React.TouchEvent) => {
+    if (e.touches.length === 1) {
+      const touch = e.touches[0];
+      touchStateRef.current = {
+        mode: 'pan',
+        startX: touch.clientX,
+        startY: touch.clientY,
+        initialPan: { ...panRef.current },
+        initialDist: 0,
+        initialZoom: zoomRef.current,
+        focalPoint: { x: 0, y: 0 },
+      };
+    } else if (e.touches.length === 0) {
+      setIsInteracting(false);
+      touchStateRef.current.mode = 'none';
+      if (hasMovedRef.current) {
+        setTimeout(() => {
+          hasMovedRef.current = false;
+        }, 120);
+      }
+    }
+  };
+
+  const handleClickCapture = (e: React.MouseEvent) => {
+    if (hasMovedRef.current) {
+      e.stopPropagation();
+      e.preventDefault();
+      hasMovedRef.current = false;
+    }
+  };
 
   const resetView = () => {
     if (containerRef.current) {
@@ -284,12 +443,18 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   return (
     <div
       ref={containerRef}
-      className="relative w-full h-full bg-slate-950 overflow-hidden cursor-grab active:cursor-grabbing select-none"
+      className="relative w-full h-full bg-slate-950 overflow-hidden cursor-grab active:cursor-grabbing select-none touch-none"
+      style={{ touchAction: 'none' }}
       onWheel={handleWheel}
       onMouseDown={handleMouseDown}
       onMouseMove={handleMouseMove}
       onMouseUp={handleMouseUp}
       onMouseLeave={handleMouseUp}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+      onTouchEnd={handleTouchEnd}
+      onTouchCancel={handleTouchEnd}
+      onClickCapture={handleClickCapture}
     >
       {/* Deep Space Background with Parallax Nebulae */}
       <div
@@ -323,7 +488,11 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
       </div>
 
       {/* Map Controls & Status HUD */}
-      <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+      <div
+        className="absolute top-4 right-4 z-20 flex items-center gap-2"
+        onMouseDown={(e) => e.stopPropagation()}
+        onTouchStart={(e) => e.stopPropagation()}
+      >
         {/* Sector Deck Counter Badge */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-lg text-xs font-mono shadow-md">
           <span className="text-slate-400 font-bold text-[11px]">DECKS:</span>
@@ -510,7 +679,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             transformOrigin: '0 0',
           }}
-          className="pointer-events-auto transition-transform duration-75 ease-out"
+          className={`pointer-events-auto ${isInteracting ? '' : 'transition-transform duration-75 ease-out'}`}
         >
           {/* Galactic Center Core Radiance and Spiral Arms at (0, 0) */}
           <g className="pointer-events-none">
