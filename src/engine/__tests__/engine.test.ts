@@ -15539,6 +15539,102 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Money cubes remained at 5:
         expect(updatedSciPlayer.population.money.cubesOnBoard).toBe(5);
       });
+
+      it('90. verifies Galactic Events Sector Rules in SectorInspector side window for all 4 types (Nebula, Pulsar, Supernova, and Black Hole)', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        const { createGalacticEventSectorTile } = await import('../rules/galacticEvents');
+        const { createInitialGame } = await import('../rules/setup');
+
+        const game = createInitialGame(2, ['terran_directorate', 'wardens_of_magellan'], ['galactic_events']);
+        const player = game.players[0]!;
+
+        // 1. Nebula (Sector 295 & 395)
+        const nebulaSector = createGalacticEventSectorTile(295);
+        const nebulaHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: nebulaSector,
+            players: game.players,
+            activePlayer: player,
+            onClose: () => {},
+          })
+        );
+        expect(nebulaHtml).toContain('data-testid="sector-rules-nebula"');
+        expect(nebulaHtml).toContain('Nebula Rules (Galactic Events)');
+        expect(nebulaHtml).toContain('No Influence Space');
+        expect(nebulaHtml).toContain('Subsector Entry');
+        expect(nebulaHtml).toContain('Internal Movement');
+        expect(nebulaHtml).toContain('Localized Pinning');
+        expect(nebulaHtml).toContain('Spacetime Anomaly (No Influence Disc)');
+
+        // 2. Pulsar (Sector 393 & 394)
+        const pulsarSector = createGalacticEventSectorTile(393);
+        const pulsarHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: pulsarSector,
+            players: game.players,
+            activePlayer: player,
+            onClose: () => {},
+          })
+        );
+        expect(pulsarHtml).toContain('data-testid="sector-rules-pulsar"');
+        expect(pulsarHtml).toContain('Pulsar Rules (Galactic Events)');
+        expect(pulsarHtml).toContain('3 Action Spaces');
+        expect(pulsarHtml).toContain('Free Action Shifting');
+        expect(pulsarHtml).toContain('Zero Upkeep Disc');
+        expect(pulsarHtml).toContain('Pass Restriction');
+
+        // 3. Supernova (Sector 397 & 398) - Unexploded and Exploded
+        const supernovaSector = createGalacticEventSectorTile(397);
+        const supernovaHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: supernovaSector,
+            players: game.players,
+            activePlayer: player,
+            onClose: () => {},
+          })
+        );
+        expect(supernovaHtml).toContain('data-testid="sector-rules-supernova"');
+        expect(supernovaHtml).toContain('Supernova Rules (Galactic Events)');
+        expect(supernovaHtml).toContain('Rich Planetary Resources');
+        expect(supernovaHtml).toContain('Cleanup Instability Check');
+        expect(supernovaHtml).toContain('2 Yellow Dice');
+        expect(supernovaHtml).toContain('Explosion Condition');
+        expect(supernovaHtml).toContain('Catastrophic Explosion');
+
+        // Supernova Exploded Void
+        const explodedSector = { ...supernovaSector, isSupernovaExploded: true };
+        const explodedHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: explodedSector,
+            players: game.players,
+            activePlayer: player,
+            onClose: () => {},
+          })
+        );
+        expect(explodedHtml).toContain('Supernova Collapsed Void');
+        expect(explodedHtml).toContain('Wormhole Generator');
+
+        // 4. Black Hole (Sector 396 & 399)
+        const blackHoleSector = createGalacticEventSectorTile(399);
+        const blackHoleHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: blackHoleSector,
+            players: game.players,
+            activePlayer: player,
+            onClose: () => {},
+          })
+        );
+        expect(blackHoleHtml).toContain('data-testid="sector-rules-black-hole"');
+        expect(blackHoleHtml).toContain('Black Hole Rules (Galactic Events)');
+        expect(blackHoleHtml).toContain('Spacetime Anomaly');
+        expect(blackHoleHtml).toContain('Discovery Tile');
+        expect(blackHoleHtml).toContain('Transit Duration (Yellow Die)');
+        expect(blackHoleHtml).toContain('V616 Mon');
+        expect(blackHoleHtml).toContain('Return Decision');
+        expect(blackHoleHtml).toContain('Spacetime Anomaly (No Influence Disc)');
+      });
     });
   });
 });

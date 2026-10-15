@@ -21,6 +21,7 @@ import {
   Check,
   Globe,
   RotateCcw,
+  Info,
 } from 'lucide-react';
 
 import {
@@ -72,6 +73,11 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   const isStagedForAbandonment = stagedAbandonedSectorIds.includes(sector.id);
   const discOwner = players.find((p) => p.id === sector.discOwner);
   const isCenter = sector.sectorNumber === 1;
+
+  const isNebula = Boolean(sector.isNebula || sector.sectorNumber === 295 || sector.sectorNumber === 395);
+  const isPulsar = Boolean(sector.isPulsar || sector.sectorNumber === 393 || sector.sectorNumber === 394);
+  const isBlackHole = Boolean(sector.isBlackHole || sector.sectorNumber === 396 || sector.sectorNumber === 399);
+  const isSupernova = Boolean(sector.isSupernova || sector.sectorNumber === 397 || sector.sectorNumber === 398);
 
   // Group ships by owner
   const shipsByOwner = new Map<string, SectorShip[]>();
@@ -139,6 +145,8 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                 />
                 <span className="text-slate-100">{discOwner.name}</span>
               </div>
+            ) : isNebula || isBlackHole ? (
+              <span className="text-slate-400 font-medium italic">Spacetime Anomaly (No Influence Disc)</span>
             ) : (
               <span className="text-slate-400 font-medium italic">Unclaimed / Neutral</span>
             )}
@@ -184,22 +192,59 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
           )}
         </div>
 
-        {/* Supernova Collapsed Alert */}
-        {sector.isSupernovaExploded && (
-          <div className="p-3 rounded-xl bg-red-950/70 border border-red-700/80 space-y-1 shadow-inner">
-            <div className="flex items-center gap-1.5 text-xs font-bold text-red-400 uppercase tracking-wide">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-              Supernova Collapsed Void
+        {/* Supernova Sector Alert & Rules */}
+        {isSupernova && (
+          <div
+            data-testid="sector-rules-supernova"
+            className={`p-3 rounded-xl border space-y-2 ${
+              sector.isSupernovaExploded
+                ? 'bg-red-950/70 border-red-700/80 shadow-inner'
+                : 'bg-amber-950/40 border-amber-600/60'
+            }`}
+          >
+            <div className="flex items-center justify-between">
+              <span className={`font-bold flex items-center gap-1.5 text-xs ${sector.isSupernovaExploded ? 'text-red-400' : 'text-amber-300'}`}>
+                <AlertTriangle className={`w-3.5 h-3.5 ${sector.isSupernovaExploded ? 'text-red-400' : 'text-amber-400'}`} />
+                {sector.isSupernovaExploded ? 'Supernova Collapsed Void' : `Supernova Sector (${sector.name || 'Unstable Star'})`}
+              </span>
+              <span className={`text-[10px] px-2 py-0.5 rounded font-mono font-bold border uppercase ${
+                sector.isSupernovaExploded
+                  ? 'bg-red-900/60 text-red-200 border-red-600'
+                  : 'bg-amber-900/60 text-amber-200 border-amber-600'
+              }`}>
+                {sector.isSupernovaExploded ? 'Collapsed' : 'Cleanup Check'}
+              </span>
             </div>
-            <p className="text-[11px] text-slate-300">
-              This star went supernova and collapsed into empty space. All planets, population slots, and wormholes have been completely obliterated.
-            </p>
+
+            {sector.isSupernovaExploded ? (
+              <div className="space-y-1.5 text-[11px] text-slate-300">
+                <p>
+                  This star went supernova and collapsed into empty space. All planets, population slots, and wormholes have been completely obliterated.
+                </p>
+                <div className="text-[10px] text-red-300 font-mono">
+                  Traversal: Only ships equipped with a Wormhole Generator can enter this empty void.
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-300">
+                  <Info className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                  <span>Supernova Rules (Galactic Events)</span>
+                </div>
+                <ul className="text-[10px] text-slate-300 space-y-1 list-disc list-inside leading-snug">
+                  <li><strong className="text-slate-100">Rich Planetary Resources:</strong> Contains 5 rich resource squares (1 Adv Money, 1 Adv Material, 1 Science, 2 Wild/Any).</li>
+                  <li><strong className="text-slate-100">Cleanup Instability Check:</strong> In the Cleanup Phase of each round, an Instability Check must be rolled for the Supernova: <span className="text-amber-300 font-mono font-bold">2 Yellow Dice + highest single tech track count</span>.</li>
+                  <li><strong className="text-slate-100">Explosion Condition:</strong> If the total sum is strictly less than the current round number (<span className="text-amber-300 font-mono font-bold">Sum &lt; Round</span>), the star explodes!</li>
+                  <li><strong className="text-slate-100">Catastrophic Explosion:</strong> When it explodes, all ships, structures (orbitals/monoliths), population cubes, and influence discs in the sector are destroyed and returned to supply (cubes to graveyard). The sector turns into an empty void with no wormholes (accessible only via Wormhole Generator).</li>
+                </ul>
+              </div>
+            )}
           </div>
         )}
 
-        {/* Galactic Events: Nebula Subsectors Breakdown */}
-        {sector.isNebula && (
-          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-600/60 space-y-2">
+        {/* Galactic Events: Nebula Subsectors Breakdown & Rules */}
+        {isNebula && (
+          <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-600/60 space-y-2.5">
             <div className="flex items-center justify-between">
               <span className="text-emerald-300 font-bold flex items-center gap-1.5 text-xs">
                 <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
@@ -275,9 +320,21 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                 </span>
               </div>
             </div>
-            <p className="text-[10px] text-slate-400 leading-snug">
-              Note: Ships entering from outside land in the subsector matching their entry edge. Moving between subsectors takes 1 MP.
-            </p>
+
+            {/* Dedicated Nebula Rules Card */}
+            <div data-testid="sector-rules-nebula" className="pt-2 border-t border-emerald-800/50 space-y-1.5">
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-emerald-300">
+                <Info className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                <span>Nebula Rules (Galactic Events)</span>
+              </div>
+              <ul className="text-[10px] text-slate-300 space-y-1 list-disc list-inside leading-snug">
+                <li><strong className="text-slate-100">No Influence Space:</strong> Cannot place an Influence Disc (cannot be claimed by any player; no upkeep cost).</li>
+                <li><strong className="text-slate-100">Subsector Entry:</strong> Incoming ships land in the subsector matching their entry edge: Subsector 1 (Edges 4-NW & 5-NE), Subsector 2 (Edges 2-SW & 3-W), or Subsector 3 (Edges 0-E & 1-SE).</li>
+                <li><strong className="text-slate-100">Internal Movement:</strong> Moving between subsectors costs 1 Movement Point (MP) along internal wormholes.</li>
+                <li><strong className="text-slate-100">Localized Pinning:</strong> Pinning is resolved strictly within each subsector. Ships in other subsectors do not pin you.</li>
+                <li><strong className="text-slate-100">Combat & Discoveries:</strong> Combat resolves per subsector during the Combat Phase. Subsector 3 harbors an Ancient ship; Subsectors 1 & 2 each contain 1 Discovery Tile, claimed after all combat in that subsector concludes.</li>
+              </ul>
+            </div>
           </div>
         )}
 
@@ -655,19 +712,19 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
         )}
 
         {/* Special Features & Structures */}
-        {(sector.isPulsar || sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile || sector.structures?.monolith || (sector.guardiansCount && sector.guardiansCount > 0)) && (
+        {(isPulsar || isBlackHole || sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile || sector.structures?.monolith || (sector.guardiansCount && sector.guardiansCount > 0)) && (
           <div className="pt-2 border-t border-slate-800/80 space-y-2">
             <h4 className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               Special Features & Structures
             </h4>
 
-            {sector.isPulsar && (
-              <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-600/60 space-y-2">
+            {isPulsar && (
+              <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-600/60 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-cyan-300 font-bold flex items-center gap-1.5 text-xs">
                     <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
-                    Pulsar Anomaly
+                    Pulsar Anomaly ({sector.name || `Sector ${sector.sectorNumber}`})
                   </span>
                   <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-900/60 text-cyan-200 font-mono font-bold border border-cyan-600 uppercase">
                     Slot: {sector.pulsarSlot || 'move'}
@@ -698,11 +755,31 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                     <span>Activate Pulsar (Shift Slot)</span>
                   </button>
                 )}
+
+                {/* Dedicated Pulsar Rules Card */}
+                <div data-testid="sector-rules-pulsar" className="pt-2 border-t border-cyan-800/50 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-cyan-300">
+                    <Info className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+                    <span>Pulsar Rules (Galactic Events)</span>
+                  </div>
+                  <ul className="text-[10px] text-slate-300 space-y-1 list-disc list-inside leading-snug">
+                    <li><strong className="text-slate-100">3 Action Spaces:</strong> Replaces normal influence space with 3 Action Spaces: <span className="text-cyan-300 font-semibold">Move</span>, <span className="text-cyan-300 font-semibold">Build</span>, and <span className="text-cyan-300 font-semibold">Upgrade</span>. Influence Disc starts on Move upon control.</li>
+                    <li><strong className="text-slate-100">Free Action Shifting:</strong> Once per round on your turn during the Action Phase (in place of a normal action, before passing), shift your disc to a different slot to execute 1 activation:
+                      <ul className="pl-4 space-y-0.5 list-disc list-inside text-cyan-200">
+                        <li><strong className="text-slate-100">Move:</strong> Move 1 ship up to its full drive speed.</li>
+                        <li><strong className="text-slate-100">Build:</strong> Build 1 ship or structure (paying normal material cost).</li>
+                        <li><strong className="text-slate-100">Upgrade:</strong> Upgrade 1 ship blueprint (up to 2 ship parts).</li>
+                      </ul>
+                    </li>
+                    <li><strong className="text-slate-100">Zero Upkeep Disc:</strong> Shifts the disc already on the sector; does NOT place a disc from your player board track, saving discs and upkeep.</li>
+                    <li><strong className="text-slate-100">Pass Restriction:</strong> Cannot be activated after passing for the round.</li>
+                  </ul>
+                </div>
               </div>
             )}
 
-            {sector.isBlackHole && (
-              <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-700/60 space-y-2">
+            {isBlackHole && (
+              <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-700/60 space-y-2.5">
                 <div className="flex items-center justify-between">
                   <span className="text-indigo-300 font-bold flex items-center gap-1.5 text-xs">
                     <Sparkles className="w-3.5 h-3.5 text-indigo-400 animate-spin" />
@@ -757,6 +834,27 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                   ) : (
                     <span className="text-slate-400 italic">No ships currently trapped in spacetime anomaly.</span>
                   )}
+                </div>
+
+                {/* Dedicated Black Hole Rules Card */}
+                <div data-testid="sector-rules-black-hole" className="pt-2 border-t border-indigo-800/50 space-y-1.5">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-indigo-300">
+                    <Info className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span>Black Hole Rules (Galactic Events)</span>
+                  </div>
+                  <ul className="text-[10px] text-slate-300 space-y-1 list-disc list-inside leading-snug">
+                    <li><strong className="text-slate-100">Spacetime Anomaly:</strong> Cannot place an Influence Disc (no influence space / 0 VP).</li>
+                    <li><strong className="text-slate-100">Discovery Tile:</strong> The first ship entering the Black Hole immediately claims the Discovery Tile.</li>
+                    <li><strong className="text-slate-100">Transit Duration (Yellow Die):</strong> Ships end movement immediately and enter transit. Roll yellow die:
+                      <ul className="pl-4 space-y-0.5 list-disc list-inside text-indigo-200">
+                        <li><strong className="text-slate-100">Star (1) or Blank (6):</strong> Returns immediately this round, taking 1 damage.</li>
+                        <li><strong className="text-slate-100">2 or 3:</strong> Trapped for 1 round (returns in Round + 1).</li>
+                        <li><strong className="text-slate-100">4 or 5:</strong> Trapped for 2 rounds (returns in Round + 2).</li>
+                      </ul>
+                    </li>
+                    <li><strong className="text-slate-100">Return Location:</strong> {sector.sectorNumber === 396 ? 'Sector 396 (Cygnus X-1) returns to any Ring I sector.' : 'Sector 399 (V616 Mon) returns to any sector with a wormhole facing empty space/void.'}</li>
+                    <li><strong className="text-slate-100">Return Decision:</strong> On the player\'s first turn of the return round, a side window prompts whether to return the ship now or postpone until next round.</li>
+                  </ul>
                 </div>
               </div>
             )}

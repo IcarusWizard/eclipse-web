@@ -716,6 +716,29 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                             </div>
                           )}
                         </div>
+                        {/* Galactic Events Rules Summary */}
+                        {isGE && (
+                          <div className="p-2 mb-2 rounded-lg bg-emerald-950/40 border border-emerald-700/50 text-[10px] text-emerald-200 space-y-0.5">
+                            <span className="font-bold text-emerald-300 block">
+                              {sec.sectorNumber === 295 || sec.sectorNumber === 395
+                                ? 'Nebula (3 Subsectors):'
+                                : sec.sectorNumber === 393 || sec.sectorNumber === 394
+                                ? 'Pulsar (3 Action Spaces):'
+                                : sec.sectorNumber === 397 || sec.sectorNumber === 398
+                                ? 'Supernova (Instability Check):'
+                                : 'Black Hole (Spacetime Anomaly):'}
+                            </span>
+                            <span className="text-slate-300 leading-snug block">
+                              {sec.sectorNumber === 295 || sec.sectorNumber === 395
+                                ? 'No influence space. Ships enter subsector by edge. Subsector 3 holds an Ancient; Sub 1 & 2 have Discovery Tiles.'
+                                : sec.sectorNumber === 393 || sec.sectorNumber === 394
+                                ? 'Replaces influence disc space with Move, Build, and Upgrade. Shift disc once per round for a free action activation.'
+                                : sec.sectorNumber === 397 || sec.sectorNumber === 398
+                                ? '5 rich planets. Instability Check in Cleanup (2 yellow dice + highest tech track). If Sum < Round, star explodes!'
+                                : 'No influence space. Entering ships claim discovery and enter transit. Yellow die roll determines return round.'}
+                            </span>
+                          </div>
+                        )}
                       </div>
 
                       {/* Wormhole layout mini-diagram */}
