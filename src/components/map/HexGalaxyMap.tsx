@@ -81,6 +81,11 @@ interface HexGalaxyMapProps {
   buildMode?: HexMapBuildMode | null;
   moveMode?: HexMapMoveMode | null;
   stagedAbandonedSectorIds?: string[];
+  blackHoleReturnMode?: {
+    legalSectorIds: string[];
+    selectedSectorId: string | null;
+    onSelectSector?: (sectorId: string) => void;
+  } | null;
 }
 
 const HEX_RADIUS = 78;
@@ -148,6 +153,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   buildMode = null,
   moveMode = null,
   stagedAbandonedSectorIds = [],
+  blackHoleReturnMode = null,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -878,6 +884,19 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 hexStrokeWidth = '2.5';
                 hexStrokeDasharray = '5 3';
               }
+            } else if (blackHoleReturnMode) {
+              const isBHReturnDest = blackHoleReturnMode.legalSectorIds.includes(sector.id);
+              const isBHReturnSelected = blackHoleReturnMode.selectedSectorId === sector.id;
+              if (isBHReturnSelected) {
+                hexFill = 'rgba(99, 102, 241, 0.28)';
+                hexStroke = '#a5b4fc';
+                hexStrokeWidth = '4';
+              } else if (isBHReturnDest) {
+                hexFill = 'rgba(99, 102, 241, 0.12)';
+                hexStroke = '#818cf8';
+                hexStrokeWidth = '2.5';
+                hexStrokeDasharray = '5 3';
+              }
             }
 
             return (
@@ -885,6 +904,11 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 key={sector.id}
                 onClick={(e) => {
                   e.stopPropagation();
+                  if (blackHoleReturnMode && blackHoleReturnMode.legalSectorIds.includes(sector.id)) {
+                    blackHoleReturnMode.onSelectSector?.(sector.id);
+                    onSelectSector(sector);
+                    return;
+                  }
                   if (buildMode && isBuildEligible) {
                     buildMode.onSelectSector(sector.id);
                     return;
@@ -914,6 +938,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 />
 
                 {/* Pulsating interactive halo for selected shipyard or destination */}
+                {blackHoleReturnMode && blackHoleReturnMode.legalSectorIds.includes(sector.id) && (
+                  <polygon
+                    points={getHexCornerPoints(x, y, HEX_RADIUS + 3)}
+                    fill="none"
+                    stroke={blackHoleReturnMode.selectedSectorId === sector.id ? '#c7d2fe' : '#818cf8'}
+                    strokeWidth={blackHoleReturnMode.selectedSectorId === sector.id ? 2.5 : 1.5}
+                    strokeDasharray={blackHoleReturnMode.selectedSectorId === sector.id ? undefined : '4 3'}
+                    className="animate-pulse pointer-events-none"
+                  />
+                )}
                 {isBuildSelected && (
                   <polygon
                     points={getHexCornerPoints(x, y, HEX_RADIUS + 3)}
@@ -2116,8 +2150,26 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 {/* Candidate Sector Hexagon Polygon */}
                 <polygon
                   points={getHexCornerPoints(x, y, HEX_RADIUS - 2)}
-                  fill={pendingExplore.candidateTile.isNebula ? 'rgba(6, 78, 59, 0.45)' : 'rgba(15, 23, 42, 0.95)'}
-                  stroke={isConnected ? (pendingExplore.candidateTile.isNebula ? '#10b981' : '#38bdf8') : '#f43f5e'}
+                  fill={
+                    pendingExplore.candidateTile.isNebula
+                      ? 'rgba(6, 78, 59, 0.45)'
+                      : pendingExplore.candidateTile.isBlackHole ||
+                        pendingExplore.candidateTile.sectorNumber === 396 ||
+                        pendingExplore.candidateTile.sectorNumber === 399
+                      ? 'rgba(30, 27, 75, 0.92)'
+                      : 'rgba(15, 23, 42, 0.95)'
+                  }
+                  stroke={
+                    isConnected
+                      ? pendingExplore.candidateTile.isNebula
+                        ? '#10b981'
+                        : pendingExplore.candidateTile.isBlackHole ||
+                          pendingExplore.candidateTile.sectorNumber === 396 ||
+                          pendingExplore.candidateTile.sectorNumber === 399
+                        ? '#818cf8'
+                        : '#38bdf8'
+                      : '#f43f5e'
+                  }
                   strokeWidth="3"
                   strokeDasharray={isConnected ? undefined : '6 4'}
                   className="transition-colors"
@@ -2327,6 +2379,26 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         </text>
                       </g>
                     ))}
+                  </g>
+                )}
+
+                {/* Black Hole Tile Icon on Candidate Explore Hex (e.g. Sector 396, 399) */}
+                {(pendingExplore.candidateTile.isBlackHole ||
+                  pendingExplore.candidateTile.sectorNumber === 396 ||
+                  pendingExplore.candidateTile.sectorNumber === 399) && (
+                  <g
+                    data-testid="candidate-explore-black-hole"
+                    transform={`translate(${x}, ${y - 4})`}
+                    className="pointer-events-none"
+                  >
+                    <circle cx="0" cy="0" r="18" fill="none" stroke="#6366f1" strokeWidth="1" strokeDasharray="4 3" className="animate-spin" />
+                    <circle cx="0" cy="0" r="13" fill="#1e1b4b" stroke="#a5b4fc" strokeWidth="1.5" />
+                    <circle cx="0" cy="0" r="7" fill="#020617" />
+                    <text x="0" y="2.5" textAnchor="middle" fill="#c7d2fe" fontSize="7" fontWeight="900">BH</text>
+                    <rect x="-30" y="16" width="60" height="11" rx="3" fill="rgba(15, 23, 42, 0.9)" stroke="#6366f1" strokeWidth="0.8" />
+                    <text x="0" y="24" textAnchor="middle" fill="#c7d2fe" fontSize="6.5" fontWeight="bold">
+                      {pendingExplore.candidateTile.sectorNumber === 396 ? 'Ring I Return' : 'Empty Zone Return'}
+                    </text>
                   </g>
                 )}
 

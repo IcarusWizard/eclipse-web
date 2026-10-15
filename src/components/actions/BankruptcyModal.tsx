@@ -23,7 +23,7 @@ interface BankruptcyModalProps {
   player: PlayerState;
   deficit: number;
   sectors: SectorTile[];
-  onAbandonSector: (sectorId: string) => void;
+  onAbandonSector: (sectorId: string, returnTracks?: Record<string, 'money' | 'science' | 'material'>) => void;
   onEmergencyTrade?: (from: 'materials' | 'science') => void;
   onSelectSector?: (sector: SectorTile) => void;
   selectedSectorId?: string | null;
@@ -31,7 +31,11 @@ interface BankruptcyModalProps {
   stagedAbandonedSectorIds?: string[];
   onStageTrade?: (from: 'materials' | 'science', delta: 1 | -1) => void;
   onToggleAbandonSector?: (sectorId: string) => void;
-  onConfirmPlan?: (plan: { trades: { materials: number; science: number }; abandonedSectorIds: string[] }) => void;
+  onConfirmPlan?: (plan: {
+    trades: { materials: number; science: number };
+    abandonedSectorIds: string[];
+    abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>;
+  }) => void;
   onResetPlan?: () => void;
 }
 
@@ -56,6 +60,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
     science: 0,
   });
   const [localAbandoned, setLocalAbandoned] = useState<string[]>([]);
+  const [abandonReturnTrack, setAbandonReturnTrack] = useState<Record<string, 'money' | 'science' | 'material'>>({});
 
   const stagedTrades = propsStagedTrades ?? localTrades;
   const stagedAbandonedSectorIds = propsStagedAbandonedSectorIds ?? localAbandoned;
@@ -80,7 +85,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
     for (const secId of stagedAbandonedSectorIds) {
       const sec = simSectors.find((s) => s.id === secId);
       if (sec && sec.discOwner === simPlayer.id) {
-        const { updatedPlayer, savedUpkeep } = abandonSectorForUpkeep(simPlayer, sec);
+        const { updatedPlayer, savedUpkeep } = abandonSectorForUpkeep(simPlayer, sec, abandonReturnTrack);
         simPlayer = updatedPlayer;
         totalSavedUpkeep += savedUpkeep;
       }
@@ -96,7 +101,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
       projectedDeficit,
       isSolvent,
     };
-  }, [player, sectors, stagedTrades, stagedAbandonedSectorIds, tradeRatio]);
+  }, [player, sectors, stagedTrades, stagedAbandonedSectorIds, abandonReturnTrack, tradeRatio]);
 
   const canTradeMaterials = simulation.simPlayer.resources.materials >= tradeRatio;
   const canTradeScience = simulation.simPlayer.resources.science >= tradeRatio;
@@ -127,6 +132,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
   const handleResetDecisions = () => {
     setLocalTrades({ materials: 0, science: 0 });
     setLocalAbandoned([]);
+    setAbandonReturnTrack({});
     if (onResetPlan) onResetPlan();
   };
 
@@ -141,6 +147,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
       onConfirmPlan({
         trades: stagedTrades,
         abandonedSectorIds: stagedAbandonedSectorIds,
+        abandonReturnTrack,
       });
     } else {
       // Fallback
@@ -151,7 +158,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
         onEmergencyTrade?.('science');
       }
       for (const id of stagedAbandonedSectorIds) {
-        onAbandonSector(id);
+        onAbandonSector(id, abandonReturnTrack);
       }
     }
   };
@@ -506,6 +513,74 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                       )}
                     </button>
                   </div>
+
+                  {/* Bug 195: Choose return track (Money or Science) for returning population on Orbitals / Wild planets */}
+                  {isMarkedToAbandon &&
+                    sector.planets.filter(
+                      (p) => p.colonizedBy === player.id && (p.isOrbital || p.resource === 'any')
+                    ).length > 0 && (
+                      <div className="mt-2 pt-2 border-t border-rose-900/60 w-full space-y-1.5">
+                        {sector.planets
+                          .filter(
+                            (p) => p.colonizedBy === player.id && (p.isOrbital || p.resource === 'any')
+                          )
+                          .map((p, idx) => {
+                            const chosen =
+                              abandonReturnTrack[p.id] ||
+                              (p.colonizedResource as 'money' | 'science' | 'material') ||
+                              (p.isOrbital ? 'science' : 'money');
+                            return (
+                              <div
+                                key={p.id || idx}
+                                data-testid={`bankruptcy-orbital-track-choice-${sector.sectorNumber}`}
+                                className="flex items-center justify-between bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800 text-[11px]"
+                              >
+                                <span className="text-slate-300 font-medium">
+                                  {p.isOrbital
+                                    ? '🛰️ Orbital Pop Return Track:'
+                                    : '🌌 Wild Planet Pop Return Track:'}
+                                </span>
+                                <div className="flex items-center gap-1.5">
+                                  <button
+                                    type="button"
+                                    data-testid={`bankruptcy-return-money-${p.id}`}
+                                    onClick={() =>
+                                      setAbandonReturnTrack((prev) => ({
+                                        ...prev,
+                                        [p.id]: 'money',
+                                      }))
+                                    }
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                                      chosen === 'money'
+                                        ? 'bg-yellow-400 text-slate-950 font-black shadow ring-1 ring-yellow-300'
+                                        : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    💰 Money
+                                  </button>
+                                  <button
+                                    type="button"
+                                    data-testid={`bankruptcy-return-science-${p.id}`}
+                                    onClick={() =>
+                                      setAbandonReturnTrack((prev) => ({
+                                        ...prev,
+                                        [p.id]: 'science',
+                                      }))
+                                    }
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
+                                      chosen === 'science'
+                                        ? 'bg-pink-500 text-white font-black shadow ring-1 ring-pink-300'
+                                        : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                                    }`}
+                                  >
+                                    🔬 Science
+                                  </button>
+                                </div>
+                              </div>
+                            );
+                          })}
+                      </div>
+                    )}
                 </div>
               );
             })

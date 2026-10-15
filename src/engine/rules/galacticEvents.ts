@@ -390,17 +390,14 @@ export function getLegalBlackHoleReturnSectors(
     return allSectors.filter((s) => s.ring === 1);
   }
 
-  // Sector 399: Any sector having at least one wormhole edge facing an empty space (Zone) without a sector
+  // Sector 399: Any sector having at least one wormhole edge facing an empty space (Zone) without a sector tile placed (Bug 192)
   return allSectors.filter((sec) => {
     for (let edge = 0; edge < 6; edge++) {
       if (hasWormholeOnEdge(sec, edge as HexEdge)) {
         const neighbor = getNeighborCoord(sec.coord, edge as HexEdge);
-        const ring = getRingFromCoord(neighbor);
-        if (ring >= 1 && ring <= 3) {
-          const exists = allSectors.some((s) => areCoordsEqual(s.coord, neighbor));
-          if (!exists) {
-            return true;
-          }
+        const exists = allSectors.some((s) => areCoordsEqual(s.coord, neighbor));
+        if (!exists) {
+          return true;
         }
       }
     }

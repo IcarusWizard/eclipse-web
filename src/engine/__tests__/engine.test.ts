@@ -97,6 +97,7 @@ import { generateSalt, hashPassword, hashPasswordSync } from '../rules/passwordU
 import { formatBugReportLine } from '../rules/bugReport';
 import type { SectorTile } from '../types/sector';
 import type { CombatState, GameState } from '../types/state';
+import type { PlayerState } from '../types/player';
 import {
   getIncomeForTrack,
   getUpkeepForDiscs,
@@ -15225,9 +15226,323 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(finalCombatState.pendingDiscovery).toBeDefined();
         expect(finalCombatState.pendingDiscovery?.playerId).toBe(game.players[0]!.id);
       });
+
+      it('89. verifies Bug Fixes 188-195: Chronicle own moves not highlighted, Black Hole explore preview & empty zone return rule, non-blocking Black Hole return side window & auto-prompt, Exiles orbital as ships across discovery & conquest, and bankruptcy orbital population return track choice', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { GameLogDrawer } = await import('../../components/layout/GameLogDrawer');
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { BlackHoleReturnModal } = await import('../../components/actions/BlackHoleReturnModal');
+        const { getLegalBlackHoleReturnSectors, createGalacticEventSectorTile } = await import('../rules/galacticEvents');
+        const { syncExilesOrbitalShips } = await import('../rules/gameReducer');
+
+        // Part 1: Bug 188 - One's own moves shouldn't be highlighted in the chronicle
+        const mockChronicleLogs = [
+          {
+            id: 'log-p1-action',
+            timestamp: 1000,
+            round: 1,
+            phase: 'ACTION_PHASE' as const,
+            playerId: 'player_1',
+            message: 'Player 1 moved 2 Interceptors to Sector 201',
+            type: 'action' as const,
+          },
+          {
+            id: 'log-p2-action',
+            timestamp: 2000,
+            round: 1,
+            phase: 'ACTION_PHASE' as const,
+            playerId: 'player_2',
+            message: 'Player 2 researched Positron Computer',
+            type: 'action' as const,
+          },
+          {
+            id: 'log-p1-build',
+            timestamp: 3000,
+            round: 1,
+            phase: 'ACTION_PHASE' as const,
+            playerId: 'player_1',
+            message: 'Player 1 built a Cruiser in Sector 234',
+            type: 'action' as const,
+          },
+        ];
+
+        // Viewer is Player 1: their own 2 moves should NOT count as unread or be highlighted!
+        const p1DrawerHtml = renderToString(
+          React.createElement(GameLogDrawer, {
+            logs: mockChronicleLogs,
+            initialOpen: false,
+            initialLastCheckedCount: 0,
+            viewerPlayerId: 'player_1',
+          })
+        );
+        // Only Player 2's log counts as unread for Player 1:
+        expect(p1DrawerHtml).toContain('title="1 new events since last check"');
+        expect(p1DrawerHtml).toContain('<span>1</span>');
+
+        // When opened, only Player 2's log has the new tag, Player 1's moves do not:
+        const p1OpenDrawerHtml = renderToString(
+          React.createElement(GameLogDrawer, {
+            logs: mockChronicleLogs,
+            initialOpen: true,
+            initialLastCheckedCount: 0,
+            viewerPlayerId: 'player_1',
+          })
+        );
+        expect(p1OpenDrawerHtml).toContain('Player 2 researched Positron Computer');
+        expect(p1OpenDrawerHtml).toContain('Player 1 moved 2 Interceptors');
+        // Count how many 'data-testid="chronicle-log-new"' exist in the output: should be exactly 1!
+        const newLogMatches = p1OpenDrawerHtml.match(/data-testid="chronicle-log-new"/g);
+        expect(newLogMatches?.length).toBe(1);
+
+        // Part 2: Bug 189 - Black hole sector preview in ExploreModal and HexGalaxyMap
+        const game = createInitialGame(2, ['the_exiles', 'enlightened_of_lyra'], ['galactic_events']);
+
+        const bhTile399 = createGalacticEventSectorTile(399);
+        const sourceSec = game.sectors.find((s) => s.id === `home_sector_${game.players[0]!.id}`) || game.sectors[0]!;
+
+        const exploreModalHtml = renderToString(
+          React.createElement(ExploreModal, {
+            candidateTile: bhTile399,
+            candidateTiles: [bhTile399],
+            fromCoord: sourceSec.coord,
+            targetCoord: { q: 2, r: 1 },
+            sourceSector: sourceSec,
+            sectors: game.sectors,
+            player: game.players[0]!,
+            rotation: 0,
+            onRotate: () => {},
+            onConfirmPlacement: () => {},
+            onDiscard: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(exploreModalHtml).toContain('data-testid="explore-preview-black-hole"');
+        expect(exploreModalHtml).toContain('V616 Mon: Empty Zone Return');
+        expect(exploreModalHtml).toContain('Spacetime Anomaly (No Influence Disc)');
+
+        const mapExploreHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            pendingExplore: {
+              from: sourceSec.coord,
+              target: { q: 2, r: 1 },
+              candidateTile: bhTile399,
+              rotation: 0,
+            },
+          })
+        );
+        expect(mapExploreHtml).toContain('data-testid="candidate-explore-black-hole"');
+        expect(mapExploreHtml).toContain('Empty Zone Return');
+
+        // Part 3: Bug 190 & 191 - Non-blocking side window for Black Hole return & map selection
+        let declinedShipId = '';
+        let confirmedReturnSectorId = '';
+        const mockDelayedShip = {
+          shipId: 'ship_delayed_1',
+          shipType: 'cruiser' as const,
+          ownerId: game.players[1]!.id,
+          damage: 0,
+          returnRound: 2,
+          blackHoleSectorNumber: 399,
+          blackHoleSectorId: 'sec_399',
+        };
+
+        const sideWindowHtml = renderToString(
+          React.createElement(BlackHoleReturnModal, {
+            player: game.players[1]!,
+            ship: mockDelayedShip,
+            currentRound: 2,
+            legalSectors: [game.sectors[0]!],
+            selectedSectorId: game.sectors[0]!.id,
+            onSelectSectorId: () => {},
+            onReturn: (_sid, secId) => { confirmedReturnSectorId = secId; },
+            onDeclineThisRound: (sid) => { declinedShipId = sid; },
+            onClose: () => {},
+          })
+        );
+        expect(sideWindowHtml).toContain('data-testid="black-hole-return-side-window"');
+        expect(sideWindowHtml).toContain('Not This Round');
+        expect(sideWindowHtml).toContain('Click a highlighted sector on the map');
+
+        // Map highlights destination sectors during Black Hole return mode
+        const mapBHReturnHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            blackHoleReturnMode: {
+              legalSectorIds: [game.sectors[0]!.id],
+              selectedSectorId: game.sectors[0]!.id,
+            },
+          })
+        );
+        expect(mapBHReturnHtml).toContain('stroke="#c7d2fe"');
+
+        // Part 4: Bug 192 - Sector 399 empty zone return rule (includes wormholes facing outer empty space)
+        const outerSector: SectorTile = {
+          id: 'sec_outer_ring3',
+          sectorNumber: 320,
+          name: 'Outer Sector',
+          ring: 3,
+          coord: { q: 0, r: 3 }, // Ring 3
+          rotation: 0,
+          wormholes: [true, false, false, false, false, false], // Edge 0 (NE) faces { q: 0, r: 2 } which might exist, or edge 1 faces { q: 1, r: 2 }
+          planets: [],
+          victoryPoints: 1,
+          ships: [],
+        };
+        // Suppose edge 0 wormhole faces coord { q: 0, r: 2 } which has no sector:
+        const legal399Sectors = getLegalBlackHoleReturnSectors(399, [outerSector]);
+        expect(legal399Sectors).toHaveLength(1);
+        expect(legal399Sectors[0]!.id).toBe('sec_outer_ring3');
+
+        // Part 5: Bug 193 - For The Exiles, orbital from Discovery Tile is marked as a ship
+        const exilesPlayer = game.players.find((p) => p.faction.id === 'the_exiles')!;
+        const exilesHome = game.sectors.find((s) => s.id === `home_sector_${exilesPlayer.id}` || s.sectorNumber === 234)!;
+        game.pendingExilesOrbitalSetup = null;
+
+        game.pendingDiscovery = {
+          sectorId: exilesHome.id,
+          discovery: {
+            id: 'disc_ancient_orbital_test',
+            name: 'Ancient Orbital',
+            description: 'Place an Orbital',
+            category: 'structure',
+            immediateReward: { grantStructure: 'orbital', materials: 2, victoryPoints: 2 },
+          },
+          playerId: exilesPlayer.id,
+        };
+
+        const discRes = executeAction(game, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: exilesPlayer.id,
+          keepForVictoryPoints: false,
+        });
+        expect(discRes.success).toBe(true);
+
+        const updatedExilesHome = discRes.newState.sectors.find((s) => s.id === exilesHome.id)!;
+        const exilesOrbitalShips = updatedExilesHome.ships.filter(
+          (s) => s.ownerId === exilesPlayer.id && s.type === 'orbital'
+        );
+        // Exiles started with 1 orbital, and now gained a 2nd from Discovery Tile: both are ships!
+        expect(exilesOrbitalShips.length).toBeGreaterThanOrEqual(2);
+
+        // Part 6: Bug 194 - All orbitals controlled by The Exiles count as ships no matter who built them
+        // Mechanema builds an orbital in sector 201:
+        const foreignSector: SectorTile = {
+          id: 'sec_foreign_201',
+          sectorNumber: 201,
+          name: 'Foreign Sector',
+          ring: 2,
+          coord: { q: 1, r: 1 },
+          rotation: 0,
+          wormholes: [true, true, true, false, false, false],
+          planets: [{ id: 'orb_foreign_1', resource: 'science', isAdvanced: false, isOrbital: true }],
+          structures: { orbital: true },
+          victoryPoints: 1,
+          ships: [],
+          discOwner: 'player_2',
+        };
+        discRes.newState.sectors.push(foreignSector);
+
+        // At first, foreign sector does not have Exiles orbital ships:
+        syncExilesOrbitalShips(discRes.newState);
+        expect(foreignSector.ships.some((s) => s.type === 'orbital')).toBe(false);
+
+        // Now Exiles conquer/control the sector:
+        foreignSector.discOwner = exilesPlayer.id;
+        syncExilesOrbitalShips(discRes.newState);
+        const conqueredOrbitalShip = foreignSector.ships.find((s) => s.type === 'orbital' && s.ownerId === exilesPlayer.id);
+        expect(conqueredOrbitalShip).toBeDefined();
+        expect(conqueredOrbitalShip?.type).toBe('orbital');
+
+        // Part 7: Bug 195 - During bankruptcy, when abandoning a sector with orbital, player chooses return track (sci or money)
+        const bankExiles = JSON.parse(JSON.stringify(exilesPlayer)) as PlayerState;
+        bankExiles.resources.money = -5; // In deficit!
+        bankExiles.population.money.cubesOnBoard = 5;
+        bankExiles.population.science.cubesOnBoard = 5;
+
+        const bankSector: SectorTile = {
+          id: 'sec_abandon_orbital_test',
+          sectorNumber: 205,
+          name: 'Orbital Sector',
+          ring: 2,
+          coord: { q: 2, r: 0 },
+          rotation: 0,
+          wormholes: [true, true, false, false, false, false],
+          planets: [
+            {
+              id: 'orb_planet_test_1',
+              resource: 'any',
+              isAdvanced: false,
+              isOrbital: true,
+              colonizedBy: bankExiles.id,
+              colonizedResource: 'science',
+            },
+          ],
+          structures: { orbital: true },
+          victoryPoints: 1,
+          ships: [{ id: 'ship_orb_test', ownerId: bankExiles.id, type: 'orbital', damage: 0 }],
+          discOwner: bankExiles.id,
+        };
+
+        const bankGameState: GameState = JSON.parse(JSON.stringify(discRes.newState));
+        bankGameState.players = [bankExiles];
+        bankGameState.sectors = [bankSector];
+        bankGameState.pendingBankruptcy = {
+          playerId: bankExiles.id,
+          deficit: 5,
+        };
+
+        // When abandoning and choosing Money track:
+        const abandonMoneyRes = executeAction(bankGameState, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: bankExiles.id,
+          sectorIds: [bankSector.id],
+          abandonReturnTrack: {
+            orb_planet_test_1: 'money',
+          },
+        });
+        expect(abandonMoneyRes.success).toBe(true);
+        const updatedMoneyPlayer = abandonMoneyRes.newState.players.find((p) => p.id === bankExiles.id)!;
+        // Money cubes incremented from 5 to 6:
+        expect(updatedMoneyPlayer.population.money.cubesOnBoard).toBe(6);
+        // Science cubes remained at 5:
+        expect(updatedMoneyPlayer.population.science.cubesOnBoard).toBe(5);
+
+        // When abandoning and choosing Science track:
+        const bankGameStateSci: GameState = JSON.parse(JSON.stringify(discRes.newState));
+        bankGameStateSci.players = [JSON.parse(JSON.stringify(bankExiles))];
+        const bankSectorSci = JSON.parse(JSON.stringify(bankSector));
+        bankGameStateSci.sectors = [bankSectorSci];
+        bankGameStateSci.pendingBankruptcy = {
+          playerId: bankExiles.id,
+          deficit: 5,
+        };
+
+        const abandonSciRes = executeAction(bankGameStateSci, {
+          type: 'ABANDON_SECTOR_BANKRUPTCY',
+          playerId: bankExiles.id,
+          sectorIds: [bankSectorSci.id],
+          abandonReturnTrack: {
+            orb_planet_test_1: 'science',
+          },
+        });
+        expect(abandonSciRes.success).toBe(true);
+        const updatedSciPlayer = abandonSciRes.newState.players.find((p) => p.id === bankExiles.id)!;
+        // Science cubes incremented from 5 to 6:
+        expect(updatedSciPlayer.population.science.cubesOnBoard).toBe(6);
+        // Money cubes remained at 5:
+        expect(updatedSciPlayer.population.money.cubesOnBoard).toBe(5);
+      });
     });
   });
 });
+
 
 
 

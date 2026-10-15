@@ -158,8 +158,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     }
   };
 
+  const isBlackHoleTile = Boolean(
+    activeTile?.isBlackHole || activeTile?.sectorNumber === 396 || activeTile?.sectorNumber === 399
+  );
+
   const canClaimDisc =
-    (activeTile.ancientsCount === 0 || isDraco) &&
+    !isBlackHoleTile &&
+    (activeTile?.ancientsCount === 0 || isDraco) &&
     player.influenceTrack.discsOnTrack > 0 &&
     claimInfluence;
 
@@ -395,6 +400,14 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                     <text x="0" y="1" textAnchor="middle" fill="#0369a1" fontSize="3.5" fontWeight="bold">P</text>
                   </g>
                 )}
+                {isBlackHoleTile && (
+                  <g data-testid="explore-preview-black-hole" transform="translate(17, 11)">
+                    <circle cx="0" cy="0" r="5" fill="#000000" stroke="#818cf8" strokeWidth="1" />
+                    <circle cx="0" cy="0" r="3.2" fill="#1e1b4b" stroke="#6366f1" strokeWidth="0.8" strokeDasharray="1.5 1" className="animate-spin" />
+                    <circle cx="0" cy="0" r="1.5" fill="#020617" />
+                    <text x="0" y="1" textAnchor="middle" fill="#c7d2fe" fontSize="3" fontWeight="bold">BH</text>
+                  </g>
+                )}
                 <text
                   x="17"
                   y="20"
@@ -419,6 +432,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 {(activeTile.isPulsar || activeTile.sectorNumber === 393 || activeTile.sectorNumber === 394) && (
                   <span className="text-[9px] font-bold text-cyan-400 mt-0.5">
                     ⚡ Pulsar (3 Action Spaces)
+                  </span>
+                )}
+                {isBlackHoleTile && (
+                  <span className="text-[9px] font-bold text-indigo-400 mt-0.5">
+                    🕳️ Black Hole ({activeTile.sectorNumber === 396 ? 'Cygnus X-1: Ring I Return' : 'V616 Mon: Empty Zone Return'})
                   </span>
                 )}
                 {activeTile.isNebula && (
@@ -604,7 +622,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
           </div>
 
           {/* Compact Influence Disc Option */}
-          {activeTile.ancientsCount === 0 || isDraco ? (
+          {isBlackHoleTile ? (
+            <div className="text-[11px] text-indigo-400 font-medium shrink-0 flex items-center gap-1 bg-indigo-950/40 px-2 py-0.5 rounded-lg border border-indigo-900/50">
+              <span>🕳️</span> Spacetime Anomaly (No Influence Disc)
+            </div>
+          ) : activeTile.ancientsCount === 0 || isDraco ? (
             <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer shrink-0 select-none bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors">
               <input
                 type="checkbox"

@@ -119,8 +119,9 @@ export const App: React.FC = () => {
   const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
   const [pulsarSectorIdForModal, setPulsarSectorIdForModal] = useState<string | null>(null);
   const [dismissedIntelTimestamp, setDismissedIntelTimestamp] = useState<number | null>(null);
-  const [activePulsarSectorId, setActivePulsarSectorId] = useState<string | null>(null);
   const [selectedBlackHoleShipForReturn, setSelectedBlackHoleShipForReturn] = useState<BlackHoleDelayedShip | null>(null);
+  const [blackHoleTargetSectorId, setBlackHoleTargetSectorId] = useState<string | null>(null);
+  const [declinedBlackHoleRounds, setDeclinedBlackHoleRounds] = useState<Record<string, number>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
 
@@ -653,6 +654,7 @@ export const App: React.FC = () => {
   const handleConfirmBankruptcyPlan = (plan: {
     trades: { materials: number; science: number };
     abandonedSectorIds: string[];
+    abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>;
   }) => {
     if (!state.pendingBankruptcy) return;
     if (
@@ -711,6 +713,7 @@ export const App: React.FC = () => {
         playerId,
         sectorIds: plan.abandonedSectorIds,
         sectorId: plan.abandonedSectorIds[0],
+        abandonReturnTrack: plan.abandonReturnTrack,
       });
       if (res.success) {
         currentState = res.newState;
@@ -996,6 +999,39 @@ export const App: React.FC = () => {
       )
     );
   }, [isMyTurn, isTurnGated, currentSeat, activePlayer.hasPassed, state.phase, controlledPulsarSectors, state.galacticEvents]);
+
+  // Bug 190 & 191: Auto-prompt for Black Hole ship return on player's first turn of the round
+  useEffect(() => {
+    if (!isMyTurn || isTurnGated || state.phase !== 'ACTION_PHASE') return;
+    const readyShip = state.galacticEvents?.blackHoleDelayedShips?.find(
+      (s) =>
+        s.ownerId === myPlayerId &&
+        state.round >= s.returnRound &&
+        declinedBlackHoleRounds[s.shipId] !== state.round
+    );
+    if (readyShip && !selectedBlackHoleShipForReturn) {
+      setSelectedBlackHoleShipForReturn(readyShip);
+      const legal = getLegalBlackHoleReturnSectors(readyShip.blackHoleSectorNumber, state.sectors);
+      const def = legal.find((sec) => sec.discOwner === myPlayerId)?.id || legal[0]?.id || null;
+      setBlackHoleTargetSectorId(def);
+    }
+  }, [
+    isMyTurn,
+    isTurnGated,
+    state.phase,
+    state.round,
+    state.galacticEvents?.blackHoleDelayedShips,
+    declinedBlackHoleRounds,
+    myPlayerId,
+    selectedBlackHoleShipForReturn,
+    state.sectors,
+  ]);
+
+  const handleDeclineBlackHoleReturn = (shipId: string) => {
+    setDeclinedBlackHoleRounds((prev) => ({ ...prev, [shipId]: state.round }));
+    setSelectedBlackHoleShipForReturn(null);
+    setBlackHoleTargetSectorId(null);
+  };
 
   const handleSelectPulsarAction = (
     targetSlot: 'move' | 'build' | 'upgrade',
@@ -2053,6 +2089,18 @@ export const App: React.FC = () => {
               : null
           }
           stagedAbandonedSectorIds={stagedBankruptcySectors}
+          blackHoleReturnMode={
+            selectedBlackHoleShipForReturn
+              ? {
+                  legalSectorIds: getLegalBlackHoleReturnSectors(
+                    selectedBlackHoleShipForReturn.blackHoleSectorNumber,
+                    state.sectors
+                  ).map((s) => s.id),
+                  selectedSectorId: blackHoleTargetSectorId,
+                  onSelectSector: (secId) => setBlackHoleTargetSectorId(secId),
+                }
+              : null
+          }
         />
 
         {/* Floating Player Dashboard (Top-Left) */}
@@ -2137,12 +2185,20 @@ export const App: React.FC = () => {
             hasPulsarAvailable={hasPulsarAvailable}
             currentRound={state.round}
             delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
-            onOpenBlackHoleReturn={(ship) => setSelectedBlackHoleShipForReturn(ship)}
+            onOpenBlackHoleReturn={(ship) => {
+              setSelectedBlackHoleShipForReturn(ship);
+              const legal = getLegalBlackHoleReturnSectors(ship.blackHoleSectorNumber, state.sectors);
+              const def = legal.find((sec) => sec.discOwner === myPlayerId)?.id || legal[0]?.id || null;
+              setBlackHoleTargetSectorId(def);
+            }}
           />
         )}
 
         {/* Game Event Log Drawer (Bottom-Right) */}
-        <GameLogDrawer logs={state.log} />
+        <GameLogDrawer
+          logs={state.log}
+          viewerPlayerId={currentSeat === 'spectator' ? undefined : myPlayerId}
+        />
 
         {/* Bug Report Corner Button (Bottom-Left) */}
         <BugReportCornerButton onClick={() => setIsBugReportOpen(true)} />
@@ -2604,8 +2660,14 @@ export const App: React.FC = () => {
             selectedBlackHoleShipForReturn.blackHoleSectorNumber,
             state.sectors
           )}
+          selectedSectorId={blackHoleTargetSectorId}
+          onSelectSectorId={(secId) => setBlackHoleTargetSectorId(secId)}
           onReturn={handleReturnBlackHoleShip}
-          onClose={() => setSelectedBlackHoleShipForReturn(null)}
+          onDeclineThisRound={handleDeclineBlackHoleReturn}
+          onClose={() => {
+            setSelectedBlackHoleShipForReturn(null);
+            setBlackHoleTargetSectorId(null);
+          }}
         />
       )}
 

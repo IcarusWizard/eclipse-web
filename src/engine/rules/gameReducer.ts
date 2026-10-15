@@ -2149,6 +2149,61 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
   });
 }
 
+/**
+ * Bug 194: All orbitals controlled by The Exiles count as ships no matter who built them.
+ * Ensures that whenever a sector is controlled by The Exiles (discOwner === exilesPlayer.id),
+ * all orbitals in the sector have a corresponding orbital ship in sector.ships owned by The Exiles.
+ */
+export function syncExilesOrbitalShips(state: GameState): void {
+  // If active combat is underway in this sector, don't resurrect destroyed ships mid-combat!
+  const activeCombatSectorId = state.activeCombat?.sectorId;
+  const exilesPlayer = state.players.find((p) => p.faction.id === 'the_exiles');
+  if (!exilesPlayer) return;
+
+  for (const sector of state.sectors) {
+    if (sector.id === activeCombatSectorId) {
+      continue;
+    }
+    if (sector.discOwner === exilesPlayer.id) {
+      const orbitalPlanets = sector.planets.filter((p) => p.isOrbital);
+      const totalOrbitals = Math.max(
+        sector.structures?.orbital ? 1 : 0,
+        orbitalPlanets.length
+      );
+
+      // Reassign any orbital ships in this sector to exilesPlayer.id
+      for (const ship of sector.ships) {
+        if (ship.type === 'orbital' && ship.ownerId !== exilesPlayer.id) {
+          ship.ownerId = exilesPlayer.id;
+        }
+      }
+
+      // Count Exiles orbital ships in sector.ships
+      const exilesOrbitalShips = sector.ships.filter(
+        (s) => s.ownerId === exilesPlayer.id && s.type === 'orbital'
+      );
+
+      if (exilesOrbitalShips.length < totalOrbitals) {
+        for (let i = exilesOrbitalShips.length; i < totalOrbitals; i++) {
+          sector.ships.push({
+            id: `ship_${exilesPlayer.id}_orbital_${sector.id}_${i}_${Date.now()}`,
+            ownerId: exilesPlayer.id,
+            type: 'orbital',
+            damage: 0,
+          });
+        }
+      }
+    } else {
+      // If Exiles does NOT control the sector, any orbital ships belonging to Exiles are removed
+      if (sector.ships.some((s) => s.ownerId === exilesPlayer.id && s.type === 'orbital')) {
+        sector.ships = sector.ships.filter(
+          (s) => !(s.ownerId === exilesPlayer.id && s.type === 'orbital')
+        );
+      }
+    }
+  }
+}
+
 export function executeAction(state: GameState, action: GameAction): ActionResult {
   const validation = validateAction(state, action);
   if (!validation.valid) {
@@ -2631,6 +2686,14 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             isAdvanced: false,
             isOrbital: true,
           });
+          if (isExiles) {
+            sector.ships.push({
+              id: `ship_${player.id}_orbital_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+              ownerId: player.id,
+              type: 'orbital',
+              damage: 0,
+            });
+          }
           addLog(`🛰️ ${player.name} built an Orbital in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
         } else {
           sector.ships.push({
@@ -3223,6 +3286,16 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
           };
           sector.planets.push(orbitalPlanet);
 
+          // Bug 193: For The Exiles, the orbital from discovery tile must be marked as a ship
+          if (player.faction.id === 'the_exiles') {
+            sector.ships.push({
+              id: `ship_${player.id}_orbital_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+              ownerId: player.id,
+              type: 'orbital',
+              damage: 0,
+            });
+          }
+
           if (canColonize && choice) {
             player.colonyShips.ready -= 1;
             player.population[choice].cubesOnBoard -= 1;
@@ -3475,6 +3548,13 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                     victimOwner.graveyardCubes[res] = (victimOwner.graveyardCubes[res] || 0) + 1;
                     orbitalPlanet.colonizedBy = undefined;
                     orbitalPlanet.colonizedResource = undefined;
+                  }
+                  const oIdx = sector.planets.findIndex((p) => p.isOrbital);
+                  if (oIdx >= 0) {
+                    sector.planets.splice(oIdx, 1);
+                  }
+                  if (!sector.planets.some((p) => p.isOrbital)) {
+                    if (sector.structures) sector.structures.orbital = false;
                   }
                 }
               }
@@ -3822,6 +3902,13 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                   `🏛️ The Exiles Population Cube on the destroyed Orbital in Sector ${sector.sectorNumber} was returned to the ${res.toUpperCase()} graveyard!`,
                   'combat'
                 );
+                const oIdx = sector.planets.findIndex((p) => p.isOrbital);
+                if (oIdx >= 0) {
+                  sector.planets.splice(oIdx, 1);
+                }
+                if (!sector.planets.some((p) => p.isOrbital)) {
+                  if (sector.structures) sector.structures.orbital = false;
+                }
               }
             }
           }
@@ -3955,7 +4042,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       for (const secId of sectorIds) {
         const sector = newState.sectors.find((s) => s.id === secId);
         if (sector && sector.discOwner === curPlayer.id) {
-          const { updatedPlayer, savedUpkeep } = abandonSectorForUpkeep(curPlayer, sector);
+          const { updatedPlayer, savedUpkeep } = abandonSectorForUpkeep(curPlayer, sector, action.abandonReturnTrack);
           curPlayer = updatedPlayer;
           totalSaved += savedUpkeep;
           addLog(
@@ -4217,6 +4304,14 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
             isAdvanced: false,
             isOrbital: true,
           });
+          if (isExiles) {
+            bSec.ships.push({
+              id: `ship_${player.id}_orbital_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+              ownerId: player.id,
+              type: 'orbital',
+              damage: 0,
+            });
+          }
           addLog(`🛰️ ${player.name} activated Pulsar to build an Orbital in Sector ${bSec.sectorNumber} for ${cost} Materials.`, 'action');
         } else {
           bSec.ships.push({
@@ -4436,6 +4531,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
   }
 
+  syncExilesOrbitalShips(newState);
   return { success: true, newState };
 }
 

@@ -6,6 +6,7 @@ interface GameLogDrawerProps {
   logs: GameLogEntry[];
   initialOpen?: boolean;
   initialLastCheckedCount?: number;
+  viewerPlayerId?: string;
 }
 
 type FilterType = 'all' | 'action' | 'combat' | 'economy' | 'system';
@@ -14,6 +15,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
   logs,
   initialOpen = false,
   initialLastCheckedCount,
+  viewerPlayerId,
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(initialOpen);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
@@ -26,13 +28,24 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
     return Math.max(0, logs.length - initialLastCheckedCount);
   });
 
-  const unreadCount = Math.max(0, logs.length - lastCheckedCount);
+  const unreadCount = useMemo(() => {
+    const unreadDiff = Math.max(0, logs.length - lastCheckedCount);
+    if (unreadDiff <= 0) return 0;
+    if (!viewerPlayerId) return unreadDiff;
+    return logs.slice(0, unreadDiff).filter((l) => l.playerId !== viewerPlayerId).length;
+  }, [logs, lastCheckedCount, viewerPlayerId]);
 
   // Set of log IDs that are new since player's last check (state.log has newest entries unshifted to the start)
+  // Bug 188: One's own moves shouldn't be highlighted in the chronicle
   const highlightedLogIds = useMemo(() => {
     if (highlightCount <= 0) return new Set<string>();
-    return new Set(logs.slice(0, highlightCount).map((l) => l.id));
-  }, [logs, highlightCount]);
+    return new Set(
+      logs
+        .slice(0, highlightCount)
+        .filter((l) => !viewerPlayerId || l.playerId !== viewerPlayerId)
+        .map((l) => l.id)
+    );
+  }, [logs, highlightCount, viewerPlayerId]);
 
   const handleToggle = () => {
     if (!isOpen) {

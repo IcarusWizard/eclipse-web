@@ -211,6 +211,7 @@ export interface AbandonSectorBankruptcyAction extends BaseAction {
   type: 'ABANDON_SECTOR_BANKRUPTCY';
   sectorId?: string;
   sectorIds?: string[];
+  abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>; // Map of planetId to chosen return track for returning orbital/wild population cubes (Bug 195)
 }
 
 export interface ConfirmTurnAction extends BaseAction {
