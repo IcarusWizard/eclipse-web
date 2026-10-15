@@ -39,9 +39,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
 
   if (!sector || !winner) return null;
 
+  const isSpectator = currentSeat === 'spectator';
   const canControl =
-    currentSeat === 'all' ||
-    (typeof currentSeat === 'number' && state.players[currentSeat]?.id === winner.id);
+    !isSpectator &&
+    (currentSeat === 'all' ||
+      (typeof currentSeat === 'number' && state.players[currentSeat]?.id === winner.id));
 
   const alreadyControls = sector.discOwner === winner.id;
   const hasDiscsAvailable = winner.influenceTrack.discsOnTrack > 0;
@@ -174,7 +176,9 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
 
           {!canControl && (
             <div className="px-3 py-1.5 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
-              Waiting for {winner.name} to choose control options...
+              {currentSeat === 'spectator'
+                ? `Spectator Mode (Observing Conquest by ${winner.name})`
+                : `Waiting for ${winner.name} to choose control options...`}
             </div>
           )}
         </div>
@@ -585,10 +589,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                   </div>
                   <button
                     onClick={handleDeclineAll}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all cursor-pointer"
+                    disabled={!canControl}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <span>Acknowledge & Continue</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
+                    <span>{canControl ? 'Acknowledge & Continue' : `Waiting for ${winner.name}...`}</span>
+                    {canControl && <ChevronRight className="w-3.5 h-3.5" />}
                   </button>
                 </>
               ) : (

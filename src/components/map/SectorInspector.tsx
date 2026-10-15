@@ -1,6 +1,28 @@
 import React from 'react';
-import { SectorTile, SectorShip } from '../../engine/types/galaxy';
+import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
+
+export const EDGE_NAMES: Record<HexEdge, string> = {
+  0: '0-E',
+  1: '1-SE',
+  2: '2-SW',
+  3: '3-W',
+  4: '4-NW',
+  5: '5-NE',
+};
+
+export function getSubsectorEdgesDescription(subIdx: 1 | 2 | 3, rotation: number = 0): string {
+  const rot = ((rotation % 6) + 6) % 6;
+  const baseEdges: Record<1 | 2 | 3, [HexEdge, HexEdge]> = {
+    1: [4, 5],
+    2: [2, 3],
+    3: [0, 1],
+  };
+  const [eA, eB] = baseEdges[subIdx];
+  const boardEdgeA = ((eA + rot) % 6) as HexEdge;
+  const boardEdgeB = ((eB + rot) % 6) as HexEdge;
+  return `Edges ${EDGE_NAMES[boardEdgeA]} & ${EDGE_NAMES[boardEdgeB]}`;
+}
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import {
   Rocket,
@@ -87,10 +109,23 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
     shipsByOwner.set(ship.ownerId, list);
   }
 
-  const hasHostiles =
-    shipsByOwner.size > 1 ||
-    sector.ancientsCount > 0 ||
-    sector.ships.some((s) => s.ownerId === 'ancient' || s.ownerId === 'gcds' || s.ownerId === 'guardian');
+  const isDraco = activePlayer?.faction?.id === 'descendants_of_draco';
+  const hasHostiles = sector.isNebula
+    ? ([1, 2, 3] as const).some((sub) => {
+        const shipsInSub = sector.ships.filter((s) => (s.subsector || 1) === sub);
+        const playerInSub = shipsInSub.some((s) => s.ownerId === activePlayer.id);
+        const hostilesInSub = shipsInSub.filter((s) => {
+          if (s.ownerId === activePlayer.id) return false;
+          if (s.ownerId === 'ancient') return !isDraco;
+          return true;
+        });
+        return playerInSub && hostilesInSub.length > 0;
+      })
+    : (
+        shipsByOwner.size > 1 ||
+        (!isDraco && (sector.ancientsCount > 0 || sector.ships.some((s) => s.ownerId === 'ancient'))) ||
+        sector.ships.some((s) => s.ownerId === 'gcds' || s.ownerId === 'guardian')
+      );
 
   const hasFriendlyShips = sector.ships.some((s) => s.ownerId === activePlayer.id);
   const isBankruptcyActive = Boolean(
@@ -259,7 +294,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                 <div>
                   <div className="font-bold text-slate-200 flex items-center gap-1.5">
                     <span className="text-emerald-400 font-mono font-bold">Subsector 1</span>
-                    <span className="text-[10px] text-slate-400">(Edges 4-NW & 5-NE)</span>
+                    <span className="text-[10px] text-slate-400">({getSubsectorEdgesDescription(1, sector.rotation)})</span>
                   </div>
                   <div className="text-[10px] text-slate-400 mt-0.5">
                     {sector.subsectors ? (
@@ -282,7 +317,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                 <div>
                   <div className="font-bold text-slate-200 flex items-center gap-1.5">
                     <span className="text-emerald-400 font-mono font-bold">Subsector 2</span>
-                    <span className="text-[10px] text-slate-400">(Edges 2-SW & 3-W)</span>
+                    <span className="text-[10px] text-slate-400">({getSubsectorEdgesDescription(2, sector.rotation)})</span>
                   </div>
                   <div className="text-[10px] text-slate-400 mt-0.5">
                     {sector.subsectors ? (
@@ -305,7 +340,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                 <div>
                   <div className="font-bold text-slate-200 flex items-center gap-1.5">
                     <span className="text-emerald-400 font-mono font-bold">Subsector 3</span>
-                    <span className="text-[10px] text-slate-400">(Edges 0-E & 1-SE)</span>
+                    <span className="text-[10px] text-slate-400">({getSubsectorEdgesDescription(3, sector.rotation)})</span>
                   </div>
                   <div className="text-[10px] text-slate-400 mt-0.5">
                     {sector.ships.some((s) => s.ownerId === 'ancient' && (s.subsector === 3 || !s.subsector)) ? (
@@ -329,7 +364,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
               </div>
               <ul className="text-[10px] text-slate-300 space-y-1 list-disc list-inside leading-snug">
                 <li><strong className="text-slate-100">No Influence Space:</strong> Cannot place an Influence Disc (cannot be claimed by any player; no upkeep cost).</li>
-                <li><strong className="text-slate-100">Subsector Entry:</strong> Incoming ships land in the subsector matching their entry edge: Subsector 1 (Edges 4-NW & 5-NE), Subsector 2 (Edges 2-SW & 3-W), or Subsector 3 (Edges 0-E & 1-SE).</li>
+                <li><strong className="text-slate-100">Subsector Entry:</strong> Incoming ships land in the subsector matching their entry edge: Subsector 1 ({getSubsectorEdgesDescription(1, sector.rotation)}), Subsector 2 ({getSubsectorEdgesDescription(2, sector.rotation)}), or Subsector 3 ({getSubsectorEdgesDescription(3, sector.rotation)}).</li>
                 <li><strong className="text-slate-100">Internal Movement:</strong> Moving between subsectors costs 1 Movement Point (MP) along internal wormholes.</li>
                 <li><strong className="text-slate-100">Localized Pinning:</strong> Pinning is resolved strictly within each subsector. Ships in other subsectors do not pin you.</li>
                 <li><strong className="text-slate-100">Combat & Discoveries:</strong> Combat resolves per subsector during the Combat Phase. Subsector 3 harbors an Ancient ship; Subsectors 1 & 2 each contain 1 Discovery Tile, claimed after all combat in that subsector concludes.</li>

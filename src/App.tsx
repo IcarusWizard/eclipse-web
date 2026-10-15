@@ -118,6 +118,7 @@ export const App: React.FC = () => {
   const [isMinorSpeciesOpen, setIsMinorSpeciesOpen] = useState<boolean>(false);
   const [diplomacyTargetPlayerId, setDiplomacyTargetPlayerId] = useState<string | null>(null);
   const [pulsarSectorIdForModal, setPulsarSectorIdForModal] = useState<string | null>(null);
+  const [activePulsarSectorId, setActivePulsarSectorId] = useState<string | null>(null);
   const [dismissedIntelTimestamp, setDismissedIntelTimestamp] = useState<number | null>(null);
   const [selectedBlackHoleShipForReturn, setSelectedBlackHoleShipForReturn] = useState<BlackHoleDelayedShip | null>(null);
   const [blackHoleTargetSectorId, setBlackHoleTargetSectorId] = useState<string | null>(null);
@@ -285,11 +286,23 @@ export const App: React.FC = () => {
     }
   }, [state.players.length, state.activePlayerIndex, selectedViewIndex]);
 
+  const isSpectator = currentSeat === 'spectator';
+
+  const canActForPlayer = (targetPlayerId?: string): boolean => {
+    if (isSpectator) return false;
+    if (currentSeat === 'all') return true;
+    if (typeof currentSeat === 'number') {
+      if (!targetPlayerId) return state.players[currentSeat]?.id === activePlayer.id;
+      return state.players[currentSeat]?.id === targetPlayerId;
+    }
+    return false;
+  };
+
   const isTurnGated =
-    currentSeat !== 'all' &&
-    currentSeat !== 'spectator' &&
-    typeof currentSeat === 'number' &&
-    state.activePlayerIndex !== currentSeat;
+    isSpectator ||
+    (currentSeat !== 'all' &&
+      typeof currentSeat === 'number' &&
+      state.activePlayerIndex !== currentSeat);
 
   const hideOpponentReputation =
     currentSeat !== 'all' &&
@@ -418,6 +431,7 @@ export const App: React.FC = () => {
     registerTableMember(tableId, {
       userId: user.id,
       name: user.name,
+      username: user.username || user.name,
       role: user.role,
       seat: effectiveSeat,
       joinedAt: Date.now(),
@@ -531,6 +545,10 @@ export const App: React.FC = () => {
 
   const handleAllocateArtifactReward = (resources: { money: number; science: number; materials: number }) => {
     if (!state.pendingArtifactReward) return;
+    if (!canActForPlayer(state.pendingArtifactReward.playerId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const result = executeAction(state, {
       type: 'ALLOCATE_ARTIFACT_REWARD',
       playerId: state.pendingArtifactReward.playerId,
@@ -546,12 +564,7 @@ export const App: React.FC = () => {
 
   const handleEmergencyTradeBankruptcy = (from: 'materials' | 'science') => {
     if (!state.pendingBankruptcy) return;
-    if (
-      currentSeat !== 'all' &&
-      currentSeat !== 'spectator' &&
-      typeof currentSeat === 'number' &&
-      state.players[currentSeat]?.id !== state.pendingBankruptcy.playerId
-    ) {
+    if (!canActForPlayer(state.pendingBankruptcy.playerId)) {
       showToast('It is not your turn to resolve treasury deficit!');
       return;
     }
@@ -582,12 +595,7 @@ export const App: React.FC = () => {
 
   const handleAbandonSectorBankruptcy = (sectorId: string) => {
     if (!state.pendingBankruptcy) return;
-    if (
-      currentSeat !== 'all' &&
-      currentSeat !== 'spectator' &&
-      typeof currentSeat === 'number' &&
-      state.players[currentSeat]?.id !== state.pendingBankruptcy.playerId
-    ) {
+    if (!canActForPlayer(state.pendingBankruptcy.playerId)) {
       showToast('It is not your turn to resolve treasury deficit!');
       return;
     }
@@ -618,12 +626,7 @@ export const App: React.FC = () => {
   }, [state.pendingBankruptcy]);
 
   const handleStageBankruptcyTrade = (from: 'materials' | 'science', delta: 1 | -1) => {
-    if (
-      currentSeat !== 'all' &&
-      currentSeat !== 'spectator' &&
-      typeof currentSeat === 'number' &&
-      state.players[currentSeat]?.id !== state.pendingBankruptcy?.playerId
-    ) {
+    if (!canActForPlayer(state.pendingBankruptcy?.playerId)) {
       return;
     }
     setStagedBankruptcyTrades((prev) => ({
@@ -633,12 +636,7 @@ export const App: React.FC = () => {
   };
 
   const handleToggleAbandonSectorBankruptcy = (sectorId: string) => {
-    if (
-      currentSeat !== 'all' &&
-      currentSeat !== 'spectator' &&
-      typeof currentSeat === 'number' &&
-      state.players[currentSeat]?.id !== state.pendingBankruptcy?.playerId
-    ) {
+    if (!canActForPlayer(state.pendingBankruptcy?.playerId)) {
       return;
     }
     setStagedBankruptcySectors((prev) =>
@@ -647,6 +645,9 @@ export const App: React.FC = () => {
   };
 
   const handleResetBankruptcyPlan = () => {
+    if (!canActForPlayer(state.pendingBankruptcy?.playerId)) {
+      return;
+    }
     setStagedBankruptcyTrades({ materials: 0, science: 0 });
     setStagedBankruptcySectors([]);
   };
@@ -657,12 +658,7 @@ export const App: React.FC = () => {
     abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>;
   }) => {
     if (!state.pendingBankruptcy) return;
-    if (
-      currentSeat !== 'all' &&
-      currentSeat !== 'spectator' &&
-      typeof currentSeat === 'number' &&
-      state.players[currentSeat]?.id !== state.pendingBankruptcy.playerId
-    ) {
+    if (!canActForPlayer(state.pendingBankruptcy.playerId)) {
       showToast('It is not your turn to resolve treasury deficit!');
       return;
     }
@@ -753,12 +749,7 @@ export const App: React.FC = () => {
     const currentDrafterId = draft.draftOrder[draft.currentDraftIndex];
     if (!currentDrafterId) return;
 
-    if (
-      currentSeat !== 'all' &&
-      currentSeat !== 'spectator' &&
-      typeof currentSeat === 'number' &&
-      state.players[currentSeat]?.id !== currentDrafterId
-    ) {
+    if (!canActForPlayer(currentDrafterId)) {
       showToast('It is not your turn to draft a faction!');
       return;
     }
@@ -778,6 +769,10 @@ export const App: React.FC = () => {
 
   // Explore flow: User clicks an explorable hex on map
   const handleExploreTarget = (fromCoord: HexCoord, targetCoord: HexCoord) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const ring = getRingFromCoord(targetCoord);
     const deck =
       ring === 1
@@ -809,6 +804,10 @@ export const App: React.FC = () => {
     chosenTileIndex?: number
   ) => {
     if (!pendingExploreCoords) return;
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const isSecond = !!(state.pendingExploreActivations && state.pendingExploreActivations > 0);
     const res = executeAction(state, {
       type: 'EXPLORE',
@@ -836,6 +835,10 @@ export const App: React.FC = () => {
 
   const handleDiscardExploreTile = (chosenTileIndex?: number) => {
     if (!pendingExploreCoords) return;
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const isSecond = !!(state.pendingExploreActivations && state.pendingExploreActivations > 0);
     const res = executeAction(state, {
       type: 'EXPLORE',
@@ -861,6 +864,10 @@ export const App: React.FC = () => {
   };
 
   const handleFinishExplore = () => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'FINISH_EXPLORE',
       playerId: activePlayer.id,
@@ -878,6 +885,10 @@ export const App: React.FC = () => {
   };
 
   const handleToggleExplore = () => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     if (state.pendingExploreActivations && state.pendingExploreActivations > 0) {
       handleFinishExplore();
       return;
@@ -892,6 +903,10 @@ export const App: React.FC = () => {
     warpPortalSectorId?: string,
     shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string }
   ) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     let researches: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[];
     if (Array.isArray(researchesOrId)) {
       researches = researchesOrId;
@@ -917,6 +932,10 @@ export const App: React.FC = () => {
 
   // Magellan Colony Ship Conversion
   const handleConvertColonyShip = (resource: 'money' | 'science' | 'materials', count?: number) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'CONVERT_COLONY_SHIP',
       playerId: activePlayer.id,
@@ -936,6 +955,10 @@ export const App: React.FC = () => {
     if (!state.activeCombat) return;
     const targetRoll = state.activeCombat.lastRolls?.[rollIndex];
     if (!targetRoll) return;
+    if (!canActForPlayer(targetRoll.shipOwner)) {
+      showToast('Spectators cannot reroll combat dice.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'REROLL_COMBAT_DIE',
       playerId: targetRoll.shipOwner,
@@ -953,6 +976,10 @@ export const App: React.FC = () => {
     upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
     pulsarSectorId?: string
   ) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot modify ship blueprints.');
+      return;
+    }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const res = executeAction(state, {
       type: 'UPGRADE',
@@ -978,8 +1005,8 @@ export const App: React.FC = () => {
   }, [state.sectors, activePlayer.id]);
 
   // --- PULSAR ANOMALY ACTIVATION (Galactic Events) ---
-  const myPlayerId = typeof currentSeat === 'number' ? state.players[currentSeat]?.id : activePlayer.id;
-  const isMyTurn = currentSeat === 'all' || (typeof currentSeat === 'number' && state.players[currentSeat]?.id === activePlayer.id);
+  const myPlayerId = isSpectator ? undefined : (typeof currentSeat === 'number' ? state.players[currentSeat]?.id : activePlayer.id);
+  const isMyTurn = !isSpectator && (currentSeat === 'all' || (typeof currentSeat === 'number' && state.players[currentSeat]?.id === activePlayer.id));
 
   const controlledPulsarSectors = useMemo(() => {
     return state.sectors.filter(
@@ -991,14 +1018,13 @@ export const App: React.FC = () => {
     return (
       isMyTurn &&
       !isTurnGated &&
-      currentSeat !== 'spectator' &&
       !activePlayer.hasPassed &&
       state.phase === 'ACTION_PHASE' &&
       controlledPulsarSectors.some(
         (s) => !state.galacticEvents?.pulsars?.[s.id]?.activatedThisRound
       )
     );
-  }, [isMyTurn, isTurnGated, currentSeat, activePlayer.hasPassed, state.phase, controlledPulsarSectors, state.galacticEvents]);
+  }, [isMyTurn, isTurnGated, activePlayer.hasPassed, state.phase, controlledPulsarSectors, state.galacticEvents]);
 
   // Bug 190 & 191: Auto-prompt for Black Hole ship return on player's first turn of the round
   useEffect(() => {
@@ -1028,6 +1054,11 @@ export const App: React.FC = () => {
   ]);
 
   const handleDeclineBlackHoleReturn = (shipId: string) => {
+    const ownerId = selectedBlackHoleShipForReturn?.ownerId || activePlayer.id;
+    if (!canActForPlayer(ownerId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     setDeclinedBlackHoleRounds((prev) => ({ ...prev, [shipId]: state.round }));
     setSelectedBlackHoleShipForReturn(null);
     setBlackHoleTargetSectorId(null);
@@ -1038,7 +1069,7 @@ export const App: React.FC = () => {
     sectorId: string
   ) => {
     const pSec = state.sectors.find((s) => s.id === sectorId);
-    if (!pSec || pSec.discOwner !== myPlayerId || !isMyTurn || isTurnGated) {
+    if (!pSec || pSec.discOwner !== myPlayerId || !isMyTurn || isTurnGated || !canActForPlayer(pSec.discOwner)) {
       showToast('Only the commander controlling this Pulsar sector can perform the Pulsar action.');
       setPulsarSectorIdForModal(null);
       return;
@@ -1211,7 +1242,7 @@ export const App: React.FC = () => {
       if (currentSimSector.isNebula && currentSimSubsector) {
         const exitEdge = getEdgeBetween(currentSimSector.coord, s.coord);
         if (exitEdge !== null) {
-          const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge);
+          const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge, currentSimSector.rotation || 0);
           if (allowedSub !== currentSimSubsector) {
             return false;
           }
@@ -1253,11 +1284,11 @@ export const App: React.FC = () => {
     if (!destSec) return;
 
     let finalTargetSubsector = targetSubsector;
-    if (!finalTargetSubsector && destSec.isNebula && currentSimSector.id !== destSec.id) {
+    if (destSec.isNebula && currentSimSector.id !== destSec.id) {
       const edgeFromTo = getEdgeBetween(currentSimSector.coord, destSec.coord);
       if (edgeFromTo !== null) {
         const entryEdge = (edgeFromTo + 3) % 6;
-        finalTargetSubsector = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge);
+        finalTargetSubsector = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, destSec.rotation || 0);
       }
     }
 
@@ -1268,6 +1299,7 @@ export const App: React.FC = () => {
       shipType: currentMoveShip.type,
       fromSectorId: currentSimSector.id,
       fromSectorNumber: currentSimSector.sectorNumber,
+      fromSubsector: currentSimSector.isNebula ? currentSimSubsector : undefined,
       toSectorId: destSec.id,
       toSectorNumber: destSec.sectorNumber,
       activationIndex: activeActivationIndex,
@@ -1364,6 +1396,10 @@ export const App: React.FC = () => {
     items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith' }[],
     pulsarSectorId?: string
   ) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const res = executeAction(state, {
       type: 'BUILD',
@@ -1383,6 +1419,10 @@ export const App: React.FC = () => {
 
   // Move flow
   const handleMove = (moves: MoveStepPayload[], pulsarSectorId?: string) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const res = executeAction(state, {
       type: 'MOVE',
@@ -1406,6 +1446,10 @@ export const App: React.FC = () => {
     planetIndex: number,
     chosenResource?: 'money' | 'science' | 'material'
   ) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'COLONIZE',
       playerId: activePlayer.id,
@@ -1426,6 +1470,10 @@ export const App: React.FC = () => {
     amount: number,
     toResource: 'money' | 'science' | 'material' = 'money'
   ) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot trade resources.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'TRADE',
       playerId: activePlayer.id,
@@ -1444,6 +1492,10 @@ export const App: React.FC = () => {
 
   // Pass turn
   const handlePass = () => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     if (state.pendingExploreActivations && state.pendingExploreActivations > 0) {
       showToast('Please finish or cancel exploration before passing.');
       return;
@@ -1462,11 +1514,19 @@ export const App: React.FC = () => {
 
   // Ambassador exchange
   const handleExchangeAmbassador = (targetPlayerId: string) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     setDiplomacyTargetPlayerId(targetPlayerId);
   };
 
   const handleProposeDiplomacy = (initiatorCube: PopulationResourceType) => {
     if (!diplomacyTargetPlayerId) return;
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const targetPlayer = state.players.find((p) => p.id === diplomacyTargetPlayerId);
     const res = executeAction(state, {
       type: 'PROPOSE_DIPLOMACY',
@@ -1486,6 +1546,10 @@ export const App: React.FC = () => {
   const handleRespondDiplomacy = (accept: boolean, targetCube?: PopulationResourceType) => {
     if (!state.pendingDiplomacyProposal) return;
     const targetId = state.pendingDiplomacyProposal.targetId;
+    if (!canActForPlayer(targetId)) {
+      showToast('Spectators cannot respond to diplomacy proposals.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'RESPOND_DIPLOMACY',
       playerId: targetId,
@@ -1505,6 +1569,10 @@ export const App: React.FC = () => {
   };
 
   const handleBetrayAlliance = (targetPlayerId: string) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const targetPlayer = state.players.find((p) => p.id === targetPlayerId);
     if (!window.confirm(`Are you sure you want to betray your alliance with ${targetPlayer?.name || targetPlayerId}? You will forfeit the +1 VP ambassador, reclaim your population cube, and take the Traitor Tile (-2 VP).`)) {
       return;
@@ -1527,6 +1595,10 @@ export const App: React.FC = () => {
     targetCube: PopulationResourceType
   ) => {
     if (!diplomacyTargetPlayerId) return;
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const targetPlayer = state.players.find((p) => p.id === diplomacyTargetPlayerId);
     const res = executeAction(state, {
       type: 'DIPLOMACY_EXCHANGE',
@@ -1550,6 +1622,10 @@ export const App: React.FC = () => {
   // Turn action confirm and revert handlers
   const handleConfirmTurnAction = () => {
     if (!state.pendingActionConfirmation) return;
+    if (!canActForPlayer(state.pendingActionConfirmation.playerId)) {
+      showToast('Spectators cannot confirm actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'CONFIRM_TURN_ACTION',
       playerId: state.pendingActionConfirmation.playerId,
@@ -1567,6 +1643,10 @@ export const App: React.FC = () => {
   const handleRevertTurnAction = () => {
     if (!state.pendingActionConfirmation) return;
     const conf = state.pendingActionConfirmation;
+    if (!canActForPlayer(conf.playerId)) {
+      showToast('Spectators cannot revert actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'REVERT_TURN_ACTION',
       playerId: conf.playerId,
@@ -1596,12 +1676,7 @@ export const App: React.FC = () => {
     chosenResource?: 'money' | 'science' | 'material'
   ) => {
     if (!state.pendingDiscovery) return;
-    if (
-      currentSeat !== 'all' &&
-      currentSeat !== 'spectator' &&
-      typeof currentSeat === 'number' &&
-      state.players[currentSeat]?.id !== state.pendingDiscovery.playerId
-    ) {
+    if (!canActForPlayer(state.pendingDiscovery.playerId)) {
       showToast('It is not your turn to resolve this Discovery Tile!');
       return;
     }
@@ -1639,6 +1714,10 @@ export const App: React.FC = () => {
     abandonSectors: string[],
     abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>
   ) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'INFLUENCE',
       playerId: activePlayer.id,
@@ -1657,6 +1736,10 @@ export const App: React.FC = () => {
   };
 
   const handleClaimInfluence = (sectorId: string) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'INFLUENCE',
       playerId: activePlayer.id,
@@ -1671,6 +1754,10 @@ export const App: React.FC = () => {
   };
 
   const handleAbandonInfluence = (sectorId: string) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     if (state.pendingBankruptcy && state.pendingBankruptcy.playerId === activePlayer.id) {
       handleAbandonSectorBankruptcy(sectorId);
       return;
@@ -1697,6 +1784,10 @@ export const App: React.FC = () => {
     autoAssign?: boolean,
     damageAssignments?: CombatDamageAssignment[]
   ) => {
+    if (isSpectator) {
+      showToast('Spectators cannot command combat.');
+      return;
+    }
     if (!state.activeCombat) return;
 
     // Determine commanding player ID
@@ -1740,6 +1831,11 @@ export const App: React.FC = () => {
         : activePlayer.id;
     }
 
+    if (commandingPlayerId && !canActForPlayer(commandingPlayerId)) {
+      showToast('It is not your turn to command in combat.');
+      return;
+    }
+
     const res = executeAction(state, {
       type: 'RESOLVE_COMBAT_STEP',
       playerId: commandingPlayerId || activePlayer.id,
@@ -1764,6 +1860,10 @@ export const App: React.FC = () => {
   // Claim Reputation Tile
   const handleClaimReputationTile = (selectedTileIndex?: number, replaceTrackIndex?: number) => {
     if (!state.pendingReputationDraw) return;
+    if (!canActForPlayer(state.pendingReputationDraw.playerId)) {
+      showToast('Spectators cannot claim reputation tiles.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'CLAIM_REPUTATION_TILE',
       playerId: state.pendingReputationDraw.playerId,
@@ -1780,6 +1880,10 @@ export const App: React.FC = () => {
   // Exiles Starting Orbital Population Cube Selection
   const handleChooseExilesOrbitalCube = (resource: 'money' | 'science') => {
     if (!state.pendingExilesOrbitalSetup) return;
+    if (!canActForPlayer(state.pendingExilesOrbitalSetup.playerId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'CHOOSE_EXILES_ORBITAL_CUBE',
       playerId: state.pendingExilesOrbitalSetup.playerId,
@@ -1795,6 +1899,10 @@ export const App: React.FC = () => {
 
   // Auto-Resolve Combat
   const handleAutoResolveCombat = () => {
+    if (isSpectator) {
+      showToast('Spectators cannot auto-resolve combat.');
+      return;
+    }
     if (!state.activeCombat) return;
     let currentState = state;
     let iterations = 0;
@@ -1854,12 +1962,7 @@ export const App: React.FC = () => {
     planetResourceChoices?: Record<number, 'money' | 'science' | 'material'>
   ) => {
     if (!state.pendingCombatConquest) return;
-    if (
-      currentSeat !== 'all' &&
-      currentSeat !== 'spectator' &&
-      typeof currentSeat === 'number' &&
-      state.players[currentSeat]?.id !== state.pendingCombatConquest.winnerPlayerId
-    ) {
+    if (!canActForPlayer(state.pendingCombatConquest.winnerPlayerId)) {
       showToast('It is not your turn to resolve combat conquest!');
       return;
     }
@@ -1892,6 +1995,10 @@ export const App: React.FC = () => {
     speciesId: MinorSpeciesId,
     populationTrack?: 'money' | 'science' | 'material'
   ) => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'CLAIM_MINOR_SPECIES',
       playerId: activePlayer.id,
@@ -1908,6 +2015,10 @@ export const App: React.FC = () => {
 
   const handleReturnBlackHoleShip = (shipId: string, targetSectorId: string) => {
     const ownerId = selectedBlackHoleShipForReturn?.ownerId || activePlayer.id;
+    if (!canActForPlayer(ownerId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
     const res = executeAction(state, {
       type: 'RETURN_BLACK_HOLE_SHIP',
       playerId: ownerId,
@@ -2020,12 +2131,14 @@ export const App: React.FC = () => {
             <span className="font-bold text-white">Planta Exploration:</span>
             <span>1 Explore Activation remaining! Select an adjacent hex on the map to explore, or finish exploration.</span>
           </div>
-          <button
-            onClick={handleFinishExplore}
-            className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-emerald-800 text-emerald-300 hover:text-white font-bold border border-emerald-700 transition-colors shadow"
-          >
-            Finish Explore
-          </button>
+          {!isTurnGated && (
+            <button
+              onClick={handleFinishExplore}
+              className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-emerald-800 text-emerald-300 hover:text-white font-bold border border-emerald-700 transition-colors shadow"
+            >
+              Finish Explore
+            </button>
+          )}
         </div>
       )}
 
@@ -2038,7 +2151,7 @@ export const App: React.FC = () => {
           onSelectSector={(s) => setSelectedSector(s)}
           isExploreMode={isExploreMode}
           onExploreTarget={handleExploreTarget}
-          onColonizePlanet={handleColonizePlanet}
+          onColonizePlanet={!isTurnGated ? handleColonizePlanet : undefined}
           pendingExplore={
             pendingExploreCoords && activeCandidateTile
               ? {
@@ -2080,6 +2193,7 @@ export const App: React.FC = () => {
                   ),
                   selectedShipId: selectedMoveShipId,
                   currentSimSectorId: currentSimSector?.id || null,
+                  currentSimSubsector: currentSimSector?.isNebula ? currentSimSubsector : undefined,
                   connectedDestinationSectorIds: connectedDestinations.map((s) => s.id),
                   plannedMoves,
                   onSelectShipSector: handleSelectMoveShipSector,
@@ -2113,13 +2227,13 @@ export const App: React.FC = () => {
             onOpenTechMarket={() => setIsTechMarketOpen(true)}
             onOpenTrade={() => setIsTradeOpen(true)}
             onOpenPhysicalBoard={() => setIsPhysicalBoardOpen(true)}
-            onConvertColonyShip={handleConvertColonyShip}
+            onConvertColonyShip={!isTurnGated ? handleConvertColonyShip : undefined}
             hideOpponentReputation={hideOpponentReputation}
             allPlayers={state.players}
             traitorPlayerId={state.traitorPlayerId}
             gamePhase={state.phase}
-            onInitiateDiplomacy={handleExchangeAmbassador}
-            onBetrayAlliance={handleBetrayAlliance}
+            onInitiateDiplomacy={!isTurnGated ? handleExchangeAmbassador : undefined}
+            onBetrayAlliance={!isTurnGated ? handleBetrayAlliance : undefined}
             delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
           />
         </div>
@@ -2132,14 +2246,14 @@ export const App: React.FC = () => {
               players={state.players}
               activePlayer={activePlayer}
               neutralShipBlueprints={state.neutralShipBlueprints}
-              onColonizePlanet={handleColonizePlanet}
-              onAbandonInfluence={handleAbandonInfluence}
+              onColonizePlanet={!isTurnGated ? handleColonizePlanet : undefined}
+              onAbandonInfluence={!isTurnGated ? handleAbandonInfluence : undefined}
               onClose={() => setSelectedSector(null)}
               pendingBankruptcy={state.pendingBankruptcy}
               stagedAbandonedSectorIds={stagedBankruptcySectors}
-              onToggleAbandonSector={handleToggleAbandonSectorBankruptcy}
+              onToggleAbandonSector={!isTurnGated ? handleToggleAbandonSectorBankruptcy : undefined}
               onActivatePulsar={
-                isMyTurn && !isTurnGated && currentSeat !== 'spectator' && (state.sectors.find((s) => s.id === selectedSector.id) || selectedSector).discOwner === myPlayerId
+                isMyTurn && !isTurnGated && (state.sectors.find((s) => s.id === selectedSector.id) || selectedSector).discOwner === myPlayerId
                   ? (secId) => setPulsarSectorIdForModal(secId)
                   : undefined
               }
@@ -2150,7 +2264,7 @@ export const App: React.FC = () => {
               }
               currentRound={state.round}
               blackHoleDelayedShips={state.galacticEvents?.blackHoleDelayedShips}
-              onReturnBlackHoleShip={(ship) => setSelectedBlackHoleShipForReturn(ship)}
+              onReturnBlackHoleShip={!isTurnGated ? (ship) => setSelectedBlackHoleShipForReturn(ship) : undefined}
             />
           </div>
         )}
@@ -2168,6 +2282,7 @@ export const App: React.FC = () => {
             onOpenInfluence={() => setIsInfluenceOpen(true)}
             onPass={handlePass}
             isTurnGated={isTurnGated}
+            isSpectator={isSpectator}
             pendingConfirmation={state.pendingActionConfirmation}
             pendingExploreActivations={state.pendingExploreActivations}
             onConfirmAction={handleConfirmTurnAction}
@@ -2240,6 +2355,7 @@ export const App: React.FC = () => {
           player={viewedPlayer}
           activeExpansions={state.expansions}
           pulsarSectorId={activePulsarSectorId ?? undefined}
+          readOnly={!canActForPlayer(viewedPlayer.id) || isTurnGated}
           onSaveBlueprint={handleSaveBlueprint}
           onClose={() => {
             setIsBlueprintOpen(false);
@@ -2311,6 +2427,7 @@ export const App: React.FC = () => {
       {isTradeOpen && (
         <TradeModal
           player={viewedPlayer}
+          readOnly={!canActForPlayer(viewedPlayer.id) || isTurnGated}
           onTrade={handleTrade}
           onClose={() => setIsTradeOpen(false)}
         />
@@ -2337,9 +2454,7 @@ export const App: React.FC = () => {
       )}
 
       {state.pendingReputationDraw && (
-        currentSeat === 'all' ||
-        (typeof currentSeat === 'number' &&
-          state.players[currentSeat]?.id === state.pendingReputationDraw.playerId) ? (
+        canActForPlayer(state.pendingReputationDraw.playerId) ? (
           <ReputationTileModal
             state={state}
             pendingDraw={state.pendingReputationDraw}
@@ -2360,9 +2475,7 @@ export const App: React.FC = () => {
       )}
 
       {state.pendingExilesOrbitalSetup && (
-        currentSeat === 'all' ||
-        (typeof currentSeat === 'number' &&
-          state.players[currentSeat]?.id === state.pendingExilesOrbitalSetup.playerId) ? (
+        canActForPlayer(state.pendingExilesOrbitalSetup.playerId) ? (
           <ExilesOrbitalSetupModal
             player={
               state.players.find((p) => p.id === state.pendingExilesOrbitalSetup!.playerId) ||
@@ -2395,7 +2508,7 @@ export const App: React.FC = () => {
       {pulsarSectorIdForModal && (
         (() => {
           const pSec = state.sectors.find((s) => s.id === pulsarSectorIdForModal);
-          if (!pSec || pSec.discOwner !== myPlayerId || !isMyTurn || isTurnGated || currentSeat === 'spectator') return null;
+          if (!pSec || pSec.discOwner !== myPlayerId || !isMyTurn || isTurnGated) return null;
           return (
             <PulsarModal
               sector={pSec}
@@ -2416,9 +2529,7 @@ export const App: React.FC = () => {
       )}
 
       {!state.pendingReputationDraw && !state.pendingCombatConquest && state.pendingDiscovery && (
-        currentSeat === 'all' ||
-        (typeof currentSeat === 'number' &&
-          state.players[currentSeat]?.id === state.pendingDiscovery.playerId) ? (
+        canActForPlayer(state.pendingDiscovery.playerId) ? (
           <DiscoveryChoiceModal
             discovery={state.pendingDiscovery.discovery}
             player={
@@ -2444,9 +2555,7 @@ export const App: React.FC = () => {
       )}
 
       {state.pendingArtifactReward && (
-        currentSeat === 'all' ||
-        (typeof currentSeat === 'number' &&
-          state.players[currentSeat]?.id === state.pendingArtifactReward.playerId) ? (
+        canActForPlayer(state.pendingArtifactReward.playerId) ? (
           <ArtifactKeyModal
             player={
               state.players.find((p) => p.id === state.pendingArtifactReward!.playerId) ||
@@ -2471,9 +2580,7 @@ export const App: React.FC = () => {
       )}
 
       {state.pendingBankruptcy && (
-        currentSeat === 'all' ||
-        (typeof currentSeat === 'number' &&
-          state.players[currentSeat]?.id === state.pendingBankruptcy.playerId) ? (
+        canActForPlayer(state.pendingBankruptcy.playerId) ? (
           <BankruptcyModal
             player={
               state.players.find((p) => p.id === state.pendingBankruptcy!.playerId) ||
@@ -2537,9 +2644,9 @@ export const App: React.FC = () => {
           }}
           hideOpponentReputation={hideOpponentReputation}
           traitorPlayerId={state.traitorPlayerId}
-          onExchangeAmbassador={handleExchangeAmbassador}
-          onBetrayAlliance={handleBetrayAlliance}
-          onConvertColonyShip={handleConvertColonyShip}
+          onExchangeAmbassador={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleExchangeAmbassador : undefined}
+          onBetrayAlliance={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleBetrayAlliance : undefined}
+          onConvertColonyShip={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleConvertColonyShip : undefined}
         />
       )}
 
@@ -2601,6 +2708,7 @@ export const App: React.FC = () => {
         <MinorSpeciesModal
           state={state}
           activePlayer={activePlayer}
+          readOnly={!canActForPlayer(activePlayer.id) || isTurnGated}
           onClaimMinorSpecies={handleClaimMinorSpecies}
           onClose={() => setIsMinorSpeciesOpen(false)}
         />
@@ -2627,10 +2735,7 @@ export const App: React.FC = () => {
 
       {/* Diplomacy Modal: Target player responding to incoming proposal (Bug 91) */}
       {state.pendingDiplomacyProposal &&
-        (currentSeat === 'all' ||
-          (typeof currentSeat === 'number' &&
-            state.players[currentSeat]?.id === state.pendingDiplomacyProposal.targetId) ||
-          viewedPlayer.id === state.pendingDiplomacyProposal.targetId) && (
+        (canActForPlayer(state.pendingDiplomacyProposal.targetId) ? (
           <DiplomacyModal
             isOpen={true}
             initiator={
@@ -2646,9 +2751,19 @@ export const App: React.FC = () => {
             onClose={() => handleRespondDiplomacy(false)}
             onRespond={handleRespondDiplomacy}
           />
-        )}
+        ) : (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-pulse">
+            <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
+            <div>
+              <div className="font-bold text-indigo-300">Diplomatic Envoy Proposal</div>
+              <div className="text-xs text-slate-300">
+                Waiting for <strong className="text-white">{state.players.find((p) => p.id === state.pendingDiplomacyProposal!.targetId)?.name || 'Target Player'}</strong> to respond to proposal from <strong className="text-white">{state.players.find((p) => p.id === state.pendingDiplomacyProposal!.initiatorId)?.name || 'Initiator'}</strong>...
+              </div>
+            </div>
+          </div>
+        ))}
 
-      {selectedBlackHoleShipForReturn && (
+      {selectedBlackHoleShipForReturn && canActForPlayer(selectedBlackHoleShipForReturn.ownerId) && (
         <BlackHoleReturnModal
           player={
             state.players.find((p) => p.id === selectedBlackHoleShipForReturn.ownerId) ||

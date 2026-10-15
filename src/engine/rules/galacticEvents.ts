@@ -419,3 +419,26 @@ export function getNebulaSubsectorForOuterEdge(edge: HexEdge, sectorRotation: nu
   if (effectiveEdge === 2 || effectiveEdge === 3) return 2;
   return 3;
 }
+
+/**
+ * Resolves exact world pixel coordinates of a subsector center within a Nebula tile.
+ * Used for aligning interactive badges, combat indicators, and fleet movement flight vectors.
+ */
+export function getSubsectorCenterPixel(
+  center: { x: number; y: number },
+  subsector: 1 | 2 | 3,
+  rotation: number = 0
+): { x: number; y: number } {
+  const localOffsets: Record<1 | 2 | 3, { x: number; y: number }> = {
+    1: { x: 0, y: -28 },
+    2: { x: -25, y: 18 },
+    3: { x: 25, y: 18 },
+  };
+  const offset = localOffsets[subsector] || { x: 0, y: 0 };
+  const rad = ((rotation * 60) * Math.PI) / 180;
+  return {
+    x: center.x + (offset.x * Math.cos(rad) - offset.y * Math.sin(rad)),
+    y: center.y + (offset.x * Math.sin(rad) + offset.y * Math.cos(rad)),
+  };
+}
+

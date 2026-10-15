@@ -36,6 +36,7 @@ interface ActionBarProps {
   onOpenInfluence: () => void;
   onPass: () => void;
   isTurnGated?: boolean;
+  isSpectator?: boolean;
   pendingConfirmation?: PendingActionConfirmation | null;
   pendingExploreActivations?: number;
   onConfirmAction?: () => void;
@@ -60,6 +61,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onOpenInfluence,
   onPass,
   isTurnGated = false,
+  isSpectator = false,
   pendingConfirmation,
   pendingExploreActivations,
   onConfirmAction,
@@ -72,11 +74,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   delayedBlackHoleShips = [],
   onOpenBlackHoleReturn,
 }) => {
-  const readyBlackHoleShip = (delayedBlackHoleShips || []).find(
-    (ds) => ds.ownerId === activePlayer.id && currentRound !== undefined && currentRound >= ds.returnRound
-  );
+  const readyBlackHoleShip = !isSpectator && !isTurnGated
+    ? (delayedBlackHoleShips || []).find(
+        (ds) => ds.ownerId === activePlayer.id && currentRound !== undefined && currentRound >= ds.returnRound
+      )
+    : undefined;
   if (pendingConfirmation) {
-    const isMyAction = !isTurnGated;
+    const isMyAction = !isTurnGated && !isSpectator;
     return (
       <div className="fixed md:absolute bottom-2 md:bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col md:flex-row items-center gap-2 md:gap-3 bg-slate-950/95 backdrop-blur-md p-3 md:px-5 md:py-3 rounded-2xl border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200 w-[calc(100vw-12px)] max-w-xl md:w-auto md:max-w-fit">
         {/* Active Commander Indicator */}
@@ -163,7 +167,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         ) : (
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-amber-500/10 border border-amber-500/30 text-amber-300 text-xs font-semibold w-full md:w-auto">
             <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
-            <span className="truncate">Waiting for {activePlayer.name} to confirm or revert...</span>
+            <span className="truncate">
+              {isSpectator
+                ? `Observing: Waiting for ${activePlayer.name} to confirm or revert...`
+                : `Waiting for ${activePlayer.name} to confirm or revert...`}
+            </span>
           </div>
         )}
       </div>
@@ -172,10 +180,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   const hasDiscs = activePlayer.influenceTrack.discsOnTrack > 0;
   const hasPassed = activePlayer.hasPassed;
   const hasPendingExplore = Boolean(pendingExploreActivations && pendingExploreActivations > 0);
-  const canExplore = (!isTurnGated && hasDiscs && !hasPassed) || (!isTurnGated && hasPendingExplore);
-  const canActNormal = !isTurnGated && hasDiscs && !hasPassed && !hasPendingExplore;
-  const canActReaction = !isTurnGated && hasDiscs && hasPassed && !hasPendingExplore;
-  const canPass = !isTurnGated && !hasPendingExplore;
+  const canExplore = (!isTurnGated && !isSpectator && hasDiscs && !hasPassed) || (!isTurnGated && !isSpectator && hasPendingExplore);
+  const canActNormal = !isTurnGated && !isSpectator && hasDiscs && !hasPassed && !hasPendingExplore;
+  const canActReaction = !isTurnGated && !isSpectator && hasDiscs && hasPassed && !hasPendingExplore;
+  const canPass = !isTurnGated && !isSpectator && !hasPendingExplore;
 
   const maxExplore = getMaxExploreActivations(activePlayer);
   const maxResearch = getMaxResearchActivations(activePlayer);
@@ -199,11 +207,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
-          {isTurnGated && (
+          {isSpectator ? (
+            <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
+              👁️ Spectator Mode (Observing)
+            </span>
+          ) : isTurnGated ? (
             <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
               ⏳ Opponent's Turn
             </span>
-          )}
+          ) : null}
           <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-bold text-cyan-300">
             <CircleDot className="w-3 h-3 text-cyan-400" />
             <span>{activePlayer.influenceTrack.discsOnTrack} Discs</span>
@@ -216,7 +228,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               <span className="hidden sm:inline">Black Hole:</span>
               {delayedBlackHoleShips.map((ds) => {
                 const canRet = currentRound !== undefined && currentRound >= ds.returnRound;
-                const isMine = ds.ownerId === activePlayer.id;
+                const isMine = !isSpectator && ds.ownerId === activePlayer.id;
                 return (
                   <span
                     key={ds.shipId}

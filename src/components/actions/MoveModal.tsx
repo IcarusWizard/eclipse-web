@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo } from 'react';
 import { PlayerState } from '../../engine/types/player';
-import { SectorTile, SectorShip } from '../../engine/types/galaxy';
+import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
 import { getMaxMoveActivations, playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
-import { areSectorsConnected } from '../../engine/rules/hexMath';
+import { areSectorsConnected, getEdgeBetween } from '../../engine/rules/hexMath';
+import { getNebulaSubsectorForOuterEdge } from '../../engine/rules/galacticEvents';
 import {
   Rocket,
   ArrowRight,
@@ -29,6 +30,7 @@ export interface PlannedMove extends MoveStepPayload {
   id: string;
   shipType: string;
   fromSectorNumber: number;
+  fromSubsector?: 1 | 2 | 3;
   toSectorNumber: number;
   activationIndex: number;
   stepInActivation?: number;
@@ -153,6 +155,17 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     return (currentShipObj.subsector ?? 1) as 1 | 2 | 3;
   }, [selectedShipId, currentShipObj, currentSimSector, plannedMoves]);
 
+  const getShipSubsector = (shipId: string, initialSub?: number, simSec?: SectorTile): number | undefined => {
+    if (!simSec?.isNebula) return undefined;
+    const shipMoves = plannedMoves.filter((m) => m.shipId === shipId);
+    if (shipMoves.length === 0) return (initialSub ?? 1) as 1 | 2 | 3;
+    const lastMove = shipMoves[shipMoves.length - 1];
+    if (lastMove && lastMove.toSectorId === simSec.id && lastMove.targetSubsector) {
+      return lastMove.targetSubsector;
+    }
+    return (initialSub ?? 1) as 1 | 2 | 3;
+  };
+
   return (
     <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-3xl px-4 pointer-events-none font-sans">
       <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-700/80 rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto text-slate-100 p-4 pointer-events-auto flex flex-col gap-3 transition-all scrollbar-thin">
@@ -252,14 +265,15 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                                 <span className="font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-800">
                                   {m.fromSectorId === m.toSectorId && m.targetSubsector ? (
                                     <>
-                                      Sec {m.fromSectorNumber}{' '}
+                                      Sector {m.fromSectorNumber}{m.fromSubsector ? ` Sub ${m.fromSubsector}` : ''}{' '}
                                       <strong className="text-indigo-300">(➔ Sub {m.targetSubsector})</strong>
                                     </>
                                   ) : (
                                     <>
-                                      Sec {m.fromSectorNumber} ➔{' '}
-                                      <strong className="text-cyan-300">Sec {m.toSectorNumber}</strong>
-                                      {m.targetSubsector ? ` (Sub ${m.targetSubsector})` : ''}
+                                      Sector {m.fromSectorNumber}{m.fromSubsector ? ` Sub ${m.fromSubsector}` : ''} ➔{' '}
+                                      <strong className="text-cyan-300">
+                                        Sector {m.toSectorNumber}{m.targetSubsector ? ` Sub ${m.targetSubsector}` : ''}
+                                      </strong>
                                     </>
                                   )}
                                 </span>
@@ -295,7 +309,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                       Activation #{activeActivationIndex + 1}:
                     </span>
                     <span className="px-2 py-0.5 rounded bg-cyan-950/70 border border-cyan-700/80 text-cyan-300 font-bold text-xs font-mono uppercase">
-                      {currentShipObj?.type} (Sec {currentSimSector?.sectorNumber})
+                      {currentShipObj?.type} (Sector {currentSimSector?.sectorNumber}
+                      {currentSimSector?.isNebula ? ` Sub ${currentShipSubsector ?? 1}` : ''})
                     </span>
                     <span className="px-2 py-0.5 rounded bg-indigo-950/70 border border-indigo-700/60 text-indigo-300 text-[11px] font-mono">
                       {engineName} (Speed {currentShipDriveSpeed})
@@ -361,7 +376,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                           }
                         >
                           <span>
-                            {item.ship.type.slice(0, 3).toUpperCase()} (Sec {sim?.sectorNumber})
+                            {item.ship.type.slice(0, 3).toUpperCase()} (Sector {sim?.sectorNumber}
+                            {sim?.isNebula ? ` Sub ${getShipSubsector(item.ship.id, item.ship.subsector, sim)}` : ''})
                           </span>
                           {pinned && <span className="text-[8px] text-rose-400 font-bold">PINNED</span>}
                           {isStarbase && <span className="text-[8px] text-slate-400">0 DRIVE</span>}
@@ -390,6 +406,14 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {connectedDestinations.map((sec) => {
                         const hasWormhole = currentSimSector ? areSectorsConnected(currentSimSector, sec, hasWormholeGen) : true;
+                        const nebulaTargetSub = sec.isNebula && currentSimSector
+                          ? (() => {
+                              const edge = getEdgeBetween(currentSimSector.coord, sec.coord);
+                              if (edge === null) return undefined;
+                              const entryEdge = ((edge + 3) % 6) as HexEdge;
+                              return getNebulaSubsectorForOuterEdge(entryEdge, sec.rotation || 0);
+                            })()
+                          : undefined;
                         return (
                           <button
                             key={sec.id}
@@ -399,7 +423,12 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                           >
                             <ArrowRight className="w-3 h-3 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
                             <span>
-                              Sector {sec.sectorNumber} ({sec.name || `Ring ${sec.ring}`})
+                              Sector {sec.sectorNumber}
+                              {nebulaTargetSub ? ` Sub ${nebulaTargetSub}` : ''}{' '}
+                              ({sec.name || `Ring ${sec.ring}`})
+                              {nebulaTargetSub && (
+                                <span className="text-cyan-300 font-normal ml-1">➔ Sub {nebulaTargetSub}</span>
+                              )}
                             </span>
                             {!hasWormhole && (
                               <span className="text-[9px] px-1 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono">
@@ -434,7 +463,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                           className="px-2.5 py-1 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/90 border border-indigo-700/80 text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition-all group shadow-sm cursor-pointer"
                         >
                           <ArrowRight className="w-3 h-3 text-indigo-400 group-hover:translate-x-0.5 transition-transform" />
-                          <span>Shift to Subsector {sub}</span>
+                          <span>Shift to Sector {currentSimSector.sectorNumber} Sub {sub}</span>
                         </button>
                       ))}
                   </div>

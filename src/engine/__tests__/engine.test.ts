@@ -15635,6 +15635,782 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(blackHoleHtml).toContain('Return Decision');
         expect(blackHoleHtml).toContain('Spacetime Anomaly (No Influence Disc)');
       });
+
+      it('91. verifies Normal Move Action does not require activePulsarSectorId and handles MoveModal activations correctly', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { MoveModal } = await import('../../components/actions/MoveModal');
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction } = await import('../rules/gameReducer');
+
+        const game = createInitialGame(2, ['terran_directorate', 'wardens_of_magellan'], ['galactic_events']);
+        const player = game.players[0]!;
+
+        // 1. Normal Move Action via executeAction with pulsarSectorId = undefined
+        const fromSec = game.sectors[1]!;
+        fromSec.wormholes = [true, true, true, true, true, true];
+        const adjSec: SectorTile = {
+          ...game.sectors[0]!,
+          id: 'sec_adj_91',
+          coord: { q: fromSec.coord.q + 1, r: fromSec.coord.r },
+          wormholes: [true, true, true, true, true, true],
+          ships: [],
+        };
+        game.sectors.push(adjSec);
+
+        const p1Interceptor = fromSec.ships.find((s) => s.ownerId === player.id)!;
+        const normalMoveRes = executeAction(game, {
+          type: 'MOVE',
+          playerId: player.id,
+          moves: [
+            {
+              shipId: p1Interceptor.id,
+              fromSectorId: fromSec.id,
+              toSectorId: adjSec.id,
+              activationIndex: 0,
+            },
+          ],
+          pulsarSectorId: undefined, // Normal move: no pulsar sector
+        });
+        expect(normalMoveRes.success).toBe(true);
+
+        // 2. Normal Move in MoveModal (pulsarSectorId = undefined): player has standard 2 activations
+        const normalMoveModalHtml = renderToString(
+          React.createElement(MoveModal, {
+            player,
+            sectors: game.sectors,
+            playerShips: [{ sector: fromSec, ship: p1Interceptor }],
+            simulatedShipSector: new Map([[p1Interceptor.id, fromSec]]),
+            connectedDestinations: [adjSec],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 2,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: p1Interceptor.id,
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+            pulsarSectorId: undefined,
+          })
+        );
+        expect(normalMoveModalHtml).toContain('3<!-- --> Activations');
+
+        // 3. Pulsar Move in MoveModal (pulsarSectorId = "sector_393"): player has only 1 activation
+        const pulsarMoveModalHtml = renderToString(
+          React.createElement(MoveModal, {
+            player,
+            sectors: game.sectors,
+            playerShips: [{ sector: fromSec, ship: p1Interceptor }],
+            simulatedShipSector: new Map([[p1Interceptor.id, fromSec]]),
+            connectedDestinations: [adjSec],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 2,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: p1Interceptor.id,
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+            pulsarSectorId: 'sector_393',
+          })
+        );
+        expect(pulsarMoveModalHtml).toContain('1<!-- --> Activations');
+      });
+
+      it('92. verifies Nebula rotated subsector rendering, SectorInspector dynamic edge descriptions, entry subsector resolution, and pinning rules', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { SectorInspector, getSubsectorEdgesDescription } = await import('../../components/map/SectorInspector');
+        const { MoveModal } = await import('../../components/actions/MoveModal');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction, computePinningState } = await import('../rules/gameReducer');
+        const { createGalacticEventSectorTile, getNebulaSubsectorForOuterEdge } = await import('../rules/galacticEvents');
+
+        // 1. Verify getSubsectorEdgesDescription math for rotation 0 and rotation 2
+        // Rotation 0
+        expect(getSubsectorEdgesDescription(1, 0)).toBe('Edges 4-NW & 5-NE');
+        expect(getSubsectorEdgesDescription(2, 0)).toBe('Edges 2-SW & 3-W');
+        expect(getSubsectorEdgesDescription(3, 0)).toBe('Edges 0-E & 1-SE');
+
+        // Rotation 2 (like Sector 395 in Table 155)
+        // Subsector 1 (base 4, 5) + 2 -> edges (4+2)%6=0 (0-E) and (5+2)%6=1 (1-SE)
+        expect(getSubsectorEdgesDescription(1, 2)).toBe('Edges 0-E & 1-SE');
+        // Subsector 2 (base 2, 3) + 2 -> edges (2+2)%6=4 (4-NW) and (3+2)%6=5 (5-NE)
+        expect(getSubsectorEdgesDescription(2, 2)).toBe('Edges 4-NW & 5-NE');
+        // Subsector 3 (base 0, 1) + 2 -> edges (0+2)%6=2 (2-SW) and (1+2)%6=3 (3-W)
+        expect(getSubsectorEdgesDescription(3, 2)).toBe('Edges 2-SW & 3-W');
+
+        // 2. Verify Sector 395 in SectorInspector displays rotated edge names matching map
+        const game = createInitialGame(2, ['descendants_of_draco', 'terran_federation'], ['galactic_events']);
+        const draco = game.players[0]!;
+        const terran = game.players[1]!;
+
+        const sec395 = createGalacticEventSectorTile(395);
+        sec395.rotation = 2;
+        sec395.coord = { q: -1, r: -2 };
+
+        const inspectorHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: sec395,
+            players: game.players,
+            activePlayer: draco,
+            onClose: () => {},
+          })
+        );
+
+        // Subsector 1 must show Edges 0-E & 1-SE
+        expect(inspectorHtml).toContain('Subsector 1');
+        expect(inspectorHtml).toContain('Edges 0-E &amp; 1-SE');
+        // Subsector 2 must show Edges 4-NW & 5-NE
+        expect(inspectorHtml).toContain('Subsector 2');
+        expect(inspectorHtml).toContain('Edges 4-NW &amp; 5-NE');
+        // Subsector 3 must show Edges 2-SW & 3-W
+        expect(inspectorHtml).toContain('Subsector 3');
+        expect(inspectorHtml).toContain('Edges 2-SW &amp; 3-W');
+        // Dedicated rules card must also show dynamic rotated edges
+        expect(inspectorHtml).toContain('Subsector 1 (<!-- -->Edges 0-E &amp; 1-SE<!-- -->)');
+
+        // Because activePlayer is Draco and no Draco ship shares a subsector with hostile ships, no hostile alert
+        expect(inspectorHtml).not.toContain('Contested Sector! Combat will resolve during Combat Phase.');
+
+        // 3. Verify movement entry from Sector 228 (0, -2) into Sector 395 (-1, -2, rotation 2)
+        // From (0, -2) to (-1, -2) is dq = -1, dr = 0 (Edge 3 West). Entry edge is (3 + 3) % 6 = Edge 0 East.
+        expect(getNebulaSubsectorForOuterEdge(0, 2)).toBe(1);
+
+        const dracoHome = game.sectors.find((s) => s.discOwner === draco.id)!;
+        dracoHome.coord = { q: 0, r: -2 };
+        dracoHome.wormholes = [true, true, true, true, true, true];
+        dracoHome.ships = [{ id: 'draco_scout', ownerId: draco.id, type: 'interceptor', damage: 0 }];
+        game.sectors.push(sec395);
+
+        // Move draco_scout from dracoHome into sec395
+        const moveRes = executeAction(game, {
+          type: 'MOVE',
+          playerId: draco.id,
+          moves: [
+            {
+              shipId: 'draco_scout',
+              fromSectorId: dracoHome.id,
+              toSectorId: sec395.id,
+              activationIndex: 0,
+            },
+          ],
+        });
+        expect(moveRes.success).toBe(true);
+
+        const movedDraco = moveRes.newState.sectors.find((s) => s.id === sec395.id)!.ships.find((s) => s.id === 'draco_scout')!;
+        expect(movedDraco.subsector).toBe(1); // Entered Subsector 1, NOT Subsector 3!
+
+        // Draco in Subsector 1 is NOT pinned
+        const dracoPinning = computePinningState(moveRes.newState, draco.id);
+        expect(dracoPinning.isShipPinned('draco_scout')).toBe(false);
+
+        // 4. Non-Draco (Terran) player entering Subsector 1 vs Subsector 3
+        const terranHome = game.sectors.find((s) => s.discOwner === terran.id)!;
+        terranHome.coord = { q: 0, r: -2 };
+        terranHome.wormholes = [true, true, true, true, true, true];
+        terranHome.ships = [{ id: 'terran_cruiser', ownerId: terran.id, type: 'cruiser', damage: 0 }];
+        game.activePlayerIndex = 1; // Terran turn
+
+        // Moving into sec395 via edge 0 East enters Subsector 1
+        const terranMoveRes = executeAction(game, {
+          type: 'MOVE',
+          playerId: terran.id,
+          moves: [
+            {
+              shipId: 'terran_cruiser',
+              fromSectorId: terranHome.id,
+              toSectorId: sec395.id,
+              activationIndex: 0,
+            },
+          ],
+        });
+        expect(terranMoveRes.success).toBe(true);
+        const movedTerran = terranMoveRes.newState.sectors.find((s) => s.id === sec395.id)!.ships.find((s) => s.id === 'terran_cruiser')!;
+        expect(movedTerran.subsector).toBe(1);
+
+        // In Subsector 1, there are NO Ancients, so Terran cruiser is NOT pinned!
+        const terranSub1Pinning = computePinningState(terranMoveRes.newState, terran.id);
+        expect(terranSub1Pinning.isShipPinned('terran_cruiser')).toBe(false);
+
+        // If Terran cruiser now shifts internally to Subsector 3 (where the Ancient is):
+        terranMoveRes.newState.activePlayerIndex = 1;
+        const shiftToSub3Res = executeAction(terranMoveRes.newState, {
+          type: 'MOVE',
+          playerId: terran.id,
+          moves: [
+            {
+              shipId: 'terran_cruiser',
+              fromSectorId: sec395.id,
+              toSectorId: sec395.id,
+              activationIndex: 1,
+              targetSubsector: 3,
+            },
+          ],
+        });
+        expect(shiftToSub3Res.success).toBe(true);
+
+        // In Subsector 3 with Ancient, Terran cruiser IS pinned!
+        const terranSub3Pinning = computePinningState(shiftToSub3Res.newState, terran.id);
+        expect(terranSub3Pinning.isShipPinned('terran_cruiser')).toBe(true);
+
+        // 5. MoveModal shows destination subsector badge on button
+        const moveModalHtml = renderToString(
+          React.createElement(MoveModal, {
+            player: draco,
+            sectors: game.sectors,
+            playerShips: [{ sector: dracoHome, ship: { id: 'draco_scout', ownerId: draco.id, type: 'interceptor', damage: 0 } }],
+            simulatedShipSector: new Map([['draco_scout', dracoHome]]),
+            connectedDestinations: [sec395],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 2,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: 'draco_scout',
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(moveModalHtml).toContain('395');
+        expect(moveModalHtml).toContain('➔ Sub <!-- -->1');
+
+        // 6. HexGalaxyMap shows subsector ship count on wedge badges
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: moveRes.newState,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+          })
+        );
+        // Sub 1 has draco_scout
+        expect(mapHtml).toContain('Sub 1');
+        expect(mapHtml).toContain('(1)');
+        // Sub 3 has ancient
+        expect(mapHtml).toContain('Sub 3 👾 (1)');
+      });
+
+      it('93. verifies Spectator Role Authorization: strictly read-only restrictions, turn gating, action bar controls disabled, and modal observer banners', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { createInitialGame } = await import('../rules/setup');
+        const { ActionBar } = await import('../../components/layout/ActionBar');
+        const { CombatModal } = await import('../../components/combat/CombatModal');
+        const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+        const { FactionDraftModal } = await import('../../components/setup/FactionDraftModal');
+        const { MinorSpeciesModal } = await import('../../components/minorSpecies/MinorSpeciesModal');
+        const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+        const { TradeModal } = await import('../../components/actions/TradeModal');
+        const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+
+        const game = createInitialGame(2, ['terran_directorate', 'enlightened_of_lyra'], ['minor_species', 'galactic_events']);
+        const p0 = game.players[0]!;
+        const p1 = game.players[1]!;
+
+        // 1. Unified Authorization Rules & canActForPlayer behavior
+        const canActForPlayerHelper = (
+          seat: number | 'all' | 'spectator',
+          activeIdx: number,
+          targetId?: string
+        ): boolean => {
+          if (seat === 'spectator') return false;
+          if (seat === 'all') return true;
+          if (typeof seat === 'number') {
+            if (!targetId) return game.players[seat]?.id === game.players[activeIdx]?.id;
+            return game.players[seat]?.id === targetId;
+          }
+          return false;
+        };
+
+        const isTurnGatedHelper = (seat: number | 'all' | 'spectator', activeIdx: number): boolean => {
+          return seat === 'spectator' || (seat !== 'all' && typeof seat === 'number' && activeIdx !== seat);
+        };
+
+        // Spectator seat checks
+        expect(canActForPlayerHelper('spectator', 0, p0.id)).toBe(false);
+        expect(canActForPlayerHelper('spectator', 0, p1.id)).toBe(false);
+        expect(canActForPlayerHelper('spectator', 0, undefined)).toBe(false);
+        expect(isTurnGatedHelper('spectator', 0)).toBe(true);
+
+        // Seated player 0 checks
+        expect(canActForPlayerHelper(0, 0, p0.id)).toBe(true);
+        expect(canActForPlayerHelper(0, 0, p1.id)).toBe(false);
+        expect(canActForPlayerHelper(0, 0, undefined)).toBe(true);
+        expect(isTurnGatedHelper(0, 0)).toBe(false);
+        expect(isTurnGatedHelper(0, 1)).toBe(true);
+
+        // Hotseat 'all' checks
+        expect(canActForPlayerHelper('all', 0, p0.id)).toBe(true);
+        expect(canActForPlayerHelper('all', 0, p1.id)).toBe(true);
+        expect(canActForPlayerHelper('all', 0, undefined)).toBe(true);
+        expect(isTurnGatedHelper('all', 0)).toBe(false);
+
+        // 2. ActionBar spectator rendering
+        const actionBarSpectatorHtml = renderToString(
+          React.createElement(ActionBar, {
+            activePlayer: p0,
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+            isTurnGated: true,
+            isSpectator: true,
+          })
+        );
+        expect(actionBarSpectatorHtml).toContain('Spectator Mode (Observing)');
+        expect(actionBarSpectatorHtml).toContain('disabled=""');
+
+        // ActionBar pending confirmation in spectator mode
+        const actionBarConfirmHtml = renderToString(
+          React.createElement(ActionBar, {
+            activePlayer: p0,
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+            isTurnGated: true,
+            isSpectator: true,
+            pendingConfirmation: {
+              actionType: 'BUILD',
+              description: 'Built Dreadnought',
+              canRevert: true,
+            },
+          })
+        );
+        expect(actionBarConfirmHtml).toContain('Observing: Waiting for');
+        expect(actionBarConfirmHtml).not.toContain('Confirm &amp; End Turn');
+
+        // 3. CombatModal spectator rendering
+        const combatSector = game.sectors[1]!;
+        combatSector.ships = [
+          { id: 'ship_p0', ownerId: p0.id, type: 'interceptor', damage: 0 },
+          { id: 'ship_p1', ownerId: p1.id, type: 'interceptor', damage: 0 },
+        ];
+        const combatState: import('../types/state').CombatState = {
+          sectorId: combatSector.id,
+          stage: 'regular',
+          participatingPlayerIds: [p0.id, p1.id],
+          round: 1,
+          currentTurnIndex: 0,
+          pendingDamageAssignment: null,
+          rolls: [],
+        };
+        const combatSpectatorHtml = renderToString(
+          React.createElement(CombatModal, {
+            state: game,
+            combat: combatState,
+            onStepCombat: () => {},
+            currentSeat: 'spectator',
+          })
+        );
+        expect(combatSpectatorHtml).toContain('Spectator Observing');
+        expect(combatSpectatorHtml).toContain('Spectator Mode: Waiting for');
+        expect(combatSpectatorHtml).not.toContain('Auto-Resolve');
+
+        // Resolved combat observer banner
+        const resolvedCombatHtml = renderToString(
+          React.createElement(CombatModal, {
+            state: game,
+            combat: { ...combatState, stage: 'resolved' },
+            onStepCombat: () => {},
+            currentSeat: 'spectator',
+          })
+        );
+        expect(resolvedCombatHtml).toContain('Engagement resolved. Observing commanders...');
+        expect(resolvedCombatHtml).not.toContain('Conclude Engagement &amp; Continue');
+
+        // 4. CombatConquestModal spectator rendering
+        const conquestSpectatorHtml = renderToString(
+          React.createElement(CombatConquestModal, {
+            state: game,
+            conquest: {
+              sectorId: combatSector.id,
+              winnerPlayerId: p0.id,
+              canClaimInfluence: true,
+            },
+            currentSeat: 'spectator',
+            onConfirm: () => {},
+          })
+        );
+        expect(conquestSpectatorHtml).toContain('Spectator Mode (Observing Conquest by Terran Directorate)');
+        expect(conquestSpectatorHtml).toContain('Waiting for');
+        expect(conquestSpectatorHtml).toContain('Terran Directorate');
+        expect(conquestSpectatorHtml).toContain('disabled=""');
+
+        // 5. FactionDraftModal spectator rendering
+        game.phase = 'DRAFT_PHASE';
+        game.factionDraft = {
+          draftOrder: [p0.id, p1.id],
+          currentDraftIndex: 0,
+          availableFactionIds: ['terran_directorate', 'planta'],
+          draftedFactions: {},
+          assignedPositions: { [p0.id]: 0, [p1.id]: 1 },
+        };
+        const draftSpectatorHtml = renderToString(
+          React.createElement(FactionDraftModal, {
+            state: game,
+            currentSeat: 'spectator',
+            onDraftFaction: () => {},
+          })
+        );
+        expect(draftSpectatorHtml).toContain('Spectator Mode (Observing Pick by Terran Directorate)');
+        expect(draftSpectatorHtml).toContain('Waiting for');
+        expect(draftSpectatorHtml).toContain('choose...');
+
+        // 6. MinorSpeciesModal with readOnly={true}
+        game.minorSpeciesSupply = [
+          {
+            id: 'minor_species_antimatter_defenses',
+            name: 'Antimatter Guardians',
+            cost: 3,
+            targetType: 'reputation',
+            vpDescription: '2 VP',
+            abilityDescription: '+1 Shield on all Ships',
+          },
+        ];
+        const minorSpeciesHtml = renderToString(
+          React.createElement(MinorSpeciesModal, {
+            state: game,
+            activePlayer: p0,
+            onClaimMinorSpecies: () => {},
+            onClose: () => {},
+            readOnly: true,
+          })
+        );
+        expect(minorSpeciesHtml).toContain('Spectator Mode (Read Only)');
+        expect(minorSpeciesHtml).toContain('Spectator Mode');
+
+        // 7. ShipBlueprintEditor & TradeModal with readOnly={true}
+        const blueprintHtml = renderToString(
+          React.createElement(ShipBlueprintEditor, {
+            player: p0,
+            activeExpansions: game.expansions,
+            onSaveBlueprint: () => {},
+            onClose: () => {},
+            readOnly: true,
+          })
+        );
+        expect(blueprintHtml).toContain('Spectator Mode (Read Only)');
+
+        const tradeHtml = renderToString(
+          React.createElement(TradeModal, {
+            player: p0,
+            onTrade: () => {},
+            onClose: () => {},
+            readOnly: true,
+          })
+        );
+        expect(tradeHtml).toContain('Spectator Mode (Read Only)');
+
+        // 8. TechMarketModal spectator bottom button
+        const techHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: p0,
+            activePlayer: p0,
+            players: game.players,
+            sectors: game.sectors,
+            currentSeat: 'spectator',
+            phase: 'ACTION_PHASE',
+            techSupply: game.techSupply,
+            techBagCount: game.techBag.length,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(techHtml).toContain('Spectator Mode');
+        expect(techHtml).not.toContain('>Research</button>');
+
+        // TechMarketModal with Hydran double research staging
+        const hydranGame = createInitialGame(2, ['hydran_progress', 'terran_directorate']);
+        const hydranP = hydranGame.players[0]!;
+        const hydranTechHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: hydranP,
+            activePlayer: hydranP,
+            players: hydranGame.players,
+            sectors: hydranGame.sectors,
+            currentSeat: 'spectator',
+            phase: 'ACTION_PHASE',
+            techSupply: hydranGame.techSupply,
+            techBagCount: hydranGame.techBag.length,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(hydranTechHtml).toContain('Spectator Mode (Observing Hydran Progress)');
+      });
+
+      it('94. verifies Move Action displays Nebula position with subsector (e.g. Sector 395 Sub 1) across MoveModal, HexGalaxyMap, and gameReducer logs', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { MoveModal } = await import('../../components/actions/MoveModal');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction } = await import('../rules/gameReducer');
+        const { createGalacticEventSectorTile } = await import('../rules/galacticEvents');
+
+        const game = createInitialGame(2, ['terran_federation', 'descendants_of_draco'], ['galactic_events']);
+        const terran = game.players[0]!;
+        const terranHome = game.sectors.find((s) => s.discOwner === terran.id)!;
+        terranHome.coord = { q: 0, r: -2 };
+        terranHome.wormholes = [true, true, true, true, true, true];
+        terranHome.ships = [{ id: 'ship_terran_int', ownerId: terran.id, type: 'interceptor', damage: 0 }];
+
+        const sec395 = createGalacticEventSectorTile(395);
+        sec395.rotation = 2; // Entry from (0, -2) Edge 3 West enters (3+3)%6 = Edge 0 East -> Subsector 1
+        sec395.coord = { q: -1, r: -2 };
+        game.sectors.push(sec395);
+
+        // 1. MoveModal: Destination quick bar shows "Sector 395 Sub 1"
+        const clean = (s: string) => s.replace(/<!-- -->/g, '');
+        const modalHtml1 = renderToString(
+          React.createElement(MoveModal, {
+            player: terran,
+            sectors: game.sectors,
+            playerShips: [{ sector: terranHome, ship: terranHome.ships[0] }],
+            simulatedShipSector: new Map([[terranHome.ships[0].id, terranHome]]),
+            connectedDestinations: [sec395],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 2,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: terranHome.ships[0].id,
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(clean(modalHtml1)).toContain('Sector 395 Sub 1');
+
+        // 2. HexGalaxyMap: Destination badge shows "➔ SEC 395 SUB 1"
+        const mapHtml1 = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            moveMode: {
+              playerShipSectorIds: [terranHome.id],
+              selectedShipId: terranHome.ships[0].id,
+              currentSimSectorId: terranHome.id,
+              connectedDestinationSectorIds: [sec395.id],
+              plannedMoves: [],
+              onSelectShipSector: () => {},
+              onSelectDestinationSector: () => {},
+            },
+          })
+        );
+        expect(clean(mapHtml1)).toContain('➔ SEC 395 SUB 1');
+
+        // 3. Move into Sector 395 via gameReducer: check log and pending confirmation
+        const move1 = executeAction(game, {
+          type: 'MOVE',
+          playerId: terran.id,
+          moves: [
+            {
+              shipId: terranHome.ships[0].id,
+              fromSectorId: terranHome.id,
+              toSectorId: sec395.id,
+              activationIndex: 0,
+            },
+          ],
+          requireConfirmation: true,
+        });
+        expect(move1.success).toBe(true);
+        expect(move1.newState.log.some((l) => l.message.includes(`navigated a INTERCEPTOR from Sector ${terranHome.sectorNumber} to Sector 395 Sub 1`))).toBe(true);
+        expect(move1.newState.pendingActionConfirmation?.description).toBe('Moved fleet to Sector 395 Sub 1');
+
+        // 4. MoveModal while inside Nebula Sector 395:
+        // Header badge, fleet switcher, and subsector shift buttons display "Sector 395 Sub 1" and "Shift to Sector 395 Sub 2"
+        const shipInNebula = move1.newState.sectors.find((s) => s.id === sec395.id)!.ships.find((s) => s.id === terranHome.ships[0].id)!;
+        expect(shipInNebula.subsector).toBe(1);
+
+        const modalHtml2 = renderToString(
+          React.createElement(MoveModal, {
+            player: terran,
+            sectors: move1.newState.sectors,
+            playerShips: [{ sector: sec395, ship: shipInNebula }],
+            simulatedShipSector: new Map([[shipInNebula.id, sec395]]),
+            connectedDestinations: [],
+            plannedMoves: [
+              {
+                id: 'm1',
+                shipId: shipInNebula.id,
+                shipType: shipInNebula.type,
+                fromSectorId: terranHome.id,
+                fromSectorNumber: terranHome.sectorNumber,
+                toSectorId: sec395.id,
+                toSectorNumber: 395,
+                targetSubsector: 1,
+                activationIndex: 0,
+                stepInActivation: 1,
+              },
+            ],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 2,
+            movePointsUsedInCurrentActivation: 1,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: shipInNebula.id,
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(clean(modalHtml2)).toContain('Sector 395 Sub 1');
+        expect(clean(modalHtml2)).toContain('Shift to Sector 395 Sub 2');
+        expect(clean(modalHtml2)).toContain('Shift to Sector 395 Sub 3');
+
+        // 5. HexGalaxyMap origin badge shows "🎯 SEC 395 SUB 1"
+        const mapHtml2 = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: move1.newState,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            moveMode: {
+              playerShipSectorIds: [sec395.id],
+              selectedShipId: shipInNebula.id,
+              currentSimSectorId: sec395.id,
+              currentSimSubsector: 1,
+              connectedDestinationSectorIds: [],
+              plannedMoves: [],
+              onSelectShipSector: () => {},
+              onSelectDestinationSector: () => {},
+            },
+          })
+        );
+        expect(clean(mapHtml2)).toContain('🎯 SEC 395 SUB 1');
+
+        // 6. gameReducer internal nebula shift log:
+        const confirmRes = executeAction(move1.newState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: terran.id,
+        });
+        expect(confirmRes.success).toBe(true);
+        confirmRes.newState.activePlayerIndex = 0;
+
+        const move2 = executeAction(confirmRes.newState, {
+          type: 'MOVE',
+          playerId: terran.id,
+          moves: [
+            {
+              shipId: shipInNebula.id,
+              fromSectorId: sec395.id,
+              toSectorId: sec395.id,
+              targetSubsector: 2,
+              activationIndex: 0,
+            },
+          ],
+        });
+        expect(move2.success).toBe(true);
+        expect(move2.newState.log.some((l) => l.message.includes('moved a INTERCEPTOR from Sector 395 Sub 1 to Sector 395 Sub 2'))).toBe(true);
+
+        // 7. gameReducer exit from nebula log:
+        // In Sector 395 (rotation 2), Edge 0 connects to terranHome and belongs to Subsector 1.
+        // Shift back to Subsector 1 and then exit to terranHome in the same activation.
+        move2.newState.activePlayerIndex = 0;
+        const shipInSub2 = move2.newState.sectors.find((s) => s.id === sec395.id)!.ships.find((s) => s.id === shipInNebula.id)!;
+        expect(shipInSub2.subsector).toBe(2);
+        const move3 = executeAction(move2.newState, {
+          type: 'MOVE',
+          playerId: terran.id,
+          moves: [
+            {
+              shipId: shipInSub2.id,
+              fromSectorId: sec395.id,
+              toSectorId: sec395.id,
+              targetSubsector: 1,
+              activationIndex: 0,
+            },
+            {
+              shipId: shipInSub2.id,
+              fromSectorId: sec395.id,
+              toSectorId: terranHome.id,
+              activationIndex: 1,
+            },
+          ],
+        });
+        expect(move3.success).toBe(true);
+        expect(move3.newState.log.some((l) => l.message.includes(`navigated a INTERCEPTOR from Sector 395 Sub 1 to Sector ${terranHome.sectorNumber}`))).toBe(true);
+
+        // 8. HexGalaxyMap: verify moving arrow between subsectors in Sector 395
+        const { getSubsectorCenterPixel } = await import('../rules/galacticEvents');
+        const hexPixel395 = { x: 200, y: 300 };
+        // At rotation 0:
+        expect(getSubsectorCenterPixel(hexPixel395, 1, 0)).toEqual({ x: 200, y: 272 });
+        expect(getSubsectorCenterPixel(hexPixel395, 2, 0)).toEqual({ x: 175, y: 318 });
+        expect(getSubsectorCenterPixel(hexPixel395, 3, 0)).toEqual({ x: 225, y: 318 });
+
+        // Planned internal shift from Subsector 1 to Subsector 2 inside sec395
+        const shiftMapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: move1.newState,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            moveMode: {
+              playerShipSectorIds: [sec395.id],
+              selectedShipId: shipInNebula.id,
+              currentSimSectorId: sec395.id,
+              currentSimSubsector: 1,
+              connectedDestinationSectorIds: [],
+              plannedMoves: [
+                {
+                  id: 'internal_shift_1',
+                  shipId: shipInNebula.id,
+                  shipType: 'interceptor',
+                  fromSectorId: sec395.id,
+                  fromSectorNumber: 395,
+                  fromSubsector: 1,
+                  toSectorId: sec395.id,
+                  toSectorNumber: 395,
+                  targetSubsector: 2,
+                  activationIndex: 0,
+                  stepInActivation: 1,
+                },
+              ],
+              onSelectShipSector: () => {},
+              onSelectDestinationSector: () => {},
+            },
+          })
+        );
+
+        // Contains cyan moving arrow marker and Act 1.1 pill
+        expect(shiftMapHtml).toContain('marker-end="url(#move_arrow_cyan)"');
+        expect(clean(shiftMapHtml)).toContain('Act 1.1');
+        const pathMatches = shiftMapHtml.match(/<path d="(M [^"]+)"/g);
+        expect(pathMatches).not.toBeNull();
+      });
     });
   });
 });

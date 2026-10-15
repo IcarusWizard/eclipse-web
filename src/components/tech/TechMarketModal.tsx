@@ -22,6 +22,7 @@ import {
   CircleDot,
   HelpCircle,
   Award,
+  Eye,
 } from 'lucide-react';
 
 import { SectorTile } from '../../engine/types/galaxy';
@@ -490,7 +491,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               </span>
             ) : (
               <span className="text-[10px] text-slate-400 font-semibold px-2 py-1 bg-slate-900 rounded border border-slate-800">
-                Not Your Turn
+                {currentSeat === 'spectator' ? 'Spectator Mode' : 'Not Your Turn'}
               </span>
             )}
           </div>
@@ -525,6 +526,12 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
           {/* Cloth Bag & Science Balance Counters */}
           <div className="flex items-center gap-3 flex-wrap">
+            {currentSeat === 'spectator' && (
+              <div className="flex items-center gap-1.5 bg-amber-950/80 border border-amber-600/80 px-3 py-1.5 rounded-xl text-xs text-amber-300 font-bold">
+                <Eye className="w-4 h-4 text-amber-400" />
+                <span>Spectator Mode (Observing)</span>
+              </div>
+            )}
             {/* Cloth Bag Counter */}
             <div
               className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-800/80 px-3 py-1.5 rounded-xl text-xs text-indigo-300 font-bold"
@@ -933,6 +940,8 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 {isActionPhase
                   ? isCommanderTurn
                     ? `Research Selected (${stagedResearches.totalScience} 🔬, 1 Disc)`
+                    : currentSeat === 'spectator'
+                    ? `Spectator Mode (Observing ${activePlayer?.name || 'Commander'})`
                     : `Waiting for ${activePlayer?.name || 'Commander'}...`
                   : `Research Unavailable (${phase.replace('_', ' ')})`}
               </button>

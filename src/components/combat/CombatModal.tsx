@@ -75,10 +75,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const attackerOwner = effectiveAttackerOwnerId ? state.players.find((p) => p.id === effectiveAttackerOwnerId) : null;
   const isPlayerShip = !isResolved && !!(effectiveAttackerOwnerId && attackerOwner && effectiveAttackerOwnerId.startsWith('player_'));
   const isNpcShip = !isResolved && !isPlayerShip;
+  const isSpectator = currentSeat === 'spectator';
   const isSeatedPlayer = typeof currentSeat === 'number';
   const myPlayer = isSeatedPlayer ? state.players[currentSeat] : null;
   const isMyShip = isPlayerShip && myPlayer ? effectiveAttackerOwnerId === myPlayer.id : false;
-  const canCommandActiveShip = isResolved || currentSeat === 'all' || isNpcShip || isMyShip;
+  const canCommandActiveShip = !isSpectator && (isResolved || currentSeat === 'all' || isNpcShip || isMyShip);
   const hasWormholeGen = attackerOwner ? playerHasWormholeGenerator(attackerOwner) : false;
 
   const [autoAssignDamage, setAutoAssignDamage] = useState<boolean>(() => {
@@ -273,6 +274,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-2">
+            {isSpectator && (
+              <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/30">
+                Spectator Observing
+              </span>
+            )}
             <span
               className={`text-xs font-bold px-2.5 py-1 rounded border uppercase ${
                 isResolved
@@ -564,10 +570,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         </label>
                         <select
                           value={targetId}
+                          disabled={!canCommandActiveShip}
                           onChange={(e) =>
                             setSelectedTargets((prev) => ({ ...prev, [idx]: e.target.value }))
                           }
-                          className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-cyan-500 cursor-pointer"
+                          className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-cyan-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
                         >
                           {eligibleEnemyTargets.map((eu) => {
                             const pOwner = state.players.find((p) => p.id === eu.ownerId);
@@ -595,6 +602,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                           const isLyra = rollPlayer?.faction.id === 'enlightened_of_lyra';
                           const hasReadyColonyShip = (rollPlayer?.colonyShips.ready || 0) > 0;
                           const canReroll =
+                            !isSpectator &&
                             isLyra &&
                             hasReadyColonyShip &&
                             (currentSeat === 'all' || (myPlayer && myPlayer.id === pendingSalvo.attackerOwnerId));
@@ -731,6 +739,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         const isLyra = rollPlayer?.faction.id === 'enlightened_of_lyra';
                         const hasReadyColonyShip = (rollPlayer?.colonyShips.ready || 0) > 0;
                         const canReroll =
+                          !isSpectator &&
                           isLyra &&
                           hasReadyColonyShip &&
                           !isResolved &&
@@ -802,31 +811,47 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
           <div className="flex flex-wrap items-center gap-2 w-full sm:w-auto justify-end">
             {isResolved ? (
-              <button
-                type="button"
-                onClick={() => onStepCombat(undefined, undefined, true)}
-                className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl transition cursor-pointer"
-              >
-                <CheckCircle2 className="w-4 h-4" /> Conclude Engagement & Continue
-              </button>
+              isSpectator ? (
+                <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
+                  <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                  <span>Engagement resolved. Observing commanders...</span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onStepCombat(undefined, undefined, true)}
+                  className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl transition cursor-pointer"
+                >
+                  <CheckCircle2 className="w-4 h-4" /> Conclude Engagement & Continue
+                </button>
+              )
             ) : pendingSalvo ? (
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={handleAutoFillAssignments}
-                  className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition cursor-pointer"
-                >
-                  Auto-Fill
-                </button>
-                <button
-                  type="button"
-                  onClick={handleConfirmDamage}
-                  disabled={!canCommandActiveShip}
-                  className="flex items-center justify-center gap-2 px-6 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl shadow-cyan-950 transition cursor-pointer"
-                >
-                  <CheckCircle2 className="w-4 h-4" /> Confirm Damage
-                </button>
-              </div>
+              !canCommandActiveShip ? (
+                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
+                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                  <span>
+                    Waiting for Commander <strong className="text-amber-300">{attackerOwner?.name || 'attacker'}</strong> to assign damage...
+                  </span>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={handleAutoFillAssignments}
+                    className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition cursor-pointer"
+                  >
+                    Auto-Fill
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleConfirmDamage}
+                    disabled={!canCommandActiveShip}
+                    className="flex items-center justify-center gap-2 px-6 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl shadow-cyan-950 transition cursor-pointer"
+                  >
+                    <CheckCircle2 className="w-4 h-4" /> Confirm Damage
+                  </button>
+                </div>
+              )
             ) : (
               <>
                 {/* Auto-assign damage toggle */}
@@ -841,7 +866,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 </label>
 
                 {/* Auto-Resolve Option */}
-                {onAutoResolve && !isAlreadyRetreating && (
+                {onAutoResolve && !isAlreadyRetreating && !isSpectator && (
                   <button
                     type="button"
                     onClick={onAutoResolve}
@@ -856,7 +881,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
                       <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                       <span>
-                        Waiting for Commander <strong className="text-amber-300">{attackerOwner?.name || 'opponent'}</strong> to command their {activeGroup?.type.toUpperCase()}...
+                        {isSpectator
+                          ? `Spectator Mode: Waiting for ${isNpcShip ? 'commanders' : attackerOwner?.name ? `Commander ${attackerOwner.name}` : 'active ship'} to resolve...`
+                          : `Waiting for Commander ${attackerOwner?.name || 'opponent'} to command their ${activeGroup?.type.toUpperCase()}...`}
                       </span>
                     </div>
                   </div>

@@ -9,6 +9,7 @@ interface TradeModalProps {
     amount: number,
     toResource: 'money' | 'science' | 'material'
   ) => void;
+  readOnly?: boolean;
   onClose: () => void;
 }
 
@@ -17,6 +18,7 @@ type ResourceType = 'money' | 'science' | 'material';
 export const TradeModal: React.FC<TradeModalProps> = ({
   player,
   onTrade,
+  readOnly = false,
   onClose,
 }) => {
   const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
@@ -228,11 +230,11 @@ export const TradeModal: React.FC<TradeModalProps> = ({
             Cancel
           </button>
           <button
-            disabled={!canTrade}
+            disabled={readOnly || !canTrade}
             onClick={() => onTrade(fromResource, amount, toResource)}
             className="px-5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs tracking-wide shadow transition-all cursor-pointer"
           >
-            Confirm Exchange
+            {readOnly ? 'Spectator Mode (Read Only)' : 'Confirm Exchange'}
           </button>
         </div>
       </div>

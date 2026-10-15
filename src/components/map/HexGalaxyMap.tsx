@@ -14,9 +14,11 @@ import {
   HEX_DIRECTIONS,
   getRingFromCoord,
   getExplorableHexes,
+  getEdgeBetween,
 } from '../../engine/rules/hexMath';
 import { playerHasWormholeGenerator, getPlayerShortName } from '../../engine/rules/gameReducer';
 import { getWarpConduitForSectorEdge } from '../../engine/rules/warpedUniverse';
+import { getNebulaSubsectorForOuterEdge, getSubsectorCenterPixel } from '../../engine/rules/galacticEvents';
 import {
   Rocket,
   Compass,
@@ -42,6 +44,7 @@ export interface HexMapMoveMode {
   playerShipSectorIds: string[];
   selectedShipId: string | null;
   currentSimSectorId: string | null;
+  currentSimSubsector?: 1 | 2 | 3;
   connectedDestinationSectorIds: string[];
   plannedMoves: {
     id: string;
@@ -50,13 +53,15 @@ export interface HexMapMoveMode {
     fromSectorId: string;
     toSectorId: string;
     fromSectorNumber: number;
+    fromSubsector?: 1 | 2 | 3;
     toSectorNumber: number;
     activationIndex?: number;
     stepInActivation?: number;
     driveSpeed?: number;
+    targetSubsector?: 1 | 2 | 3;
   }[];
   onSelectShipSector: (sectorId: string) => void;
-  onSelectDestinationSector: (sectorId: string) => void;
+  onSelectDestinationSector: (sectorId: string, targetSubsector?: 1 | 2 | 3) => void;
   onRemovePlannedMove?: (index: number) => void;
 }
 
@@ -1441,22 +1446,74 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   const sub2HasDisc = sector.subsectors ? Boolean(sector.subsectors[1]?.discoveryTile) : true;
                   const sub3HasAncient = sector.ships.some((s) => s.ownerId === 'ancient' && (s.subsector === 3 || !s.subsector));
                   const rotDeg = ((sector.rotation || 0) * 60);
+                  const sub1Ships = sector.ships.filter((s) => (s.subsector || 1) === 1);
+                  const sub2Ships = sector.ships.filter((s) => s.subsector === 2);
+                  const sub3Ships = sector.ships.filter((s) => s.subsector === 3);
+                  const curSub = isMoveOrigin && moveMode ? (moveMode.currentSimSubsector ?? 1) : null;
                   return (
                     <g transform={`translate(${x}, ${y}) rotate(${rotDeg})`} className="pointer-events-none">
                       <line x1="0" y1="0" x2={HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
                       <line x1="0" y1="0" x2="0" y2={HEX_RADIUS * 0.9} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
                       <line x1="0" y1="0" x2={-HEX_RADIUS * 0.866} y2={-HEX_RADIUS * 0.5} stroke="#10b981" strokeWidth="1" strokeDasharray="3 2" opacity="0.6" />
-                      <g transform={`translate(0, -28) rotate(${-rotDeg})`}>
-                        <rect x="-18" y="-6" width="36" height="12" rx="3" fill="rgba(6, 78, 59, 0.9)" stroke="#10b981" strokeWidth="0.8" />
-                        <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6.5" fontWeight="bold">{`Sub 1 ${sub1HasDisc ? '❓' : '✓'}`}</text>
+                      <g
+                        transform={`translate(0, -28) rotate(${-rotDeg})`}
+                        className={curSub && curSub !== 1 ? "pointer-events-auto cursor-pointer group" : "pointer-events-none"}
+                        onClick={curSub && curSub !== 1 ? (e) => { e.stopPropagation(); moveMode?.onSelectDestinationSector(sector.id, 1); } : undefined}
+                      >
+                        <rect
+                          x="-21"
+                          y="-6"
+                          width="42"
+                          height="12"
+                          rx="3"
+                          fill={curSub === 1 ? "#065f46" : "rgba(6, 78, 59, 0.9)"}
+                          stroke={curSub && curSub !== 1 ? "#34d399" : "#10b981"}
+                          strokeWidth={curSub === 1 ? "1.5" : "0.8"}
+                          strokeDasharray={curSub && curSub !== 1 ? "2 1" : "none"}
+                        />
+                        <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6.5" fontWeight="bold">
+                          {`Sub 1 ${sub1HasDisc ? '❓' : '✓'}${sub1Ships.length > 0 ? ` (${sub1Ships.length})` : ''}`}
+                        </text>
                       </g>
-                      <g transform={`translate(-25, 18) rotate(${-rotDeg})`}>
-                        <rect x="-18" y="-6" width="36" height="12" rx="3" fill="rgba(6, 78, 59, 0.9)" stroke="#10b981" strokeWidth="0.8" />
-                        <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6.5" fontWeight="bold">{`Sub 2 ${sub2HasDisc ? '❓' : '✓'}`}</text>
+                      <g
+                        transform={`translate(-25, 18) rotate(${-rotDeg})`}
+                        className={curSub && curSub !== 2 ? "pointer-events-auto cursor-pointer group" : "pointer-events-none"}
+                        onClick={curSub && curSub !== 2 ? (e) => { e.stopPropagation(); moveMode?.onSelectDestinationSector(sector.id, 2); } : undefined}
+                      >
+                        <rect
+                          x="-21"
+                          y="-6"
+                          width="42"
+                          height="12"
+                          rx="3"
+                          fill={curSub === 2 ? "#065f46" : "rgba(6, 78, 59, 0.9)"}
+                          stroke={curSub && curSub !== 2 ? "#34d399" : "#10b981"}
+                          strokeWidth={curSub === 2 ? "1.5" : "0.8"}
+                          strokeDasharray={curSub && curSub !== 2 ? "2 1" : "none"}
+                        />
+                        <text x="0" y="2.5" textAnchor="middle" fill="#a7f3d0" fontSize="6.5" fontWeight="bold">
+                          {`Sub 2 ${sub2HasDisc ? '❓' : '✓'}${sub2Ships.length > 0 ? ` (${sub2Ships.length})` : ''}`}
+                        </text>
                       </g>
-                      <g transform={`translate(25, 18) rotate(${-rotDeg})`}>
-                        <rect x="-18" y="-6" width="36" height="12" rx="3" fill={sub3HasAncient ? 'rgba(88, 28, 28, 0.9)' : 'rgba(6, 78, 59, 0.9)'} stroke={sub3HasAncient ? '#f43f5e' : '#10b981'} strokeWidth="0.8" />
-                        <text x="0" y="2.5" textAnchor="middle" fill={sub3HasAncient ? '#fca5a5' : '#a7f3d0'} fontSize="6.5" fontWeight="bold">{`Sub 3 ${sub3HasAncient ? '👾' : '✓'}`}</text>
+                      <g
+                        transform={`translate(25, 18) rotate(${-rotDeg})`}
+                        className={curSub && curSub !== 3 ? "pointer-events-auto cursor-pointer group" : "pointer-events-none"}
+                        onClick={curSub && curSub !== 3 ? (e) => { e.stopPropagation(); moveMode?.onSelectDestinationSector(sector.id, 3); } : undefined}
+                      >
+                        <rect
+                          x="-21"
+                          y="-6"
+                          width="42"
+                          height="12"
+                          rx="3"
+                          fill={curSub === 3 ? "#065f46" : (sub3HasAncient ? 'rgba(88, 28, 28, 0.9)' : 'rgba(6, 78, 59, 0.9)')}
+                          stroke={curSub && curSub !== 3 ? "#34d399" : (sub3HasAncient ? '#f43f5e' : '#10b981')}
+                          strokeWidth={curSub === 3 ? "1.5" : "0.8"}
+                          strokeDasharray={curSub && curSub !== 3 ? "2 1" : "none"}
+                        />
+                        <text x="0" y="2.5" textAnchor="middle" fill={sub3HasAncient ? '#fca5a5' : '#a7f3d0'} fontSize="6.5" fontWeight="bold">
+                          {`Sub 3 ${sub3HasAncient ? '👾' : '✓'}${sub3Ships.length > 0 ? ` (${sub3Ships.length})` : ''}`}
+                        </text>
                       </g>
                     </g>
                   );
@@ -1818,59 +1875,79 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 )}
 
                 {/* Move Mode Interactive Overlay Badges */}
-                {moveMode && isMoveConnectedDest && (
-                  <g transform={`translate(${x}, ${y - 10})`} className="pointer-events-none">
-                    <rect
-                      x="-48"
-                      y="-11"
-                      width="96"
-                      height="22"
-                      rx="11"
-                      fill="#064e3b"
-                      stroke="#10b981"
-                      strokeWidth="1.8"
-                      className="animate-pulse"
-                    />
-                    <text
-                      x="0"
-                      y="3.5"
-                      textAnchor="middle"
-                      fill="#6ee7b7"
-                      fontSize="9.5"
-                      fontWeight="black"
-                      letterSpacing="0.5"
-                    >
-                      ➔ MOVE HERE
-                    </text>
-                  </g>
-                )}
+                {moveMode && isMoveConnectedDest && (() => {
+                  let nebulaTargetSub: 1 | 2 | 3 | undefined;
+                  if (sector.isNebula && moveMode.currentSimSectorId && moveMode.currentSimSectorId !== sector.id) {
+                    const originSec = state.sectors.find((s) => s.id === moveMode.currentSimSectorId);
+                    if (originSec) {
+                      const edgeFromTo = getEdgeBetween(originSec.coord, sector.coord);
+                      if (edgeFromTo !== null) {
+                        const entryEdge = (edgeFromTo + 3) % 6;
+                        nebulaTargetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, sector.rotation || 0);
+                      }
+                    }
+                  }
+                  const badgeWidth = nebulaTargetSub ? 122 : 96;
+                  const label = nebulaTargetSub ? `➔ SEC ${sector.sectorNumber} SUB ${nebulaTargetSub}` : '➔ MOVE HERE';
+                  return (
+                    <g transform={`translate(${x}, ${y - 10})`} className="pointer-events-none">
+                      <rect
+                        x={-badgeWidth / 2}
+                        y="-11"
+                        width={badgeWidth}
+                        height="22"
+                        rx="11"
+                        fill="#064e3b"
+                        stroke="#10b981"
+                        strokeWidth="1.8"
+                        className="animate-pulse"
+                      />
+                      <text
+                        x="0"
+                        y="3.5"
+                        textAnchor="middle"
+                        fill="#6ee7b7"
+                        fontSize={nebulaTargetSub ? "8.5" : "9.5"}
+                        fontWeight="black"
+                        letterSpacing="0.5"
+                      >
+                        {label}
+                      </text>
+                    </g>
+                  );
+                })()}
 
-                {moveMode && isMoveOrigin && (
-                  <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.victoryPoints > 0 ? 48 : 34)})`} className="pointer-events-none">
-                    <rect
-                      x="-40"
-                      y="-8"
-                      width="80"
-                      height="16"
-                      rx="8"
-                      fill="#083344"
-                      stroke="#06b6d4"
-                      strokeWidth="1.6"
-                      className="animate-pulse"
-                    />
-                    <text
-                      x="0"
-                      y="3.5"
-                      textAnchor="middle"
-                      fill="#67e8f9"
-                      fontSize="8.5"
-                      fontWeight="black"
-                      letterSpacing="0.5"
-                    >
-                      🎯 CURRENT
-                    </text>
-                  </g>
-                )}
+                {moveMode && isMoveOrigin && (() => {
+                  const originSub = sector.isNebula ? moveMode.currentSimSubsector : undefined;
+                  const badgeWidth = originSub ? 116 : 80;
+                  const label = originSub ? `🎯 SEC ${sector.sectorNumber} SUB ${originSub}` : '🎯 CURRENT';
+                  return (
+                    <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.victoryPoints > 0 ? 48 : 34)})`} className="pointer-events-none">
+                      <rect
+                        x={-badgeWidth / 2}
+                        y="-8"
+                        width={badgeWidth}
+                        height="16"
+                        rx="8"
+                        fill="#083344"
+                        stroke="#06b6d4"
+                        strokeWidth="1.6"
+                        className="animate-pulse"
+                      />
+                      <text
+                        x="0"
+                        y="3.5"
+                        textAnchor="middle"
+                        fill="#67e8f9"
+                        fontSize={originSub ? "8" : "8.5"}
+                        fontWeight="black"
+                        letterSpacing="0.5"
+                      >
+                        {label}
+                      </text>
+                    </g>
+                  );
+                })()}
               </g>
             );
           })}
@@ -1987,21 +2064,108 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 const toSec = state.sectors.find((s) => s.id === m.toSectorId);
                 if (!fromSec || !toSec) return null;
 
-                const pFrom = hexToPixel(fromSec.coord, HEX_RADIUS);
-                const pTo = hexToPixel(toSec.coord, HEX_RADIUS);
-                const angle = Math.atan2(pTo.y - pFrom.y, pTo.x - pFrom.x);
+                const hexFromCenter = hexToPixel(fromSec.coord, HEX_RADIUS);
+                const hexToCenter = hexToPixel(toSec.coord, HEX_RADIUS);
+                const isInternalNebulaShift = fromSec.id === toSec.id && fromSec.isNebula;
 
-                const startX = pFrom.x + Math.cos(angle) * 22;
-                const startY = pFrom.y + Math.sin(angle) * 22;
-                const endX = pTo.x - Math.cos(angle) * 36;
-                const endY = pTo.y - Math.sin(angle) * 36;
+                // Resolve fromSubsector
+                let fromSub: 1 | 2 | 3 = 1;
+                if (fromSec.isNebula) {
+                  if (m.fromSubsector) {
+                    fromSub = m.fromSubsector;
+                  } else {
+                    const prevMove = moveMode.plannedMoves
+                      .slice(0, idx)
+                      .reverse()
+                      .find((pm) => pm.shipId === m.shipId && pm.toSectorId === fromSec.id);
+                    if (prevMove?.targetSubsector) {
+                      fromSub = prevMove.targetSubsector;
+                    } else {
+                      const sh = fromSec.ships.find((s) => s.id === m.shipId);
+                      fromSub = (sh?.subsector || 1) as 1 | 2 | 3;
+                    }
+                  }
+                }
 
-                const midX = (startX + endX) / 2;
-                const midY = (startY + endY) / 2;
-                const perpOffset = (idx % 2 === 0 ? 1 : -1) * 16;
-                const ctrlX = midX - Math.sin(angle) * perpOffset;
-                const ctrlY = midY + Math.cos(angle) * perpOffset;
+                // Resolve targetSubsector
+                let toSub: 1 | 2 | 3 = 1;
+                if (toSec.isNebula) {
+                  if (m.targetSubsector) {
+                    toSub = m.targetSubsector;
+                  } else if (isInternalNebulaShift) {
+                    toSub = fromSub === 1 ? 2 : (fromSub === 2 ? 3 : 1);
+                  } else {
+                    const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
+                    const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
+                    toSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSec.rotation || 0);
+                  }
+                }
+
+                const pFrom = fromSec.isNebula
+                  ? getSubsectorCenterPixel(hexFromCenter, fromSub, fromSec.rotation || 0)
+                  : hexFromCenter;
+                const pTo = toSec.isNebula
+                  ? getSubsectorCenterPixel(hexToCenter, toSub, toSec.rotation || 0)
+                  : hexToCenter;
+
+                const dx = pTo.x - pFrom.x;
+                const dy = pTo.y - pFrom.y;
+                const dist = Math.hypot(dx, dy);
+                const angle = dist > 0.001 ? Math.atan2(dy, dx) : 0;
+
+                const startTrim = fromSec.isNebula ? 10 : 22;
+                const endTrim = toSec.isNebula ? 12 : 36;
+
+                let startX = pFrom.x + Math.cos(angle) * startTrim;
+                let startY = pFrom.y + Math.sin(angle) * startTrim;
+                let endX = pTo.x - Math.cos(angle) * endTrim;
+                let endY = pTo.y - Math.sin(angle) * endTrim;
+
+                if (dist <= startTrim + endTrim && dist > 0.001) {
+                  startX = pFrom.x + Math.cos(angle) * (dist * 0.15);
+                  startY = pFrom.y + Math.sin(angle) * (dist * 0.15);
+                  endX = pTo.x - Math.cos(angle) * (dist * 0.2);
+                  endY = pTo.y - Math.sin(angle) * (dist * 0.2);
+                }
+
+                let ctrlX: number;
+                let ctrlY: number;
+                let badgeX: number;
+                let badgeY: number;
+
+                if (isInternalNebulaShift) {
+                  const midX = (startX + endX) / 2;
+                  const midY = (startY + endY) / 2;
+                  const outX = midX - hexFromCenter.x;
+                  const outY = midY - hexFromCenter.y;
+                  const outDist = Math.hypot(outX, outY);
+                  const outNormX = outDist > 0.001 ? outX / outDist : 0;
+                  const outNormY = outDist > 0.001 ? outY / outDist : 0;
+                  const bowAmount = 9;
+                  ctrlX = midX + outNormX * bowAmount;
+                  ctrlY = midY + outNormY * bowAmount;
+                  badgeX = ctrlX + outNormX * 7;
+                  badgeY = ctrlY + outNormY * 7;
+                } else {
+                  const midX = (startX + endX) / 2;
+                  const midY = (startY + endY) / 2;
+                  const perpOffset = (idx % 2 === 0 ? 1 : -1) * 16;
+                  ctrlX = midX - Math.sin(angle) * perpOffset;
+                  ctrlY = midY + Math.cos(angle) * perpOffset;
+                  badgeX = ctrlX;
+                  badgeY = ctrlY;
+                }
+
                 const pathD = `M ${startX} ${startY} Q ${ctrlX} ${ctrlY} ${endX} ${endY}`;
+
+                const badgeWidth = isInternalNebulaShift ? 52 : 68;
+                const badgeText = isInternalNebulaShift
+                  ? (m.activationIndex !== undefined
+                      ? `Act ${m.activationIndex + 1}.${m.stepInActivation || 1}`
+                      : `#${idx + 1}`)
+                  : (m.activationIndex !== undefined
+                      ? `Act ${m.activationIndex + 1}.${m.stepInActivation || 1} ${m.shipType.slice(0, 3).toUpperCase()}`
+                      : `#${idx + 1} ${m.shipType.slice(0, 3).toUpperCase()}`);
 
                 return (
                   <g key={m.id} className="group cursor-pointer">
@@ -2024,18 +2188,18 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     />
                     {/* Waypoint pill badge at midpoint */}
                     <g
-                      transform={`translate(${ctrlX}, ${ctrlY})`}
+                      transform={`translate(${badgeX}, ${badgeY})`}
                       onClick={(e) => {
                         e.stopPropagation();
                         moveMode.onRemovePlannedMove?.(idx);
                       }}
                     >
                       <rect
-                        x="-34"
-                        y="-9"
-                        width="68"
-                        height="18"
-                        rx="9"
+                        x={-badgeWidth / 2}
+                        y="-8"
+                        width={badgeWidth}
+                        height="16"
+                        rx="8"
                         fill="#0f172a"
                         stroke="#38bdf8"
                         strokeWidth="1.5"
@@ -2043,17 +2207,15 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                       />
                       <text
                         x="0"
-                        y="3.5"
+                        y="3"
                         textAnchor="middle"
                         fill="#38bdf8"
-                        fontSize="9"
+                        fontSize={isInternalNebulaShift ? "8" : "9"}
                         fontWeight="bold"
                         fontFamily="monospace"
                         className="group-hover:fill-rose-300"
                       >
-                        {m.activationIndex !== undefined
-                          ? `Act ${m.activationIndex + 1}.${m.stepInActivation || 1} ${m.shipType.slice(0, 3).toUpperCase()}`
-                          : `#${idx + 1} ${m.shipType.slice(0, 3).toUpperCase()}`}
+                        {badgeText}
                       </text>
                     </g>
                   </g>

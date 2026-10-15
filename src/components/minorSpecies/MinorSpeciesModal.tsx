@@ -29,6 +29,7 @@ export interface MinorSpeciesModalProps {
   activePlayer: PlayerState;
   onClaimMinorSpecies: (speciesId: MinorSpeciesId, populationTrack?: 'money' | 'science' | 'material') => void;
   onClose: () => void;
+  readOnly?: boolean;
 }
 
 export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
@@ -36,6 +37,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
   activePlayer,
   onClaimMinorSpecies,
   onClose,
+  readOnly = false,
 }) => {
   const [isMinimized, setIsMinimized] = useState(false);
   const [selectedPopulationTrack, setSelectedPopulationTrack] = useState<'money' | 'science' | 'material'>('money');
@@ -174,7 +176,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                 const canAfford = activePlayer.resources.money >= tile.cost;
                 const hasSlots = availableSlots > 0;
                 const alreadyHas = playerHasMinorSpecies(activePlayer, tile.id);
-                const canAlly = isCurrentTurn && canAfford && hasSlots && !alreadyHas;
+                const canAlly = !readOnly && isCurrentTurn && canAfford && hasSlots && !alreadyHas;
 
                 return (
                   <div
@@ -234,14 +236,15 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                     {/* Action button */}
                     <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
                       <div className="text-[11px] text-slate-400">
-                        {!isCurrentTurn && <span className="text-amber-400">Can only ally during your turn</span>}
-                        {isCurrentTurn && !canAfford && (
+                        {readOnly && <span className="text-sky-400 font-semibold">Spectator Mode (Read Only)</span>}
+                        {!readOnly && !isCurrentTurn && <span className="text-amber-400">Can only ally during your turn</span>}
+                        {!readOnly && isCurrentTurn && !canAfford && (
                           <span className="text-rose-400">Need {tile.cost} Money (have {activePlayer.resources.money})</span>
                         )}
-                        {isCurrentTurn && canAfford && !hasSlots && (
+                        {!readOnly && isCurrentTurn && canAfford && !hasSlots && (
                           <span className="text-rose-400">No empty Ambassador space on track</span>
                         )}
-                        {isCurrentTurn && canAfford && hasSlots && (
+                        {!readOnly && isCurrentTurn && canAfford && hasSlots && (
                           <span className="text-emerald-400">Ready to form Diplomatic Relations</span>
                         )}
                       </div>
@@ -262,7 +265,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                         }`}
                       >
                         <Users className="w-3.5 h-3.5" />
-                        Ally (-{tile.cost} Money)
+                        {readOnly ? 'Spectator Mode' : `Ally (-${tile.cost} Money)`}
                       </button>
                     </div>
                   </div>

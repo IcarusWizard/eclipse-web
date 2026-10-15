@@ -896,7 +896,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             const stats = bp ? calculateBlueprintStats(bp) : null;
             const driveSpeed = stats ? stats.totalDriveSpeed : 1;
             const hasJumpDrive = Boolean(stats?.hasJumpDrive || bp?.slots.some((sl) => sl?.id === 'jump_drive' || sl?.isJumpDrive));
-            shipMap.set(ship.id, { ship, currentSectorId: s.id, driveSpeed, hasJumpDrive });
+            shipMap.set(ship.id, { ship: { ...ship }, currentSectorId: s.id, driveSpeed, hasJumpDrive });
           }
         }
       }
@@ -1100,7 +1100,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
 
           let targetSub = step.targetSubsector;
-          if (!targetSub && toSec.isNebula && fromSec.id !== toSec.id) {
+          if (toSec.isNebula && fromSec.id !== toSec.id) {
             const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
             const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
             targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSec.rotation || 0);
@@ -2813,22 +2813,24 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                   const newSub = step.targetSubsector || (currentSub === 1 ? 2 : (currentSub === 2 ? 3 : 1));
                   movedShip.subsector = newSub;
                   toSector.ships.push(movedShip);
-                  addLog(`${player.name} moved a ${movedShip.type.toUpperCase()} to Subsector ${newSub} inside Nebula Sector ${toSector.sectorNumber}.`);
+                  addLog(`${player.name} moved a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber} Sub ${currentSub} to Sector ${toSector.sectorNumber} Sub ${newSub}.`);
                 } else {
                   // Entering from outside
                   const edgeFromTo = getEdgeBetween(fromSector.coord, toSector.coord);
                   const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
-                  const targetSub = step.targetSubsector || getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSector.rotation || 0);
+                  const targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSector.rotation || 0);
+                  const fromSectorSub = fromSector.isNebula ? (movedShip.subsector || 1) : undefined;
                   movedShip.subsector = targetSub;
                   toSector.ships.push(movedShip);
                   toSector.playerEntryOrder = toSector.playerEntryOrder || [];
                   if (!toSector.playerEntryOrder.includes(player.id)) {
                     toSector.playerEntryOrder.push(player.id);
                   }
-                  addLog(`${player.name} navigated a ${movedShip.type.toUpperCase()} into Subsector ${targetSub} of Nebula Sector ${toSector.sectorNumber}.`);
+                  addLog(`${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber}${fromSectorSub ? ` Sub ${fromSectorSub}` : ''} to Sector ${toSector.sectorNumber} Sub ${targetSub}.`);
                 }
               } else {
                 // Normal sector entry
+                const fromSub = fromSector.isNebula ? (movedShip.subsector || 1) : undefined;
                 if (fromSector.isNebula) {
                   movedShip.subsector = undefined;
                 }
@@ -2837,7 +2839,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
                 if (!toSector.playerEntryOrder.includes(player.id)) {
                   toSector.playerEntryOrder.push(player.id);
                 }
-                addLog(`${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber} to Sector ${toSector.sectorNumber}.`);
+                addLog(`${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber}${fromSub ? ` Sub ${fromSub}` : ''} to Sector ${toSector.sectorNumber}.`);
               }
             }
           }
@@ -4476,7 +4478,21 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         description = `Upgraded ${upAct.upgrades?.length || 0} blueprint part(s)`;
       } else if (action.type === 'MOVE') {
         const mvAct = action as MoveAction;
-        description = `Executed ${mvAct.moves?.length || 0} fleet move(s)`;
+        const count = mvAct.moves?.length || 0;
+        if (count === 1 && mvAct.moves && mvAct.moves.length > 0) {
+          const m = mvAct.moves[0];
+          const toSec = newState.sectors.find((s) => s.id === m.toSectorId);
+          if (toSec?.isNebula) {
+            const targetSub = m.targetSubsector || (toSec.ships.find((s) => s.id === m.shipId)?.subsector ?? 1);
+            description = `Moved fleet to Sector ${toSec.sectorNumber} Sub ${targetSub}`;
+          } else if (toSec) {
+            description = `Moved fleet to Sector ${toSec.sectorNumber}`;
+          } else {
+            description = `Executed 1 fleet move`;
+          }
+        } else {
+          description = `Executed ${count} fleet move(s)`;
+        }
       } else if (action.type === 'RESEARCH') {
         const resAct = action as ResearchAction;
         const count = resAct.researches?.length || 1;
@@ -4864,7 +4880,7 @@ export function computePinningState(
     const toSec = state.sectors.find((s) => s.id === m.toSectorId);
     const fromSec = state.sectors.find((s) => s.id === m.fromSectorId);
     let resolvedSub = (m as any).targetSubsector;
-    if (!resolvedSub && toSec?.isNebula && fromSec && fromSec.id !== toSec.id) {
+    if (toSec?.isNebula && fromSec && fromSec.id !== toSec.id) {
       const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
       const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
       resolvedSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSec.rotation || 0);

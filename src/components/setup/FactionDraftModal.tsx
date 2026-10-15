@@ -31,9 +31,11 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
   const currentDrafterId = draft.draftOrder[draft.currentDraftIndex];
   const currentDrafter = state.players.find((p) => p.id === currentDrafterId) || state.players[0];
 
+  const isSpectator = currentSeat === 'spectator';
   const isCurrentDrafter =
-    currentSeat === 'all' ||
-    (typeof currentSeat === 'number' && state.players[currentSeat]?.id === currentDrafterId);
+    !isSpectator &&
+    (currentSeat === 'all' ||
+      (typeof currentSeat === 'number' && state.players[currentSeat]?.id === currentDrafterId));
 
   const availableFactions = getAvailableFactions(state.expansions || []);
   const [selectedFactionId, setSelectedFactionId] = useState<string>(
@@ -88,7 +90,9 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           <div className="flex items-center gap-2">
             {!isCurrentDrafter && (
               <span className="px-2.5 py-1 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
-                Waiting for {currentDrafter.name} to select...
+                {currentSeat === 'spectator'
+                  ? `Spectator Mode (Observing Pick by ${currentDrafter.name})`
+                  : `Waiting for ${currentDrafter.name} to select...`}
               </span>
             )}
             <div className="px-3 py-1 rounded-xl bg-indigo-950/60 border border-indigo-600/60 flex items-center gap-2">
@@ -123,7 +127,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                 color: '#fff',
                 faction: { id: 'drafting', name: 'Drafting' },
               };
-              const pos = draft.assignedPositions[pId] ?? 0;
+              const pos = draft.assignedPositions?.[pId] ?? 0;
               const turnOrderNum = state.turnOrder.indexOf(pId) + 1;
               const isCurrent = draft.currentDraftIndex === draftIdx;
               const hasDrafted = draftIdx < draft.currentDraftIndex;

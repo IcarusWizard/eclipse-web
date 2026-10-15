@@ -30,6 +30,7 @@ interface ShipBlueprintEditorProps {
     upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
     pulsarSectorId?: string
   ) => void;
+  readOnly?: boolean;
   onClose: () => void;
 }
 
@@ -38,6 +39,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   activeExpansions,
   pulsarSectorId,
   onSaveBlueprint,
+  readOnly = false,
   onClose,
 }) => {
   const availableShipTypes = useMemo(
@@ -228,6 +230,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       handleAttachExternalPart(part);
       return;
     }
+    if (readOnly) return;
     if (selectedSlotIndex === null) return;
     if (baseBp.noDrives && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       return;
@@ -243,6 +246,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   };
 
   const handleClearSlot = (index: number) => {
+    if (readOnly) return;
     const isSlotCurrentlyModified = modifiedSlots.some(
       (m) => m.shipType === activeShipType && m.slotIndex === index && !m.isExternal
     );
@@ -255,6 +259,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   };
 
   const handleRevertSlot = (index: number) => {
+    if (readOnly) return;
     const origPart = player.blueprints[activeShipType].slots[index] || null;
     const newSlots = [...currentSlots];
     newSlots[index] = origPart;
@@ -262,6 +267,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   };
 
   const handleAttachExternalPart = (part: ShipPart) => {
+    if (readOnly) return;
     const isCurrentlyModified = modifiedSlots.some(
       (m) => m.shipType === activeShipType && m.isExternal
     );
@@ -274,6 +280,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   };
 
   const handleDetachExternalPart = () => {
+    if (readOnly) return;
     const isCurrentlyModified = modifiedSlots.some(
       (m) => m.shipType === activeShipType && m.isExternal
     );
@@ -286,6 +293,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   };
 
   const handleRevertExternalPart = () => {
+    if (readOnly) return;
     const origParts = player.blueprints[activeShipType]?.externalParts || [];
     setDraftExternalParts((prev) => ({
       ...prev,
@@ -294,7 +302,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   };
 
   const handleSave = () => {
-    if (usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid) return;
+    if (readOnly || usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid) return;
     const upgradesToApply = modifiedSlots.map((m) => ({
       shipType: m.shipType,
       slotIndex: m.slotIndex,
@@ -948,11 +956,13 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
               Cancel
             </button>
             <button
-              disabled={usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid}
+              disabled={readOnly || usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid}
               onClick={handleSave}
               className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wider uppercase shadow-lg transition-all"
             >
-              {usedActivations === 0
+              {readOnly
+                ? 'Spectator Mode (Read Only)'
+                : usedActivations === 0
                 ? `Make Up to ${maxUpgrades} Upgrades`
                 : `Save ${usedActivations} Upgrade${usedActivations > 1 ? 's' : ''}`}
             </button>
