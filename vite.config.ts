@@ -1186,6 +1186,7 @@ export default defineConfig({
   server: {
     port: 3000,
     host: true,
+    allowedHosts: true,
     watch: {
       ignored: ['**/bug_report.md', '**/BackLog.md', '**/.git/**', '**/server_data/**'],
     },
@@ -1193,5 +1194,7 @@ export default defineConfig({
   preview: {
     port: parseInt(process.env.PORT || '3000', 10),
     host: true,
+    allowedHosts: true,
   },
 });
+
