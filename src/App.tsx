@@ -8,6 +8,7 @@ import {
   getMaxMoveActivations,
   computePinningState,
   playerHasWormholeGenerator,
+  isPlayerInvaded,
 } from './engine/rules/gameReducer';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
@@ -39,6 +40,7 @@ import { PulsarModal } from './components/actions/PulsarModal';
 import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { BlackHoleReturnModal } from './components/actions/BlackHoleReturnModal';
+import { FirstPassHintModal } from './components/actions/FirstPassHintModal';
 import { BlackHoleDelayedShip, getLegalBlackHoleReturnSectors } from './engine/rules/galacticEvents';
 import { SectorInspector } from './components/map/SectorInspector';
 import { PhysicalPlayerBoardModal } from './components/dashboard/PhysicalPlayerBoardModal';
@@ -125,6 +127,7 @@ export const App: React.FC = () => {
   const [declinedBlackHoleRounds, setDeclinedBlackHoleRounds] = useState<Record<string, number>>({});
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
+  const [showFirstPassModal, setShowFirstPassModal] = useState<boolean>(false);
 
   const prevRoundRef = React.useRef<number>(state.round);
   const pendingActionRef = React.useRef(state.pendingActionConfirmation);
@@ -248,6 +251,8 @@ export const App: React.FC = () => {
         name: currentUser.name,
         username: currentUser.username,
         role: currentUser.role,
+        email: currentUser.email,
+        emailNotifications: currentUser.emailNotifications,
         seat: currentSeat,
         joinedAt: Date.now(),
       }).then((res) => {
@@ -304,6 +309,11 @@ export const App: React.FC = () => {
       typeof currentSeat === 'number' &&
       state.activePlayerIndex !== currentSeat);
 
+  const myControlledPlayer =
+    typeof currentSeat === 'number' && state.players[currentSeat]
+      ? state.players[currentSeat]
+      : activePlayer;
+
   const hideOpponentReputation =
     currentSeat !== 'all' &&
     currentSeat !== 'spectator' &&
@@ -331,6 +341,11 @@ export const App: React.FC = () => {
           setState(remote);
           setInGame(true);
 
+          if (params.get('table') !== remote.id) {
+            params.set('table', remote.id);
+            window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+          }
+
           const seatParam = params.get('seat');
           if (seatParam && seatParam !== 'all' && seatParam !== 'spectator') {
             const sNum = parseInt(seatParam, 10);
@@ -349,6 +364,10 @@ export const App: React.FC = () => {
         }
       });
     } else {
+      if (state.id && params.get('table') !== state.id) {
+        params.set('table', state.id);
+        window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+      }
       const seatParam = params.get('seat');
       if (seatParam && seatParam !== 'all' && seatParam !== 'spectator') {
         const sNum = parseInt(seatParam, 10);
@@ -371,7 +390,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!inGame) return;
     const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
-    const tableTarget = params?.get('table') || state.id;
+    const tableTarget = state.id || params?.get('table');
     if (!tableTarget) return;
 
     const unsubscribe = subscribeToGameSync(tableTarget, (remoteState) => {
@@ -400,6 +419,26 @@ export const App: React.FC = () => {
     return unsubscribe;
   }, [inGame, state.id]);
 
+  // Active Player Presence Heartbeat (pings server every 20s while tab is open)
+  useEffect(() => {
+    if (!inGame || !currentUser || currentUser.role === 'guest') return;
+    const sendPing = () => {
+      if (typeof fetch !== 'undefined') {
+        fetch('/api/presence', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: currentUser.id,
+            tableId: state.id,
+          }),
+        }).catch(() => {});
+      }
+    };
+    sendPing();
+    const interval = setInterval(sendPing, 20000);
+    return () => clearInterval(interval);
+  }, [inGame, currentUser?.id, state.id]);
+
   const handleStartNewGameFromLobby = (
     playerCount: number,
     factionIds: string[],
@@ -423,6 +462,8 @@ export const App: React.FC = () => {
         userId: user.id,
         name: user.name,
         role: user.role,
+        email: user.email,
+        emailNotifications: user.emailNotifications,
         seat: effectiveSeat,
         joinedAt: Date.now(),
       },
@@ -433,6 +474,8 @@ export const App: React.FC = () => {
       name: user.name,
       username: user.username || user.name,
       role: user.role,
+      email: user.email,
+      emailNotifications: user.emailNotifications,
       seat: effectiveSeat,
       joinedAt: Date.now(),
     });
@@ -482,6 +525,8 @@ export const App: React.FC = () => {
       name: user.name,
       username: user.username,
       role: user.role,
+      email: user.email,
+      emailNotifications: user.emailNotifications,
       seat,
       joinedAt: Date.now(),
     });
@@ -1491,7 +1536,7 @@ export const App: React.FC = () => {
   };
 
   // Pass turn
-  const handlePass = () => {
+  const handlePass = (forceWithoutModal = false, enableAutoPass?: boolean) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
       return;
@@ -1500,15 +1545,46 @@ export const App: React.FC = () => {
       showToast('Please finish or cancel exploration before passing.');
       return;
     }
+
+    const isFirstPassThisRound = !activePlayer.hasPassed && !state.passedPlayerIds.includes(activePlayer.id);
+    if (isFirstPassThisRound && !forceWithoutModal) {
+      setShowFirstPassModal(true);
+      return;
+    }
+
     const res = executeAction(state, {
       type: 'PASS',
       playerId: activePlayer.id,
       requireConfirmation: true,
+      enableAutoPass: enableAutoPass !== undefined ? enableAutoPass : activePlayer.autoPassReactions,
     });
     if (res.success) {
       setState(res.newState);
     } else {
       showToast(res.error || 'Failed to pass turn.');
+    }
+  };
+
+  const handleToggleAutoPass = (targetPlayerId?: string) => {
+    const pId = targetPlayerId || (typeof currentSeat === 'number' ? state.players[currentSeat]?.id : activePlayer.id);
+    if (!pId || !canActForPlayer(pId)) {
+      showToast('Cannot change auto-pass settings for this player.');
+      return;
+    }
+    const targetPlayer = state.players.find((p) => p.id === pId);
+    if (!targetPlayer) return;
+
+    const newSetting = !targetPlayer.autoPassReactions;
+    const res = executeAction(state, {
+      type: 'SET_AUTO_PASS',
+      playerId: pId,
+      enabled: newSetting,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(`Auto-Pass Reactions ${newSetting ? 'ENABLED' : 'DISABLED'} for ${targetPlayer.name}.`);
+    } else {
+      showToast(res.error || 'Failed to update auto-pass.');
     }
   };
 
@@ -2306,6 +2382,10 @@ export const App: React.FC = () => {
               const def = legal.find((sec) => sec.discOwner === myPlayerId)?.id || legal[0]?.id || null;
               setBlackHoleTargetSectorId(def);
             }}
+            autoPassReactions={myControlledPlayer?.autoPassReactions}
+            onToggleAutoPass={() => handleToggleAutoPass(myControlledPlayer?.id)}
+            isInvaded={myControlledPlayer ? isPlayerInvaded(state, myControlledPlayer.id) : false}
+            canToggleAutoPass={Boolean(myControlledPlayer && canActForPlayer(myControlledPlayer.id))}
           />
         )}
 
@@ -2815,6 +2895,39 @@ export const App: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* First-Time Pass Hint Modal */}
+      <FirstPassHintModal
+        player={activePlayer}
+        round={state.round}
+        isOpen={showFirstPassModal}
+        onConfirmPass={(enableAutoPass) => {
+          setShowFirstPassModal(false);
+          handlePass(true, enableAutoPass);
+        }}
+        onCancel={() => setShowFirstPassModal(false)}
+      />
+
+      {/* Hostile Invasion Alert for Active Reaction Turn */}
+      {state.phase === 'ACTION_PHASE' &&
+        !isTurnGated &&
+        !isSpectator &&
+        activePlayer.hasPassed &&
+        isPlayerInvaded(state, activePlayer.id) && (
+          <div className="fixed top-16 left-1/2 -translate-x-1/2 z-40 max-w-lg w-[calc(100vw-24px)] px-4 py-2.5 rounded-2xl bg-rose-950/95 border-2 border-rose-500 text-rose-200 shadow-2xl flex items-center justify-between gap-3 animate-bounce">
+            <div className="flex items-center gap-3">
+              <span className="text-2xl shrink-0">⚠️</span>
+              <div>
+                <span className="text-xs font-black tracking-wider text-rose-300 uppercase block">
+                  Hostile Invasion Detected!
+                </span>
+                <span className="text-[11px] text-slate-300 leading-tight block">
+                  Enemy ships entered your territory. Auto-pass has paused so you can react (Upgrade, Build, Move, or Pass).
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
 
       {/* Bug 87 & Bug 169: Other player action highlight banner */}
       {state.lastConfirmedAction &&

@@ -11,6 +11,7 @@ export interface SavedTableSummary {
   playerCount: number;
   playerNames: string[];
   activePlayerName: string;
+  activePlayerIndex?: number;
   stateJson?: string;
   members?: TableMember[];
 }
@@ -124,6 +125,11 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     const members = state.members || (state as any).members || existingTable?.members || [];
     state.members = members;
     const activePlayer = state.players[state.activePlayerIndex];
+    let effectiveActiveIndex = typeof state.activePlayerIndex === 'number' ? state.activePlayerIndex : 0;
+    if (state.phase === 'COMBAT_PHASE' && (state as any).combat?.activePlayerId) {
+      const cIdx = state.players.findIndex((p) => p.id === (state as any).combat.activePlayerId);
+      if (cIdx >= 0) effectiveActiveIndex = cIdx;
+    }
 
     tables[state.id] = {
       id: state.id,
@@ -135,6 +141,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       playerCount: state.players.length,
       playerNames: state.players.map((p) => `${p.name} (${p.faction.name})`),
       activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
+      activePlayerIndex: effectiveActiveIndex,
       stateJson,
       members,
     };
@@ -170,6 +177,8 @@ export function loadActiveGameState(): GameState | null {
       if (tableParam) {
         const fromTable = loadTable(tableParam);
         if (fromTable) return fromTable;
+        // Do not fall back to unrelated ACTIVE_GAME_KEY if URL explicitly requested a specific table
+        return null;
       }
     }
 
@@ -231,13 +240,39 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
     const idStr = String(tableIdentifier);
     const num = parseInt(idStr, 10);
 
-    const entry = Object.values(tables).find(
+    // 1. Direct ID match
+    if (tables[idStr]?.stateJson) {
+      const parsed: GameState = JSON.parse(tables[idStr].stateJson!);
+      (parsed as any).tableNumber = tables[idStr].tableNumber;
+      return sanitizeLoadedGameState(parsed);
+    }
+
+    // 2. Direct galaxy- prefix match
+    const galaxyId = `galaxy-${idStr}`;
+    if (tables[galaxyId]?.stateJson) {
+      const parsed: GameState = JSON.parse(tables[galaxyId].stateJson!);
+      (parsed as any).tableNumber = tables[galaxyId].tableNumber;
+      return sanitizeLoadedGameState(parsed);
+    }
+
+    // 3. Search matching candidates, prioritized by exact id, galaxy- prefix, and newest savedAt
+    const candidates = Object.values(tables).filter(
       (t) => t.id === idStr || (!isNaN(num) && t.tableNumber === num)
     );
-    if (entry && entry.stateJson) {
-      const parsed: GameState = JSON.parse(entry.stateJson);
-      (parsed as any).tableNumber = entry.tableNumber;
-      return sanitizeLoadedGameState(parsed);
+    if (candidates.length > 0) {
+      candidates.sort((a, b) => {
+        if (a.id === idStr) return -1;
+        if (b.id === idStr) return 1;
+        if (a.id === galaxyId) return -1;
+        if (b.id === galaxyId) return 1;
+        return (b.savedAt || 0) - (a.savedAt || 0);
+      });
+      const best = candidates[0];
+      if (best?.stateJson) {
+        const parsed: GameState = JSON.parse(best.stateJson);
+        (parsed as any).tableNumber = best.tableNumber;
+        return sanitizeLoadedGameState(parsed);
+      }
     }
     return null;
   } catch (err) {
@@ -368,9 +403,12 @@ export function subscribeToGameSync(
     try {
       const data = event.data;
       if (!data || data.type !== 'ECLIPSE_GAME_SYNC') return;
-      const matches =
-        data.tableId === targetIdStr ||
-        (!isNaN(targetNum) && data.tableNumber === targetNum);
+      const isExactId = targetIdStr.includes('-') || isNaN(targetNum);
+      const matches = isExactId
+        ? data.tableId === targetIdStr
+        : data.tableId === targetIdStr ||
+          data.tableId === `galaxy-${targetIdStr}` ||
+          (!isNaN(targetNum) && data.tableNumber === targetNum);
       if (matches && data.stateJson) {
         const parsed: GameState = sanitizeLoadedGameState(JSON.parse(data.stateJson));
         const fp = getStateFingerprint(parsed);
@@ -392,17 +430,12 @@ export function subscribeToGameSync(
   const handleStorageEvent = (event: StorageEvent) => {
     try {
       if (event.key === SAVED_TABLES_KEY || event.key === ACTIVE_GAME_KEY) {
-        const latest = loadTable(targetIdStr) || loadActiveGameState();
+        const latest = loadTable(targetIdStr);
         if (latest) {
-          const currentMatches =
-            latest.id === targetIdStr ||
-            (!isNaN(targetNum) && (latest as any).tableNumber === targetNum);
-          if (currentMatches) {
-            const fp = getStateFingerprint(latest);
-            if (fp !== lastKnownFingerprint) {
-              lastKnownFingerprint = fp;
-              callback(latest);
-            }
+          const fp = getStateFingerprint(latest);
+          if (fp !== lastKnownFingerprint) {
+            lastKnownFingerprint = fp;
+            callback(latest);
           }
         }
       }
@@ -415,21 +448,9 @@ export function subscribeToGameSync(
     window.addEventListener('storage', handleStorageEvent);
   }
 
-  // 3. Periodic fallback poll check (local storage + server-side polling for cross-IP multiplayer)
+  // 3. Periodic fallback poll check (server-side polling for cross-device / cross-IP multiplayer)
   const pollInterval = setInterval(async () => {
     try {
-      // Check local storage first
-      const local = loadTable(targetIdStr);
-      if (local) {
-        const fp = getStateFingerprint(local);
-        if (fp !== lastKnownFingerprint) {
-          lastKnownFingerprint = fp;
-          callback(local);
-          return;
-        }
-      }
-
-      // Check server storage for updates from other IP addresses
       const remote = await fetchTableFromServer(targetIdStr);
       if (remote) {
         const fp = getStateFingerprint(remote);
@@ -593,4 +614,108 @@ export function filterTablesForUser(
     return t.members.some((m) => m.userId === user.id);
   });
 }
+
+export type TableStatusCategory = 'need_players' | 'running' | 'done';
+
+/**
+ * Returns the set of occupied player seats (0-indexed) for a table.
+ */
+export function getTableOccupiedSeats(table: SavedTableSummary): Set<number> {
+  const occupied = new Set<number>();
+  const pCount = table.playerCount || 2;
+  if (Array.isArray(table.members)) {
+    for (const m of table.members) {
+      if (m.seat === 'all') {
+        for (let i = 0; i < pCount; i++) occupied.add(i);
+      } else if (typeof m.seat === 'number' && m.seat >= 0 && m.seat < pCount) {
+        occupied.add(m.seat);
+      }
+    }
+  }
+  return occupied;
+}
+
+/**
+ * Categorizes a table into:
+ * - 'need_players': Game not over and has 1 or more open player seats
+ * - 'running': Game not over and all player seats are occupied
+ * - 'done': Game is completed (phase === 'GAME_OVER')
+ */
+export function getTableStatusCategory(table: SavedTableSummary): TableStatusCategory {
+  if (table.phase === 'GAME_OVER') {
+    return 'done';
+  }
+  const occupied = getTableOccupiedSeats(table);
+  const pCount = table.playerCount || 2;
+  if (occupied.size < pCount) {
+    return 'need_players';
+  }
+  return 'running';
+}
+
+/**
+ * Checks if it is currently the specified user's turn to take an action at this table.
+ */
+export function isPlayerTurnAtTable(
+  table: SavedTableSummary,
+  user: UserSession | null
+): boolean {
+  if (!user || !table) return false;
+  if (table.phase === 'GAME_OVER') return false;
+
+  const myMembership = (table.members || []).find((m) => m.userId === user.id);
+  if (!myMembership) return false;
+
+  const mySeat = myMembership.seat;
+  if (mySeat === 'all') {
+    return true; // Admin in hotseat mode controls all active seats
+  }
+  if (typeof mySeat !== 'number' || mySeat < 0) {
+    return false; // Spectator or unassigned seat
+  }
+
+  // 1. If in combat phase and stateJson is available, check combat activePlayerId
+  if (table.phase === 'COMBAT_PHASE' && table.stateJson) {
+    try {
+      const parsed = JSON.parse(table.stateJson);
+      if (parsed.combat?.activePlayerId) {
+        const cIdx = parsed.players?.findIndex((p: any) => p.id === parsed.combat.activePlayerId);
+        if (typeof cIdx === 'number' && cIdx >= 0) {
+          return cIdx === mySeat;
+        }
+      }
+    } catch {}
+  }
+
+  // 2. If activePlayerIndex is directly stored on summary
+  if (typeof table.activePlayerIndex === 'number') {
+    return table.activePlayerIndex === mySeat;
+  }
+
+  // 3. If stateJson is available, read active player index from state
+  if (table.stateJson) {
+    try {
+      const parsed = JSON.parse(table.stateJson);
+      let effectiveSeat = parsed.activePlayerIndex;
+      if (parsed.phase === 'COMBAT_PHASE' && parsed.combat?.activePlayerId) {
+        const cIdx = parsed.players?.findIndex((p: any) => p.id === parsed.combat.activePlayerId);
+        if (typeof cIdx === 'number' && cIdx >= 0) effectiveSeat = cIdx;
+      }
+      if (typeof effectiveSeat === 'number') {
+        return effectiveSeat === mySeat;
+      }
+    } catch {}
+  }
+
+  // 3. Fallback: compare activePlayerName with playerNames[mySeat]
+  if (table.activePlayerName && Array.isArray(table.playerNames) && table.playerNames[mySeat]) {
+    const seatPlayerName = table.playerNames[mySeat].trim().toLowerCase();
+    const cleanActive = table.activePlayerName.trim().toLowerCase();
+    return seatPlayerName.includes(cleanActive) || cleanActive.includes(seatPlayerName.split(' ')[0]);
+  }
+
+  return false;
+}
+
+
 

@@ -102,11 +102,15 @@ function saveLocalRegisteredUsers(users: Record<string, StoredUserAccount>): voi
 export async function registerUser(
   username: string,
   password: string,
-  name?: string
+  name?: string,
+  email?: string,
+  emailNotifications?: boolean
 ): Promise<{ success: boolean; error?: string; user?: UserSession }> {
   const cleanUsername = username.trim();
   const cleanName = name?.trim() || cleanUsername;
   const cleanPassword = password;
+  const cleanEmail = email?.trim() || undefined;
+  const notificationsEnabled = emailNotifications !== false;
 
   if (!cleanUsername || cleanUsername.length < 2) {
     return { success: false, error: 'Username must be at least 2 characters.' };
@@ -125,6 +129,8 @@ export async function registerUser(
           username: cleanUsername,
           name: cleanName,
           password: cleanPassword,
+          email: cleanEmail,
+          emailNotifications: notificationsEnabled,
         }),
       });
       const data = await res.json().catch(() => null);
@@ -155,6 +161,8 @@ export async function registerUser(
     username: cleanUsername,
     name: cleanName,
     role: 'user',
+    email: cleanEmail,
+    emailNotifications: notificationsEnabled,
     salt,
     passwordHash,
     createdAt: now,
@@ -169,6 +177,8 @@ export async function registerUser(
     username: cleanUsername,
     name: cleanName,
     role: 'user',
+    email: cleanEmail,
+    emailNotifications: notificationsEnabled,
     createdAt: now,
     lastActiveAt: now,
   };
@@ -235,11 +245,68 @@ export async function loginWithPassword(
     username: account.username,
     name: account.name,
     role: account.role,
+    email: account.email,
+    emailNotifications: account.emailNotifications !== false,
     createdAt: account.createdAt,
     lastActiveAt: now,
   };
   saveUserSession(session);
   return { success: true, user: session };
+}
+
+/**
+ * Updates an existing user's profile (email, notification preference, or display name).
+ */
+export async function updateUserProfile(
+  userId: string,
+  updates: { email?: string; emailNotifications?: boolean; name?: string }
+): Promise<{ success: boolean; error?: string; user?: UserSession }> {
+  // 1. Try server endpoint
+  try {
+    if (typeof fetch !== 'undefined') {
+      const res = await fetch('/api/auth/update-profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, ...updates }),
+      });
+      const data = await res.json().catch(() => null);
+      if (res.ok && data?.success && data?.user) {
+        saveUserSession(data.user);
+        return { success: true, user: data.user };
+      }
+      if (data?.error) {
+        return { success: false, error: data.error };
+      }
+    }
+  } catch {}
+
+  // 2. Client fallback / offline mode
+  const localUsers = getLocalRegisteredUsers();
+  const account = Object.values(localUsers).find((u) => u.id === userId);
+  if (!account) {
+    return { success: false, error: 'User account not found' };
+  }
+
+  if (typeof updates.name === 'string') account.name = updates.name.trim() || account.username;
+  if (typeof updates.email === 'string') account.email = updates.email.trim();
+  if (typeof updates.emailNotifications === 'boolean') account.emailNotifications = updates.emailNotifications;
+  account.updatedAt = Date.now();
+  saveLocalRegisteredUsers(localUsers);
+
+  const cur = getCurrentUser();
+  if (cur && cur.id === userId) {
+    const updated: UserSession = {
+      ...cur,
+      name: account.name,
+      email: account.email,
+      emailNotifications: account.emailNotifications,
+      lastActiveAt: Date.now(),
+    };
+    saveUserSession(updated);
+    return { success: true, user: updated };
+  }
+
+  return { success: true };
 }
 
 /**

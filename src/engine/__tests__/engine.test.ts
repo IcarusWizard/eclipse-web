@@ -16483,6 +16483,632 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const dragMovement = Math.hypot(12, 16); // 20px
         expect(dragMovement > 8).toBe(true);
       });
+
+      test('96. verifies BGA-style automated turn reminder: email preference persistence, presence online/offline detection, and turn-change reminder trigger rules', async () => {
+        const { registerUser, updateUserProfile } = await import('../rules/userSession');
+
+        // 1. Commander registration with email and turn reminder notification preferences
+        const uniqueUsername = `test_commander_${Date.now()}`;
+        const regRes = await registerUser(
+          uniqueUsername,
+          'secret123',
+          'Admiral Test',
+          'admiral@example.com',
+          true
+        );
+        expect(regRes.success).toBe(true);
+        expect(regRes.user).toBeDefined();
+        expect(regRes.user?.email).toBe('admiral@example.com');
+        expect(regRes.user?.emailNotifications).toBe(true);
+
+        // 2. Updating Commander profile email & notification toggle
+        const updateRes = await updateUserProfile(regRes.user!.id, {
+          email: 'new_admiral@galaxy.org',
+          emailNotifications: false,
+        });
+        expect(updateRes.success).toBe(true);
+        expect(updateRes.user?.email).toBe('new_admiral@galaxy.org');
+        expect(updateRes.user?.emailNotifications).toBe(false);
+
+        // Re-enabling notifications
+        const reEnableRes = await updateUserProfile(regRes.user!.id, {
+          emailNotifications: true,
+        });
+        expect(reEnableRes.success).toBe(true);
+        expect(reEnableRes.user?.emailNotifications).toBe(true);
+
+        // 3. Presence Heartbeat Math (45,000ms threshold):
+        // Heartbeats sent every 20,000ms. An active player has lastSeen <= 45,000ms ago.
+        const PRESENCE_TIMEOUT_MS = 45000;
+        const now = Date.now();
+        const activeHeartbeatTime = now - 15000; // 15 seconds ago (active)
+        const idleHeartbeatTime = now - 60000;   // 60 seconds ago (offline)
+
+        const isUserOnline = (lastSeen: number, currentTime: number = Date.now()) => {
+          return currentTime - lastSeen < PRESENCE_TIMEOUT_MS;
+        };
+
+        expect(isUserOnline(activeHeartbeatTime, now)).toBe(true);
+        expect(isUserOnline(idleHeartbeatTime, now)).toBe(false);
+
+        // 4. BGA-Style Turn Reminder Trigger Logic:
+        // When game state is saved, determine if email dispatch should occur:
+        interface MemberNotificationCheck {
+          seatIndex: number;
+          username: string;
+          email?: string;
+          emailNotifications?: boolean;
+          lastSeen?: number;
+        }
+
+        const shouldSendReminder = (
+          tableNumber: number,
+          currentActiveSeat: number,
+          prevActiveSeat: number,
+          members: MemberNotificationCheck[],
+          lastNotificationTimes: Map<string, number>,
+          currentTime: number
+        ): { shouldSend: boolean; reason?: string } => {
+          // If turn didn't switch, do not dispatch
+          if (currentActiveSeat === prevActiveSeat) {
+            return { shouldSend: false, reason: 'turn_not_changed' };
+          }
+          const targetMember = members.find((m) => m.seatIndex === currentActiveSeat);
+          if (!targetMember) {
+            return { shouldSend: false, reason: 'no_member_for_seat' };
+          }
+          if (!targetMember.email || !targetMember.email.includes('@')) {
+            return { shouldSend: false, reason: 'no_valid_email' };
+          }
+          if (targetMember.emailNotifications === false) {
+            return { shouldSend: false, reason: 'notifications_disabled' };
+          }
+          const isOnline = targetMember.lastSeen !== undefined && isUserOnline(targetMember.lastSeen, currentTime);
+          if (isOnline) {
+            return { shouldSend: false, reason: 'user_currently_online' };
+          }
+
+          // Anti-spam deduplication cooldown (5 minutes = 300,000ms)
+          const dedupeKey = `${tableNumber}_seat_${currentActiveSeat}`;
+          const lastSent = lastNotificationTimes.get(dedupeKey) || 0;
+          if (currentTime - lastSent < 300000) {
+            return { shouldSend: false, reason: 'cooldown_throttled' };
+          }
+
+          return { shouldSend: true };
+        };
+
+        const notificationHistory = new Map<string, number>();
+        const members: MemberNotificationCheck[] = [
+          {
+            seatIndex: 0,
+            username: 'Player1',
+            email: 'p1@example.com',
+            emailNotifications: true,
+            lastSeen: now - 10000, // Online
+          },
+          {
+            seatIndex: 1,
+            username: 'Player2',
+            email: 'p2@example.com',
+            emailNotifications: true,
+            lastSeen: now - 90000, // Offline (90s ago)
+          },
+          {
+            seatIndex: 2,
+            username: 'Player3',
+            email: 'p3@example.com',
+            emailNotifications: false, // Disabled notifications
+            lastSeen: now - 90000, // Offline
+          },
+          {
+            seatIndex: 3,
+            username: 'Player4',
+            // No email provided
+            lastSeen: now - 90000,
+          },
+        ];
+
+        // Scenario A: Turn switches to Player 1 (online) -> No email
+        expect(shouldSendReminder(101, 0, 1, members, notificationHistory, now)).toEqual({
+          shouldSend: false,
+          reason: 'user_currently_online',
+        });
+
+        // Scenario B: Turn switches to Player 3 (notifications disabled) -> No email
+        expect(shouldSendReminder(101, 2, 0, members, notificationHistory, now)).toEqual({
+          shouldSend: false,
+          reason: 'notifications_disabled',
+        });
+
+        // Scenario C: Turn switches to Player 4 (no email) -> No email
+        expect(shouldSendReminder(101, 3, 0, members, notificationHistory, now)).toEqual({
+          shouldSend: false,
+          reason: 'no_valid_email',
+        });
+
+        // Scenario D: Turn switches to Player 2 (offline, email set, notifications enabled) -> Trigger reminder!
+        const dispatchResult = shouldSendReminder(101, 1, 0, members, notificationHistory, now);
+        expect(dispatchResult).toEqual({ shouldSend: true });
+        notificationHistory.set('101_seat_1', now);
+
+        // Scenario E: Another rapid state change occurs 1 minute later, still Player 2's turn -> Cooldown throttles
+        const rapidChangeResult = shouldSendReminder(101, 1, 0, members, notificationHistory, now + 60000);
+        expect(rapidChangeResult).toEqual({
+          shouldSend: false,
+          reason: 'cooldown_throttled',
+        });
+
+        // Scenario F: After cooldown expires (6 minutes later) -> Next turn transition allows reminder
+        const afterCooldownResult = shouldSendReminder(101, 1, 0, members, notificationHistory, now + 360000);
+        expect(afterCooldownResult).toEqual({ shouldSend: true });
+      });
+
+      test('97. verifies table status splitting (need_players, running, done) and cross-player table discovery', async () => {
+        const { getTableOccupiedSeats, getTableStatusCategory } = await import('../rules/persistence');
+
+        // Table A: 2-player table with only Seat 0 taken -> need_players
+        const tableA = {
+          id: 'galaxy-315',
+          tableNumber: 315,
+          savedAt: Date.now(),
+          round: 1,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 2,
+          playerNames: ['Alice (Terran Federation)'],
+          activePlayerName: 'Alice',
+          members: [
+            {
+              userId: 'usr_alice',
+              name: 'Alice',
+              username: 'alice',
+              role: 'user' as const,
+              seat: 0,
+              joinedAt: Date.now(),
+            },
+          ],
+        };
+
+        const occupiedA = getTableOccupiedSeats(tableA);
+        expect(occupiedA.has(0)).toBe(true);
+        expect(occupiedA.has(1)).toBe(false);
+        expect(occupiedA.size).toBe(1);
+        expect(getTableStatusCategory(tableA)).toBe('need_players');
+
+        // Table B: 2-player table with both Seat 0 and Seat 1 taken -> running
+        const tableB = {
+          ...tableA,
+          id: 'galaxy-316',
+          tableNumber: 316,
+          members: [
+            ...tableA.members,
+            {
+              userId: 'usr_bob',
+              name: 'Bob',
+              username: 'bob',
+              role: 'user' as const,
+              seat: 1,
+              joinedAt: Date.now(),
+            },
+          ],
+        };
+
+        const occupiedB = getTableOccupiedSeats(tableB);
+        expect(occupiedB.has(0)).toBe(true);
+        expect(occupiedB.has(1)).toBe(true);
+        expect(occupiedB.size).toBe(2);
+        expect(getTableStatusCategory(tableB)).toBe('running');
+
+        // Table C: Completed table -> done
+        const tableC = {
+          ...tableB,
+          id: 'galaxy-317',
+          tableNumber: 317,
+          phase: 'GAME_OVER',
+        };
+
+        expect(getTableStatusCategory(tableC)).toBe('done');
+
+        // Table D: 4-player table with admin hotseat -> running (all seats occupied)
+        const tableD = {
+          ...tableA,
+          id: 'galaxy-318',
+          tableNumber: 318,
+          playerCount: 4,
+          members: [
+            {
+              userId: 'usr_admin',
+              name: 'Admin',
+              username: 'admin',
+              role: 'admin' as const,
+              seat: 'all' as const,
+              joinedAt: Date.now(),
+            },
+          ],
+        };
+
+        const occupiedD = getTableOccupiedSeats(tableD);
+        expect(occupiedD.size).toBe(4);
+        expect(getTableStatusCategory(tableD)).toBe('running');
+
+        // Table E: Spectators do not consume player seats
+        const tableE = {
+          ...tableA,
+          id: 'galaxy-319',
+          tableNumber: 319,
+          members: [
+            ...tableA.members,
+            {
+              userId: 'usr_spectator',
+              name: 'Watcher',
+              username: 'watcher',
+              role: 'guest' as const,
+              seat: 'spectator' as const,
+              joinedAt: Date.now(),
+            },
+          ],
+        };
+
+        const occupiedE = getTableOccupiedSeats(tableE);
+        expect(occupiedE.size).toBe(1); // Only Alice is counted as player seat
+        expect(getTableStatusCategory(tableE)).toBe('need_players');
+      });
+
+      test('98. verifies canonical table resolution, URL parameter routing, and prevention of multi-table split-brain oscillation', async () => {
+        const { loadTable, loadActiveGameState, saveGameState } = await import('../rules/persistence');
+
+        // Setup mock localStorage with two tables sharing the same tableNumber (155):
+        // 1. Old stale game (game_old_155, created earlier)
+        // 2. Active game (galaxy-155, created recently)
+        const mockTables: Record<string, any> = {
+          'game_old_155': {
+            id: 'game_old_155',
+            tableNumber: 155,
+            savedAt: 1000,
+            round: 1,
+            maxRounds: 8,
+            phase: 'ACTION_PHASE',
+            playerCount: 2,
+            playerNames: ['Terran Directorate', 'Mechanema'],
+            stateJson: JSON.stringify({
+              id: 'game_old_155',
+              tableNumber: 155,
+              round: 1,
+              phase: 'ACTION_PHASE',
+              players: [{ id: 'p1', name: 'Terran Directorate' }, { id: 'p2', name: 'Mechanema' }],
+            }),
+          },
+          'galaxy-155': {
+            id: 'galaxy-155',
+            tableNumber: 155,
+            savedAt: 5000,
+            round: 2,
+            maxRounds: 8,
+            phase: 'ACTION_PHASE',
+            playerCount: 2,
+            playerNames: ['Terran Federation', 'Orion Hegemony'],
+            stateJson: JSON.stringify({
+              id: 'galaxy-155',
+              tableNumber: 155,
+              round: 2,
+              phase: 'ACTION_PHASE',
+              players: [{ id: 'p1', name: 'Terran Federation' }, { id: 'p2', name: 'Orion Hegemony' }],
+            }),
+          },
+        };
+
+        const store: Record<string, string> = {
+          'eclipse_saved_tables': JSON.stringify(mockTables),
+          'eclipse_active_game': JSON.stringify({
+            id: 'unrelated_game_999',
+            tableNumber: 999,
+            round: 5,
+            players: [{ id: 'p1', name: 'Planta' }],
+            sectors: {},
+          }),
+        };
+
+        const originalLocalStorage = globalThis.localStorage;
+        (globalThis as any).localStorage = {
+          getItem: (key: string) => store[key] || null,
+          setItem: (key: string, val: string) => { store[key] = val; },
+          removeItem: (key: string) => { delete store[key]; },
+          clear: () => { Object.keys(store).forEach((k) => delete store[k]); },
+        };
+
+        try {
+          // 1. loadTable by numeric identifier '155' should prioritize 'galaxy-155' over 'game_old_155'
+          const resolvedByNum = loadTable('155');
+          expect(resolvedByNum).not.toBeNull();
+          expect(resolvedByNum!.id).toBe('galaxy-155');
+          expect(resolvedByNum!.round).toBe(2);
+
+          // 2. loadTable by exact ID 'galaxy-155'
+          const resolvedById = loadTable('galaxy-155');
+          expect(resolvedById).not.toBeNull();
+          expect(resolvedById!.id).toBe('galaxy-155');
+
+          // 3. When ?table=galaxy-155 is in window.location.search, loadActiveGameState returns galaxy-155
+          const originalWindow = globalThis.window;
+          (globalThis as any).window = {
+            location: { search: '?table=galaxy-155&seat=0', pathname: '/' },
+          };
+
+          const activeFromUrl = loadActiveGameState();
+          expect(activeFromUrl).not.toBeNull();
+          expect(activeFromUrl!.id).toBe('galaxy-155');
+
+          // 4. When ?table=nonexistent is in URL, it should return null rather than falling back to unrelated_game_999!
+          (globalThis as any).window = {
+            location: { search: '?table=galaxy-nonexistent&seat=0', pathname: '/' },
+          };
+          const missingFromUrl = loadActiveGameState();
+          expect(missingFromUrl).toBeNull(); // No split-brain fallback to ACTIVE_GAME_KEY
+
+          (globalThis as any).window = originalWindow;
+        } finally {
+          (globalThis as any).localStorage = originalLocalStorage;
+        }
+      });
+
+      test('99. verifies isPlayerTurnAtTable detection across player seats, combat phase active player, admin hotseat, and completed games', async () => {
+        const { isPlayerTurnAtTable } = await import('../rules/persistence');
+
+        const aliceUser = { id: 'usr_alice', name: 'Alice', username: 'alice', role: 'user' as const };
+        const bobUser = { id: 'usr_bob', name: 'Bob', username: 'bob', role: 'user' as const };
+        const adminUser = { id: 'usr_admin', name: 'Admin', username: 'admin', role: 'admin' as const };
+        const spectatorUser = { id: 'usr_charlie', name: 'Charlie', username: 'charlie', role: 'guest' as const };
+
+        const testTable = {
+          id: 'galaxy-155',
+          tableNumber: 155,
+          savedAt: Date.now(),
+          round: 1,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 2,
+          playerNames: ['Terran Federation', 'Orion Hegemony'],
+          activePlayerName: 'Terran Federation',
+          activePlayerIndex: 0,
+          members: [
+            { userId: aliceUser.id, name: 'Alice', username: 'alice', role: 'user' as const, seat: 0, joinedAt: 100 },
+            { userId: bobUser.id, name: 'Bob', username: 'bob', role: 'user' as const, seat: 1, joinedAt: 100 },
+            { userId: spectatorUser.id, name: 'Charlie', username: 'charlie', role: 'guest' as const, seat: 'spectator' as const, joinedAt: 100 },
+          ],
+        };
+
+        // Scenario 1: Alice's turn (seat 0 is active)
+        expect(isPlayerTurnAtTable(testTable, aliceUser)).toBe(true);
+        expect(isPlayerTurnAtTable(testTable, bobUser)).toBe(false);
+        expect(isPlayerTurnAtTable(testTable, spectatorUser)).toBe(false);
+
+        // Scenario 2: Turn passes to Bob (seat 1 is active)
+        const bobTurnTable = {
+          ...testTable,
+          activePlayerIndex: 1,
+          activePlayerName: 'Orion Hegemony',
+        };
+        expect(isPlayerTurnAtTable(bobTurnTable, aliceUser)).toBe(false);
+        expect(isPlayerTurnAtTable(bobTurnTable, bobUser)).toBe(true);
+
+        // Scenario 3: Combat phase targeting Bob via combat.activePlayerId in stateJson
+        const combatTable = {
+          ...testTable,
+          phase: 'COMBAT_PHASE',
+          activePlayerIndex: 0, // Base index is still 0
+          stateJson: JSON.stringify({
+            activePlayerIndex: 0,
+            phase: 'COMBAT_PHASE',
+            combat: { activePlayerId: 'p2' },
+            players: [{ id: 'p1', name: 'Terran Federation' }, { id: 'p2', name: 'Orion Hegemony' }],
+          }),
+        };
+        expect(isPlayerTurnAtTable(combatTable, bobUser)).toBe(true);
+        expect(isPlayerTurnAtTable(combatTable, aliceUser)).toBe(false);
+
+        // Scenario 4: Admin hotseat controls all active tables
+        const hotseatTable = {
+          ...testTable,
+          members: [
+            ...testTable.members,
+            { userId: adminUser.id, name: 'Admin', username: 'admin', role: 'admin' as const, seat: 'all' as const, joinedAt: 100 },
+          ],
+        };
+        expect(isPlayerTurnAtTable(hotseatTable, adminUser)).toBe(true);
+
+        // Scenario 5: Game Over disables action prompt for all users
+        const gameOverTable = {
+          ...testTable,
+          phase: 'GAME_OVER',
+        };
+        expect(isPlayerTurnAtTable(gameOverTable, aliceUser)).toBe(false);
+        expect(isPlayerTurnAtTable(gameOverTable, bobUser)).toBe(false);
+        expect(isPlayerTurnAtTable(gameOverTable, adminUser)).toBe(false);
+      });
+
+      test('100. verifies Auto-Pass Reactions: automatic reaction turn pass, invasion detection & pausing, toggle anytime, and round reset', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction, isPlayerInvaded } = await import('../rules/gameReducer');
+
+        // Setup 2-player game: Terran Federation (p0) and Planta (p1)
+        const game = createInitialGame(2, ['terran_federation', 'planta']);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // 1. Verify isPlayerInvaded detection logic
+        expect(isPlayerInvaded(game, p1.id)).toBe(false);
+        expect(isPlayerInvaded(game, p2.id)).toBe(false);
+
+        // Ancients in deep space do not constitute player invasion
+        const sectorAncient = game.sectors.find((s) => s.ships.some((sh) => sh.ownerId === 'ancient'));
+        if (sectorAncient) {
+          expect(isPlayerInvaded(game, p1.id)).toBe(false);
+        }
+
+        // Test: Player 2 ship entering Player 1's home sector triggers isPlayerInvaded
+        const p1Home = game.sectors.find((s) => s.discOwner === p1.id)!;
+        expect(p1Home).toBeDefined();
+
+        const invadedGame: typeof game = JSON.parse(JSON.stringify(game));
+        const invadedSector = invadedGame.sectors.find((s) => s.id === p1Home.id)!;
+        invadedSector.ships.push({
+          id: 'test_enemy_ship_1',
+          type: 'interceptor',
+          ownerId: p2.id,
+        });
+
+        expect(isPlayerInvaded(invadedGame, p1.id)).toBe(true);
+        expect(isPlayerInvaded(invadedGame, p2.id)).toBe(false);
+
+        // Test: Sector with only population cubes colonized by Player 1 also counts as invasion
+        const cubeOnlyGame: typeof game = JSON.parse(JSON.stringify(game));
+        const testCubeSec = cubeOnlyGame.sectors.find((s) => s.sectorNumber === 201 || s.sectorNumber === 301) || cubeOnlyGame.sectors[2]!;
+        testCubeSec.discOwner = undefined;
+        testCubeSec.ships = [{ id: 'p2_intruder', type: 'cruiser', ownerId: p2.id }];
+        testCubeSec.planets = [{
+          id: 'planet_cube',
+          planetType: 'money',
+          resourceType: 'money',
+          colonizedBy: p1.id,
+          colonizedResource: 'money',
+        }];
+        expect(isPlayerInvaded(cubeOnlyGame, p1.id)).toBe(true);
+
+        // 2. Scenario A: First pass with Auto-Pass enabled
+        // Player 1 passes for the round with enableAutoPass = true
+        expect(p1.autoPassReactions).toBe(false);
+        const pass1Res = executeAction(game, {
+          type: 'PASS',
+          playerId: p1.id,
+          enableAutoPass: true,
+        });
+        expect(pass1Res.success).toBe(true);
+        const stateAfterPass1 = pass1Res.newState;
+        expect(stateAfterPass1.players[0]!.hasPassed).toBe(true);
+        expect(stateAfterPass1.players[0]!.autoPassReactions).toBe(true);
+        expect(stateAfterPass1.passedPlayerIds).toContain(p1.id);
+        // Turn rotated to Player 2
+        expect(stateAfterPass1.activePlayerIndex).toBe(1);
+
+        // 3. Scenario B: Player 2 takes an action without passing -> Player 1 auto-passes reaction turn!
+        // Give Player 2 science to research
+        stateAfterPass1.players[1]!.resources.science = 20;
+        const availableTech = stateAfterPass1.techSupply[0]!;
+        expect(availableTech).toBeDefined();
+
+        const researchRes = executeAction(stateAfterPass1, {
+          type: 'RESEARCH',
+          playerId: p2.id,
+          techId: availableTech.id,
+        });
+        expect(researchRes.success).toBe(true);
+
+        // After Player 2's action, turn advanced to Player 1, but Player 1 has autoPassReactions and is not invaded.
+        // Therefore, Player 1 automatically passed their reaction turn, and the turn returned to Player 2!
+        const stateAfterResearch = researchRes.newState;
+        expect(stateAfterResearch.activePlayerIndex).toBe(1); // Still/again Player 2's turn!
+        expect(stateAfterResearch.consecutivePasses).toBe(1);
+        const autoPassLog = stateAfterResearch.log.find((l) => l.message.includes('auto-passed reaction turn'));
+        expect(autoPassLog).toBeDefined();
+
+        // 4. Scenario C: Player 2 now passes -> All passed consecutively -> Proceeded to Combat & Round 2!
+        const pass2Res = executeAction(stateAfterResearch, {
+          type: 'PASS',
+          playerId: p2.id,
+        });
+        expect(pass2Res.success).toBe(true);
+        // Player 2 passed (consecutivePasses = 2 >= activePlayers.length 2)
+        // Verified: All commanders passed consecutively log triggered!
+        expect(pass2Res.newState.log.some((l) => l.message.includes('All commanders have passed consecutively'))).toBe(true);
+        // With no combat sectors, round advanced cleanly through upkeep/cleanup to Round 2
+        expect(pass2Res.newState.round).toBe(2);
+
+        // 5. Scenario D: Hostile invasion pauses auto-pass and gives reaction turn to invaded player
+        const invasionTestGame = createInitialGame(2, ['terran_federation', 'planta']);
+        const invP1 = invasionTestGame.players[0]!;
+        const invP2 = invasionTestGame.players[1]!;
+
+        // Player 1 passes with auto-pass ON
+        const p1PassInv = executeAction(invasionTestGame, {
+          type: 'PASS',
+          playerId: invP1.id,
+          enableAutoPass: true,
+        });
+        expect(p1PassInv.success).toBe(true);
+        const p1InvState = p1PassInv.newState;
+        expect(p1InvState.activePlayerIndex).toBe(1); // Player 2's turn
+
+        // Player 2 invades Player 1's home sector with a ship
+        const p1HomeSec = p1InvState.sectors.find((s) => s.discOwner === invP1.id)!;
+        p1HomeSec.ships.push({
+          id: 'p2_invader_ship',
+          type: 'cruiser',
+          ownerId: invP2.id,
+        });
+
+        // Player 2 takes an action (e.g. Research)
+        p1InvState.players[1]!.resources.science = 20;
+        const p2Tech = p1InvState.techSupply[0]!;
+        const p2ActionUnderInvasion = executeAction(p1InvState, {
+          type: 'RESEARCH',
+          playerId: invP2.id,
+          techId: p2Tech.id,
+        });
+        expect(p2ActionUnderInvasion.success).toBe(true);
+
+        const stateAfterInvasionAction = p2ActionUnderInvasion.newState;
+        // In this case, Player 1 was invaded!
+        // Auto-pass MUST pause and STOP at Player 1!
+        expect(stateAfterInvasionAction.activePlayerIndex).toBe(0); // Turn is at Player 1
+        expect(stateAfterInvasionAction.players[0]!.autoPassReactions).toBe(false); // Paused!
+        const invasionPauseLog = stateAfterInvasionAction.log.find((l) =>
+          l.message.includes('enemy fleet invasion detected')
+        );
+        expect(invasionPauseLog).toBeDefined();
+
+        // 6. Scenario E: Toggling Auto-Pass anytime
+        // Player 2 can toggle auto-pass ON or OFF
+        const toggleOff = executeAction(stateAfterInvasionAction, {
+          type: 'SET_AUTO_PASS',
+          playerId: invP2.id,
+          enabled: true,
+        });
+        expect(toggleOff.success).toBe(true);
+        expect(toggleOff.newState.players[1]!.autoPassReactions).toBe(true);
+
+        // Player 1 tries to toggle ON while invaded: auto-pass is refused / warned
+        const toggleInvaded = executeAction(toggleOff.newState, {
+          type: 'SET_AUTO_PASS',
+          playerId: invP1.id,
+          enabled: true,
+        });
+        expect(toggleInvaded.success).toBe(true);
+        expect(toggleInvaded.newState.players[0]!.autoPassReactions).toBe(false); // Remains false because invaded
+
+        // If invasion is removed, Player 1 on their reaction turn toggling ON auto-passes immediately
+        const secToClean = toggleInvaded.newState.sectors.find((s) => s.discOwner === invP1.id)!;
+        secToClean.ships = secToClean.ships.filter((s) => s.id !== 'p2_invader_ship');
+        const toggleClean = executeAction(toggleInvaded.newState, {
+          type: 'SET_AUTO_PASS',
+          playerId: invP1.id,
+          enabled: true,
+        });
+        expect(toggleClean.success).toBe(true);
+        // Since it was Player 1's reaction turn, it auto-passed and turn went to Player 2
+        expect(toggleClean.newState.activePlayerIndex).toBe(1);
+
+        // 7. Scenario F: Round cleanup resets autoPassReactions
+        const { transitionToCleanup } = await import('../rules/gameReducer');
+        const resetState = JSON.parse(JSON.stringify(toggleClean.newState));
+        resetState.players[0]!.autoPassReactions = true;
+        resetState.players[1]!.autoPassReactions = true;
+        transitionToCleanup(resetState);
+        expect(resetState.players[0]!.autoPassReactions).toBe(false);
+        expect(resetState.players[1]!.autoPassReactions).toBe(false);
+        expect(resetState.players[0]!.hasPassed).toBe(false);
+        expect(resetState.players[1]!.hasPassed).toBe(false);
+      });
     });
   });
 });

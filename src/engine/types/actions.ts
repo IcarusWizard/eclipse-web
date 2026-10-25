@@ -136,6 +136,7 @@ export interface TradeAction extends BaseAction {
 
 export interface PassAction extends BaseAction {
   type: 'PASS';
+  enableAutoPass?: boolean;
 }
 
 export interface DiscoveryChoiceAction extends BaseAction {
@@ -279,6 +280,11 @@ export interface DraftFactionAction extends BaseAction {
   factionId: string;
 }
 
+export interface SetAutoPassAction extends BaseAction {
+  type: 'SET_AUTO_PASS';
+  enabled: boolean;
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -309,4 +315,5 @@ export type GameAction =
   | ActivatePulsarAction
   | ReturnBlackHoleShipAction
   | DraftFactionAction
-  | BetrayAllianceAction;
+  | BetrayAllianceAction
+  | SetAutoPassAction;

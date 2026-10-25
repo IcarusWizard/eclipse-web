@@ -9,6 +9,7 @@ import {
   fetchTableFromServer,
   saveGameState,
   filterTablesForUser,
+  isPlayerTurnAtTable,
 } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
@@ -31,6 +32,7 @@ import {
   Shield,
   Sparkles,
   Star,
+  Zap,
 } from 'lucide-react';
 
 interface TableSessionModalProps {
@@ -239,7 +241,13 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
           <div>
             {(() => {
               const myTables = filterTablesForUser(savedTables, currentUser);
-              const displayed = currentUser.role === 'admin' ? savedTables : myTables;
+              const baseList = currentUser.role === 'admin' ? savedTables : myTables;
+              const displayed = [...baseList].sort((a, b) => {
+                const aTurn = isPlayerTurnAtTable(a, currentUser) ? 1 : 0;
+                const bTurn = isPlayerTurnAtTable(b, currentUser) ? 1 : 0;
+                if (bTurn !== aTurn) return bTurn - aTurn;
+                return (b.savedAt || 0) - (a.savedAt || 0);
+              });
 
               return (
                 <>
@@ -281,6 +289,7 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
                     <div className="space-y-2 max-h-56 overflow-y-auto pr-1">
                       {displayed.map((entry) => {
                         const isCurrent = entry.tableNumber === currentTableNumber;
+                        const isMyTurn = isPlayerTurnAtTable(entry, currentUser);
                         const dateStr = new Date(entry.savedAt).toLocaleTimeString([], {
                           hour: '2-digit',
                           minute: '2-digit',
@@ -294,7 +303,9 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
                             key={entry.id}
                             onClick={() => handleRejoin(entry)}
                             className={`p-3 rounded-xl border transition-all flex items-center justify-between cursor-pointer ${
-                              isCurrent
+                              isMyTurn
+                                ? 'bg-gradient-to-r from-amber-950/50 via-slate-900/80 to-amber-950/30 border-amber-400 shadow-md ring-1 ring-amber-400/60'
+                                : isCurrent
                                 ? 'bg-cyan-950/30 border-cyan-600/60 shadow-md'
                                 : 'bg-slate-900/40 hover:bg-slate-800/60 border-slate-800'
                             }`}
@@ -302,7 +313,9 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
                             <div className="flex items-center gap-3 min-w-0">
                               <div
                                 className={`w-9 h-9 rounded-lg flex items-center justify-center font-mono font-bold text-xs shrink-0 ${
-                                  isCurrent
+                                  isMyTurn
+                                    ? 'bg-amber-400 text-slate-950 font-black shadow'
+                                    : isCurrent
                                     ? 'bg-cyan-500 text-slate-950'
                                     : 'bg-slate-800 text-slate-300 border border-slate-700'
                                 }`}
@@ -310,8 +323,14 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
                                 #{entry.tableNumber}
                               </div>
                               <div className="min-w-0">
-                                <div className="font-bold text-white flex items-center gap-2">
+                                <div className="font-bold text-white flex items-center gap-2 flex-wrap">
                                   <span>Table #{entry.tableNumber}</span>
+                                  {isMyTurn && (
+                                    <span className="text-[10px] font-black px-1.5 py-0.5 bg-amber-400 text-slate-950 rounded flex items-center gap-0.5 shadow-sm animate-pulse">
+                                      <Zap className="w-2.5 h-2.5 fill-slate-950" />
+                                      Your Turn
+                                    </span>
+                                  )}
                                   {isCurrent && (
                                     <span className="text-[10px] font-semibold px-1.5 py-0.2 bg-cyan-950 border border-cyan-700 text-cyan-300 rounded">
                                       Active
@@ -334,13 +353,29 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
                                   <span>•</span>
                                   <span className="flex items-center gap-1">
                                     <Users className="w-3 h-3" />
-                                    {entry.playerCount}p: {entry.activePlayerName}&apos;s turn
+                                    {entry.playerCount}p:{' '}
+                                    <strong className={isMyTurn ? 'text-amber-300 font-bold' : 'text-slate-300'}>
+                                      {entry.activePlayerName}&apos;s turn
+                                    </strong>
                                   </span>
                                 </div>
                               </div>
                             </div>
 
                             <div className="flex items-center gap-2 shrink-0">
+                              {isMyTurn && (
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleRejoin(entry);
+                                  }}
+                                  className="px-2.5 py-1 rounded bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider transition cursor-pointer shadow flex items-center gap-1"
+                                >
+                                  <Play className="w-3 h-3 fill-slate-950" />
+                                  <span>Act</span>
+                                </button>
+                              )}
                               <button
                                 onClick={(e) => handleDelete(entry.id, e)}
                                 className="p-1.5 hover:bg-rose-950/60 rounded-lg text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"

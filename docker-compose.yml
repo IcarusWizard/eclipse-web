@@ -1,0 +1,17 @@
+version: '3.8'
+
+services:
+  eclipse:
+    build: .
+    container_name: eclipse-web
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file:
+      - .env
+    volumes:
+      - eclipse_data:/app/server_data
+
+volumes:
+  eclipse_data:
+    name: eclipse_data

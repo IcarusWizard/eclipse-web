@@ -118,6 +118,7 @@ export interface PlayerState {
   hasWormholeGeneratorAbility?: boolean; // Lyra: Row 1 bonus
   lyraExtraDiscClaimed?: boolean; // Lyra: Row 3 bonus (+1 disc)
   hasPassed: boolean;
+  autoPassReactions?: boolean;
   isFirstPasser: boolean;
   actionsTakenThisRound: number;
   graveyardShips: { type: string; count: number }[];

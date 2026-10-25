@@ -11,6 +11,10 @@ import {
   filterTablesForUser,
   isSeatTaken,
   canUserUseHotseat,
+  getTableOccupiedSeats,
+  getTableStatusCategory,
+  TableStatusCategory,
+  isPlayerTurnAtTable,
 } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
@@ -50,6 +54,11 @@ import {
   User,
   Lock,
   Star,
+  CircleDot,
+  CheckCircle2,
+  UserPlus,
+  Flag,
+  Zap,
 } from 'lucide-react';
 import {
   NeutralShipType,
@@ -78,17 +87,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 }) => {
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
-  const [tableFilterTab, setTableFilterTab] = useState<'my' | 'all'>(() =>
-    currentUser.role === 'admin' ? 'all' : 'my'
-  );
+  const [tableFilterTab, setTableFilterTab] = useState<'my' | 'all'>('all');
+  const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'need_players' | 'running' | 'done'>('all');
   const [savedTables, setSavedTables] = useState<SavedTableSummary[]>(() => listSavedTables());
 
   useEffect(() => {
     return subscribeToUserSession((updated) => {
       setCurrentUser(updated);
-      if (updated.role === 'admin') {
-        setTableFilterTab('all');
-      } else {
+      if (updated.role !== 'admin') {
         setMySeat((prev) => (prev === 'all' ? 0 : prev));
         setJoinSeat((prev) => (prev === 'all' ? 0 : prev));
       }
@@ -293,6 +299,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       userId: currentUser.id,
       username: currentUser.username,
       role: currentUser.role,
+      email: currentUser.email,
+      emailNotifications: currentUser.emailNotifications,
       seat: mySeat,
       joinedAt: Date.now(),
       isCreator: true,
@@ -348,6 +356,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         userId: currentUser.id,
         username: currentUser.username,
         role: currentUser.role,
+        email: currentUser.email,
+        emailNotifications: currentUser.emailNotifications,
         seat: joinSeat,
         joinedAt: Date.now(),
       });
@@ -382,6 +392,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       userId: currentUser.id,
       username: currentUser.username,
       role: currentUser.role,
+      email: currentUser.email,
+      emailNotifications: currentUser.emailNotifications,
       seat,
       joinedAt: Date.now(),
     });
@@ -1234,60 +1246,151 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
           {/* Saved Tables List */}
           <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 shadow-2xl shadow-cyan-950/10">
-            {/* Header with My Tables vs All Tables tab */}
-            <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 mb-3 gap-2">
-              <div className="flex items-center gap-2">
-                {currentUser.role === 'admin' ? (
-                  <Shield className="w-4 h-4 text-rose-400" />
+            {/* Header with Scope & Status Tabs */}
+            <div className="border-b border-slate-800 pb-3 mb-3 space-y-2.5">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2">
+                  {currentUser.role === 'admin' ? (
+                    <Shield className="w-4 h-4 text-rose-400" />
+                  ) : (
+                    <Users className="w-4 h-4 text-cyan-400" />
+                  )}
+                  <h3 className="text-sm font-display font-bold uppercase tracking-wider text-slate-200">
+                    Galaxy Tables
+                  </h3>
+                </div>
+
+                {currentUser.role !== 'admin' ? (
+                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                    <button
+                      type="button"
+                      onClick={() => setTableFilterTab('all')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                        tableFilterTab === 'all'
+                          ? 'bg-blue-500/25 text-blue-200 border border-blue-500/40 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      All Tables ({savedTables.length})
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTableFilterTab('my')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        tableFilterTab === 'my'
+                          ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-500/40 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <span>★ My Tables ({filterTablesForUser(savedTables, currentUser).length})</span>
+                      {(() => {
+                        const myT = filterTablesForUser(savedTables, currentUser);
+                        const turnCount = myT.filter((t) => isPlayerTurnAtTable(t, currentUser)).length;
+                        if (turnCount === 0) return null;
+                        return (
+                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 animate-pulse flex items-center gap-0.5 shadow-sm">
+                            <Zap className="w-2.5 h-2.5 fill-slate-950" />
+                            <span>{turnCount} turn{turnCount > 1 ? 's' : ''}</span>
+                          </span>
+                        );
+                      })()}
+                    </button>
+                  </div>
                 ) : (
-                  <Users className="w-4 h-4 text-cyan-400" />
+                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950/90 border border-rose-600 text-rose-300">
+                    ADMIN VIEW
+                  </span>
                 )}
-                <h3 className="text-sm font-display font-bold uppercase tracking-wider text-slate-200">
-                  {currentUser.role === 'admin'
-                    ? `All Galaxy Tables (${savedTables.length})`
-                    : tableFilterTab === 'my'
-                    ? `My Tables (${filterTablesForUser(savedTables, currentUser).length})`
-                    : `All Galaxy Tables (${savedTables.length})`}
-                </h3>
               </div>
 
-              {currentUser.role !== 'admin' ? (
-                <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-                  <button
-                    type="button"
-                    onClick={() => setTableFilterTab('my')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      tableFilterTab === 'my'
-                        ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    My Tables ({filterTablesForUser(savedTables, currentUser).length})
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTableFilterTab('all')}
-                    className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      tableFilterTab === 'all'
-                        ? 'bg-blue-500/25 text-blue-200 border border-blue-500/40 shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
-                    }`}
-                  >
-                    All Tables ({savedTables.length})
-                  </button>
-                </div>
-              ) : (
-                <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950/90 border border-rose-600 text-rose-300">
-                  ADMIN VIEW
-                </span>
-              )}
+              {/* Status Filter Tabs (Need Players, Running, Done, All) */}
+              {(() => {
+                const myTables = filterTablesForUser(savedTables, currentUser);
+                const scopedTables = tableFilterTab === 'my' && currentUser.role !== 'admin' ? myTables : savedTables;
+                const needPlayersCount = scopedTables.filter((t) => getTableStatusCategory(t) === 'need_players').length;
+                const runningCount = scopedTables.filter((t) => getTableStatusCategory(t) === 'running').length;
+                const doneCount = scopedTables.filter((t) => getTableStatusCategory(t) === 'done').length;
+
+                return (
+                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setTableStatusFilter('all')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        tableStatusFilter === 'all'
+                          ? 'bg-slate-800 text-white border border-slate-600 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-950'
+                      }`}
+                    >
+                      <span>All</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-900 border border-slate-700">
+                        {scopedTables.length}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTableStatusFilter('need_players')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        tableStatusFilter === 'need_players'
+                          ? 'bg-emerald-950 text-emerald-200 border border-emerald-500 shadow-sm shadow-emerald-950/40'
+                          : 'text-emerald-400/80 hover:text-emerald-300 hover:bg-emerald-950/40'
+                      }`}
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Need Players</span>
+                      <span
+                        className={`px-1.5 py-0.5 rounded-full text-[10px] ${
+                          needPlayersCount > 0
+                            ? 'bg-emerald-500 text-slate-950 font-extrabold'
+                            : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
+                        }`}
+                      >
+                        {needPlayersCount}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTableStatusFilter('running')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        tableStatusFilter === 'running'
+                          ? 'bg-cyan-950 text-cyan-200 border border-cyan-500 shadow-sm shadow-cyan-950/40'
+                          : 'text-cyan-400/80 hover:text-cyan-300 hover:bg-cyan-950/40'
+                      }`}
+                    >
+                      <Play className="w-3.5 h-3.5" />
+                      <span>Running</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-cyan-950/80 text-cyan-300 border border-cyan-800">
+                        {runningCount}
+                      </span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setTableStatusFilter('done')}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
+                        tableStatusFilter === 'done'
+                          ? 'bg-slate-800 text-slate-200 border border-slate-500 shadow-sm'
+                          : 'text-slate-400 hover:text-slate-300 hover:bg-slate-950'
+                      }`}
+                    >
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>Done</span>
+                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-950 text-slate-400 border border-slate-800">
+                        {doneCount}
+                      </span>
+                    </button>
+                  </div>
+                );
+              })()}
             </div>
 
             {(() => {
               const myTables = filterTablesForUser(savedTables, currentUser);
-              const displayed = tableFilterTab === 'my' && currentUser.role !== 'admin' ? myTables : savedTables;
+              const scopedTables = tableFilterTab === 'my' && currentUser.role !== 'admin' ? myTables : savedTables;
 
-              if (displayed.length === 0) {
+              if (scopedTables.length === 0) {
                 return (
                   <div className="p-6 text-center text-slate-500 text-xs space-y-2">
                     <p>
@@ -1299,7 +1402,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       <button
                         type="button"
                         onClick={() => setTableFilterTab('all')}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold transition"
+                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold transition cursor-pointer"
                       >
                         Browse All Tables ({savedTables.length})
                       </button>
@@ -1308,170 +1411,364 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 );
               }
 
-              return (
-                <div className="space-y-3 max-h-80 overflow-y-auto pr-1">
-                  {displayed.map((table) => {
-                    const myMembership = (table.members || []).find((m) => m.userId === currentUser.id);
-                    const mySeat = myMembership?.seat;
-                    const hasMySeat = myMembership && typeof mySeat !== 'undefined';
+              const needPlayersTables = scopedTables
+                .filter((t) => getTableStatusCategory(t) === 'need_players')
+                .sort((a, b) => {
+                  const aTurn = isPlayerTurnAtTable(a, currentUser) ? 1 : 0;
+                  const bTurn = isPlayerTurnAtTable(b, currentUser) ? 1 : 0;
+                  if (bTurn !== aTurn) return bTurn - aTurn;
+                  return (b.savedAt || 0) - (a.savedAt || 0);
+                });
+              const runningTables = scopedTables
+                .filter((t) => getTableStatusCategory(t) === 'running')
+                .sort((a, b) => {
+                  const aTurn = isPlayerTurnAtTable(a, currentUser) ? 1 : 0;
+                  const bTurn = isPlayerTurnAtTable(b, currentUser) ? 1 : 0;
+                  if (bTurn !== aTurn) return bTurn - aTurn;
+                  return (b.savedAt || 0) - (a.savedAt || 0);
+                });
+              const doneTables = scopedTables.filter((t) => getTableStatusCategory(t) === 'done');
+              const myTablesTurnCount = scopedTables.filter((t) => isPlayerTurnAtTable(t, currentUser)).length;
 
-                    return (
-                      <div
-                        key={table.id}
-                        className={`p-3 bg-slate-950/70 rounded-xl transition-all space-y-2.5 border ${
-                          hasMySeat
-                            ? 'border-emerald-500/40 shadow-sm shadow-emerald-950/30'
-                            : 'border-slate-800 hover:border-slate-700'
-                        }`}
-                      >
-                        {/* Table Header Row */}
-                        <div className="flex items-center justify-between">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800/80 text-cyan-300 font-mono font-bold text-xs">
-                              #{table.tableNumber || table.id}
-                            </span>
-                            <span className="text-xs font-semibold text-slate-200 truncate">
-                              Round {table.round}/{table.maxRounds} • {table.playerCount}P
-                            </span>
-                          </div>
-                          {(currentUser.role === 'admin' || myMembership?.isCreator) && (
-                            <button
-                              type="button"
-                              onClick={() => handleDelete(table.id)}
-                              className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 transition"
-                              title="Delete Table"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
+              const renderTableItem = (table: SavedTableSummary) => {
+                const category = getTableStatusCategory(table);
+                const isMyTurn = isPlayerTurnAtTable(table, currentUser);
+                const occupiedSeats = getTableOccupiedSeats(table);
+                const openCount = Math.max(0, (table.playerCount || 2) - occupiedSeats.size);
+                const myMembership = (table.members || []).find((m) => m.userId === currentUser.id);
+                const mySeat = myMembership?.seat;
+                const hasMySeat = myMembership && typeof mySeat !== 'undefined';
 
-                        {/* Status & Turn */}
-                        <div className="text-[11px] text-slate-400 truncate">
-                          Turn: <strong className="text-slate-200">{table.activePlayerName}</strong> • {table.phase.replace('_', ' ')}
-                        </div>
+                return (
+                  <div
+                    key={table.id}
+                    className={`p-3 rounded-xl transition-all space-y-2.5 border ${
+                      isMyTurn
+                        ? 'bg-gradient-to-br from-amber-950/60 via-slate-950/90 to-amber-950/30 border-amber-400 shadow-lg shadow-amber-950/60 ring-1 ring-amber-400/70'
+                        : hasMySeat
+                        ? 'bg-slate-950/70 border-emerald-500/40 shadow-sm shadow-emerald-950/30'
+                        : category === 'need_players'
+                        ? 'border-emerald-900/60 hover:border-emerald-700/80 shadow-sm shadow-emerald-950/15 bg-slate-950/70'
+                        : 'border-slate-800 hover:border-slate-700 bg-slate-950/70'
+                    }`}
+                  >
+                    {/* Table Header Row */}
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
+                        <span className={`px-2 py-0.5 rounded font-mono font-bold text-xs ${
+                          isMyTurn
+                            ? 'bg-amber-400 text-slate-950 border border-amber-300 shadow-sm'
+                            : 'bg-cyan-950/80 border border-cyan-800/80 text-cyan-300'
+                        }`}>
+                          #{table.tableNumber || table.id}
+                        </span>
+                        <span className="text-xs font-semibold text-slate-200 truncate">
+                          Round {table.round}/{table.maxRounds} • {table.playerCount}P
+                        </span>
 
-                        {/* Rejoin Prompt for Member */}
-                        {hasMySeat && (
-                          <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs">
-                            <div className="flex items-center gap-1.5">
-                              <Star className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
-                              <span>
-                                Your Seat: <strong>{typeof mySeat === 'number' ? `Seat ${mySeat + 1}` : mySeat}</strong>
+                        {/* Status Badges */}
+                        {isMyTurn && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 flex items-center gap-1 shadow-md shadow-amber-400/30 animate-pulse">
+                            <Zap className="w-3 h-3 fill-slate-950 shrink-0" />
+                            <span>YOUR TURN TO ACT</span>
+                          </span>
+                        )}
+                        {!isMyTurn && category === 'need_players' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 flex items-center gap-1.5 shadow-sm">
+                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+                            <span>NEED PLAYERS ({openCount} open)</span>
+                          </span>
+                        )}
+                        {!isMyTurn && category === 'running' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950/90 border border-cyan-500/50 text-cyan-300 flex items-center gap-1.5">
+                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
+                            <span>RUNNING</span>
+                          </span>
+                        )}
+                        {category === 'done' && (
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 border border-slate-600 text-slate-300 flex items-center gap-1.5">
+                            <Flag className="w-2.5 h-2.5 text-slate-400" />
+                            <span>DONE</span>
+                          </span>
+                        )}
+                      </div>
+
+                      {(currentUser.role === 'admin' || myMembership?.isCreator) && (
+                        <button
+                          type="button"
+                          onClick={() => handleDelete(table.id)}
+                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 transition cursor-pointer"
+                          title="Delete Table"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Status & Turn */}
+                    <div className="text-[11px] text-slate-400 truncate">
+                      {category === 'done' ? (
+                        <span className="text-slate-300 font-medium">Game Completed • Final Standing Recorded</span>
+                      ) : (
+                        <>
+                          Turn: <strong className={isMyTurn ? 'text-amber-300 font-bold' : 'text-slate-200'}>{table.activePlayerName}</strong> •{' '}
+                          {table.phase.replace('_', ' ')}
+                        </>
+                      )}
+                    </div>
+
+                    {/* Prominent Action Prompt for Current User */}
+                    {isMyTurn ? (
+                      <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-400/50 text-amber-200 text-xs shadow-inner">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="relative flex h-2.5 w-2.5 shrink-0">
+                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
+                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400" />
+                          </span>
+                          <div className="min-w-0">
+                            <div className="font-extrabold text-amber-300 uppercase tracking-wide text-[11px] flex items-center gap-1.5 truncate">
+                              <span>It is Your Turn!</span>
+                              <span className="text-[10px] font-mono text-amber-400/90">
+                                ({typeof mySeat === 'number' ? `Seat ${mySeat + 1}` : mySeat})
                               </span>
                             </div>
-                            <button
-                              type="button"
-                              onClick={() => handleJoinFromList(table.id, mySeat)}
-                              className="px-2.5 py-0.5 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] uppercase tracking-wider transition cursor-pointer shadow"
-                            >
-                              Rejoin
-                            </button>
+                            <div className="text-[10px] text-amber-200/80 truncate">
+                              Your orders are needed in {table.phase.replace('_', ' ')} (Round {table.round})
+                            </div>
                           </div>
-                        )}
-
-                        {/* Members List */}
-                        {table.members && table.members.length > 0 && (
-                          <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1 pt-1">
-                            <span className="text-slate-500 font-semibold text-[10px] uppercase tracking-wider">
-                              Members:
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => handleJoinFromList(table.id, mySeat)}
+                          className="px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md hover:scale-105 active:scale-95 flex items-center gap-1.5 shrink-0"
+                        >
+                          <Play className="w-3.5 h-3.5 fill-slate-950 shrink-0" />
+                          <span>Take Action</span>
+                        </button>
+                      </div>
+                    ) : (
+                      hasMySeat && (
+                        <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs">
+                          <div className="flex items-center gap-1.5">
+                            <Star className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
+                            <span>
+                              Your Seat: <strong>{typeof mySeat === 'number' ? `Seat ${mySeat + 1}` : mySeat}</strong>
                             </span>
-                            {table.members.map((m, mIdx) => (
-                              <span
-                                key={mIdx}
-                                className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
-                                  m.userId === currentUser.id
-                                    ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 font-bold'
-                                    : m.role === 'admin'
-                                    ? 'bg-rose-950/80 border-rose-700 text-rose-300'
-                                    : m.role === 'user'
-                                    ? 'bg-cyan-950/80 border-cyan-700 text-cyan-300'
-                                    : 'bg-amber-950/80 border-amber-700 text-amber-300'
-                                }`}
-                              >
-                                {m.username} {typeof m.seat === 'number' ? `(S${m.seat + 1})` : m.seat ? `(${m.seat})` : ''}
-                              </span>
-                            ))}
                           </div>
-                        )}
-
-                        {/* Direct Seat Launch Links */}
-                        <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800/60">
                           <button
                             type="button"
-                            disabled={!canUserUseHotseat(currentUser.role)}
-                            onClick={() => {
-                              if (canUserUseHotseat(currentUser.role)) {
-                                handleJoinFromList(table.id, 'all');
-                              }
-                            }}
-                            title={!canUserUseHotseat(currentUser.role) ? 'Hotseat is restricted to administrators' : 'Join as Hotseat (Control All)'}
-                            className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
-                              !canUserUseHotseat(currentUser.role)
-                                ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
-                                : 'bg-purple-950/40 hover:bg-purple-900/60 border-purple-800/60 text-purple-300 hover:text-white cursor-pointer'
+                            onClick={() => handleJoinFromList(table.id, mySeat)}
+                            className="px-2.5 py-0.5 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] uppercase tracking-wider transition cursor-pointer shadow"
+                          >
+                            Rejoin
+                          </button>
+                        </div>
+                      )
+                    )}
+
+                    {/* Members List */}
+                    {table.members && table.members.length > 0 && (
+                      <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1 pt-1">
+                        <span className="text-slate-500 font-semibold text-[10px] uppercase tracking-wider">
+                          Members:
+                        </span>
+                        {table.members.map((m, mIdx) => (
+                          <span
+                            key={mIdx}
+                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
+                              m.userId === currentUser.id
+                                ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 font-bold'
+                                : m.role === 'admin'
+                                ? 'bg-rose-950/80 border-rose-700 text-rose-300'
+                                : m.role === 'user'
+                                ? 'bg-cyan-950/80 border-cyan-700 text-cyan-300'
+                                : 'bg-amber-950/80 border-amber-700 text-amber-300'
                             }`}
                           >
-                            {!canUserUseHotseat(currentUser.role) && <Lock className="w-2.5 h-2.5" />}
-                            <span>Hotseat</span>
-                          </button>
-                          {Array.from({ length: table.playerCount }).map((_, sIdx) => {
-                            const isCopied = copiedLinkTableId === `${table.id}_${sIdx}`;
-                            const isMySeatHere = mySeat === sIdx;
-                            const occupant = (table.members || []).find((m) => m.seat === sIdx);
-                            const isTakenByOther = occupant && occupant.userId !== currentUser.id;
+                            {m.username} {typeof m.seat === 'number' ? `(S${m.seat + 1})` : m.seat ? `(${m.seat})` : ''}
+                          </span>
+                        ))}
+                      </div>
+                    )}
 
-                            return (
-                              <div
-                                key={sIdx}
-                                className={`inline-flex items-center rounded border text-[10px] ${
-                                  isMySeatHere
-                                    ? 'border-emerald-500 bg-emerald-950/80'
-                                    : isTakenByOther
-                                    ? 'border-slate-800 bg-slate-950/50 opacity-60'
-                                    : 'border-slate-700 bg-slate-900'
-                                }`}
-                              >
-                                <button
-                                  type="button"
-                                  disabled={Boolean(isTakenByOther)}
-                                  onClick={() => {
-                                    if (!isTakenByOther) {
-                                      handleJoinFromList(table.id, sIdx);
-                                    }
-                                  }}
-                                  title={
-                                    isTakenByOther
-                                      ? `Seat ${sIdx + 1} is already taken by ${occupant?.username || occupant?.name}`
-                                      : isMySeatHere
-                                      ? `Your Seat (Seat ${sIdx + 1})`
-                                      : `Join Seat ${sIdx + 1}`
-                                  }
-                                  className={`px-2 py-1 transition rounded-l ${
-                                    isTakenByOther
-                                      ? 'text-slate-500 cursor-not-allowed line-through'
-                                      : isMySeatHere
-                                      ? 'text-emerald-300 font-bold hover:bg-emerald-900/60 cursor-pointer'
-                                      : 'text-slate-300 hover:text-white hover:bg-slate-800 cursor-pointer'
-                                  }`}
-                                >
-                                  Seat {sIdx + 1}{isTakenByOther ? ` (${occupant?.username || occupant?.name})` : ''}
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() => handleCopySeatLink(table.id, sIdx)}
-                                  className="px-1.5 py-1 text-cyan-400 hover:bg-cyan-950/50 border-l border-slate-700 transition rounded-r cursor-pointer"
-                                  title={`Copy Seat ${sIdx + 1} Link`}
-                                >
-                                  {isCopied ? '✓' : <Share2 className="w-2.5 h-2.5" />}
-                                </button>
-                              </div>
-                            );
-                          })}
+                    {/* Direct Seat Launch Links */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800/60">
+                      <button
+                        type="button"
+                        disabled={!canUserUseHotseat(currentUser.role)}
+                        onClick={() => {
+                          if (canUserUseHotseat(currentUser.role)) {
+                            handleJoinFromList(table.id, 'all');
+                          }
+                        }}
+                        title={
+                          !canUserUseHotseat(currentUser.role)
+                            ? 'Hotseat is restricted to administrators'
+                            : 'Join as Hotseat (Control All)'
+                        }
+                        className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
+                          !canUserUseHotseat(currentUser.role)
+                            ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
+                            : 'bg-purple-950/40 hover:bg-purple-900/60 border-purple-800/60 text-purple-300 hover:text-white cursor-pointer'
+                        }`}
+                      >
+                        {!canUserUseHotseat(currentUser.role) && <Lock className="w-2.5 h-2.5" />}
+                        <span>Hotseat</span>
+                      </button>
+
+                      {/* Spectate Button */}
+                      {!hasMySeat && (
+                        <button
+                          type="button"
+                          onClick={() => handleJoinFromList(table.id, 'spectator')}
+                          className="px-2 py-1 border border-slate-700 hover:border-slate-500 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer"
+                          title="Observe game as Spectator"
+                        >
+                          <Eye className="w-2.5 h-2.5 text-slate-400" />
+                          <span>Spectate</span>
+                        </button>
+                      )}
+
+                      {Array.from({ length: table.playerCount }).map((_, sIdx) => {
+                        const isCopied = copiedLinkTableId === `${table.id}_${sIdx}`;
+                        const isMySeatHere = mySeat === sIdx;
+                        const occupant = (table.members || []).find((m) => m.seat === sIdx);
+                        const isTakenByOther = occupant && occupant.userId !== currentUser.id;
+
+                        return (
+                          <div
+                            key={sIdx}
+                            className={`inline-flex items-center rounded border text-[10px] ${
+                              isMySeatHere
+                                ? 'border-emerald-500 bg-emerald-950/80'
+                                : isTakenByOther
+                                ? 'border-slate-800 bg-slate-950/50 opacity-60'
+                                : 'border-emerald-600/80 bg-emerald-950/50 hover:border-emerald-400 shadow-sm'
+                            }`}
+                          >
+                            <button
+                              type="button"
+                              disabled={Boolean(isTakenByOther)}
+                              onClick={() => {
+                                if (!isTakenByOther) {
+                                  handleJoinFromList(table.id, sIdx);
+                                }
+                              }}
+                              title={
+                                isTakenByOther
+                                  ? `Seat ${sIdx + 1} is already taken by ${occupant?.username || occupant?.name}`
+                                  : isMySeatHere
+                                  ? `Your Seat (Seat ${sIdx + 1})`
+                                  : `Join Seat ${sIdx + 1}`
+                              }
+                              className={`px-2 py-1 transition rounded-l ${
+                                isTakenByOther
+                                  ? 'text-slate-500 cursor-not-allowed line-through'
+                                  : isMySeatHere
+                                  ? 'text-emerald-300 font-bold hover:bg-emerald-900/60 cursor-pointer'
+                                  : 'text-emerald-300 font-bold hover:text-white hover:bg-emerald-800/80 cursor-pointer'
+                              }`}
+                            >
+                              {isTakenByOther
+                                ? `Seat ${sIdx + 1} (${occupant?.username || occupant?.name})`
+                                : isMySeatHere
+                                ? `Seat ${sIdx + 1} (You)`
+                                : `▶ Join Seat ${sIdx + 1}`}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handleCopySeatLink(table.id, sIdx)}
+                              className="px-1.5 py-1 text-cyan-400 hover:bg-cyan-950/50 border-l border-slate-700 transition rounded-r cursor-pointer"
+                              title={`Copy Seat ${sIdx + 1} Link`}
+                            >
+                              {isCopied ? '✓' : <Share2 className="w-2.5 h-2.5" />}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              };
+
+              // Grouped sections when 'all' is selected
+              if (tableStatusFilter === 'all') {
+                return (
+                  <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
+                    {/* Need Players Section */}
+                    {needPlayersTables.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 px-1 text-xs font-bold uppercase tracking-wider text-emerald-400">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                          <span>Tables Needing Players ({needPlayersTables.length})</span>
+                        </div>
+                        <div className="space-y-2.5">
+                          {needPlayersTables.map(renderTableItem)}
                         </div>
                       </div>
-                    );
-                  })}
+                    )}
+
+                    {/* Running Section */}
+                    {runningTables.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 px-1 text-xs font-bold uppercase tracking-wider text-cyan-400">
+                          <Play className="w-3.5 h-3.5" />
+                          <span>Tables Running ({runningTables.length})</span>
+                        </div>
+                        <div className="space-y-2.5">
+                          {runningTables.map(renderTableItem)}
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Done Section */}
+                    {doneTables.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 px-1 text-xs font-bold uppercase tracking-wider text-slate-400">
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Tables Done ({doneTables.length})</span>
+                        </div>
+                        <div className="space-y-2.5">
+                          {doneTables.map(renderTableItem)}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                );
+              }
+
+              // Specific Category Filter
+              const targetList =
+                tableStatusFilter === 'need_players'
+                  ? needPlayersTables
+                  : tableStatusFilter === 'running'
+                  ? runningTables
+                  : doneTables;
+
+              if (targetList.length === 0) {
+                return (
+                  <div className="p-6 text-center text-slate-500 text-xs space-y-2">
+                    <p>
+                      {tableStatusFilter === 'need_players'
+                        ? 'No tables currently need players.'
+                        : tableStatusFilter === 'running'
+                        ? 'No tables currently in progress.'
+                        : 'No completed tables.'}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setTableStatusFilter('all')}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold transition cursor-pointer"
+                    >
+                      View All Tables ({scopedTables.length})
+                    </button>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
+                  {targetList.map(renderTableItem)}
                 </div>
               );
             })()}

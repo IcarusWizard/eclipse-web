@@ -14,6 +14,7 @@ import {
   Undo2,
   Lock,
   Sparkles,
+  Zap,
 } from 'lucide-react';
 
 import {
@@ -48,6 +49,10 @@ interface ActionBarProps {
   currentRound?: number;
   delayedBlackHoleShips?: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip[];
   onOpenBlackHoleReturn?: (ship: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip) => void;
+  autoPassReactions?: boolean;
+  onToggleAutoPass?: () => void;
+  isInvaded?: boolean;
+  canToggleAutoPass?: boolean;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -73,6 +78,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   currentRound,
   delayedBlackHoleShips = [],
   onOpenBlackHoleReturn,
+  autoPassReactions = false,
+  onToggleAutoPass,
+  isInvaded = false,
+  canToggleAutoPass = true,
 }) => {
   const readyBlackHoleShip = !isSpectator && !isTurnGated
     ? (delayedBlackHoleShips || []).find(
@@ -220,6 +229,35 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             <CircleDot className="w-3 h-3 text-cyan-400" />
             <span>{activePlayer.influenceTrack.discsOnTrack} Discs</span>
           </div>
+
+          {/* Auto-Pass Reactions Toggle */}
+          {onToggleAutoPass && (
+            <button
+              type="button"
+              disabled={!canToggleAutoPass && (isSpectator || isTurnGated)}
+              onClick={onToggleAutoPass}
+              title={
+                isInvaded
+                  ? "Hostile invasion detected! Auto-pass is paused"
+                  : autoPassReactions
+                  ? "Auto-Pass Reactions is ON (click to turn OFF)"
+                  : "Auto-Pass Reactions is OFF (click to turn ON)"
+              }
+              className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                isInvaded
+                  ? 'bg-rose-950/90 border-rose-500/80 text-rose-300 animate-pulse'
+                  : autoPassReactions
+                  ? 'bg-emerald-950/80 border-emerald-500/60 text-emerald-300 hover:border-emerald-400'
+                  : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+              }`}
+            >
+              <Zap className={`w-3 h-3 ${autoPassReactions ? 'text-amber-400 fill-amber-400' : 'text-slate-500'}`} />
+              <span className="hidden sm:inline">Auto-Pass:</span>
+              <span className={isInvaded ? 'text-rose-400 font-black' : autoPassReactions ? 'text-emerald-400 font-black' : 'text-slate-500'}>
+                {isInvaded ? 'PAUSED' : autoPassReactions ? 'ON' : 'OFF'}
+              </span>
+            </button>
+          )}
 
           {/* Spacetime Anomaly Indicator (Bug 145) */}
           {delayedBlackHoleShips.length > 0 && (

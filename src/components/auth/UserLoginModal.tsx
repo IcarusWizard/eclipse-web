@@ -4,6 +4,8 @@ import {
   createGuestUser,
   loginWithPassword,
   registerUser,
+  updateUserProfile,
+  saveUserSession,
   loginAsAdmin,
   isAdminConfigured,
   setupInitialAdmin,
@@ -25,6 +27,9 @@ import {
   Lock,
   UserPlus,
   RefreshCw,
+  Mail,
+  Bell,
+  Save,
 } from 'lucide-react';
 
 interface UserLoginModalProps {
@@ -53,6 +58,12 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
   const [guestName, setGuestName] = useState<string>(
     currentUser.role === 'guest' ? currentUser.username : `Guest-${Math.floor(1000 + Math.random() * 9000)}`
   );
+  const [guestEmail, setGuestEmail] = useState<string>(
+    currentUser.role === 'guest' ? currentUser.email || '' : ''
+  );
+  const [guestEmailNotifications, setGuestEmailNotifications] = useState<boolean>(
+    currentUser.emailNotifications !== false
+  );
 
   // Commander Login inputs
   const [userName, setUserName] = useState<string>(
@@ -65,6 +76,15 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
   const [regDisplayName, setRegDisplayName] = useState<string>('');
   const [regPassword, setRegPassword] = useState<string>('');
   const [regConfirmPassword, setRegConfirmPassword] = useState<string>('');
+  const [regEmail, setRegEmail] = useState<string>('');
+  const [regEmailNotifications, setRegEmailNotifications] = useState<boolean>(true);
+
+  // Commander Profile / Settings inputs (when logged in as Commander)
+  const [profileEmail, setProfileEmail] = useState<string>(currentUser.email || '');
+  const [profileEmailNotifications, setProfileEmailNotifications] = useState<boolean>(
+    currentUser.emailNotifications !== false
+  );
+  const [isSwitchingCommander, setIsSwitchingCommander] = useState<boolean>(false);
 
   // Admin Login inputs
   const [adminPassword, setAdminPassword] = useState<string>('');
@@ -121,12 +141,22 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
     }
   }, [currentUser.role, activeTab]);
 
+  useEffect(() => {
+    setProfileEmail(currentUser.email || '');
+    setProfileEmailNotifications(currentUser.emailNotifications !== false);
+  }, [currentUser]);
+
   // Guest submit handler
   const handleGuestSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     clearFeedback();
     const clean = guestName.trim() || `Guest-${Math.floor(1000 + Math.random() * 9000)}`;
     const guest = createGuestUser(clean);
+    if (guestEmail.trim()) {
+      guest.email = guestEmail.trim();
+      guest.emailNotifications = guestEmailNotifications;
+      saveUserSession(guest);
+    }
     onUserChanged(guest);
     onClose();
   };
@@ -178,7 +208,13 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
     }
 
     setIsSubmitting(true);
-    const res = await registerUser(cleanUser, regPassword, cleanName);
+    const res = await registerUser(
+      cleanUser,
+      regPassword,
+      cleanName,
+      regEmail.trim() || undefined,
+      regEmailNotifications
+    );
     setIsSubmitting(false);
 
     if (res.success && res.user) {
@@ -186,6 +222,26 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
       onClose();
     } else {
       setErrorMessage(res.error || 'Registration failed.');
+    }
+  };
+
+  // Commander Profile Notification Preferences Update handler
+  const handleUpdateNotificationPreferences = async (e: React.FormEvent) => {
+    e.preventDefault();
+    clearFeedback();
+    setIsSubmitting(true);
+    const cleanEmail = profileEmail.trim();
+    const res = await updateUserProfile(currentUser.id, {
+      email: cleanEmail,
+      emailNotifications: profileEmailNotifications,
+    });
+    setIsSubmitting(false);
+
+    if (res.success && res.user) {
+      onUserChanged(res.user);
+      setSuccessMessage('Notification preferences updated successfully!');
+    } else {
+      setErrorMessage(res.error || 'Failed to update preferences.');
     }
   };
 
@@ -439,6 +495,35 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                 </p>
               </div>
 
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-amber-300 mb-1.5 flex items-center gap-1.5">
+                  <Mail className="w-3.5 h-3.5 text-amber-400" />
+                  <span>Notification Email <span className="text-slate-500 font-normal lowercase">(optional for turn alerts)</span></span>
+                </label>
+                <input
+                  type="email"
+                  value={guestEmail}
+                  onChange={(e) => setGuestEmail(e.target.value)}
+                  placeholder="e.g. your-email@gmail.com"
+                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400 transition"
+                />
+              </div>
+
+              {guestEmail.trim() && (
+                <div className="flex items-start gap-2.5 pt-0.5">
+                  <input
+                    type="checkbox"
+                    id="guestEmailNotifications"
+                    checked={guestEmailNotifications}
+                    onChange={(e) => setGuestEmailNotifications(e.target.checked)}
+                    className="mt-0.5 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500 cursor-pointer"
+                  />
+                  <label htmlFor="guestEmailNotifications" className="text-xs text-slate-300 cursor-pointer select-none">
+                    Send me email turn reminders when I am offline (BGA-style)
+                  </label>
+                </div>
+              )}
+
               <button
                 type="submit"
                 className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
@@ -449,197 +534,331 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             </form>
           )}
 
-          {/* COMMANDER TAB (LOGIN / REGISTER) */}
+          {/* COMMANDER TAB */}
           {activeTab === 'user' && (
             <div className="space-y-4">
-              {/* Sub-mode Toggle (Login vs Register) */}
-              <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCommanderMode('login');
-                    clearFeedback();
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                    commanderMode === 'login'
-                      ? 'bg-cyan-600 text-white shadow'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <LogIn className="w-3.5 h-3.5" />
-                  <span>Login</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCommanderMode('register');
-                    clearFeedback();
-                  }}
-                  className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                    commanderMode === 'register'
-                      ? 'bg-cyan-600 text-white shadow'
-                      : 'text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  <span>Register</span>
-                </button>
-              </div>
-
-              {/* Login Form */}
-              {commanderMode === 'login' && (
-                <form onSubmit={handleCommanderLoginSubmit} className="space-y-3.5">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                      Commander Username
-                    </label>
-                    <input
-                      type="text"
-                      value={userName}
-                      onChange={(e) => setUserName(e.target.value)}
-                      placeholder="e.g. Commander Alice"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
-                      required
-                      autoFocus
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                      Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="password"
-                        value={userPassword}
-                        onChange={(e) => setUserPassword(e.target.value)}
-                        placeholder="Enter your password..."
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
-                        required
-                      />
-                      <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3 pointer-events-none" />
+              {currentUser.role === 'user' && !isSwitchingCommander ? (
+                <div className="space-y-4">
+                  {/* Account overview card */}
+                  <div className="p-3.5 bg-slate-900/60 border border-slate-800 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-cyan-500/20 border border-cyan-500/40 flex items-center justify-center text-cyan-300">
+                          <User className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="text-xs font-bold text-white">{currentUser.name || currentUser.username}</div>
+                          <div className="text-[10px] text-cyan-400 font-mono">@{currentUser.username}</div>
+                        </div>
+                      </div>
+                      <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-600 text-cyan-300 text-[10px] font-mono font-bold uppercase tracking-wider">
+                        Authenticated
+                      </span>
                     </div>
                   </div>
 
-                  <p className="text-[11px] text-slate-400">
-                    Log in with your encrypted credentials to rejoin your galaxy tables across sessions and devices.
-                  </p>
+                  {/* Notification & Turn Reminder Settings */}
+                  <form onSubmit={handleUpdateNotificationPreferences} className="p-4 bg-slate-900/40 border border-slate-800 rounded-xl space-y-3.5">
+                    <div className="flex items-center gap-2 pb-1.5 border-b border-slate-800">
+                      <Bell className="w-4 h-4 text-cyan-400" />
+                      <h3 className="text-xs font-bold text-white uppercase tracking-wider">
+                        Turn Reminders & Notifications
+                      </h3>
+                    </div>
 
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <LogIn className="w-4 h-4" />
-                    <span>{isSubmitting ? 'Logging in...' : 'Login as Commander'}</span>
-                  </button>
+                    <div>
+                      <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5 flex items-center gap-1.5">
+                        <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                        <span>Notification Email</span>
+                      </label>
+                      <input
+                        type="email"
+                        value={profileEmail}
+                        onChange={(e) => setProfileEmail(e.target.value)}
+                        placeholder="e.g. commander@example.com"
+                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition"
+                      />
+                    </div>
 
-                  <div className="text-center pt-1">
+                    <div className="flex items-start gap-2.5 pt-0.5">
+                      <input
+                        type="checkbox"
+                        id="profileEmailNotifications"
+                        checked={profileEmailNotifications}
+                        onChange={(e) => setProfileEmailNotifications(e.target.checked)}
+                        className="mt-0.5 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500 cursor-pointer"
+                      />
+                      <label htmlFor="profileEmailNotifications" className="text-xs text-slate-300 cursor-pointer select-none">
+                        Send email reminders when it is my turn and I am offline (BGA-style)
+                      </label>
+                    </div>
+
+                    <p className="text-[11px] text-slate-400">
+                      When active, Eclipse High Command will dispatch an automated email with a direct cockpit join link whenever it is your turn to take action and your tab has been idle for more than 45 seconds.
+                    </p>
+
+                    <button
+                      type="submit"
+                      disabled={isSubmitting}
+                      className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      <Save className="w-4 h-4" />
+                      <span>{isSubmitting ? 'Saving...' : 'Save Notification Preferences'}</span>
+                    </button>
+                  </form>
+
+                  {/* Switch commander option */}
+                  <div className="pt-2 flex justify-between items-center text-xs text-slate-400">
+                    <span>Need to use a different account?</span>
                     <button
                       type="button"
                       onClick={() => {
-                        setCommanderMode('register');
+                        setIsSwitchingCommander(true);
                         clearFeedback();
                       }}
-                      className="text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-4 cursor-pointer transition"
+                      className="text-cyan-400 hover:text-cyan-300 underline underline-offset-4 cursor-pointer"
                     >
-                      New Commander? Register here
+                      Switch Commander Account
                     </button>
                   </div>
-                </form>
-              )}
-
-              {/* Register Form */}
-              {commanderMode === 'register' && (
-                <form onSubmit={handleCommanderRegisterSubmit} className="space-y-3.5">
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                      Username (Login ID)
-                    </label>
-                    <input
-                      type="text"
-                      value={regUsername}
-                      onChange={(e) => setRegUsername(e.target.value)}
-                      placeholder="e.g. CommanderBob"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
-                      required
-                      autoFocus
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                      In-Game Display Name <span className="text-slate-500 font-normal lowercase">(optional)</span>
-                    </label>
-                    <input
-                      type="text"
-                      value={regDisplayName}
-                      onChange={(e) => setRegDisplayName(e.target.value)}
-                      placeholder="e.g. Bob the Conqueror"
-                      className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition"
-                    />
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                      Password (min 3 chars)
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="password"
-                        value={regPassword}
-                        onChange={(e) => setRegPassword(e.target.value)}
-                        placeholder="Create a password..."
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
-                        required
-                      />
-                      <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3 pointer-events-none" />
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {currentUser.role === 'user' && isSwitchingCommander && (
+                    <div className="flex justify-between items-center pb-1">
+                      <span className="text-xs text-slate-400">
+                        Switching from <strong className="text-white">{currentUser.username}</strong>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsSwitchingCommander(false);
+                          clearFeedback();
+                        }}
+                        className="text-xs text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
+                      >
+                        ← Back to My Account
+                      </button>
                     </div>
-                  </div>
+                  )}
 
-                  <div>
-                    <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                      Confirm Password
-                    </label>
-                    <div className="relative">
-                      <input
-                        type="password"
-                        value={regConfirmPassword}
-                        onChange={(e) => setRegConfirmPassword(e.target.value)}
-                        placeholder="Confirm password..."
-                        className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
-                        required
-                      />
-                      <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3 pointer-events-none" />
-                    </div>
-                  </div>
-
-                  <p className="text-[11px] text-slate-400">
-                    Your password will be encrypted using PBKDF2 with salted SHA-256 before storage. Plaintext passwords are never saved.
-                  </p>
-
-                  <button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-                  >
-                    <UserPlus className="w-4 h-4" />
-                    <span>{isSubmitting ? 'Registering...' : 'Create Commander Account'}</span>
-                  </button>
-
-                  <div className="text-center pt-1">
+                  {/* Sub-mode Toggle (Login vs Register) */}
+                  <div className="flex bg-slate-900 rounded-xl p-1 border border-slate-800">
                     <button
                       type="button"
                       onClick={() => {
                         setCommanderMode('login');
                         clearFeedback();
                       }}
-                      className="text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-4 cursor-pointer transition"
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        commanderMode === 'login'
+                          ? 'bg-cyan-600 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
                     >
-                      Already registered? Login here
+                      <LogIn className="w-3.5 h-3.5" />
+                      <span>Login</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setCommanderMode('register');
+                        clearFeedback();
+                      }}
+                      className={`flex-1 py-1.5 rounded-lg text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                        commanderMode === 'register'
+                          ? 'bg-cyan-600 text-white shadow'
+                          : 'text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Register</span>
                     </button>
                   </div>
-                </form>
+
+                  {/* Login Form */}
+                  {commanderMode === 'login' && (
+                    <form onSubmit={handleCommanderLoginSubmit} className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                          Commander Username
+                        </label>
+                        <input
+                          type="text"
+                          value={userName}
+                          onChange={(e) => setUserName(e.target.value)}
+                          placeholder="e.g. Commander Alice"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
+                          required
+                          autoFocus
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                          Password
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="password"
+                            value={userPassword}
+                            onChange={(e) => setUserPassword(e.target.value)}
+                            placeholder="Enter your password..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
+                            required
+                          />
+                          <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-400">
+                        Log in with your encrypted credentials to rejoin your galaxy tables across sessions and devices.
+                      </p>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        <LogIn className="w-4 h-4" />
+                        <span>{isSubmitting ? 'Logging in...' : 'Login as Commander'}</span>
+                      </button>
+
+                      <div className="text-center pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCommanderMode('register');
+                            clearFeedback();
+                          }}
+                          className="text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-4 cursor-pointer transition"
+                        >
+                          New Commander? Register here
+                        </button>
+                      </div>
+                    </form>
+                  )}
+
+                  {/* Register Form */}
+                  {commanderMode === 'register' && (
+                    <form onSubmit={handleCommanderRegisterSubmit} className="space-y-3.5">
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                          Username (Login ID)
+                        </label>
+                        <input
+                          type="text"
+                          value={regUsername}
+                          onChange={(e) => setRegUsername(e.target.value)}
+                          placeholder="e.g. CommanderBob"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
+                          required
+                          autoFocus
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                          In-Game Display Name <span className="text-slate-500 font-normal lowercase">(optional)</span>
+                        </label>
+                        <input
+                          type="text"
+                          value={regDisplayName}
+                          onChange={(e) => setRegDisplayName(e.target.value)}
+                          placeholder="e.g. Bob the Conqueror"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5 flex items-center gap-1.5">
+                          <Mail className="w-3.5 h-3.5 text-cyan-400" />
+                          <span>Notification Email <span className="text-slate-500 font-normal lowercase">(optional for turn alerts)</span></span>
+                        </label>
+                        <input
+                          type="email"
+                          value={regEmail}
+                          onChange={(e) => setRegEmail(e.target.value)}
+                          placeholder="e.g. commander@example.com"
+                          className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition"
+                        />
+                      </div>
+
+                      <div className="flex items-start gap-2.5 pt-0.5">
+                        <input
+                          type="checkbox"
+                          id="regEmailNotifications"
+                          checked={regEmailNotifications}
+                          onChange={(e) => setRegEmailNotifications(e.target.checked)}
+                          className="mt-0.5 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500 cursor-pointer"
+                        />
+                        <label htmlFor="regEmailNotifications" className="text-xs text-slate-300 cursor-pointer select-none">
+                          Send me email reminders when it is my turn and I am offline (BGA-style)
+                        </label>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                          Password (min 3 chars)
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="password"
+                            value={regPassword}
+                            onChange={(e) => setRegPassword(e.target.value)}
+                            placeholder="Create a password..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
+                            required
+                          />
+                          <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
+                          Confirm Password
+                        </label>
+                        <div className="relative">
+                          <input
+                            type="password"
+                            value={regConfirmPassword}
+                            onChange={(e) => setRegConfirmPassword(e.target.value)}
+                            placeholder="Confirm password..."
+                            className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
+                            required
+                          />
+                          <Lock className="w-4 h-4 text-slate-500 absolute right-3 top-3 pointer-events-none" />
+                        </div>
+                      </div>
+
+                      <p className="text-[11px] text-slate-400">
+                        Your password will be encrypted using PBKDF2 with salted SHA-256 before storage. Plaintext passwords are never saved.
+                      </p>
+
+                      <button
+                        type="submit"
+                        disabled={isSubmitting}
+                        className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      >
+                        <UserPlus className="w-4 h-4" />
+                        <span>{isSubmitting ? 'Registering...' : 'Create Commander Account'}</span>
+                      </button>
+
+                      <div className="text-center pt-1">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCommanderMode('login');
+                            clearFeedback();
+                          }}
+                          className="text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-4 cursor-pointer transition"
+                        >
+                          Already registered? Login here
+                        </button>
+                      </div>
+                    </form>
+                  )}
+                </div>
               )}
             </div>
           )}

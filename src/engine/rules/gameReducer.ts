@@ -16,6 +16,8 @@ import {
   ActivatePulsarAction,
   ReturnBlackHoleShipAction,
   DraftFactionAction,
+  PassAction,
+  SetAutoPassAction,
 } from '../types/actions';
 import {
   rollYellowDie,
@@ -294,6 +296,122 @@ export function getNextActivePlayerIndex(state: GameState): number {
   return nextIdx;
 }
 
+/**
+ * Checks if another player has invaded territory or units controlled/occupied by the given player.
+ * A player is considered invaded if any sector contains opponent player ships AND:
+ * 1. The player has an influence disc in the sector (sector.discOwner === playerId), OR
+ * 2. The player has colonized population cubes in the sector, OR
+ * 3. The player has ships/structures in the sector.
+ */
+export function isPlayerInvaded(state: GameState, playerId: string): boolean {
+  if (!state || !state.sectors || !playerId) return false;
+  for (const sector of state.sectors) {
+    const hasOpponentShip = sector.ships.some(
+      (s) => s.ownerId.startsWith('player_') && s.ownerId !== playerId
+    );
+    if (!hasOpponentShip) continue;
+
+    // 1. Sector controlled by player with influence disc
+    if (sector.discOwner === playerId) {
+      return true;
+    }
+
+    // 2. Sector with player's colonized population cubes
+    if (sector.planets.some((p) => p.colonizedBy === playerId)) {
+      return true;
+    }
+
+    // 3. Sector with player's ships in neutral/unowned space (not in opponent's controlled territory)
+    const isOpponentTerritory = Boolean(
+      sector.discOwner && sector.discOwner.startsWith('player_') && sector.discOwner !== playerId
+    );
+    if (!isOpponentTerritory && sector.ships.some((s) => s.ownerId === playerId)) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Advances the active player index, automatically executing reaction passes for players who have
+ * enabled autoPassReactions and are NOT invaded by another player.
+ */
+export function advanceTurnOrAutoPass(state: GameState): void {
+  const activePlayers = state.players.filter((p) => !p.isEliminated);
+  const allPassedConsecutively = (state.consecutivePasses || 0) >= activePlayers.length;
+  if (allPassedConsecutively) {
+    state.log.unshift({
+      id: `log_${Date.now()}_combat_all_passed`,
+      timestamp: Date.now(),
+      round: state.round,
+      phase: state.phase,
+      message: `All commanders have passed consecutively! Proceeding to Combat Phase.`,
+      type: 'system',
+    });
+    state.phase = 'COMBAT_PHASE';
+    state.resolvedCombatSectorIds = [];
+    checkAndTriggerCombat(state);
+    return;
+  }
+
+  state.activePlayerIndex = getNextActivePlayerIndex(state);
+
+  let loopCount = 0;
+  while (loopCount < activePlayers.length) {
+    const activeP = state.players[state.activePlayerIndex];
+    if (!activeP || activeP.isEliminated) break;
+
+    const hasPassed = activeP.hasPassed || state.passedPlayerIds.includes(activeP.id);
+    if (!hasPassed || !activeP.autoPassReactions) {
+      break;
+    }
+
+    if (isPlayerInvaded(state, activeP.id)) {
+      activeP.autoPassReactions = false;
+      state.log.unshift({
+        id: `log_${Date.now()}_invaded_${activeP.id}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: state.phase,
+        playerId: activeP.id,
+        message: `⚠️ Auto-pass paused for ${activeP.name}: enemy fleet invasion detected!`,
+        type: 'system',
+      });
+      break;
+    }
+
+    // Auto-pass reaction turn
+    state.consecutivePasses = (state.consecutivePasses || 0) + 1;
+    state.log.unshift({
+      id: `log_${Date.now()}_autopass_${activeP.id}`,
+      timestamp: Date.now(),
+      round: state.round,
+      phase: state.phase,
+      playerId: activeP.id,
+      message: `⚡ ${activeP.name} auto-passed reaction turn (no invasion detected).`,
+      type: 'system',
+    });
+
+    if ((state.consecutivePasses || 0) >= activePlayers.length) {
+      state.log.unshift({
+        id: `log_${Date.now()}_combat_all_passed`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: state.phase,
+        message: `All commanders have passed consecutively! Proceeding to Combat Phase.`,
+        type: 'system',
+      });
+      state.phase = 'COMBAT_PHASE';
+      state.resolvedCombatSectorIds = [];
+      checkAndTriggerCombat(state);
+      return;
+    }
+
+    state.activePlayerIndex = getNextActivePlayerIndex(state);
+    loopCount++;
+  }
+}
+
 export function validateAction(state: GameState, action: GameAction): { valid: boolean; error?: string } {
   if (state.phase === 'GAME_OVER') {
     return { valid: false, error: 'The game has ended.' };
@@ -329,7 +447,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'REROLL_COMBAT_DIE' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
-      action.type !== 'BETRAY_ALLIANCE'
+      action.type !== 'BETRAY_ALLIANCE' &&
+      action.type !== 'SET_AUTO_PASS'
     ) {
       return {
         valid: false,
@@ -360,7 +479,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'REROLL_COMBAT_DIE' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
-      action.type !== 'BETRAY_ALLIANCE'
+      action.type !== 'BETRAY_ALLIANCE' &&
+      action.type !== 'SET_AUTO_PASS'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -379,7 +499,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'REVERT_TURN_ACTION' &&
       action.type !== 'DIPLOMACY_EXCHANGE' &&
       action.type !== 'PROPOSE_DIPLOMACY' &&
-      action.type !== 'RESPOND_DIPLOMACY'
+      action.type !== 'RESPOND_DIPLOMACY' &&
+      action.type !== 'SET_AUTO_PASS'
     ) {
       return {
         valid: false,
@@ -3204,6 +3325,10 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     }
 
     case 'PASS': {
+      const passAct = action as PassAction;
+      if (passAct.enableAutoPass !== undefined) {
+        player.autoPassReactions = passAct.enableAutoPass;
+      }
       newState.pendingExploreActivations = 0; // Clear any pending explore activations when passing (Bug 114)
       newState.consecutivePasses = (newState.consecutivePasses || 0) + 1;
       if (!newState.passedPlayerIds.includes(player.id)) {
@@ -4157,17 +4282,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
         timestamp: Date.now(),
       };
 
-      // Advance turn or proceed to combat phase if all passed consecutively
-      const activePlayers = newState.players.filter((p) => !p.isEliminated);
-      const allPassedConsecutively = (newState.consecutivePasses || 0) >= activePlayers.length;
-      if (allPassedConsecutively) {
-        addLog(`All commanders have passed consecutively! Proceeding to Combat Phase.`, 'system');
-        newState.phase = 'COMBAT_PHASE';
-        newState.resolvedCombatSectorIds = [];
-        checkAndTriggerCombat(newState);
-      } else {
-        newState.activePlayerIndex = getNextActivePlayerIndex(newState);
-      }
+      // Advance turn or proceed to combat phase if all passed consecutively (with auto-pass reactions)
+      advanceTurnOrAutoPass(newState);
       return { success: true, newState };
     }
 
@@ -4445,6 +4561,35 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
       return { success: true, newState };
     }
+
+    case 'SET_AUTO_PASS': {
+      const autoPassAct = action as SetAutoPassAction;
+      player.autoPassReactions = autoPassAct.enabled;
+      addLog(
+        `${player.name} turned Auto-Pass Reactions ${autoPassAct.enabled ? 'ON' : 'OFF'}.`,
+        'system'
+      );
+      // If enabled, and it is currently this player's reaction turn, and they have already passed and not invaded:
+      const isPlayerTurn =
+        newState.phase === 'ACTION_PHASE' &&
+        newState.activePlayerIndex === newState.players.findIndex((p) => p.id === player.id);
+      const hasPassed = player.hasPassed || newState.passedPlayerIds.includes(player.id);
+      if (
+        autoPassAct.enabled &&
+        isPlayerTurn &&
+        hasPassed &&
+        !newState.pendingActionConfirmation &&
+        !newState.pendingExplore
+      ) {
+        if (isPlayerInvaded(newState, player.id)) {
+          player.autoPassReactions = false;
+          addLog(`⚠️ Auto-pass cannot be activated: enemy fleet invasion detected!`, 'system');
+        } else {
+          advanceTurnOrAutoPass(newState);
+        }
+      }
+      return { success: true, newState };
+    }
   }
 
   // Turn management during ACTION_PHASE
@@ -4535,16 +4680,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
       };
     }
 
-    const activePlayers = newState.players.filter((p) => !p.isEliminated);
-    const allPassedConsecutively = (newState.consecutivePasses || 0) >= activePlayers.length;
-    if (allPassedConsecutively) {
-      addLog(`All commanders have passed consecutively! Proceeding to Combat Phase.`, 'system');
-      newState.phase = 'COMBAT_PHASE';
-      newState.resolvedCombatSectorIds = [];
-      checkAndTriggerCombat(newState);
-    } else {
-      newState.activePlayerIndex = getNextActivePlayerIndex(newState);
-    }
+    advanceTurnOrAutoPass(newState);
   }
 
   syncExilesOrbitalShips(newState);
@@ -5530,6 +5666,7 @@ export function transitionToCleanup(state: GameState): void {
   // Reset players action discs and passing status
   for (const player of state.players) {
     player.hasPassed = false;
+    player.autoPassReactions = false;
     // Discs used on actions return to the influence track!
     // Discs placed on sectors remain on sectors.
     const sectorsClaimed = state.sectors.filter((s) => s.discOwner === player.id).length;

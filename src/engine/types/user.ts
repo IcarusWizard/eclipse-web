@@ -5,6 +5,8 @@ export interface UserSession {
   username: string;
   name: string;
   role: UserRole;
+  email?: string;
+  emailNotifications?: boolean;
   createdAt: number;
   lastActiveAt: number;
 }
@@ -14,6 +16,8 @@ export interface TableMember {
   username: string;
   name: string;
   role: UserRole;
+  email?: string;
+  emailNotifications?: boolean;
   seat?: number | 'all' | 'spectator';
   joinedAt: number;
   isCreator?: boolean;
@@ -24,6 +28,8 @@ export interface RegisteredUserProfile {
   username: string;
   name: string;
   role: UserRole;
+  email?: string;
+  emailNotifications?: boolean;
   createdAt: number;
   updatedAt?: number;
 }
@@ -32,3 +38,4 @@ export interface StoredUserAccount extends RegisteredUserProfile {
   salt: string;
   passwordHash: string;
 }
+
