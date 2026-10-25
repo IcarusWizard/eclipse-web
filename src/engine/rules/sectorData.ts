@@ -210,7 +210,7 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     hasArtifact: true,
     wormholes: [true, false, true, true, false, true],
     planets: [
-      { id: 'hp_p1', resource: 'material', isAdvanced: false },
+      { id: 'hp_p1', resource: 'material', isAdvanced: true },
       { id: 'hp_p2', resource: 'science', isAdvanced: true }, // Hydran starts with cube here
       { id: 'hp_p3', resource: 'money', isAdvanced: false },
     ],
@@ -235,7 +235,7 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     hasArtifact: true,
     wormholes: [true, false, true, true, false, true],
     planets: [
-      { id: 'dd_p1', resource: 'material', isAdvanced: false },
+      { id: 'dd_p1', resource: 'material', isAdvanced: true },
       { id: 'dd_p2', resource: 'science', isAdvanced: false },
       { id: 'dd_p3', resource: 'money', isAdvanced: false },
     ],
@@ -248,7 +248,7 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
     hasArtifact: true,
     wormholes: [true, false, true, true, false, true],
     planets: [
-      { id: 'me_p1', resource: 'material', isAdvanced: false },
+      { id: 'me_p1', resource: 'material', isAdvanced: true },
       { id: 'me_p2', resource: 'science', isAdvanced: false },
       { id: 'me_p3', resource: 'money', isAdvanced: false },
       { id: 'me_p4', resource: 'money', isAdvanced: true },

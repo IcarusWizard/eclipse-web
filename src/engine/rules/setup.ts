@@ -851,31 +851,25 @@ export function buildPlayerAndHomeSector(
     })
     .filter((t): t is (typeof TECH_CATALOG)[number] => Boolean(t));
 
-  let moneyCubesRemaining = 10;
-  let scienceCubesRemaining = 10;
-  let materialCubesRemaining = 10;
+  // Dynamically count colonized cubes on home sector planets
+  const colonizedCounts = { money: 0, science: 0, material: 0 };
+  for (const pl of planets) {
+    if (pl.colonizedBy && pl.colonizedResource) {
+      const res = pl.colonizedResource as 'money' | 'science' | 'material';
+      if (colonizedCounts[res] !== undefined) {
+        colonizedCounts[res]++;
+      }
+    }
+  }
+
+  let moneyCubesRemaining = 11 - colonizedCounts.money;
+  let scienceCubesRemaining = 11 - colonizedCounts.science;
+  let materialCubesRemaining = 11 - colonizedCounts.material;
 
   if (faction.id === 'hydran_progress') {
     scienceCubesRemaining = 9;
-    materialCubesRemaining = 10;
-    moneyCubesRemaining = 10;
-  } else if (faction.id === 'the_exiles') {
-    moneyCubesRemaining = 11;
-    scienceCubesRemaining = 10;
-    materialCubesRemaining = 10;
-  } else if (faction.id === 'rho_indi_syndicate') {
-    moneyCubesRemaining = 10;
-    scienceCubesRemaining = 11;
-    materialCubesRemaining = 10;
-  } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan') {
-    moneyCubesRemaining = 11;
-    scienceCubesRemaining = 10;
-    materialCubesRemaining = 10;
-  } else if (faction.id === 'enlightened_of_lyra') {
-    moneyCubesRemaining = 10;
-    scienceCubesRemaining = 10;
-    materialCubesRemaining = 10;
   }
+
 
   const startingRepTiles: number[] = [];
   if (faction.id === 'eridani_empire') {
