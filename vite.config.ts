@@ -943,8 +943,11 @@ function tableStoragePlugin(): Plugin {
                 playerNames: data.players?.map((p: any) => `${p.name} (${p.faction?.name || ''})`) || [],
                 activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
                 activePlayerIndex: effectiveActiveSeat,
-                members: data.members || [],
-                hasReplay: Boolean(data.replaySteps && data.replaySteps.length > 0),
+                hasReplay: Boolean(
+                  data.replaySteps &&
+                  data.replaySteps.length > 0 &&
+                  !(data.round > 1 && (data.replaySteps[0]?.round > 1 || data.replaySteps[0]?.actionType !== 'GAME_SETUP'))
+                ),
                 replayStepsCount: data.replaySteps?.length || 0,
               });
             } catch {}
@@ -973,9 +976,14 @@ function tableStoragePlugin(): Plugin {
             if (!t) return t;
             if (!includeReplay && t.replaySteps) {
               const { replaySteps, ...rest } = t;
+              const hasValidReplay = Boolean(
+                replaySteps &&
+                replaySteps.length > 0 &&
+                !(t.round > 1 && (replaySteps[0]?.round > 1 || replaySteps[0]?.actionType !== 'GAME_SETUP'))
+              );
               return {
                 ...rest,
-                hasReplay: Boolean(replaySteps && replaySteps.length > 0),
+                hasReplay: hasValidReplay,
                 replayStepsCount: Array.isArray(replaySteps) ? replaySteps.length : 0,
               };
             }
@@ -1086,6 +1094,29 @@ function tableStoragePlugin(): Plugin {
                   for (const m of existing.members) memberMap.set(m.userId, m);
                   for (const m of incomingMembers) memberMap.set(m.userId, m);
                   data.members = Array.from(memberMap.values());
+                }
+                // Preserve & merge historical replaySteps so live sync never wipes out history
+                if (existing.replaySteps && Array.isArray(existing.replaySteps) && existing.replaySteps.length > 0) {
+                  if (!data.replaySteps || !Array.isArray(data.replaySteps) || data.replaySteps.length === 0) {
+                    data.replaySteps = existing.replaySteps;
+                    data.hasReplay = true;
+                    data.replayStepsCount = existing.replaySteps.length;
+                  } else if (data.replaySteps.length < existing.replaySteps.length) {
+                    const merged = [...existing.replaySteps];
+                    for (const step of data.replaySteps) {
+                      const exists = merged.some(
+                        (s: any) =>
+                          s.stepIndex === step.stepIndex ||
+                          (s.timestamp === step.timestamp && s.actionType === step.actionType)
+                      );
+                      if (!exists) {
+                        merged.push({ ...step, stepIndex: merged.length });
+                      }
+                    }
+                    data.replaySteps = merged;
+                    data.hasReplay = true;
+                    data.replayStepsCount = merged.length;
+                  }
                 }
               } catch {}
             }

@@ -17220,6 +17220,21 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const loadedLegacy = loadTable(legacyGame.id);
         expect(loadedLegacy).toBeDefined();
         expect(isReplayAvailable(loadedLegacy)).toBe(false);
+
+        // 8. Legacy games started before replay tracking that recorded an isolated action mid-game
+        // (like galaxy-384 at round 5) must also be detected as replay-unavailable
+        const midGameLegacy: any = JSON.parse(JSON.stringify(legacyGame));
+        midGameLegacy.round = 5;
+        midGameLegacy.replaySteps = [
+          {
+            stepIndex: 0,
+            round: 5,
+            actionType: 'RESEARCH',
+            summary: 'Orion Hegemony researched fusion_drive',
+            snapshot: '{}',
+          },
+        ];
+        expect(isReplayAvailable(midGameLegacy)).toBe(false);
       });
 
       it('102. verifies ETag Conditional 304 Caching and Fingerprint Stability', async () => {

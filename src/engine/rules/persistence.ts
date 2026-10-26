@@ -1,5 +1,6 @@
 import { GameState } from '../types/state';
 import { TableMember, UserSession } from '../types/user';
+import { isReplayAvailable } from './replay';
 
 export interface SavedTableSummary {
   id: string;
@@ -126,6 +127,16 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     const existingTable = tables[state.id];
     const members = state.members || (state as any).members || existingTable?.members || [];
     state.members = members;
+
+    // Retain existing historical replaySteps if current state object had stripped replaySteps
+    if ((!state.replaySteps || state.replaySteps.length === 0) && existingTable?.stateJson) {
+      try {
+        const parsed = JSON.parse(existingTable.stateJson);
+        if (parsed.replaySteps && Array.isArray(parsed.replaySteps) && parsed.replaySteps.length > 0) {
+          state.replaySteps = parsed.replaySteps;
+        }
+      } catch {}
+    }
     const activePlayer = state.players[state.activePlayerIndex];
     let effectiveActiveIndex = typeof state.activePlayerIndex === 'number' ? state.activePlayerIndex : 0;
     if (state.phase === 'COMBAT_PHASE' && (state as any).combat?.activePlayerId) {
@@ -133,7 +144,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       if (cIdx >= 0) effectiveActiveIndex = cIdx;
     }
 
-    const hasReplay = Boolean(state.replaySteps && state.replaySteps.length > 0);
+    const hasReplay = isReplayAvailable(state);
     const replayStepsCount = state.replaySteps?.length || 0;
 
     tables[state.id] = {
