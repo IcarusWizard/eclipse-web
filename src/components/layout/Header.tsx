@@ -27,6 +27,7 @@ import {
   Users,
   Shield,
   Sparkles,
+  History,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -43,6 +44,7 @@ interface HeaderProps {
   onOpenBugReport?: () => void;
   onOpenTurnOrder?: () => void;
   onOpenMinorSpecies?: () => void;
+  onOpenReplay?: () => void;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
   initialDrawerOpen?: boolean;
@@ -62,6 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenBugReport,
   onOpenTurnOrder,
   onOpenMinorSpecies,
+  onOpenReplay,
   currentSeat = 'all',
   onChangeSeat,
   initialDrawerOpen = false,
@@ -613,6 +616,28 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition" />
+                      </button>
+                    )}
+
+                    {/* Galactic Replay */}
+                    {onOpenReplay && (
+                      <button
+                        onClick={() => {
+                          setIsDrawerOpen(false);
+                          onOpenReplay();
+                        }}
+                        className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800 border border-slate-800 hover:border-indigo-600/50 text-slate-200 transition group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-indigo-950/60 border border-indigo-600/40 flex items-center justify-center text-indigo-400">
+                            <History className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="text-left">
+                            <div className="text-xs font-bold text-indigo-300">Galactic Replay</div>
+                            <div className="text-[10px] text-slate-400">Review full action history & scrubber</div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
                       </button>
                     )}
                   </div>

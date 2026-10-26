@@ -17005,7 +17005,9 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // 3. Scenario B: Player 2 takes an action without passing -> Player 1 auto-passes reaction turn!
         // Give Player 2 science to research
         stateAfterPass1.players[1]!.resources.science = 20;
-        const availableTech = stateAfterPass1.techSupply[0]!;
+        const availableTech = stateAfterPass1.techSupply.find(
+          (t) => !stateAfterPass1.players[1]!.techTrack.researched.some((r) => r.id === t.id)
+        )!;
         expect(availableTech).toBeDefined();
 
         const researchRes = executeAction(stateAfterPass1, {
@@ -17060,7 +17062,9 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // Player 2 takes an action (e.g. Research)
         p1InvState.players[1]!.resources.science = 20;
-        const p2Tech = p1InvState.techSupply[0]!;
+        const p2Tech = p1InvState.techSupply.find(
+          (t) => !p1InvState.players[1]!.techTrack.researched.some((r) => r.id === t.id)
+        )!;
         const p2ActionUnderInvasion = executeAction(p1InvState, {
           type: 'RESEARCH',
           playerId: invP2.id,
@@ -17119,6 +17123,103 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(resetState.players[1]!.autoPassReactions).toBe(false);
         expect(resetState.players[0]!.hasPassed).toBe(false);
         expect(resetState.players[1]!.hasPassed).toBe(false);
+      });
+
+      test('101. verifies Galactic Replay Action Tracking, Scrubbing Snapshots, and Backward Compatibility', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction } = await import('../rules/gameReducer');
+        const { createCleanSnapshot, isReplayAvailable } = await import('../rules/replay');
+        const { saveGameState, loadTable } = await import('../rules/persistence');
+
+        // 1. Initial game setup creates Step 0 in replaySteps
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        expect(game.replaySteps).toBeDefined();
+        expect(game.replaySteps!.length).toBe(1);
+        expect(game.replaySteps![0]!.stepIndex).toBe(0);
+        expect(game.replaySteps![0]!.actionType).toBe('GAME_SETUP');
+        expect(game.replaySteps![0]!.summary).toContain('Galactic War Initialized');
+        expect(isReplayAvailable(game)).toBe(true);
+
+        // Verify clean snapshot omits replaySteps to prevent exponential recursion
+        const step0Snapshot = JSON.parse(game.replaySteps![0]!.snapshot);
+        expect(step0Snapshot.replaySteps).toBeUndefined();
+        expect(step0Snapshot.sectors.length).toBe(game.sectors.length);
+        expect(step0Snapshot.players.length).toBe(2);
+
+        // 2. Action without confirmation (e.g. PASS) records a new replay step immediately
+        const p1 = game.players[0]!;
+        const passRes = executeAction(game, {
+          type: 'PASS',
+          playerId: p1.id,
+        });
+        expect(passRes.success).toBe(true);
+        const stateAfterPass = passRes.newState;
+        expect(stateAfterPass.replaySteps!.length).toBe(2);
+        expect(stateAfterPass.replaySteps![1]!.stepIndex).toBe(1);
+        expect(stateAfterPass.replaySteps![1]!.actionType).toBe('PASS');
+        expect(stateAfterPass.replaySteps![1]!.actorPlayerId).toBe(p1.id);
+        expect(stateAfterPass.replaySteps![1]!.summary).toContain('passed');
+
+        // 3. Action requiring confirmation does NOT commit a replay step until confirmed
+        const p2 = stateAfterPass.players[1]!;
+        const buildUnconfirmed = executeAction(stateAfterPass, {
+          type: 'BUILD',
+          playerId: p2.id,
+          requireConfirmation: true,
+          items: [{ itemType: 'interceptor', sectorId: `home_sector_${p2.id}` }],
+        });
+        expect(buildUnconfirmed.success).toBe(true);
+        expect(buildUnconfirmed.newState.pendingActionConfirmation).toBeDefined();
+        // Step count remains 2 while unconfirmed
+        expect(buildUnconfirmed.newState.replaySteps!.length).toBe(2);
+
+        // 4. Reverting an action does NOT record a replay step
+        const revertRes = executeAction(buildUnconfirmed.newState, {
+          type: 'REVERT_TURN_ACTION',
+          playerId: p2.id,
+        });
+        expect(revertRes.success).toBe(true);
+        expect(revertRes.newState.pendingActionConfirmation).toBeNull();
+        expect(revertRes.newState.replaySteps!.length).toBe(2);
+
+        // 5. Confirming an action records the replay step with the full descriptive summary
+        const buildPending = executeAction(revertRes.newState, {
+          type: 'BUILD',
+          playerId: p2.id,
+          requireConfirmation: true,
+          items: [{ itemType: 'interceptor', sectorId: `home_sector_${p2.id}` }],
+        });
+        expect(buildPending.success).toBe(true);
+        const confirmRes = executeAction(buildPending.newState, {
+          type: 'CONFIRM_TURN_ACTION',
+          playerId: p2.id,
+        });
+        expect(confirmRes.success).toBe(true);
+        expect(confirmRes.newState.replaySteps!.length).toBe(3);
+        expect(confirmRes.newState.replaySteps![2]!.stepIndex).toBe(2);
+        expect(confirmRes.newState.replaySteps![2]!.actionType).toBe('BUILD');
+        expect(confirmRes.newState.replaySteps![2]!.summary).toContain('constructed interceptor');
+
+        // 6. Each snapshot in replaySteps is a self-contained valid GameState ready to render
+        for (const step of confirmRes.newState.replaySteps!) {
+          const parsed = JSON.parse(step.snapshot);
+          expect(parsed.sectors).toBeDefined();
+          expect(parsed.players).toBeDefined();
+          expect(parsed.replaySteps).toBeUndefined();
+        }
+
+        // 7. Backward Compatibility: An older table without replaySteps
+        const legacyGame: any = JSON.parse(JSON.stringify(game));
+        delete legacyGame.replaySteps;
+        expect(isReplayAvailable(legacyGame)).toBe(false);
+        expect(isReplayAvailable(null)).toBe(false);
+        expect(isReplayAvailable(undefined)).toBe(false);
+
+        // Persistence summary captures hasReplay: false for legacy games
+        saveGameState(legacyGame, true);
+        const loadedLegacy = loadTable(legacyGame.id);
+        expect(loadedLegacy).toBeDefined();
+        expect(isReplayAvailable(loadedLegacy)).toBe(false);
       });
     });
   });

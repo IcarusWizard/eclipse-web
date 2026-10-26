@@ -25,6 +25,7 @@ import {
 } from './warpedUniverse';
 export { getWarpedUniverseStartingCoords };
 import { createGalacticEventsState } from './galacticEvents';
+import { commitReplayStep } from './replay';
 
 export const ECLIPSE_COLOR_PALETTE = {
   red: '#dc2626',
@@ -1204,7 +1205,7 @@ export function createInitialGame(
     }
   }
 
-  return {
+  const initialState: GameState = {
     id: `game_${Date.now()}`,
     expansions: enabledExpansions,
     neutralShipBlueprints: resolvedNeutralBlueprints,
@@ -1236,6 +1237,7 @@ export function createInitialGame(
     pendingCombatConquest: null,
     pendingExilesOrbitalSetup,
     resolvedCombatSectorIds: [],
+    replaySteps: [],
     log: [
       {
         id: `log_${Date.now()}_1`,
@@ -1249,4 +1251,12 @@ export function createInitialGame(
       },
     ],
   };
+
+  commitReplayStep(
+    initialState,
+    isDraftMode ? 'DRAFT_INITIALIZED' : 'GAME_SETUP',
+    isDraftMode ? 'Faction Draft Initialized' : 'Galactic War Initialized'
+  );
+
+  return initialState;
 }

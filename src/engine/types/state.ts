@@ -171,7 +171,20 @@ export interface PendingActionConfirmation {
   influenceRefreshesRemaining?: number; // Remaining colony ship refreshes from Influence action that can be applied upon colonizing
 }
 
+export interface ReplayStep {
+  stepIndex: number;
+  timestamp: number;
+  round: number;
+  phase: GamePhase;
+  actionType: string;
+  summary: string;
+  actorPlayerId?: string;
+  actorPlayerName?: string;
+  snapshot: string; // Clean JSON string of GameState at this step (excluding replaySteps)
+}
+
 export interface GameState {
+
   id: string;
   tableNumber?: number;
   members?: TableMember[];
@@ -223,6 +236,7 @@ export interface GameState {
   traitorPlayerId?: string;
   log: GameLogEntry[];
   winnerId?: string;
+  replaySteps?: ReplayStep[];
   finalScores?: Record<string, {
     sectors: number;
     reputation: number;

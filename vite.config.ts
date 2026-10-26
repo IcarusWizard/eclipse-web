@@ -937,6 +937,8 @@ function tableStoragePlugin(): Plugin {
                 activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
                 activePlayerIndex: effectiveActiveSeat,
                 members: data.members || [],
+                hasReplay: Boolean(data.replaySteps && data.replaySteps.length > 0),
+                replayStepsCount: data.replaySteps?.length || 0,
               });
             } catch {}
           }

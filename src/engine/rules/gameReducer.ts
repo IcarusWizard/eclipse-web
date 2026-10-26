@@ -53,6 +53,8 @@ import {
   calculateMinorSpeciesScores,
   MinorSpeciesId,
 } from './minorSpecies';
+import { commitReplayStep, createCleanSnapshot, isReplayAvailable } from './replay';
+export { commitReplayStep, createCleanSnapshot, isReplayAvailable };
 
 export function getPlayerShortName(playerOrName?: { name: string; faction?: { id: string; name: string } } | string | null): string {
   if (!playerOrName) return '';
@@ -2325,7 +2327,7 @@ export function syncExilesOrbitalShips(state: GameState): void {
   }
 }
 
-export function executeAction(state: GameState, action: GameAction): ActionResult {
+function internalExecuteAction(state: GameState, action: GameAction): ActionResult {
   const validation = validateAction(state, action);
   if (!validation.valid) {
     return { success: false, newState: state, error: validation.error };
@@ -4685,6 +4687,60 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
 
   syncExilesOrbitalShips(newState);
   return { success: true, newState };
+}
+
+export function executeAction(state: GameState, action: GameAction): ActionResult {
+  const result = internalExecuteAction(state, action);
+  if (!result.success) return result;
+
+  const newState = result.newState;
+
+  // Unconfirmed actions are pending player confirmation/revert; do not record a replay step yet
+  if (newState.pendingActionConfirmation) {
+    return result;
+  }
+
+  // Revert actions restore previous state; do not record a step
+  if (action.type === 'REVERT_TURN_ACTION') {
+    return result;
+  }
+
+  // Pure client UI setting toggles (like auto-pass preference) do not modify galactic state
+  if (action.type === 'SET_AUTO_PASS') {
+    return result;
+  }
+
+  // Determine actionType and summary
+  let actionType = action.type;
+  let summary = '';
+  const actor = newState.players?.find((p) => p.id === action.playerId);
+  const actorName = actor ? actor.name : (action.playerId || 'Commander');
+
+  if (action.type === 'CONFIRM_TURN_ACTION') {
+    actionType = newState.lastConfirmedAction?.actionType || 'CONFIRM_ACTION';
+    summary = newState.lastConfirmedAction?.summary || `${actorName} confirmed action`;
+  } else if (action.type === 'PASS') {
+    summary = `${actorName} passed`;
+  } else if (action.type === 'COLONIZE') {
+    summary = `${actorName} colonized a planet`;
+  } else if (action.type === 'TRADE') {
+    summary = `${actorName} traded resources`;
+  } else if (action.type === 'RESOLVE_COMBAT_STEP') {
+    summary = `Combat step resolved in sector ${newState.activeCombat?.sectorId || ''}`;
+  } else if (action.type === 'COMBAT_CONQUEST') {
+    summary = `${actorName} resolved sector conquest`;
+  } else if (action.type === 'CLAIM_REPUTATION_TILE') {
+    summary = `${actorName} drew reputation tile`;
+  } else if (action.type === 'DRAFT_FACTION') {
+    summary = `${actorName} drafted faction`;
+  } else if (newState.log && newState.log.length > 0 && newState.log[0].message) {
+    summary = newState.log[0].message;
+  } else {
+    summary = `${actorName} performed ${actionType}`;
+  }
+
+  commitReplayStep(newState, actionType, summary, action.playerId);
+  return result;
 }
 
 export function resolveAttackingPopulationAndConquest(

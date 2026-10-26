@@ -1,14 +1,15 @@
 import React, { useState } from 'react';
 import { GameState } from '../../engine/types/state';
-import { Trophy, RefreshCw, Award, Star, Home, Eye, Minimize2, Maximize2 } from 'lucide-react';
+import { Trophy, RefreshCw, Award, Star, Home, Eye, Minimize2, Maximize2, History } from 'lucide-react';
 
 interface GameOverModalProps {
   state: GameState;
   onNewGame: () => void;
   onExitToLobby?: () => void;
+  onReplayGame?: () => void;
 }
 
-export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, onExitToLobby }) => {
+export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, onExitToLobby, onReplayGame }) => {
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const winner = state.players.find((p) => p.id === state.winnerId);
   const scores = state.finalScores || {};
@@ -145,6 +146,14 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, 
               className="flex items-center gap-2 px-6 py-3 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-100 font-bold text-sm uppercase tracking-wider border border-slate-700 hover:border-cyan-500 transition-all shadow-lg cursor-pointer"
             >
               <Home className="w-4 h-4 text-cyan-400" /> Exit to Lobby
+            </button>
+          )}
+          {onReplayGame && (
+            <button
+              onClick={onReplayGame}
+              className="flex items-center gap-2 px-6 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-sm uppercase tracking-wider border border-indigo-500 shadow-lg shadow-indigo-950/50 transition-all cursor-pointer"
+            >
+              <History className="w-4 h-4 text-indigo-200" /> Replay Game
             </button>
           )}
           <button

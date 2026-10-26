@@ -50,6 +50,7 @@ import { ArtifactKeyModal } from './components/actions/ArtifactKeyModal';
 import { BankruptcyModal } from './components/actions/BankruptcyModal';
 import { LobbyView } from './components/lobby/LobbyView';
 import { GalacticGalleryModal } from './components/gallery/GalacticGalleryModal';
+import { GameReplayModal } from './components/replay/GameReplayModal';
 import { BugReportModal } from './components/feedback/BugReportModal';
 import { BugReportCornerButton } from './components/feedback/BugReportCornerButton';
 import { DiplomacyModal, PopulationResourceType } from './components/diplomacy/DiplomacyModal';
@@ -128,6 +129,26 @@ export const App: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
   const [showFirstPassModal, setShowFirstPassModal] = useState<boolean>(false);
+  const [replayState, setReplayState] = useState<GameState | null>(null);
+  const [replayTableNumber, setReplayTableNumber] = useState<number | undefined>(undefined);
+
+  const handleOpenReplay = async (tableIdentifier?: string | number) => {
+    if (tableIdentifier) {
+      let tState = loadTable(tableIdentifier);
+      if (!tState) {
+        tState = await fetchTableFromServer(tableIdentifier);
+      }
+      if (tState) {
+        setReplayTableNumber((tState as any).tableNumber || (typeof tableIdentifier === 'number' ? tableIdentifier : undefined));
+        setReplayState(tState);
+        return;
+      }
+    }
+    if (state) {
+      setReplayTableNumber((state as any).tableNumber);
+      setReplayState(state);
+    }
+  };
 
   const prevRoundRef = React.useRef<number>(state.round);
   const pendingActionRef = React.useRef(state.pendingActionConfirmation);
@@ -2161,6 +2182,7 @@ export const App: React.FC = () => {
           onStartNewGame={handleStartNewGameFromLobby}
           onJoinTable={handleJoinTableFromLobby}
           onOpenGallery={() => setIsGalleryOpen(true)}
+          onOpenReplay={handleOpenReplay}
         />
         <GalacticGalleryModal
           isOpen={isGalleryOpen}
@@ -2176,7 +2198,13 @@ export const App: React.FC = () => {
           currentUser={currentUser}
           onSuccess={(msg) => showToast(msg)}
         />
-
+        {replayState && (
+          <GameReplayModal
+            state={replayState}
+            tableNumber={replayTableNumber}
+            onClose={() => setReplayState(null)}
+          />
+        )}
       </>
     );
   }
@@ -2197,6 +2225,7 @@ export const App: React.FC = () => {
         onOpenBugReport={() => setIsBugReportOpen(true)}
         onOpenTurnOrder={() => setIsTurnOrderOpen(true)}
         onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
+        onOpenReplay={() => handleOpenReplay()}
         onReturnToLobby={handleReturnToLobby}
         currentSeat={currentSeat}
         onChangeSeat={handleChangeSeat}
@@ -2702,6 +2731,7 @@ export const App: React.FC = () => {
           state={state}
           onNewGame={() => setIsNewGameOpen(true)}
           onExitToLobby={handleReturnToLobby}
+          onReplayGame={() => handleOpenReplay()}
         />
       )}
 
@@ -2966,6 +2996,14 @@ export const App: React.FC = () => {
             </div>
           </div>
         )}
+
+      {replayState && (
+        <GameReplayModal
+          state={replayState}
+          tableNumber={replayTableNumber}
+          onClose={() => setReplayState(null)}
+        />
+      )}
     </div>
   );
 };

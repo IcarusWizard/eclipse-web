@@ -59,6 +59,7 @@ import {
   UserPlus,
   Flag,
   Zap,
+  History,
 } from 'lucide-react';
 import {
   NeutralShipType,
@@ -78,12 +79,14 @@ interface LobbyViewProps {
   ) => void;
   onJoinTable: (tableId: string, seat: number | 'all' | 'spectator') => void;
   onOpenGallery?: () => void;
+  onOpenReplay?: (tableId: string) => void;
 }
 
 export const LobbyView: React.FC<LobbyViewProps> = ({
   onStartNewGame,
   onJoinTable,
   onOpenGallery,
+  onOpenReplay,
 }) => {
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
@@ -1626,6 +1629,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         >
                           <Eye className="w-2.5 h-2.5 text-slate-400" />
                           <span>Spectate</span>
+                        </button>
+                      )}
+
+                      {/* Replay Button */}
+                      {onOpenReplay && (
+                        <button
+                          type="button"
+                          onClick={() => onOpenReplay(table.id)}
+                          className="px-2 py-1 border border-indigo-700/80 hover:border-indigo-500 bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white rounded text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer shadow-sm"
+                          title="Replay entire match history"
+                        >
+                          <History className="w-2.5 h-2.5 text-indigo-400" />
+                          <span>Replay</span>
                         </button>
                       )}
 

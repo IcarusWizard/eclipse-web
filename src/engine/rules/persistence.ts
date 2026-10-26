@@ -14,6 +14,8 @@ export interface SavedTableSummary {
   activePlayerIndex?: number;
   stateJson?: string;
   members?: TableMember[];
+  hasReplay?: boolean;
+  replayStepsCount?: number;
 }
 
 const ACTIVE_GAME_KEY = 'eclipse_active_game';
@@ -131,6 +133,9 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       if (cIdx >= 0) effectiveActiveIndex = cIdx;
     }
 
+    const hasReplay = Boolean(state.replaySteps && state.replaySteps.length > 0);
+    const replayStepsCount = state.replaySteps?.length || 0;
+
     tables[state.id] = {
       id: state.id,
       tableNumber,
@@ -144,6 +149,8 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       activePlayerIndex: effectiveActiveIndex,
       stateJson,
       members,
+      hasReplay,
+      replayStepsCount,
     };
 
     storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
