@@ -2170,10 +2170,13 @@ export const App: React.FC = () => {
         <BugReportModal
           isOpen={isBugReportOpen}
           onClose={() => setIsBugReportOpen(false)}
-          state={state}
-          tableNumber={tableNum}
+          state={null}
+          tableNumber={undefined}
+          context="Lobby"
+          currentUser={currentUser}
           onSuccess={(msg) => showToast(msg)}
         />
+
       </>
     );
   }
@@ -2799,8 +2802,10 @@ export const App: React.FC = () => {
         onClose={() => setIsBugReportOpen(false)}
         state={state}
         tableNumber={tableNum}
+        currentUser={currentUser}
         onSuccess={(msg) => showToast(msg)}
       />
+
 
       {diplomacyTargetPlayerId && (
         <DiplomacyModal

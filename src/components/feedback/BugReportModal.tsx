@@ -1,12 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Bug, X, Send, CheckCircle2, AlertCircle, Loader2, Sparkles, Gamepad2, Layers } from 'lucide-react';
 import { GameState } from '../../engine/types/state';
+import { UserSession } from '../../engine/types/user';
 
 interface BugReportModalProps {
   isOpen: boolean;
   onClose: () => void;
   state?: GameState | null;
   tableNumber?: number | string;
+  context?: string;
+  currentUser?: UserSession | null;
   onSuccess?: (message: string) => void;
 }
 
@@ -15,6 +18,8 @@ export const BugReportModal: React.FC<BugReportModalProps> = ({
   onClose,
   state,
   tableNumber,
+  context,
+  currentUser,
   onSuccess,
 }) => {
   const [description, setDescription] = useState('');
@@ -54,16 +59,28 @@ export const BugReportModal: React.FC<BugReportModalProps> = ({
         description: trimmed,
       };
 
-      if (includeContext && state) {
-        payload.round = state.round;
-        payload.phase = state.phase;
-        if (activePlayer) {
-          payload.playerName = activePlayer.name;
+      if (includeContext) {
+        if (state) {
+          payload.round = state.round;
+          payload.phase = state.phase;
+          if (activePlayer) {
+            payload.playerName = activePlayer.name;
+          }
+          if (tableNumber) {
+            payload.tableNumber = tableNumber;
+          }
         }
-        if (tableNumber) {
-          payload.tableNumber = tableNumber;
+        if (context) {
+          payload.context = context;
+        }
+        if (currentUser?.username) {
+          payload.username = currentUser.username;
+          if (!payload.playerName) {
+            payload.playerName = currentUser.username;
+          }
         }
       }
+
 
       const res = await fetch('/api/report-bug', {
         method: 'POST',
@@ -143,11 +160,11 @@ export const BugReportModal: React.FC<BugReportModalProps> = ({
         {/* Modal Body */}
         <form onSubmit={handleSubmit} className="p-6 flex flex-col gap-4">
           {/* Active Context Preview */}
-          {state && (
+          {(state || context) && (
             <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
               <div className="flex items-center justify-between">
                 <span className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Gamepad2 className="w-3.5 h-3.5 text-cyan-400" /> Current Game State
+                  <Gamepad2 className="w-3.5 h-3.5 text-cyan-400" /> {state ? 'Current Game State' : 'Lobby Context'}
                 </span>
                 <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none">
                   <input
@@ -156,32 +173,47 @@ export const BugReportModal: React.FC<BugReportModalProps> = ({
                     onChange={(e) => setIncludeContext(e.target.checked)}
                     className="rounded border-slate-700 bg-slate-800 text-rose-500 focus:ring-rose-500/30"
                   />
-                  <span>Attach state info</span>
+                  <span>Attach context info</span>
                 </label>
               </div>
 
               {includeContext && (
                 <div className="flex flex-wrap gap-2 text-[11px] font-mono">
-                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                    Round: <strong className="text-cyan-300">{state.round}</strong>
-                  </span>
-                  <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                    Phase: <strong className="text-amber-300">{state.phase}</strong>
-                  </span>
-                  {activePlayer && (
+                  {context && !state && (
                     <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                      Active: <strong className="text-emerald-300">{activePlayer.name}</strong>
+                      Location: <strong className="text-cyan-300">{context}</strong>
                     </span>
                   )}
-                  {tableNumber && (
+                  {state && (
+                    <>
+                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                        Round: <strong className="text-cyan-300">{state.round}</strong>
+                      </span>
+                      <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                        Phase: <strong className="text-amber-300">{state.phase}</strong>
+                      </span>
+                      {activePlayer && (
+                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                          Active: <strong className="text-emerald-300">{activePlayer.name}</strong>
+                        </span>
+                      )}
+                      {tableNumber && (
+                        <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
+                          Table: <strong className="text-purple-300">#{tableNumber}</strong>
+                        </span>
+                      )}
+                    </>
+                  )}
+                  {currentUser?.username && (
                     <span className="px-2 py-0.5 rounded bg-slate-800 text-slate-300">
-                      Table: <strong className="text-purple-300">#{tableNumber}</strong>
+                      Commander: <strong className="text-emerald-300">{currentUser.username}</strong>
                     </span>
                   )}
                 </div>
               )}
             </div>
           )}
+
 
           {/* Free text field */}
           <div className="flex flex-col gap-1.5">

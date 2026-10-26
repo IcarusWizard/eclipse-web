@@ -4433,7 +4433,18 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // 5. Empty description throws error
         expect(() => formatBugReportLine({ description: '   ' })).toThrow();
+
+        // 6. Bug report submitted from Lobby has no table number, round, or phase
+        const lobbyReport = formatBugReportLine({
+          description: 'Cannot sort table list by round',
+          context: 'Lobby',
+          playerName: 'Alice',
+        });
+        expect(lobbyReport).toBe('- [ ] Cannot sort table list by round (Lobby, Player: Alice)');
+        expect(lobbyReport.includes('Table #')).toBe(false);
+        expect(lobbyReport.includes('Round')).toBe(false);
       });
+
 
       it('30. verifies Population Casualty Slot & Upkeep Protection: 1 dmg = 1 cube, held in Casualty Slot until Cleanup', () => {
         const game = createInitialGame(2);
