@@ -6,12 +6,10 @@ services:
     container_name: eclipse-web
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "127.0.0.1:3000:3000"
     env_file:
       - .env
     volumes:
-      - eclipse_data:/app/server_data
+      - ./server_data:/app/server_data
+      - ./bug_report.md:/app/bug_report.md
 
-volumes:
-  eclipse_data:
-    name: eclipse_data

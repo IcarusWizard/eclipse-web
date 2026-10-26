@@ -84,40 +84,127 @@ If `SMTP_USER` or `SMTP_PASS` are omitted or blank, the server will **not fail**
 
 ---
 
-## Production Deployment
+## Production Deployment (Linux VPS with Docker & Caddy)
 
-When deploying to a public server (VPS, Docker, Render, Railway, Fly.io, etc.), follow these essentials:
+This guide covers deploying the game to a remote Linux VPS securely behind a Caddy HTTPS reverse proxy.
 
-### 1. Update `APP_URL`
-Set `APP_URL` to your live domain (e.g. `https://eclipse.yourdomain.com`).
-> **Important**: If left as `localhost:3000`, the links inside turn reminder emails will point to `localhost`, which other players cannot open from their devices.
+### Architecture Overview
+- **Application**: Runs in Docker bound strictly to `127.0.0.1:3000` (safe from public port scanners).
+- **Reverse Proxy (Caddy)**: Handles HTTPS encryption and reverse-proxies public traffic to `127.0.0.1:3000`.
+- **Data Persistence**: Tables, user accounts, and bug reports are stored directly in your host directory (`./server_data` and `./bug_report.md`).
 
-### 2. Configure Cloud Environment Variables
-In cloud hosting dashboards (Render, Railway, Fly.io, Heroku), add the variables directly into their **Environment Variables / Secrets** settings:
-- `APP_URL`: `https://your-app-domain.com`
-- `SMTP_HOST`: `smtp-relay.brevo.com`
-- `SMTP_PORT`: `587`
-- `SMTP_USER`: `your_login`
-- `SMTP_PASS`: `your_key`
-- `SMTP_FROM`: `"Eclipse High Command <notifications@yourdomain.com>"`
+---
 
-### 3. Persist Game & User Data (`server_data/`)
-The server persists active tables, user profiles, and encrypted passwords in `./server_data`.
-- **Docker**: Mount a persistent volume: `-v eclipse_data:/app/server_data`.
-- **PaaS (Render, Fly.io, Railway)**: Attach a persistent disk mounted to `/app/server_data`.
+### Step 1: VPS Prerequisites
 
-### 4. Running in Production
+1. **Install Docker, Docker Compose & Caddy**:
+   ```bash
+   sudo apt update && sudo apt install -y docker.io docker-compose-plugin caddy
+   ```
 
-#### Option A: Docker / Docker Compose (Recommended)
+2. **Add a Swapfile (Recommended for 1 GB / 2 GB RAM VPS)**:
+   Prevents low-memory servers from freezing during memory spikes:
+   ```bash
+   sudo fallocate -l 2G /swapfile
+   sudo chmod 600 /swapfile
+   sudo mkswap /swapfile
+   sudo swapon /swapfile
+   echo '/swapfile none swap sw 0 0' | sudo tee -a /etc/fstab
+   ```
+
+---
+
+### Step 2: Configure Environment & Persistent Data
+
+1. **Clone the repository on your VPS**:
+   ```bash
+   git clone <your-repository-url> eclipse-web
+   cd eclipse-web
+   ```
+
+2. **Ensure persistent storage files exist**:
+   ```bash
+   touch bug_report.md
+   mkdir -p server_data/tables server_data/users
+   ```
+
+3. **Configure `.env`**:
+   ```bash
+   cp .env.example .env
+   nano .env
+   ```
+   Set `APP_URL` to your live domain (used in email turn reminder links):
+   ```env
+   APP_URL=https://<your-domain>:<port>
+   ```
+
+---
+
+### Step 3: Start the Docker Container
+
+Start the application container:
 ```bash
 docker compose up -d --build
 ```
 
-#### Option B: Standalone Bun Service
+Verify that the container is active and bound to `127.0.0.1:3000`:
 ```bash
-# 1. Build optimized frontend bundle
-bun run build
-
-# 2. Start production server (binds to $PORT or 3000 on 0.0.0.0)
-bun run start
+docker ps
 ```
+
+---
+
+### Step 4: Configure Caddy HTTPS Reverse Proxy
+
+Edit `/etc/caddy/Caddyfile`:
+```bash
+sudo nano /etc/caddy/Caddyfile
+```
+
+#### Option A: Standard HTTPS (Default Port 443 with Automatic Let's Encrypt)
+```caddy
+<your-domain> {
+    reverse_proxy 127.0.0.1:3000 {
+        header_up Host {upstream_hostport}
+    }
+}
+```
+
+#### Option B: Custom External Port (e.g. `:8443` if port 443 is used by another service)
+```caddy
+{
+    http_port 8080
+}
+
+<your-domain>:<port> {
+    tls internal
+    reverse_proxy 127.0.0.1:3000 {
+        header_up Host {upstream_hostport}
+    }
+}
+```
+
+Validate and start Caddy:
+```bash
+caddy validate --config /etc/caddy/Caddyfile
+sudo systemctl enable --now caddy
+```
+
+*(Ensure your firewall permits the incoming port: `sudo ufw allow <port>/tcp`).*
+
+---
+
+### Step 5: Fast Future Updates (No VPS Compilation)
+
+To avoid heavy compilation on a modest VPS CPU:
+1. **Build locally on your PC / Mac (takes ~0.3s)**:
+   ```bash
+   bun run build
+   git commit -am "Update game" && git push
+   ```
+2. **Pull and restart on your VPS (takes ~1s, zero CPU load)**:
+   ```bash
+   git pull
+   docker compose restart
+   ```
+
