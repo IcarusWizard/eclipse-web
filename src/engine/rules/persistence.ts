@@ -313,15 +313,24 @@ export function listSavedTables(): SavedTableSummary[] {
 
 /**
  * Fetches a table from the server storage API by ID or tableNumber.
+ * Supports conditional HTTP 304 caching via If-None-Match header.
  */
 export async function fetchTableFromServer(
   tableIdentifier: string | number,
-  includeReplay: boolean = false
+  includeReplay: boolean = false,
+  ifNoneMatch?: string | number
 ): Promise<GameState | null> {
   try {
     if (typeof fetch === 'undefined') return null;
     const url = `/api/tables/${encodeURIComponent(String(tableIdentifier))}${includeReplay ? '?includeReplay=true' : ''}`;
-    const res = await fetch(url);
+    const headers: Record<string, string> = {};
+    if (ifNoneMatch) {
+      headers['If-None-Match'] = String(ifNoneMatch);
+    }
+    const res = await fetch(url, { headers });
+    if (res.status === 304) {
+      return null;
+    }
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.success && data.table) {
@@ -372,12 +381,12 @@ export function deleteSavedTable(tableId: string): void {
  */
 export function getStateFingerprint(state: any): string {
   if (!state) return '';
-  const { savedAt, replaySteps, members, ...rest } = state;
+  const { savedAt, replaySteps, hasReplay, replayStepsCount, members, ...rest } = state;
   const membersFp = (members || [])
     .map((m: any) => `${m.userId}:${m.seat}:${m.role}`)
     .sort()
     .join(';');
-  const replayCount = replaySteps?.length || 0;
+  const replayCount = replaySteps?.length ?? (replayStepsCount || 0);
   return `${JSON.stringify(rest)}|${membersFp}|${replayCount}`;
 }
 
@@ -392,17 +401,20 @@ export function subscribeToGameSync(
   const targetIdStr = String(tableIdentifier);
   const targetNum = parseInt(targetIdStr, 10);
   let lastKnownFingerprint: string | null = null;
+  let lastKnownSavedAt: string | number | undefined = undefined;
 
   // Initialize with currently saved state if present
   const initial = loadTable(tableIdentifier);
   if (initial) {
     lastKnownFingerprint = getStateFingerprint(initial);
+    lastKnownSavedAt = initial.savedAt;
   }
 
   // 1. Check server storage immediately on subscribe for fast multi-device join
-  fetchTableFromServer(targetIdStr)
+  fetchTableFromServer(targetIdStr, false, lastKnownSavedAt)
     .then((remote) => {
       if (remote) {
+        if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
         const fp = getStateFingerprint(remote);
         if (fp !== lastKnownFingerprint) {
           lastKnownFingerprint = fp;
@@ -427,6 +439,7 @@ export function subscribeToGameSync(
           (!isNaN(targetNum) && data.tableNumber === targetNum);
       if (matches && data.stateJson) {
         const parsed: GameState = sanitizeLoadedGameState(JSON.parse(data.stateJson));
+        if (parsed.savedAt) lastKnownSavedAt = parsed.savedAt;
         const fp = getStateFingerprint(parsed);
         if (fp !== lastKnownFingerprint) {
           lastKnownFingerprint = fp;
@@ -448,6 +461,7 @@ export function subscribeToGameSync(
       if (event.key === SAVED_TABLES_KEY || event.key === ACTIVE_GAME_KEY) {
         const latest = loadTable(targetIdStr);
         if (latest) {
+          if (latest.savedAt) lastKnownSavedAt = latest.savedAt;
           const fp = getStateFingerprint(latest);
           if (fp !== lastKnownFingerprint) {
             lastKnownFingerprint = fp;
@@ -464,11 +478,17 @@ export function subscribeToGameSync(
     window.addEventListener('storage', handleStorageEvent);
   }
 
-  // 3. Periodic fallback poll check (server-side polling for cross-device / cross-IP multiplayer)
-  const pollInterval = setInterval(async () => {
+  // 3. Periodic fallback poll check (server-side polling with 304 conditional caching)
+  let isPolling = false;
+  const poll = async () => {
+    if (isPolling) return;
+    // When the browser tab is hidden in the background, pause polling to conserve CPU/network
+    if (typeof document !== 'undefined' && document.hidden) return;
+    isPolling = true;
     try {
-      const remote = await fetchTableFromServer(targetIdStr);
+      const remote = await fetchTableFromServer(targetIdStr, false, lastKnownSavedAt);
       if (remote) {
+        if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
         const fp = getStateFingerprint(remote);
         if (fp !== lastKnownFingerprint) {
           lastKnownFingerprint = fp;
@@ -476,8 +496,23 @@ export function subscribeToGameSync(
           callback(remote);
         }
       }
-    } catch {}
-  }, 1000);
+    } catch {} finally {
+      isPolling = false;
+    }
+  };
+
+  // Poll every 3 seconds for active players instead of aggressive 1000ms
+  const pollInterval = setInterval(poll, 3000);
+
+  // Resume check immediately whenever user switches back to this tab
+  const handleVisibilityChange = () => {
+    if (typeof document !== 'undefined' && !document.hidden) {
+      poll();
+    }
+  };
+  if (typeof document !== 'undefined') {
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+  }
 
   // Return unsubscribe cleanup handler
   return () => {
@@ -486,6 +521,9 @@ export function subscribeToGameSync(
     }
     if (typeof window !== 'undefined') {
       window.removeEventListener('storage', handleStorageEvent);
+    }
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     }
     clearInterval(pollInterval);
   };

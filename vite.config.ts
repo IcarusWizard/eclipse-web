@@ -982,22 +982,41 @@ function tableStoragePlugin(): Plugin {
             return t;
           };
 
+          const sendTableResponse = (rawTable: any, sourceFile?: string) => {
+            const savedAt = String(
+              rawTable.savedAt ||
+              (sourceFile && fs.existsSync(sourceFile) ? fs.statSync(sourceFile).mtimeMs : Date.now())
+            );
+            const ifNoneMatch = req.headers['if-none-match'];
+
+            // If client already has this exact version and isn't asking for full replay history, return 304 Not Modified (0 bytes transferred)
+            if (ifNoneMatch && ifNoneMatch === savedAt && !includeReplay) {
+              res.statusCode = 304;
+              res.setHeader('ETag', savedAt);
+              res.setHeader('Cache-Control', 'no-cache');
+              res.end();
+              return;
+            }
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.setHeader('ETag', savedAt);
+            res.setHeader('Cache-Control', 'no-cache');
+            res.end(JSON.stringify({ success: true, table: sanitizeTable(rawTable) }));
+          };
+
           const num = parseInt(targetParam, 10);
           const directFile = path.join(TABLES_DIR, `${targetParam}.json`);
           if (fs.existsSync(directFile)) {
             const content = fs.readFileSync(directFile, 'utf-8');
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, table: sanitizeTable(JSON.parse(content)) }));
+            sendTableResponse(JSON.parse(content), directFile);
             return;
           }
 
           const galaxyFile = path.join(TABLES_DIR, `galaxy-${targetParam}.json`);
           if (fs.existsSync(galaxyFile)) {
             const content = fs.readFileSync(galaxyFile, 'utf-8');
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, table: sanitizeTable(JSON.parse(content)) }));
+            sendTableResponse(JSON.parse(content), galaxyFile);
             return;
           }
 
@@ -1022,9 +1041,7 @@ function tableStoragePlugin(): Plugin {
               if (b.id === `galaxy-${targetParam}`) return 1;
               return (b.savedAt || 0) - (a.savedAt || 0);
             });
-            res.statusCode = 200;
-            res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, table: sanitizeTable(candidates[0]) }));
+            sendTableResponse(candidates[0]);
             return;
           }
 

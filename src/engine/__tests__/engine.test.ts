@@ -17221,6 +17221,66 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(loadedLegacy).toBeDefined();
         expect(isReplayAvailable(loadedLegacy)).toBe(false);
       });
+
+      it('102. verifies ETag Conditional 304 Caching and Fingerprint Stability', async () => {
+        const { getStateFingerprint, fetchTableFromServer } = await import('../rules/persistence');
+
+        // 1. Fingerprint is stable between raw game state with replaySteps and server sanitized state
+        const rawState: any = {
+          id: 'galaxy-test-etag',
+          round: 2,
+          phase: 'ACTION_PHASE',
+          savedAt: 1234567,
+          replaySteps: [{ round: 1, actionType: 'EXPLORE', snapshot: '{}' }],
+          members: [{ userId: 'u1', seat: 0, role: 'player' }],
+        };
+
+        const serverSanitizedState: any = {
+          id: 'galaxy-test-etag',
+          round: 2,
+          phase: 'ACTION_PHASE',
+          savedAt: 9999999, // timestamps must be ignored in fingerprint
+          hasReplay: true,
+          replayStepsCount: 1,
+          members: [{ userId: 'u1', seat: 0, role: 'player' }],
+        };
+
+        expect(getStateFingerprint(rawState)).toBe(getStateFingerprint(serverSanitizedState));
+
+        // 2. Mock fetch with 304 Not Modified
+        const originalFetch = globalThis.fetch;
+        try {
+          let requestedIfNoneMatch: string | undefined = undefined;
+          (globalThis as any).fetch = async (url: string, init?: any) => {
+            requestedIfNoneMatch = init?.headers?.['If-None-Match'];
+            if (requestedIfNoneMatch === '1234567') {
+              return {
+                status: 304,
+                ok: false,
+                headers: new Headers({ ETag: '1234567' }),
+              };
+            }
+            return {
+              status: 200,
+              ok: true,
+              json: async () => ({ success: true, table: serverSanitizedState }),
+              headers: new Headers({ ETag: '1234567' }),
+            };
+          };
+
+          // With matching If-None-Match, server returns 304 and fetchTableFromServer returns null (0 bytes transferred)
+          const result304 = await fetchTableFromServer('galaxy-test-etag', false, '1234567');
+          expect(requestedIfNoneMatch).toBe('1234567');
+          expect(result304).toBeNull();
+
+          // Without matching If-None-Match, returns the updated state
+          const result200 = await fetchTableFromServer('galaxy-test-etag', false, 'old_timestamp');
+          expect(result200).toBeDefined();
+          expect(result200!.id).toBe('galaxy-test-etag');
+        } finally {
+          globalThis.fetch = originalFetch;
+        }
+      });
     });
   });
 });
