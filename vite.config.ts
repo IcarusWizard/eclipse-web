@@ -884,6 +884,13 @@ function tableStoragePlugin(): Plugin {
             }
             const existingIdx = tableData.members.findIndex((m: any) => m.userId === member.userId);
             if (existingIdx >= 0) {
+              const prev = tableData.members[existingIdx];
+              if (prev.seat === member.seat && prev.role === member.role && prev.username === member.username) {
+                res.statusCode = 200;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: true, members: tableData.members }));
+                return;
+              }
               tableData.members[existingIdx] = {
                 ...tableData.members[existingIdx],
                 ...member,
@@ -897,10 +904,10 @@ function tableStoragePlugin(): Plugin {
             }
             tableData.savedAt = Date.now();
             const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
-            fs.writeFileSync(targetPath, JSON.stringify(tableData, null, 2), 'utf-8');
+            fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, table: tableData }));
+            res.end(JSON.stringify({ success: true, members: tableData.members }));
           } catch (err: any) {
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json');
@@ -958,13 +965,30 @@ function tableStoragePlugin(): Plugin {
       // 2. GET /api/tables/:id (lookup by ID or 3-digit tableNumber)
       if (req.method === 'GET' && targetParam) {
         try {
+          const qIndex = rawUrl.indexOf('?');
+          const queryParams = new URLSearchParams(qIndex >= 0 ? rawUrl.substring(qIndex) : '');
+          const includeReplay = queryParams.get('includeReplay') === 'true';
+
+          const sanitizeTable = (t: any) => {
+            if (!t) return t;
+            if (!includeReplay && t.replaySteps) {
+              const { replaySteps, ...rest } = t;
+              return {
+                ...rest,
+                hasReplay: Boolean(replaySteps && replaySteps.length > 0),
+                replayStepsCount: Array.isArray(replaySteps) ? replaySteps.length : 0,
+              };
+            }
+            return t;
+          };
+
           const num = parseInt(targetParam, 10);
           const directFile = path.join(TABLES_DIR, `${targetParam}.json`);
           if (fs.existsSync(directFile)) {
             const content = fs.readFileSync(directFile, 'utf-8');
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, table: JSON.parse(content) }));
+            res.end(JSON.stringify({ success: true, table: sanitizeTable(JSON.parse(content)) }));
             return;
           }
 
@@ -973,7 +997,7 @@ function tableStoragePlugin(): Plugin {
             const content = fs.readFileSync(galaxyFile, 'utf-8');
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, table: JSON.parse(content) }));
+            res.end(JSON.stringify({ success: true, table: sanitizeTable(JSON.parse(content)) }));
             return;
           }
 
@@ -1000,7 +1024,7 @@ function tableStoragePlugin(): Plugin {
             });
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
-            res.end(JSON.stringify({ success: true, table: candidates[0] }));
+            res.end(JSON.stringify({ success: true, table: sanitizeTable(candidates[0]) }));
             return;
           }
 
@@ -1048,7 +1072,7 @@ function tableStoragePlugin(): Plugin {
                 }
               } catch {}
             }
-            fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf-8');
+            fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8');
 
             // BGA-style Turn Reminder Trigger
             if (

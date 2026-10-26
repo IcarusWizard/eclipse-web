@@ -133,13 +133,14 @@ export const App: React.FC = () => {
   const [replayTableNumber, setReplayTableNumber] = useState<number | undefined>(undefined);
 
   const handleOpenReplay = async (tableIdentifier?: string | number) => {
-    if (tableIdentifier) {
-      let tState = loadTable(tableIdentifier);
+    const target = tableIdentifier || state?.id;
+    if (target) {
+      let tState = await fetchTableFromServer(target, true);
       if (!tState) {
-        tState = await fetchTableFromServer(tableIdentifier);
+        tState = loadTable(target);
       }
       if (tState) {
-        setReplayTableNumber((tState as any).tableNumber || (typeof tableIdentifier === 'number' ? tableIdentifier : undefined));
+        setReplayTableNumber((tState as any).tableNumber || (typeof target === 'number' ? target : undefined));
         setReplayState(tState);
         return;
       }
@@ -238,8 +239,10 @@ export const App: React.FC = () => {
   }, [currentSeat]);
 
   // Register current user as member of active table
+  const lastRegisteredMemberKeyRef = React.useRef<string | null>(null);
+
   useEffect(() => {
-    if (inGame && state.id) {
+    if (inGame && state.id && currentUser) {
       if (currentSeat === 'all' && !canUserUseHotseat(currentUser.role)) {
         showToast('Only administrators are allowed to use the hotseat function.');
         setCurrentSeat(0);
@@ -252,7 +255,7 @@ export const App: React.FC = () => {
       }
 
       // Check if currentSeat is already occupied by another player
-      const members = state.members || (state as any).members;
+      const members = state.members || (state as any).members || [];
       const seatCheck = isSeatTaken(members, currentSeat, currentUser.id);
       if (seatCheck.isTaken && seatCheck.occupant) {
         showToast(
@@ -266,6 +269,19 @@ export const App: React.FC = () => {
         }
         return;
       }
+
+      // Prevent redundant registerTableMember network requests and re-render ping-pong loops
+      const regKey = `${state.id}:${currentUser.id}:${currentSeat}:${currentUser.role}`;
+      const existingMember = members.find((m: any) => m.userId === currentUser.id);
+      if (
+        lastRegisteredMemberKeyRef.current === regKey ||
+        (existingMember && existingMember.seat === currentSeat && existingMember.role === currentUser.role)
+      ) {
+        lastRegisteredMemberKeyRef.current = regKey;
+        return;
+      }
+
+      lastRegisteredMemberKeyRef.current = regKey;
 
       registerTableMember(state.id, {
         userId: currentUser.id,
@@ -290,7 +306,7 @@ export const App: React.FC = () => {
         }
       });
     }
-  }, [inGame, state.id, currentSeat, currentUser, state.members]);
+  }, [inGame, state.id, currentSeat, currentUser?.id, currentUser?.role]);
 
   // Hotseat View: When activePlayerIndex changes in hot seat mode (currentSeat === 'all' or 'spectator'),
   // automatically update the top-left player dashboard to the active player by default

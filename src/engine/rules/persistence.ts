@@ -314,10 +314,14 @@ export function listSavedTables(): SavedTableSummary[] {
 /**
  * Fetches a table from the server storage API by ID or tableNumber.
  */
-export async function fetchTableFromServer(tableIdentifier: string | number): Promise<GameState | null> {
+export async function fetchTableFromServer(
+  tableIdentifier: string | number,
+  includeReplay: boolean = false
+): Promise<GameState | null> {
   try {
     if (typeof fetch === 'undefined') return null;
-    const res = await fetch(`/api/tables/${encodeURIComponent(String(tableIdentifier))}`);
+    const url = `/api/tables/${encodeURIComponent(String(tableIdentifier))}${includeReplay ? '?includeReplay=true' : ''}`;
+    const res = await fetch(url);
     if (!res.ok) return null;
     const data = await res.json();
     if (data && data.success && data.table) {
@@ -368,8 +372,13 @@ export function deleteSavedTable(tableId: string): void {
  */
 export function getStateFingerprint(state: any): string {
   if (!state) return '';
-  const { savedAt, ...rest } = state;
-  return JSON.stringify(rest);
+  const { savedAt, replaySteps, members, ...rest } = state;
+  const membersFp = (members || [])
+    .map((m: any) => `${m.userId}:${m.seat}:${m.role}`)
+    .sort()
+    .join(';');
+  const replayCount = replaySteps?.length || 0;
+  return `${JSON.stringify(rest)}|${membersFp}|${replayCount}`;
 }
 
 /**
@@ -548,10 +557,15 @@ export async function registerTableMember(
     if (table) {
       const existingIdx = curMembers.findIndex((m) => m.userId === member.userId);
       if (existingIdx >= 0) {
+        const cur = curMembers[existingIdx];
+        if (cur.seat === member.seat && cur.role === member.role && cur.name === member.name) {
+          // Already registered with identical info; do not churn timestamps or storage
+          return { success: true };
+        }
         curMembers[existingIdx] = {
-          ...curMembers[existingIdx],
+          ...cur,
           ...member,
-          joinedAt: Date.now(),
+          joinedAt: cur.joinedAt || Date.now(),
         };
       } else {
         curMembers.push({
