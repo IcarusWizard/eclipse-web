@@ -117,15 +117,29 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     (state as any).tableNumber = tableNumber;
 
     const storage = getStorage();
-    const stateJson = JSON.stringify(state);
-    storage.setItem(ACTIVE_GAME_KEY, stateJson);
 
     // Update saved tables collection
     const existingRaw = storage.getItem(SAVED_TABLES_KEY);
     const tables: Record<string, SavedTableSummary> = existingRaw ? JSON.parse(existingRaw) : {};
 
     const existingTable = tables[state.id];
-    const members = state.members || (state as any).members || existingTable?.members || [];
+    let members: TableMember[] = [];
+    if (state.members && Array.isArray(state.members) && state.members.length > 0) {
+      members = [...state.members];
+      if (existingTable?.members && Array.isArray(existingTable.members)) {
+        const memberMap = new Map<string, TableMember>();
+        const getKey = (m: TableMember) => m.userId || `${m.username || m.name}:${m.seat}`;
+        for (const m of existingTable.members) {
+          if (m) memberMap.set(getKey(m), m);
+        }
+        for (const m of members) {
+          if (m) memberMap.set(getKey(m), m);
+        }
+        members = Array.from(memberMap.values());
+      }
+    } else if (existingTable?.members && Array.isArray(existingTable.members) && existingTable.members.length > 0) {
+      members = [...existingTable.members];
+    }
     state.members = members;
 
     // Retain existing historical replaySteps if current state object had stripped replaySteps
@@ -137,6 +151,9 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
         }
       } catch {}
     }
+
+    const stateJson = JSON.stringify(state);
+    storage.setItem(ACTIVE_GAME_KEY, stateJson);
     const activePlayer = state.players[state.activePlayerIndex];
     let effectiveActiveIndex = typeof state.activePlayerIndex === 'number' ? state.activePlayerIndex : 0;
     if (state.phase === 'COMBAT_PHASE' && (state as any).combat?.activePlayerId) {
@@ -210,6 +227,17 @@ export function loadActiveGameState(): GameState | null {
       if (!(parsed as any).tableNumber) {
         (parsed as any).tableNumber = getTableNumber(parsed);
       }
+      if (!parsed.members || parsed.members.length === 0) {
+        try {
+          const savedRaw = storage.getItem(SAVED_TABLES_KEY);
+          if (savedRaw) {
+            const tables = JSON.parse(savedRaw);
+            if (tables[parsed.id]?.members && tables[parsed.id].members.length > 0) {
+              parsed.members = tables[parsed.id].members;
+            }
+          }
+        } catch {}
+      }
       return parsed;
     }
     return null;
@@ -262,6 +290,9 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
     if (tables[idStr]?.stateJson) {
       const parsed: GameState = JSON.parse(tables[idStr].stateJson!);
       (parsed as any).tableNumber = tables[idStr].tableNumber;
+      if ((!parsed.members || parsed.members.length === 0) && tables[idStr].members) {
+        parsed.members = tables[idStr].members;
+      }
       return sanitizeLoadedGameState(parsed);
     }
 
@@ -270,6 +301,9 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
     if (tables[galaxyId]?.stateJson) {
       const parsed: GameState = JSON.parse(tables[galaxyId].stateJson!);
       (parsed as any).tableNumber = tables[galaxyId].tableNumber;
+      if ((!parsed.members || parsed.members.length === 0) && tables[galaxyId].members) {
+        parsed.members = tables[galaxyId].members;
+      }
       return sanitizeLoadedGameState(parsed);
     }
 
@@ -289,6 +323,9 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
       if (best?.stateJson) {
         const parsed: GameState = JSON.parse(best.stateJson);
         (parsed as any).tableNumber = best.tableNumber;
+        if ((!parsed.members || parsed.members.length === 0) && best.members) {
+          parsed.members = best.members;
+        }
         return sanitizeLoadedGameState(parsed);
       }
     }
@@ -574,7 +611,7 @@ export function canUserUseHotseat(role?: UserRole | string | null): boolean {
 export async function registerTableMember(
   tableId: string,
   member: TableMember
-): Promise<{ success: boolean; error?: string }> {
+): Promise<{ success: boolean; error?: string; members?: TableMember[] }> {
   try {
     // Only administrators are allowed to use the hotseat function
     if (member.seat === 'all' && !canUserUseHotseat(member.role)) {
@@ -589,7 +626,7 @@ export async function registerTableMember(
     const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
 
     const table = tables[tableId];
-    const curMembers = table?.members || [];
+    let curMembers: TableMember[] = table?.members ? [...table.members] : [];
 
     // Check if the requested seat is already taken by another user
     if (typeof member.seat === 'number') {
@@ -606,15 +643,10 @@ export async function registerTableMember(
     if (table) {
       const existingIdx = curMembers.findIndex((m) => m.userId === member.userId);
       if (existingIdx >= 0) {
-        const cur = curMembers[existingIdx];
-        if (cur.seat === member.seat && cur.role === member.role && cur.name === member.name) {
-          // Already registered with identical info; do not churn timestamps or storage
-          return { success: true };
-        }
         curMembers[existingIdx] = {
-          ...cur,
+          ...curMembers[existingIdx],
           ...member,
-          joinedAt: cur.joinedAt || Date.now(),
+          joinedAt: curMembers[existingIdx].joinedAt || Date.now(),
         };
       } else {
         curMembers.push({
@@ -637,6 +669,7 @@ export async function registerTableMember(
         activePlayerName: 'Unknown',
         members: [{ ...member, joinedAt: Date.now() }],
       };
+      curMembers = tables[tableId].members!;
       storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
     }
 
@@ -647,18 +680,30 @@ export async function registerTableMember(
         body: JSON.stringify({ member }),
       }).catch(() => null);
 
-      if (res && res.status === 409) {
-        const data = await res.json().catch(() => ({}));
-        return {
-          success: false,
-          error:
-            data.error ||
-            `Seat ${typeof member.seat === 'number' ? member.seat + 1 : member.seat} is already occupied.`,
-        };
+      if (res) {
+        if (res.status === 409) {
+          const data = await res.json().catch(() => ({}));
+          return {
+            success: false,
+            error:
+              data.error ||
+              `Seat ${typeof member.seat === 'number' ? member.seat + 1 : member.seat} is already occupied.`,
+          };
+        }
+        if (res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data && data.members && Array.isArray(data.members)) {
+            curMembers = data.members;
+            if (tables[tableId]) {
+              tables[tableId].members = curMembers;
+              storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+            }
+          }
+        }
       }
     }
 
-    return { success: true };
+    return { success: true, members: curMembers };
   } catch (err: any) {
     console.error('Failed to register table member:', err);
     return { success: false, error: err?.message || 'Failed to register table member' };

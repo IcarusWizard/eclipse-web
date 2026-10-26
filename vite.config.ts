@@ -943,6 +943,7 @@ function tableStoragePlugin(): Plugin {
                 playerNames: data.players?.map((p: any) => `${p.name} (${p.faction?.name || ''})`) || [],
                 activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
                 activePlayerIndex: effectiveActiveSeat,
+                members: data.members || [],
                 hasReplay: Boolean(
                   data.replaySteps &&
                   data.replaySteps.length > 0 &&
@@ -1089,10 +1090,15 @@ function tableStoragePlugin(): Plugin {
               try {
                 existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
                 if (existing.members && Array.isArray(existing.members)) {
-                  const incomingMembers = data.members || [];
+                  const incomingMembers = Array.isArray(data.members) ? data.members : [];
                   const memberMap = new Map();
-                  for (const m of existing.members) memberMap.set(m.userId, m);
-                  for (const m of incomingMembers) memberMap.set(m.userId, m);
+                  const getMemberKey = (m: any) => m.userId || `${m.username || m.name}:${m.seat}`;
+                  for (const m of existing.members) {
+                    if (m) memberMap.set(getMemberKey(m), m);
+                  }
+                  for (const m of incomingMembers) {
+                    if (m) memberMap.set(getMemberKey(m), m);
+                  }
                   data.members = Array.from(memberMap.values());
                 }
                 // Preserve & merge historical replaySteps so live sync never wipes out history

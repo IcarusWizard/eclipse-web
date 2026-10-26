@@ -77,6 +77,7 @@ import {
   registerTableMember,
   filterTablesForUser,
   isSeatTaken,
+  getTableOccupiedSeats,
   type SavedTableSummary,
 } from '../rules/persistence';
 import {
@@ -17295,6 +17296,98 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         } finally {
           globalThis.fetch = originalFetch;
         }
+      });
+
+      it('103. verifies player seat occupancy tracking, member synchronization, and persistence across actions and table queries', async () => {
+        // 1. Initial table state with members
+        const game = createInitialGame(2);
+        game.id = 'galaxy-999';
+        (game as any).tableNumber = 999;
+        const alice = {
+          userId: 'usr_alice_1',
+          name: 'Alice',
+          username: 'Alice',
+          role: 'user' as const,
+          seat: 0,
+          joinedAt: 1000,
+        };
+        const bob = {
+          userId: 'usr_bob_2',
+          name: 'Bob',
+          username: 'Bob',
+          role: 'user' as const,
+          seat: 1,
+          joinedAt: 1005,
+        };
+        game.members = [alice, bob];
+
+        // 2. saveGameState must serialize members in both localStorage and summary
+        saveGameState(game);
+        const loaded = loadTable('galaxy-999');
+        expect(loaded).not.toBeNull();
+        expect(loaded!.members).toBeDefined();
+        expect(loaded!.members!.length).toBe(2);
+        expect(loaded!.members![0].userId).toBe('usr_alice_1');
+        expect(loaded!.members![0].seat).toBe(0);
+        expect(loaded!.members![1].userId).toBe('usr_bob_2');
+        expect(loaded!.members![1].seat).toBe(1);
+
+        // 3. executeAction must preserve members on newState
+        const actionResult = executeAction(loaded!, {
+          type: 'PASS',
+          playerId: loaded!.players[0].id,
+        });
+        expect(actionResult.success).toBe(true);
+        expect(actionResult.newState.members).toBeDefined();
+        expect(actionResult.newState.members!.length).toBe(2);
+        expect(actionResult.newState.members![0].username).toBe('Alice');
+
+        // 4. isSeatTaken verification
+        const seat0CheckForAlice = isSeatTaken(actionResult.newState.members, 0, 'usr_alice_1');
+        expect(seat0CheckForAlice.isTaken).toBe(false); // Alice owns seat 0
+
+        const seat0CheckForBob = isSeatTaken(actionResult.newState.members, 0, 'usr_bob_2');
+        expect(seat0CheckForBob.isTaken).toBe(true);
+        expect(seat0CheckForBob.occupant?.username).toBe('Alice');
+
+        const seat1CheckForCharlie = isSeatTaken(actionResult.newState.members, 1, 'usr_charlie_3');
+        expect(seat1CheckForCharlie.isTaken).toBe(true);
+        expect(seat1CheckForCharlie.occupant?.username).toBe('Bob');
+
+        // 5. getTableOccupiedSeats returns all occupied seats
+        const summary = listSavedTables().find((t) => t.id === 'galaxy-999');
+        expect(summary).toBeDefined();
+        expect(summary!.members).toBeDefined();
+        expect(summary!.members!.length).toBe(2);
+        const occupied = getTableOccupiedSeats(summary!);
+        expect(occupied.has(0)).toBe(true);
+        expect(occupied.has(1)).toBe(true);
+        expect(occupied.size).toBe(2);
+
+        // 6. registerTableMember updates membership and returns updated member list
+        const regRes = await registerTableMember('galaxy-999', {
+          userId: 'usr_alice_1',
+          name: 'Alice',
+          username: 'Alice',
+          role: 'user',
+          seat: 0,
+          joinedAt: 1000,
+        });
+        expect(regRes.success).toBe(true);
+        expect(regRes.members).toBeDefined();
+        expect(regRes.members!.length).toBe(2);
+
+        // 7. registerTableMember prevents taking an already occupied seat
+        const conflictRes = await registerTableMember('galaxy-999', {
+          userId: 'usr_charlie_3',
+          name: 'Charlie',
+          username: 'Charlie',
+          role: 'user',
+          seat: 0,
+          joinedAt: 1010,
+        });
+        expect(conflictRes.success).toBe(false);
+        expect(conflictRes.error).toContain('already occupied by Alice');
       });
     });
   });

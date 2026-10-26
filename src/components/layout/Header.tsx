@@ -197,9 +197,13 @@ export const Header: React.FC<HeaderProps> = ({
               const displayVP = isSecretRep ? `${knownVP}★+?` : `${b?.total ?? 0}★`;
               const passIdx = state.passedPlayerIds?.indexOf(p.id) ?? -1;
               const nextTile = passIdx !== -1 ? passIdx + 1 : null;
+              const seatOccupant = (state.members || []).find((m) => m.seat === idx);
+              const occupantTag = seatOccupant
+                ? ` [Commander: ${seatOccupant.username || seatOccupant.name}]`
+                : '';
               const titleText = isSecretRep
-                ? `${p.name} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
-                : `${p.name} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
+                ? `${p.name}${occupantTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
+                : `${p.name}${occupantTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
 
               return (
                 <button

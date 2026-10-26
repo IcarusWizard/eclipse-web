@@ -303,6 +303,11 @@ export const App: React.FC = () => {
               window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
             }
           }
+        } else if (res.success && res.members) {
+          setState((prev) => ({
+            ...prev,
+            members: res.members,
+          }));
         }
       });
     }
@@ -494,19 +499,7 @@ export const App: React.FC = () => {
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
     newGame.id = tableId;
-    (newGame as any).members = [
-      {
-        userId: user.id,
-        name: user.name,
-        role: user.role,
-        email: user.email,
-        emailNotifications: user.emailNotifications,
-        seat: effectiveSeat,
-        joinedAt: Date.now(),
-      },
-    ];
-    saveGameState(newGame);
-    registerTableMember(tableId, {
+    const initialMember = {
       userId: user.id,
       name: user.name,
       username: user.username || user.name,
@@ -515,6 +508,13 @@ export const App: React.FC = () => {
       emailNotifications: user.emailNotifications,
       seat: effectiveSeat,
       joinedAt: Date.now(),
+    };
+    (newGame as any).members = [initialMember];
+    saveGameState(newGame);
+    registerTableMember(tableId, initialMember).then((res) => {
+      if (res.success && res.members) {
+        setState((prev) => ({ ...prev, members: res.members }));
+      }
     });
     setState(newGame);
     setCurrentSeat(effectiveSeat);
@@ -570,6 +570,9 @@ export const App: React.FC = () => {
     if (!regRes.success && regRes.error) {
       alert(regRes.error);
       return;
+    }
+    if (regRes.members && regRes.members.length > 0) {
+      loaded.members = regRes.members;
     }
     saveGameState(loaded, true);
     setState(loaded);

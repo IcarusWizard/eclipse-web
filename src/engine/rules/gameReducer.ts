@@ -4694,6 +4694,12 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
   if (!result.success) return result;
 
   const newState = result.newState;
+  if (state.members && (!newState.members || newState.members.length === 0)) {
+    newState.members = state.members;
+  }
+  if ((state as any).tableNumber && !(newState as any).tableNumber) {
+    (newState as any).tableNumber = (state as any).tableNumber;
+  }
 
   // Unconfirmed actions are pending player confirmation/revert; do not record a replay step yet
   if (newState.pendingActionConfirmation) {

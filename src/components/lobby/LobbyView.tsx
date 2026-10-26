@@ -111,7 +111,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         setSavedTables((prev) => {
           const map = new Map<string, SavedTableSummary>();
           for (const t of prev) map.set(t.id, t);
-          for (const t of remoteTables) map.set(t.id, t);
+          for (const t of remoteTables) {
+            const local = map.get(t.id);
+            const mergedMembers =
+              t.members && t.members.length > 0
+                ? t.members
+                : local?.members && local.members.length > 0
+                ? local.members
+                : [];
+            map.set(t.id, {
+              ...t,
+              members: mergedMembers,
+            });
+          }
           return Array.from(map.values()).sort((a, b) => b.savedAt - a.savedAt);
         });
       }
