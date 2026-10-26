@@ -947,7 +947,7 @@ function tableStoragePlugin(): Plugin {
                 hasReplay: Boolean(
                   data.replaySteps &&
                   data.replaySteps.length > 0 &&
-                  !(data.round > 1 && (data.replaySteps[0]?.round > 1 || data.replaySteps[0]?.actionType !== 'GAME_SETUP'))
+                  !(data.round > 1 && (data.replaySteps[0]?.round > 1 || (data.replaySteps[0]?.actionType !== 'GAME_SETUP' && data.replaySteps[0]?.actionType !== 'DRAFT_INITIALIZED')))
                 ),
                 replayStepsCount: data.replaySteps?.length || 0,
               });
@@ -971,16 +971,19 @@ function tableStoragePlugin(): Plugin {
         try {
           const qIndex = rawUrl.indexOf('?');
           const queryParams = new URLSearchParams(qIndex >= 0 ? rawUrl.substring(qIndex) : '');
-          const includeReplay = queryParams.get('includeReplay') === 'true';
+          const includeReplay = queryParams.get('includeReplay') !== 'false';
 
           const sanitizeTable = (t: any) => {
             if (!t) return t;
             if (!includeReplay && t.replaySteps) {
               const { replaySteps, ...rest } = t;
+              const isSetup =
+                replaySteps[0]?.actionType === 'GAME_SETUP' ||
+                replaySteps[0]?.actionType === 'DRAFT_INITIALIZED';
               const hasValidReplay = Boolean(
                 replaySteps &&
                 replaySteps.length > 0 &&
-                !(t.round > 1 && (replaySteps[0]?.round > 1 || replaySteps[0]?.actionType !== 'GAME_SETUP'))
+                !(t.round > 1 && (replaySteps[0]?.round > 1 || !isSetup))
               );
               return {
                 ...rest,
@@ -1105,24 +1108,43 @@ function tableStoragePlugin(): Plugin {
                 if (existing.replaySteps && Array.isArray(existing.replaySteps) && existing.replaySteps.length > 0) {
                   if (!data.replaySteps || !Array.isArray(data.replaySteps) || data.replaySteps.length === 0) {
                     data.replaySteps = existing.replaySteps;
-                    data.hasReplay = true;
-                    data.replayStepsCount = existing.replaySteps.length;
-                  } else if (data.replaySteps.length < existing.replaySteps.length) {
-                    const merged = [...existing.replaySteps];
+                  } else {
+                    const existingHasSetup =
+                      existing.replaySteps[0]?.actionType === 'GAME_SETUP' ||
+                      existing.replaySteps[0]?.actionType === 'DRAFT_INITIALIZED';
+                    const dataHasSetup =
+                      data.replaySteps[0]?.actionType === 'GAME_SETUP' ||
+                      data.replaySteps[0]?.actionType === 'DRAFT_INITIALIZED';
+
+                    const base = existingHasSetup
+                      ? [...existing.replaySteps]
+                      : dataHasSetup
+                      ? [...data.replaySteps]
+                      : [...existing.replaySteps];
+
                     for (const step of data.replaySteps) {
-                      const exists = merged.some(
+                      const already = base.some(
                         (s: any) =>
-                          s.stepIndex === step.stepIndex ||
-                          (s.timestamp === step.timestamp && s.actionType === step.actionType)
+                          (s.timestamp === step.timestamp && s.actionType === step.actionType) ||
+                          (s.stepIndex === step.stepIndex && s.actionType === step.actionType && s.round === step.round)
                       );
-                      if (!exists) {
-                        merged.push({ ...step, stepIndex: merged.length });
+                      if (!already && step.actionType !== 'GAME_SETUP' && step.actionType !== 'DRAFT_INITIALIZED') {
+                        base.push({ ...step, stepIndex: base.length });
                       }
                     }
-                    data.replaySteps = merged;
-                    data.hasReplay = true;
-                    data.replayStepsCount = merged.length;
+                    data.replaySteps = base;
                   }
+                  const isSetup =
+                    data.replaySteps[0]?.actionType === 'GAME_SETUP' ||
+                    data.replaySteps[0]?.actionType === 'DRAFT_INITIALIZED';
+                  data.hasReplay = !(data.round > 1 && (data.replaySteps[0]?.round > 1 || !isSetup));
+                  data.replayStepsCount = data.replaySteps.length;
+                } else if (data.replaySteps && Array.isArray(data.replaySteps) && data.replaySteps.length > 0) {
+                  const isSetup =
+                    data.replaySteps[0]?.actionType === 'GAME_SETUP' ||
+                    data.replaySteps[0]?.actionType === 'DRAFT_INITIALIZED';
+                  data.hasReplay = !(data.round > 1 && (data.replaySteps[0]?.round > 1 || !isSetup));
+                  data.replayStepsCount = data.replaySteps.length;
                 }
               } catch {}
             }

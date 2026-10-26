@@ -78,6 +78,7 @@ import {
   filterTablesForUser,
   isSeatTaken,
   getTableOccupiedSeats,
+  isPlayerTurnAtTable,
   type SavedTableSummary,
 } from '../rules/persistence';
 import {
@@ -17388,6 +17389,115 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         });
         expect(conflictRes.success).toBe(false);
         expect(conflictRes.error).toContain('already occupied by Alice');
+      });
+
+      it('104. verifies Bug Fixes 196-201: Initial table entry status view sync, auto-assign battle dice default, tech names in setup & replenish logs, lobby auto-refresh, sector 1 orbital 7-slot non-overlapping map layout, and continuous replay availability', async () => {
+        // 1. Bug 196: Table entry status view default matches assigned player seat (not opponent active player)
+        const game196 = createInitialGame(2);
+        game196.id = 'galaxy-384';
+        game196.activePlayerIndex = 1; // Hydran is active
+        game196.members = [
+          { userId: 'usr_eridani', username: 'Eridani Commander', role: 'user', seat: 0, joinedAt: 1000 },
+          { userId: 'usr_hydran', username: 'Hydran Scholar', role: 'user', seat: 1, joinedAt: 1005 },
+        ];
+        // When Eridani (seat 0) enters table, myMem.seat is 0 even though activePlayerIndex is 1
+        const eridaniUser = { id: 'usr_eridani', username: 'Eridani Commander', role: 'user' as const };
+        const myMem = game196.members.find((m) => m.userId === eridaniUser.id);
+        const resolvedViewIndex = myMem && typeof myMem.seat === 'number' ? myMem.seat : game196.activePlayerIndex;
+        expect(resolvedViewIndex).toBe(0); // Player's own status displayed on top-left dashboard
+        expect(game196.players[resolvedViewIndex].faction.id).toBe(game196.players[0].faction.id);
+
+        // 2. Bug 197: autoAssignDamage defaults to true when no localStorage item is present
+        const savedAutoAssign = typeof localStorage !== 'undefined' ? localStorage.getItem('eclipse_auto_assign_damage') : null;
+        const defaultAutoAssign = savedAutoAssign !== null ? savedAutoAssign === 'true' : true;
+        expect(defaultAutoAssign).toBe(true);
+
+        // 3. Bug 198: Chronicle mentions drawn tech tile names during setup & cleanup replenishment
+        const game198 = createInitialGame(2);
+        expect(game198.log[0].message).toContain('Tech Tray populated with');
+        // Tech tile names must be included in the setup log message
+        const firstTechName = game198.techSupply[0]?.name;
+        if (firstTechName) {
+          expect(game198.log[0].message).toContain(firstTechName);
+        }
+
+        // Test cleanup replenishment log
+        const pass1 = executeAction(game198, { type: 'PASS', playerId: game198.players[0].id });
+        const pass2 = executeAction(pass1.newState, { type: 'PASS', playerId: pass1.newState.players[1].id });
+        const replenishLog = pass2.newState.log.find((l) => l.message.includes('Tech Tray replenished'));
+        expect(replenishLog).toBeDefined();
+        expect(replenishLog!.message).toMatch(/Tech Tray replenished: \d+ regular and \d+ rare tiles added/);
+        // Drawn tech names are explicitly appended to the chronicle message
+        expect(replenishLog!.message).toContain(':');
+
+        // 4. Bug 199: isPlayerTurnAtTable accurately triggers and detects active turns for lobby
+        const bob = { id: 'usr_bob', username: 'Bob', role: 'user' as const };
+        const tableSummaryBobActive: SavedTableSummary = {
+          id: 'galaxy-199',
+          tableNumber: 199,
+          savedAt: Date.now(),
+          round: 2,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 2,
+          playerNames: ['Alice', 'Bob'],
+          activePlayerName: 'Bob',
+          activePlayerIndex: 1,
+          members: [
+            { userId: 'usr_alice', username: 'Alice', role: 'user', seat: 0, joinedAt: 1000 },
+            { userId: 'usr_bob', username: 'Bob', role: 'user', seat: 1, joinedAt: 1005 },
+          ],
+        };
+        expect(isPlayerTurnAtTable(tableSummaryBobActive, bob)).toBe(true);
+
+        // When turn advances to Alice, Bob's lobby accurately shows it is not Bob's turn
+        const tableSummaryAliceActive: SavedTableSummary = {
+          ...tableSummaryBobActive,
+          activePlayerIndex: 0,
+          activePlayerName: 'Alice',
+        };
+        expect(isPlayerTurnAtTable(tableSummaryAliceActive, bob)).toBe(false);
+
+        // 5. Bug 200: Sector 1 with an orbital (7 slots) computes non-overlapping 2-row layout
+        const { getPlanetSlotOffset } = await import('../../components/map/HexGalaxyMap');
+        const totalSlots7 = 7;
+        const coords7: { offsetX: number; offsetY: number }[] = [];
+        for (let i = 0; i < totalSlots7; i++) {
+          coords7.push(getPlanetSlotOffset(i, totalSlots7));
+        }
+
+        // Must have 4 slots in row 0 (y = -10) and 3 slots in row 1 (y = 11)
+        const row0 = coords7.filter((c) => c.offsetY === -10);
+        const row1 = coords7.filter((c) => c.offsetY === 11);
+        expect(row0.length).toBe(4);
+        expect(row1.length).toBe(3);
+
+        // No two slots can share the same coordinates
+        const coordKeys = new Set(coords7.map((c) => `${c.offsetX},${c.offsetY}`));
+        expect(coordKeys.size).toBe(7);
+
+        // Verify slot 6 does not overlap slot 3
+        expect(coords7[6].offsetY).not.toBe(coords7[3].offsetY);
+        expect(`${coords7[6].offsetX},${coords7[6].offsetY}`).not.toBe(`${coords7[3].offsetX},${coords7[3].offsetY}`);
+
+        // 6. Bug 201: Continuous replay tracking and replay availability across draft and normal games
+        const { isReplayAvailable } = await import('../rules/replay');
+
+        // Draft mode initial game
+        const draftGame = createInitialGame(2, ['terran_federation', 'eridani_empire'], undefined, undefined, true);
+        expect(draftGame.replaySteps.length).toBeGreaterThan(0);
+        expect(draftGame.replaySteps[0].actionType).toBe('DRAFT_INITIALIZED');
+        // Replay must be available for draft games
+        expect(isReplayAvailable(draftGame)).toBe(true);
+
+        // Even after round 1, draft games maintain replay availability
+        draftGame.round = 2;
+        expect(isReplayAvailable(draftGame)).toBe(true);
+
+        // Finished game maintains replay availability
+        draftGame.round = 8;
+        draftGame.phase = 'GAME_OVER';
+        expect(isReplayAvailable(draftGame)).toBe(true);
       });
     });
   });

@@ -143,11 +143,34 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     state.members = members;
 
     // Retain existing historical replaySteps if current state object had stripped replaySteps
-    if ((!state.replaySteps || state.replaySteps.length === 0) && existingTable?.stateJson) {
+    if (existingTable?.stateJson) {
       try {
         const parsed = JSON.parse(existingTable.stateJson);
         if (parsed.replaySteps && Array.isArray(parsed.replaySteps) && parsed.replaySteps.length > 0) {
-          state.replaySteps = parsed.replaySteps;
+          if (!state.replaySteps || state.replaySteps.length === 0) {
+            state.replaySteps = parsed.replaySteps;
+          } else {
+            const parsedSetup =
+              parsed.replaySteps[0]?.actionType === 'GAME_SETUP' ||
+              parsed.replaySteps[0]?.actionType === 'DRAFT_INITIALIZED';
+            const stateSetup =
+              state.replaySteps[0]?.actionType === 'GAME_SETUP' ||
+              state.replaySteps[0]?.actionType === 'DRAFT_INITIALIZED';
+            if (parsedSetup && !stateSetup) {
+              const merged = [...parsed.replaySteps];
+              for (const step of state.replaySteps) {
+                const already = merged.some(
+                  (s: any) =>
+                    (s.timestamp === step.timestamp && s.actionType === step.actionType) ||
+                    (s.stepIndex === step.stepIndex && s.actionType === step.actionType && s.round === step.round)
+                );
+                if (!already && step.actionType !== 'GAME_SETUP' && step.actionType !== 'DRAFT_INITIALIZED') {
+                  merged.push({ ...step, stepIndex: merged.length });
+                }
+              }
+              state.replaySteps = merged;
+            }
+          }
         }
       } catch {}
     }
@@ -365,12 +388,13 @@ export function listSavedTables(): SavedTableSummary[] {
  */
 export async function fetchTableFromServer(
   tableIdentifier: string | number,
-  includeReplay: boolean = false,
+  includeReplay: boolean = true,
   ifNoneMatch?: string | number
 ): Promise<GameState | null> {
   try {
     if (typeof fetch === 'undefined') return null;
-    const url = `/api/tables/${encodeURIComponent(String(tableIdentifier))}${includeReplay ? '?includeReplay=true' : ''}`;
+    const replayParam = includeReplay ? 'includeReplay=true' : 'includeReplay=false';
+    const url = `/api/tables/${encodeURIComponent(String(tableIdentifier))}?${replayParam}`;
     const headers: Record<string, string> = {};
     if (ifNoneMatch) {
       headers['If-None-Match'] = String(ifNoneMatch);
@@ -459,10 +483,13 @@ export function subscribeToGameSync(
   }
 
   // 1. Check server storage immediately on subscribe for fast multi-device join
-  fetchTableFromServer(targetIdStr, false, lastKnownSavedAt)
+  fetchTableFromServer(targetIdStr, true, lastKnownSavedAt)
     .then((remote) => {
       if (remote) {
         if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
+        if ((!remote.replaySteps || remote.replaySteps.length === 0) && initial?.replaySteps) {
+          remote.replaySteps = initial.replaySteps;
+        }
         const fp = getStateFingerprint(remote);
         if (fp !== lastKnownFingerprint) {
           lastKnownFingerprint = fp;
@@ -534,9 +561,12 @@ export function subscribeToGameSync(
     if (typeof document !== 'undefined' && document.hidden) return;
     isPolling = true;
     try {
-      const remote = await fetchTableFromServer(targetIdStr, false, lastKnownSavedAt);
+      const remote = await fetchTableFromServer(targetIdStr, true, lastKnownSavedAt);
       if (remote) {
         if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
+        if ((!remote.replaySteps || remote.replaySteps.length === 0) && initial?.replaySteps) {
+          remote.replaySteps = initial.replaySteps;
+        }
         const fp = getStateFingerprint(remote);
         if (fp !== lastKnownFingerprint) {
           lastKnownFingerprint = fp;

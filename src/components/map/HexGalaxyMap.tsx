@@ -95,6 +95,25 @@ interface HexGalaxyMapProps {
 
 const HEX_RADIUS = 78;
 
+/**
+ * Calculates responsive SVG coordinates for planet / population / orbital slots.
+ * Supports 1-8+ slots cleanly distributed into 1 or 2 centered rows without overlapping.
+ */
+export function getPlanetSlotOffset(pIdx: number, totalPlanets: number): { offsetX: number; offsetY: number } {
+  if (totalPlanets <= 4) {
+    const offsetX = (pIdx - (totalPlanets - 1) / 2) * 20;
+    return { offsetX, offsetY: 0 };
+  }
+  const row0Count = Math.ceil(totalPlanets / 2);
+  const isRow0 = pIdx < row0Count;
+  const countInRow = isRow0 ? row0Count : totalPlanets - row0Count;
+  const col = isRow0 ? pIdx : pIdx - row0Count;
+  const spacingX = countInRow >= 4 ? 18.5 : 20;
+  const offsetX = (col - (countInRow - 1) / 2) * spacingX;
+  const offsetY = isRow0 ? -10 : 11;
+  return { offsetX, offsetY };
+}
+
 // Deterministic pseudorandom generator for authentic starfield
 function createStars(count: number, width: number, height: number, seed: number) {
   let s = seed;
@@ -1692,15 +1711,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 {!sector.isSupernovaExploded && (
                   <g transform={`translate(${x}, ${y + (isCenter ? 10 : 6)})`}>
                     {sector.planets.map((planet, pIdx) => {
-                    const totalPlanets = sector.planets.length;
-                    const isMultiRow = totalPlanets > 4;
-                    const row = isMultiRow ? Math.floor(pIdx / 3) : 0;
-                    const col = isMultiRow ? pIdx % 3 : pIdx;
-                    const countInRow = isMultiRow
-                      ? (row === 0 ? Math.min(3, totalPlanets) : totalPlanets - 3)
-                      : totalPlanets;
-                    const offsetX = (col - (countInRow - 1) / 2) * 20;
-                    const offsetY = isMultiRow ? (row === 0 ? -9 : 11) : 0;
+                    const { offsetX, offsetY } = getPlanetSlotOffset(pIdx, sector.planets.length);
 
                     const planetColor =
                       planet.resource === 'money'
@@ -2736,15 +2747,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 {/* Habitable Planets */}
                 <g transform={`translate(${x}, ${y + 6})`}>
                   {pendingExplore.candidateTile.planets.map((planet, pIdx) => {
-                    const totalPlanets = pendingExplore.candidateTile.planets.length;
-                    const isMultiRow = totalPlanets > 4;
-                    const row = isMultiRow ? Math.floor(pIdx / 3) : 0;
-                    const col = isMultiRow ? pIdx % 3 : pIdx;
-                    const countInRow = isMultiRow
-                      ? (row === 0 ? Math.min(3, totalPlanets) : totalPlanets - 3)
-                      : totalPlanets;
-                    const offsetX = (col - (countInRow - 1) / 2) * 20;
-                    const offsetY = isMultiRow ? (row === 0 ? -9 : 11) : 0;
+                    const { offsetX, offsetY } = getPlanetSlotOffset(pIdx, pendingExplore.candidateTile.planets.length);
 
                     const planetColor =
                       planet.resource === 'money'

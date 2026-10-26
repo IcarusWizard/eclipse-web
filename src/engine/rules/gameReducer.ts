@@ -5753,12 +5753,14 @@ export function transitionToCleanup(state: GameState): void {
   );
   state.techSupply.push(...newTechs);
   state.techBag = remainingBag;
+  const drawnNames = newTechs.map((t) => t.name).join(', ');
+  const drawnDetail = drawnNames ? `: ${drawnNames}.` : '.';
   state.log.push({
     id: `log_${Date.now()}_tech_replenish`,
     timestamp: Date.now(),
     round: state.round,
     phase: 'CLEANUP_PHASE',
-    message: `Tech Tray replenished: ${regularDrawn} regular and ${rareDrawn} rare tiles added (${state.techBag.length} left in bag).`,
+    message: `Tech Tray replenished: ${regularDrawn} regular and ${rareDrawn} rare tiles added (${state.techBag.length} left in bag)${drawnDetail}`,
     type: 'system',
   });
 

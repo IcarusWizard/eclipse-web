@@ -15,6 +15,7 @@ import {
   getTableStatusCategory,
   TableStatusCategory,
   isPlayerTurnAtTable,
+  getSyncChannel,
 } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
@@ -132,6 +133,45 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
   useEffect(() => {
     refreshTables();
+
+    // 1. Regular interval polling to catch turn changes made on server or other devices
+    const intervalId = setInterval(refreshTables, 4000);
+
+    // 2. BroadcastChannel message listener for instant cross-tab sync
+    const channel = getSyncChannel();
+    const handleBroadcast = (event: MessageEvent) => {
+      if (event.data?.type === 'ECLIPSE_GAME_SYNC') {
+        refreshTables();
+      }
+    };
+    if (channel) {
+      channel.addEventListener('message', handleBroadcast);
+    }
+
+    // 3. Storage event listener for cross-tab storage changes
+    const handleStorage = (e: StorageEvent) => {
+      if (e.key === 'eclipse_saved_tables' || e.key?.startsWith('galaxy-') || e.key?.startsWith('game_')) {
+        refreshTables();
+      }
+    };
+    window.addEventListener('storage', handleStorage);
+
+    // 4. Tab visibility change - re-fetch when switching back to tab
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') {
+        refreshTables();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibility);
+
+    return () => {
+      clearInterval(intervalId);
+      if (channel) {
+        channel.removeEventListener('message', handleBroadcast);
+      }
+      window.removeEventListener('storage', handleStorage);
+      document.removeEventListener('visibilitychange', handleVisibility);
+    };
   }, [currentUser]);
 
   // Create Table State

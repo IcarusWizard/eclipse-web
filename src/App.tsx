@@ -78,7 +78,24 @@ export const App: React.FC = () => {
     return loaded || createInitialGame(2);
   });
   const [selectedSector, setSelectedSector] = useState<SectorTile | null>(null);
-  const [selectedViewIndex, setSelectedViewIndex] = useState<number>(() => state.activePlayerIndex || 0);
+  const [selectedViewIndex, setSelectedViewIndex] = useState<number>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const seatParam = params.get('seat');
+      if (seatParam && seatParam !== 'all' && seatParam !== 'spectator') {
+        const num = parseInt(seatParam, 10);
+        if (!isNaN(num) && state.players[num]) return num;
+      }
+    }
+    const user = getCurrentUser();
+    if (user && state.members) {
+      const myMem = state.members.find((m: any) => m.userId === user.id);
+      if (myMem && typeof myMem.seat === 'number' && state.players[myMem.seat]) {
+        return myMem.seat;
+      }
+    }
+    return state.activePlayerIndex || 0;
+  });
 
   const isRemoteSyncRef = React.useRef<boolean>(false);
   const lastStateFingerprintRef = React.useRef<string>(getStateFingerprint(state));
@@ -312,6 +329,29 @@ export const App: React.FC = () => {
       });
     }
   }, [inGame, state.id, currentSeat, currentUser?.id, currentUser?.role]);
+
+  // Synchronize seat & default top-left status view to the player's seat upon entering table or clicking game link
+  const syncedInitialViewTableRef = React.useRef<string | null>(null);
+  useEffect(() => {
+    if (!inGame || !state.id || !currentUser) return;
+    if (syncedInitialViewTableRef.current === state.id) return;
+    const members = state.members || [];
+    const myMem = members.find((m: any) => m.userId === currentUser.id);
+    if (myMem && typeof myMem.seat === 'number' && state.players[myMem.seat]) {
+      const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+      const explicitSeatParam = params?.get('seat');
+      if (!explicitSeatParam || explicitSeatParam === String(myMem.seat)) {
+        if (currentSeat !== myMem.seat) {
+          setCurrentSeat(myMem.seat);
+        }
+        setSelectedViewIndex(myMem.seat);
+        syncedInitialViewTableRef.current = state.id;
+      }
+    } else if (typeof currentSeat === 'number' && state.players[currentSeat]) {
+      setSelectedViewIndex(currentSeat);
+      syncedInitialViewTableRef.current = state.id;
+    }
+  }, [inGame, state.id, currentUser?.id, state.members, currentSeat]);
 
   // Hotseat View: When activePlayerIndex changes in hot seat mode (currentSeat === 'all' or 'spectator'),
   // automatically update the top-left player dashboard to the active player by default

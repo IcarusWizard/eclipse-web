@@ -84,9 +84,10 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
   const [autoAssignDamage, setAutoAssignDamage] = useState<boolean>(() => {
     try {
-      return localStorage.getItem('eclipse_auto_assign_damage') === 'true';
+      const saved = localStorage.getItem('eclipse_auto_assign_damage');
+      return saved !== null ? saved === 'true' : true;
     } catch {
-      return false;
+      return true;
     }
   });
 

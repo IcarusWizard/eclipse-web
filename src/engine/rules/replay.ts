@@ -61,8 +61,12 @@ export function isReplayAvailable(state?: GameState | null): boolean {
   const firstStep = state.replaySteps[0];
   if (!firstStep) return false;
 
+  const isSetupAction =
+    firstStep.actionType === 'GAME_SETUP' ||
+    firstStep.actionType === 'DRAFT_INITIALIZED';
+
   // Legacy games started before replay tracking may have isolated steps recorded mid-game (e.g. Round 5)
-  if (state.round > 1 && (firstStep.round > 1 || firstStep.actionType !== 'GAME_SETUP')) {
+  if (state.round > 1 && (firstStep.round > 1 || !isSetupAction)) {
     return false;
   }
 

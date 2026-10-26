@@ -1245,8 +1245,8 @@ export function createInitialGame(
         round: 1,
         phase: isDraftMode ? 'DRAFT_PHASE' : 'ACTION_PHASE',
         message: isDraftMode
-          ? `Galaxy initialized with ${players.length} players in Faction Draft mode! Seating assigned on Ring 2. Draft commences counter-clockwise starting with ${players.find((p) => p.id === draftOrder[0])?.name}.`
-          : `Galaxy initialized with ${players.length} players. Round 1 has commenced! Tech Tray populated with ${regularDrawn} regular and ${rareDrawn} rare tiles (${techBag.length} remaining in bag).`,
+          ? `Galaxy initialized with ${players.length} players in Faction Draft mode! Seating assigned on Ring 2. Draft commences counter-clockwise starting with ${players.find((p) => p.id === draftOrder[0])?.name}. Tech Tray populated with ${regularDrawn} regular and ${rareDrawn} rare tiles (${techBag.length} remaining in bag): ${techSupply.map((t) => t.name).join(', ')}.`
+          : `Galaxy initialized with ${players.length} players. Round 1 has commenced! Tech Tray populated with ${regularDrawn} regular and ${rareDrawn} rare tiles (${techBag.length} remaining in bag): ${techSupply.map((t) => t.name).join(', ')}.`,
         type: 'system',
       },
     ],
