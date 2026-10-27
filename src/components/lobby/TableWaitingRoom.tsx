@@ -104,7 +104,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
   // Real-time synchronization while in waiting room
   useEffect(() => {
     const handleSync = async () => {
-      const remote = await fetchTableFromServer(state.id, true);
+      const remote = await fetchTableFromServer(state.id, false, state.savedAt);
       if (remote && onUpdateState) {
         onUpdateState(remote);
       } else {

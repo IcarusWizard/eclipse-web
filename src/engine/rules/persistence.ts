@@ -395,7 +395,7 @@ export function listSavedTables(): SavedTableSummary[] {
  */
 export async function fetchTableFromServer(
   tableIdentifier: string | number,
-  includeReplay: boolean = true,
+  includeReplay: boolean = false,
   ifNoneMatch?: string | number
 ): Promise<GameState | null> {
   try {
@@ -635,13 +635,14 @@ export function subscribeToGameSync(
     lastKnownSavedAt = initial.savedAt;
   }
 
-  // 1. Check server storage immediately on subscribe for fast multi-device join
-  fetchTableFromServer(targetIdStr, true, lastKnownSavedAt)
+  // 1. Check server storage immediately on subscribe for fast multi-device join (lightweight live state without 1MB+ replay history)
+  fetchTableFromServer(targetIdStr, false, lastKnownSavedAt)
     .then((remote) => {
       if (remote) {
         if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
-        if ((!remote.replaySteps || remote.replaySteps.length === 0) && initial?.replaySteps) {
-          remote.replaySteps = initial.replaySteps;
+        const currentLocal = loadTable(targetIdStr);
+        if ((!remote.replaySteps || remote.replaySteps.length === 0) && (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)) {
+          remote.replaySteps = currentLocal?.replaySteps || initial?.replaySteps || [];
         }
         const fp = getStateFingerprint(remote);
         if (fp !== lastKnownFingerprint) {
@@ -714,11 +715,12 @@ export function subscribeToGameSync(
     if (typeof document !== 'undefined' && document.hidden) return;
     isPolling = true;
     try {
-      const remote = await fetchTableFromServer(targetIdStr, true, lastKnownSavedAt);
+      const remote = await fetchTableFromServer(targetIdStr, false, lastKnownSavedAt);
       if (remote) {
         if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
-        if ((!remote.replaySteps || remote.replaySteps.length === 0) && initial?.replaySteps) {
-          remote.replaySteps = initial.replaySteps;
+        const currentLocal = loadTable(targetIdStr);
+        if ((!remote.replaySteps || remote.replaySteps.length === 0) && (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)) {
+          remote.replaySteps = currentLocal?.replaySteps || initial?.replaySteps || [];
         }
         const fp = getStateFingerprint(remote);
         if (fp !== lastKnownFingerprint) {
