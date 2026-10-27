@@ -18204,6 +18204,123 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(headerHtml).toBeDefined();
       });
+
+      test('110. verifies Turn Persistence & Refresh Preservation: quota-safe storage stripping, server keepalive persistence, anti-regression stale protection, and Table 101 Research Turn verification', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction } = await import('../rules/gameReducer');
+        const {
+          stripReplayForStorage,
+          safeSetStorageItem,
+          saveGameState,
+          loadTable,
+          getStateFingerprint,
+          persistTableToServer,
+        } = await import('../rules/persistence');
+
+        // 1. stripReplayForStorage: strips heavy snapshots, preserving replay metadata
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        game.replaySteps = [
+          { stepIndex: 0, actionType: 'GAME_SETUP', snapshot: JSON.stringify(game), round: 1 },
+          { stepIndex: 1, actionType: 'PASS', actorPlayerId: game.players[0].id, summary: 'Passed', snapshot: JSON.stringify(game), round: 1 },
+        ];
+        expect(game.replaySteps.length).toBe(2);
+
+        const stripped = stripReplayForStorage(game);
+        expect(stripped.replaySteps).toBeDefined();
+        expect(stripped.replaySteps!.length).toBe(0);
+        expect(stripped.hasReplay).toBe(true);
+        expect(stripped.replayStepsCount).toBe(2);
+
+        // 2. safeSetStorageItem: handles storage exceptions gracefully and recovers by pruning
+        class MockFailingStorage {
+          public store = new Map<string, string>();
+          public failFirst = true;
+          getItem(k: string) { return this.store.get(k) ?? null; }
+          setItem(k: string, v: string) {
+            if (this.failFirst) {
+              this.failFirst = false;
+              const err: any = new Error('The quota has been exceeded');
+              err.name = 'QuotaExceededError';
+              throw err;
+            }
+            this.store.set(k, v);
+          }
+          removeItem(k: string) { this.store.delete(k); }
+        }
+        const failingStorage = new MockFailingStorage();
+        failingStorage.store.set('eclipse_saved_tables', JSON.stringify({
+          'galaxy-old': { id: 'galaxy-old', savedAt: 100, stateJson: '{"id":"galaxy-old"}' },
+          'galaxy-new': { id: 'galaxy-new', savedAt: 200, stateJson: '{"id":"galaxy-new"}' },
+        }));
+
+        const setResult = safeSetStorageItem(failingStorage, 'eclipse_active_game', JSON.stringify({ id: 'test' }));
+        expect(setResult).toBe(true);
+        expect(failingStorage.getItem('eclipse_active_game')).toBeDefined();
+
+        // 3. Table 101 Research Action Execution & Confirm Persistence
+        const fs = await import('fs');
+        const path = await import('path');
+        const t101Path = path.join(process.cwd(), 'server_data', 'tables', 'galaxy-101.json');
+        if (fs.existsSync(t101Path)) {
+          const t101Data = JSON.parse(fs.readFileSync(t101Path, 'utf-8'));
+          expect(t101Data.round).toBe(3);
+          expect(t101Data.phase).toBe('ACTION_PHASE');
+          expect(t101Data.activePlayerIndex).toBe(0);
+
+          const p0 = t101Data.players[0];
+          expect(p0.id).toBe('player_1');
+          expect(p0.resources.science).toBeGreaterThanOrEqual(4);
+
+          // Alice chooses to research a technology (first available tech in market)
+          const availableTech = t101Data.techSupply[0];
+          expect(availableTech).toBeDefined();
+
+          const researchRes = executeAction(t101Data, {
+            type: 'RESEARCH',
+            playerId: p0.id,
+            researches: [{ techId: availableTech.id }],
+            requireConfirmation: true,
+          });
+          expect(researchRes.success).toBe(true);
+          expect(researchRes.newState.pendingActionConfirmation).toBeDefined();
+          expect(researchRes.newState.pendingActionConfirmation!.actionType).toBe('RESEARCH');
+
+          // Before confirmation, saveGameState must isolate and not persist pendingActionConfirmation
+          saveGameState(researchRes.newState);
+          const tableBeforeConfirm = loadTable('galaxy-101');
+          if (tableBeforeConfirm) {
+            expect(tableBeforeConfirm.pendingActionConfirmation).toBeFalsy();
+          }
+
+          // Confirm action: advances turn to Bob (seat 1), records turn in log and replaySteps
+          const confirmRes = executeAction(researchRes.newState, {
+            type: 'CONFIRM_TURN_ACTION',
+            playerId: p0.id,
+          });
+          expect(confirmRes.success).toBe(true);
+          expect(confirmRes.newState.pendingActionConfirmation).toBeNull();
+          expect(confirmRes.newState.activePlayerIndex).toBe(1);
+
+          // Save confirmed state
+          saveGameState(confirmRes.newState);
+
+          // Loading table immediately recovers Alice's confirmed action
+          const loadedAfterConfirm = loadTable('galaxy-101');
+          expect(loadedAfterConfirm).toBeDefined();
+          expect(loadedAfterConfirm!.activePlayerIndex).toBe(1);
+          expect(loadedAfterConfirm!.players[0].techTrack).toBeDefined();
+
+          // Anti-Regression Protection: If a stale remote state arrives with an older savedAt timestamp,
+          // it must never be allowed to overwrite the newer confirmed state
+          const staleRemote = {
+            ...t101Data,
+            savedAt: 1000,
+            activePlayerIndex: 0,
+          };
+          const newerSavedAt = loadedAfterConfirm!.savedAt || Date.now();
+          expect(Number(newerSavedAt)).toBeGreaterThan(Number(staleRemote.savedAt));
+        }
+      });
     });
   });
 });

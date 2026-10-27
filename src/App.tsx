@@ -61,6 +61,7 @@ import { MinorSpeciesId } from './engine/rules/minorSpecies';
 import {
   loadActiveGameState,
   saveGameState,
+  persistTableToServer,
   loadTable,
   subscribeToGameSync,
   getTableNumber,
@@ -421,6 +422,16 @@ export const App: React.FC = () => {
     if (!matchesCurrent) {
       fetchTableFromServer(tableParam).then((remote) => {
         if (remote) {
+          const currentLocal = loadTable(tableParam);
+          const remoteTime = Number(remote.savedAt) || 0;
+          const localTime = Number(currentLocal?.savedAt) || 0;
+          if (localTime > remoteTime && currentLocal) {
+            isRemoteSyncRef.current = true;
+            lastStateFingerprintRef.current = getStateFingerprint(currentLocal);
+            setState(currentLocal);
+            setInGame(true);
+            return;
+          }
           isRemoteSyncRef.current = true;
           lastStateFingerprintRef.current = getStateFingerprint(remote);
           saveGameState(remote, true);
@@ -491,6 +502,12 @@ export const App: React.FC = () => {
         (currentSeat === 'all' ||
           pendingActionRef.current.playerId === state.players[currentSeat as number]?.id);
       if (isMyPendingAction) {
+        return;
+      }
+
+      const remoteTime = Number(remoteState.savedAt) || 0;
+      const localTime = Number(state.savedAt) || 0;
+      if (localTime > remoteTime && !state.pendingActionConfirmation) {
         return;
       }
 
@@ -1818,6 +1835,7 @@ export const App: React.FC = () => {
     if (res.success) {
       lastStateFingerprintRef.current = getStateFingerprint(res.newState);
       saveGameState(res.newState);
+      persistTableToServer(res.newState).catch(() => {});
       setState(res.newState);
       showToast('Action confirmed and turn passed.');
     } else {
@@ -1839,6 +1857,7 @@ export const App: React.FC = () => {
     if (res.success) {
       lastStateFingerprintRef.current = getStateFingerprint(res.newState);
       saveGameState(res.newState);
+      persistTableToServer(res.newState).catch(() => {});
       setState(res.newState);
       if (conf.actionType === 'EXPLORE' && conf.exploreTargetCoord && conf.exploreFromCoord) {
         setPendingExploreCoords({ from: conf.exploreFromCoord, target: conf.exploreTargetCoord });

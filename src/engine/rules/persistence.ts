@@ -79,6 +79,114 @@ export function getTableNumber(stateOrId: GameState | string): number {
   return 100 + (Math.abs(hash) % 900);
 }
 
+/**
+ * Strips heavy historical replay snapshots for localStorage to prevent QuotaExceededError (5MB browser limit),
+ * while keeping hasReplay and replayStepsCount metadata intact.
+ */
+export function stripReplayForStorage(state: GameState): GameState {
+  if (!state) return state;
+  const hasReplay = isReplayAvailable(state);
+  const replayStepsCount = state.replaySteps?.length || (state as any).replayStepsCount || 0;
+  return {
+    ...state,
+    hasReplay,
+    replayStepsCount,
+    replaySteps: [],
+  };
+}
+
+/**
+ * Strips replay snapshots from existing saved table stateJsons to reclaim browser localStorage space.
+ */
+export function sanitizeTablesMapForStorage(tables: Record<string, SavedTableSummary>): Record<string, SavedTableSummary> {
+  if (!tables) return {};
+  for (const key of Object.keys(tables)) {
+    const table = tables[key];
+    if (table && table.stateJson) {
+      try {
+        const parsed = JSON.parse(table.stateJson);
+        if (parsed && Array.isArray(parsed.replaySteps) && parsed.replaySteps.length > 0) {
+          table.hasReplay = table.hasReplay ?? isReplayAvailable(parsed);
+          table.replayStepsCount = table.replayStepsCount ?? parsed.replaySteps.length;
+          table.stateJson = JSON.stringify(stripReplayForStorage(parsed));
+        }
+      } catch {}
+    }
+  }
+  return tables;
+}
+
+/**
+ * Safe wrapper for storage.setItem that gracefully catches QuotaExceededError and recovers
+ * by pruning stateJson from older tables, ensuring localStorage operations never crash.
+ */
+export function safeSetStorageItem(storage: any, key: string, value: string): boolean {
+  try {
+    storage.setItem(key, value);
+    return true;
+  } catch (err: any) {
+    console.warn(`Storage setItem failed for key "${key}":`, err?.message || err);
+    try {
+      if (key === SAVED_TABLES_KEY) {
+        const tables: Record<string, SavedTableSummary> = JSON.parse(value);
+        const entries = Object.entries(tables).sort(
+          ([, a], [, b]) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
+        );
+        for (let i = 1; i < entries.length; i++) {
+          delete entries[i][1].stateJson;
+        }
+        storage.setItem(SAVED_TABLES_KEY, JSON.stringify(Object.fromEntries(entries)));
+        return true;
+      }
+      const raw = storage.getItem(SAVED_TABLES_KEY);
+      if (raw) {
+        const tables: Record<string, SavedTableSummary> = JSON.parse(raw);
+        const entries = Object.entries(tables).sort(
+          ([, a], [, b]) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0)
+        );
+        for (let i = 1; i < entries.length; i++) {
+          delete entries[i][1].stateJson;
+        }
+        storage.setItem(SAVED_TABLES_KEY, JSON.stringify(Object.fromEntries(entries)));
+        storage.setItem(key, value);
+        return true;
+      }
+    } catch (retryErr) {
+      console.error('Storage quota recovery failed:', retryErr);
+    }
+    return false;
+  }
+}
+
+export function resolveApiUrl(path: string): string {
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return path;
+  }
+  if (typeof process !== 'undefined') {
+    const base = process.env?.SERVER_BASE_URL || 'http://127.0.0.1:3000';
+    return `${base}${path.startsWith('/') ? path : '/' + path}`;
+  }
+  return path;
+}
+
+/**
+ * Persists table state to the server storage API with keepalive: true so browser refreshes do not cancel it.
+ */
+export async function persistTableToServer(state: GameState): Promise<boolean> {
+  if (typeof fetch === 'undefined' || !state || !state.id) return false;
+  try {
+    const res = await fetch(resolveApiUrl(`/api/tables/${state.id}`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(state),
+      keepalive: true,
+    });
+    return res.ok;
+  } catch (err) {
+    return false;
+  }
+}
+
 const SYNC_CHANNEL_NAME = 'eclipse_game_sync_v1';
 let syncChannel: BroadcastChannel | null = null;
 
@@ -116,23 +224,30 @@ export function broadcastGameState(state: GameState, stateJson?: string): void {
  * Persists current GameState to localStorage and broadcasts update to other tabs.
  */
 export function saveGameState(state: GameState, skipBroadcast: boolean = false): void {
+  // When an action is unconfirmed, keep it strictly isolated to the acting player's local React state.
+  // Other players / tabs only see the action after the player has confirmed it.
+  // Never persist unconfirmed actions to shared localStorage (which triggers storage events to other tabs)
+  // or broadcast / upload them.
+  if (state.pendingActionConfirmation) {
+    return;
+  }
+
+  const tableNumber = getTableNumber(state);
+  (state as any).tableNumber = tableNumber;
+
+  const now = Date.now();
+  state.savedAt = now;
+
+  const fullServerPayloadJson = JSON.stringify(state);
+
+  // 1. Safe localStorage persistence (prunes replay snapshots to prevent 5MB QuotaExceededError)
   try {
-    // When an action is unconfirmed, keep it strictly isolated to the acting player's local React state.
-    // Other players / tabs only see the action after the player has confirmed it.
-    // Never persist unconfirmed actions to shared localStorage (which triggers storage events to other tabs)
-    // or broadcast / upload them.
-    if (state.pendingActionConfirmation) {
-      return;
-    }
-
-    const tableNumber = getTableNumber(state);
-    (state as any).tableNumber = tableNumber;
-
     const storage = getStorage();
 
     // Update saved tables collection
     const existingRaw = storage.getItem(SAVED_TABLES_KEY);
-    const tables: Record<string, SavedTableSummary> = existingRaw ? JSON.parse(existingRaw) : {};
+    let tables: Record<string, SavedTableSummary> = existingRaw ? JSON.parse(existingRaw) : {};
+    tables = sanitizeTablesMapForStorage(tables);
 
     const existingTable = tables[state.id];
     let members: TableMember[] = [];
@@ -176,8 +291,10 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       } catch {}
     }
 
-    const stateJson = JSON.stringify(state);
-    storage.setItem(ACTIVE_GAME_KEY, stateJson);
+    const storageState = stripReplayForStorage(state);
+    const storageStateJson = JSON.stringify(storageState);
+
+    safeSetStorageItem(storage, ACTIVE_GAME_KEY, storageStateJson);
     const activePlayer = state.players[state.activePlayerIndex];
     let effectiveActiveIndex = typeof state.activePlayerIndex === 'number' ? state.activePlayerIndex : 0;
     if (state.phase === 'COMBAT_PHASE' && (state as any).combat?.activePlayerId) {
@@ -186,17 +303,17 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     }
 
     const hasReplay = isReplayAvailable(state);
-    const replayStepsCount = state.replaySteps?.length || 0;
+    const replayStepsCount = state.replaySteps?.length || (state as any).replayStepsCount || 0;
 
     const isGameStarted =
       typeof (state as any).isGameStarted === 'boolean'
         ? (state as any).isGameStarted
-        : (state.round > 1 || ((state as any).replaySteps && (state as any).replaySteps.length > 1));
+        : (state.round > 1 || ((state as any).replaySteps && (state as any).replaySteps.length > 1) || replayStepsCount > 1);
 
     tables[state.id] = {
       id: state.id,
       tableNumber,
-      savedAt: Date.now(),
+      savedAt: now,
       round: state.round,
       maxRounds: state.maxRounds,
       phase: state.phase,
@@ -205,28 +322,40 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
       activePlayerIndex: effectiveActiveIndex,
       isGameStarted,
-      stateJson,
+      stateJson: storageStateJson,
       members,
       hasReplay,
       replayStepsCount,
     };
 
-    storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+    safeSetStorageItem(storage, SAVED_TABLES_KEY, JSON.stringify(tables));
+  } catch (err) {
+    console.error('Failed to update localStorage in saveGameState:', err);
+  }
 
-    if (!skipBroadcast) {
-      broadcastGameState(state, stateJson);
+  // 2. Broadcast to other tabs (independent of localStorage)
+  if (!skipBroadcast) {
+    try {
+      broadcastGameState(state);
+    } catch (err) {
+      console.warn('Failed to broadcast game state:', err);
     }
+  }
 
-    // Persist to server API for cross-IP multi-device gameplay (only for local confirmed actions, not incoming sync)
-    if (!skipBroadcast && typeof fetch !== 'undefined') {
-      fetch(`/api/tables/${state.id}`, {
+  // 3. Persist to server API with keepalive: true (independent of localStorage)
+  if (!skipBroadcast && typeof fetch !== 'undefined') {
+    try {
+      fetch(resolveApiUrl(`/api/tables/${state.id}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: stateJson,
-      }).catch(() => {});
+        body: fullServerPayloadJson,
+        keepalive: true,
+      }).catch((err) => {
+        console.warn('Failed to persist table to server:', err);
+      });
+    } catch (err) {
+      console.warn('Failed to initiate server save:', err);
     }
-  } catch (err) {
-    console.error('Failed to save game state:', err);
   }
 }
 
@@ -311,10 +440,28 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
   try {
     const storage = getStorage();
     const raw = storage.getItem(SAVED_TABLES_KEY);
-    if (!raw) return null;
-    const tables: Record<string, SavedTableSummary> = JSON.parse(raw);
+    const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
     const idStr = String(tableIdentifier);
     const num = parseInt(idStr, 10);
+
+    // 0. Also check ACTIVE_GAME_KEY in case SAVED_TABLES_KEY was empty or ACTIVE_GAME_KEY has a newer state for this table
+    let activeState: GameState | null = null;
+    const activeRaw = storage.getItem(ACTIVE_GAME_KEY);
+    if (activeRaw) {
+      try {
+        const p = JSON.parse(activeRaw);
+        if (
+          p &&
+          (p.id === idStr ||
+            p.id === `galaxy-${idStr}` ||
+            (!isNaN(num) && (p.tableNumber === num || (p as any).tableNumber === num)))
+        ) {
+          activeState = sanitizeLoadedGameState(p);
+        }
+      } catch {}
+    }
+
+    let resultFromSummary: GameState | null = null;
 
     // 1. Direct ID match
     if (tables[idStr]?.stateJson) {
@@ -323,43 +470,52 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
       if ((!parsed.members || parsed.members.length === 0) && tables[idStr].members) {
         parsed.members = tables[idStr].members;
       }
-      return sanitizeLoadedGameState(parsed);
+      resultFromSummary = sanitizeLoadedGameState(parsed);
     }
 
     // 2. Direct galaxy- prefix match
     const galaxyId = `galaxy-${idStr}`;
-    if (tables[galaxyId]?.stateJson) {
+    if (!resultFromSummary && tables[galaxyId]?.stateJson) {
       const parsed: GameState = JSON.parse(tables[galaxyId].stateJson!);
       (parsed as any).tableNumber = tables[galaxyId].tableNumber;
       if ((!parsed.members || parsed.members.length === 0) && tables[galaxyId].members) {
         parsed.members = tables[galaxyId].members;
       }
-      return sanitizeLoadedGameState(parsed);
+      resultFromSummary = sanitizeLoadedGameState(parsed);
     }
 
     // 3. Search matching candidates, prioritized by exact id, galaxy- prefix, and newest savedAt
-    const candidates = Object.values(tables).filter(
-      (t) => t.id === idStr || (!isNaN(num) && t.tableNumber === num)
-    );
-    if (candidates.length > 0) {
-      candidates.sort((a, b) => {
-        if (a.id === idStr) return -1;
-        if (b.id === idStr) return 1;
-        if (a.id === galaxyId) return -1;
-        if (b.id === galaxyId) return 1;
-        return (b.savedAt || 0) - (a.savedAt || 0);
-      });
-      const best = candidates[0];
-      if (best?.stateJson) {
-        const parsed: GameState = JSON.parse(best.stateJson);
-        (parsed as any).tableNumber = best.tableNumber;
-        if ((!parsed.members || parsed.members.length === 0) && best.members) {
-          parsed.members = best.members;
+    if (!resultFromSummary) {
+      const candidates = Object.values(tables).filter(
+        (t) => t.id === idStr || (!isNaN(num) && t.tableNumber === num)
+      );
+      if (candidates.length > 0) {
+        candidates.sort((a, b) => {
+          if (a.id === idStr) return -1;
+          if (b.id === idStr) return 1;
+          if (a.id === galaxyId) return -1;
+          if (b.id === galaxyId) return 1;
+          return (b.savedAt || 0) - (a.savedAt || 0);
+        });
+        const best = candidates[0];
+        if (best?.stateJson) {
+          const parsed: GameState = JSON.parse(best.stateJson);
+          (parsed as any).tableNumber = best.tableNumber;
+          if ((!parsed.members || parsed.members.length === 0) && best.members) {
+            parsed.members = best.members;
+          }
+          resultFromSummary = sanitizeLoadedGameState(parsed);
         }
-        return sanitizeLoadedGameState(parsed);
       }
     }
-    return null;
+
+    if (activeState && resultFromSummary) {
+      const activeSavedAt = Number(activeState.savedAt) || 0;
+      const summarySavedAt = Number(resultFromSummary.savedAt) || 0;
+      return activeSavedAt >= summarySavedAt ? activeState : resultFromSummary;
+    }
+
+    return activeState || resultFromSummary || null;
   } catch (err) {
     console.error(`Failed to load table ${tableIdentifier}:`, err);
     return null;
@@ -401,7 +557,7 @@ export async function fetchTableFromServer(
   try {
     if (typeof fetch === 'undefined') return null;
     const replayParam = includeReplay ? 'includeReplay=true' : 'includeReplay=false';
-    const url = `/api/tables/${encodeURIComponent(String(tableIdentifier))}?${replayParam}`;
+    const url = resolveApiUrl(`/api/tables/${encodeURIComponent(String(tableIdentifier))}?${replayParam}`);
     const headers: Record<string, string> = {};
     if (ifNoneMatch) {
       headers['If-None-Match'] = String(ifNoneMatch);
@@ -425,7 +581,7 @@ export async function fetchTableFromServer(
 export async function fetchSavedTablesFromServer(): Promise<SavedTableSummary[]> {
   try {
     if (typeof fetch === 'undefined') return [];
-    const res = await fetch('/api/tables');
+    const res = await fetch(resolveApiUrl('/api/tables'));
     if (!res.ok) return [];
     const data = await res.json();
     if (data && data.success && Array.isArray(data.tables)) {
@@ -568,7 +724,8 @@ export function mergeTableSummaries(
       }
     }
     if (updated) {
-      storage.setItem(SAVED_TABLES_KEY, JSON.stringify(storedMap));
+      sanitizeTablesMapForStorage(storedMap);
+      safeSetStorageItem(storage, SAVED_TABLES_KEY, JSON.stringify(storedMap));
     }
   } catch {}
 
@@ -649,7 +806,7 @@ export function deleteSavedTable(tableId: string): void {
     broadcastTableCancelled(tableId);
 
     if (typeof fetch !== 'undefined') {
-      fetch(`/api/tables/${encodeURIComponent(tableId)}`, { method: 'DELETE' }).catch(() => {});
+      fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}`), { method: 'DELETE' }).catch(() => {});
     }
   } catch (err) {
     console.error('Failed to delete saved table:', err);
@@ -694,8 +851,24 @@ export function subscribeToGameSync(
   fetchTableFromServer(targetIdStr, false, lastKnownSavedAt)
     .then((remote) => {
       if (remote) {
-        if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
         const currentLocal = loadTable(targetIdStr);
+        const remoteTime = Number(remote.savedAt) || 0;
+        const localTime = Math.max(Number(currentLocal?.savedAt) || 0, Number(initial?.savedAt) || 0);
+
+        // Anti-Regression Protection: Never overwrite newer local confirmed state with older server state!
+        if (localTime > remoteTime) {
+          if (currentLocal && typeof fetch !== 'undefined') {
+            fetch(resolveApiUrl(`/api/tables/${currentLocal.id}`), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(currentLocal),
+              keepalive: true,
+            }).catch(() => {});
+          }
+          return;
+        }
+
+        if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
         if ((!remote.replaySteps || remote.replaySteps.length === 0) && (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)) {
           remote.replaySteps = currentLocal?.replaySteps || initial?.replaySteps || [];
         }
@@ -772,8 +945,24 @@ export function subscribeToGameSync(
     try {
       const remote = await fetchTableFromServer(targetIdStr, false, lastKnownSavedAt);
       if (remote) {
-        if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
         const currentLocal = loadTable(targetIdStr);
+        const remoteTime = Number(remote.savedAt) || 0;
+        const localTime = Math.max(Number(currentLocal?.savedAt) || 0, Number(initial?.savedAt) || 0);
+
+        // Anti-Regression Protection
+        if (localTime > remoteTime) {
+          if (currentLocal && typeof fetch !== 'undefined') {
+            fetch(resolveApiUrl(`/api/tables/${currentLocal.id}`), {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify(currentLocal),
+              keepalive: true,
+            }).catch(() => {});
+          }
+          return;
+        }
+
+        if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
         if ((!remote.replaySteps || remote.replaySteps.length === 0) && (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)) {
           remote.replaySteps = currentLocal?.replaySteps || initial?.replaySteps || [];
         }
@@ -917,7 +1106,7 @@ export async function registerTableMember(
     }
 
     if (typeof fetch !== 'undefined') {
-      const res = await fetch(`/api/tables/${encodeURIComponent(tableId)}/join`, {
+      const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/join`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ member }),
@@ -992,7 +1181,7 @@ export async function leaveTable(
     // Call server endpoint if available
     if (typeof fetch !== 'undefined') {
       try {
-        const res = await fetch(`/api/tables/${encodeURIComponent(tableId)}/leave`, {
+        const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/leave`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({ userId }),

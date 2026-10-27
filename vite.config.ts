@@ -1152,7 +1152,15 @@ function tableStoragePlugin(): Plugin {
               return;
             }
 
-            const filePath = path.join(TABLES_DIR, `${tableId}.json`);
+            let resolvedTableId = targetParam || data.id;
+            let filePath = path.join(TABLES_DIR, `${resolvedTableId}.json`);
+            if (!fs.existsSync(filePath)) {
+              const galaxyPath = path.join(TABLES_DIR, `galaxy-${resolvedTableId}.json`);
+              if (fs.existsSync(galaxyPath)) {
+                filePath = galaxyPath;
+                resolvedTableId = `galaxy-${resolvedTableId}`;
+              }
+            }
             data.savedAt = Date.now();
             let existing: any = null;
             if (fs.existsSync(filePath)) {
