@@ -24,6 +24,7 @@ import {
   getMaxBuildActivations,
   getMaxMoveActivations,
   getMaxInfluenceActivations,
+  getPlayerDisplayName,
 } from '../../engine/rules/gameReducer';
 
 interface ActionBarProps {
@@ -101,7 +102,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             />
             <div className="flex flex-col text-left">
               <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">Action Taken</span>
-              <span className="font-bold text-slate-100 leading-none">{activePlayer.name}</span>
+              <span className="font-bold text-slate-100 leading-none">{getPlayerDisplayName(activePlayer)}</span>
             </div>
           </div>
           {/* Action Completed badge on mobile */}
@@ -210,7 +211,12 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20 shrink-0"
             style={{ backgroundColor: activePlayer.color }}
           />
-          <span className="font-bold text-slate-100 text-xs truncate max-w-[130px] sm:max-w-[160px]">{activePlayer.name}</span>
+          <span
+            className="font-bold text-slate-100 text-xs truncate max-w-[130px] sm:max-w-[200px]"
+            title={getPlayerDisplayName(activePlayer)}
+          >
+            {getPlayerDisplayName(activePlayer, { short: true })}
+          </span>
           <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 uppercase font-semibold">
             {hasPassed ? 'Reaction' : 'Active'}
           </span>

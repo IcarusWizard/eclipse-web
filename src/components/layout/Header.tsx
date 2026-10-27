@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GameState } from '../../engine/types/state';
-import { computeCurrentScores, getPlayerShortName } from '../../engine/rules/gameReducer';
+import { computeCurrentScores, getPlayerShortName, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { getTableNumber, isSeatTaken, canUserUseHotseat } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
@@ -201,9 +201,10 @@ export const Header: React.FC<HeaderProps> = ({
               const occupantTag = seatOccupant
                 ? ` [Commander: ${seatOccupant.username || seatOccupant.name}]`
                 : '';
+              const displayName = getPlayerDisplayName(p);
               const titleText = isSecretRep
-                ? `${p.name}${occupantTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
-                : `${p.name}${occupantTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
+                ? `${displayName}${occupantTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
+                : `${displayName}${occupantTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
 
               return (
                 <button
@@ -220,7 +221,7 @@ export const Header: React.FC<HeaderProps> = ({
                     className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: p.color }}
                   />
-                  <span className="hidden sm:inline">{getPlayerShortName(p)}</span>
+                  <span className="hidden sm:inline">{getPlayerDisplayName(p, { short: true })}</span>
                   <span className="text-[10px] text-amber-400 font-mono font-bold">
                     {displayVP}
                   </span>
@@ -396,7 +397,7 @@ export const Header: React.FC<HeaderProps> = ({
                             const isTaken = seatCheck.isTaken && !!seatCheck.occupant;
                             return (
                               <option key={p.id} value={idx.toString()} disabled={isTaken}>
-                                Seat {idx + 1} ({getPlayerShortName(p)})
+                                Seat {idx + 1} ({getPlayerDisplayName(p, { short: true })})
                                 {isTaken
                                   ? ` [Taken: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
                                   : ''}

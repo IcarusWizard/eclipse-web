@@ -1207,6 +1207,7 @@ export function createInitialGame(
 
   const initialState: GameState = {
     id: `game_${Date.now()}`,
+    isDraftMode,
     expansions: enabledExpansions,
     neutralShipBlueprints: resolvedNeutralBlueprints,
     neutralShipSelections: storedNeutralSelections,

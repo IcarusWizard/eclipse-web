@@ -61,6 +61,8 @@ import {
   applyShrinePlacement,
   getMaxMoveActivations,
   getPlayerShortName,
+  getFactionShortName,
+  getPlayerDisplayName,
 } from '../rules/gameReducer';
 import {
   saveGameState,
@@ -78,7 +80,10 @@ import {
   filterTablesForUser,
   isSeatTaken,
   getTableOccupiedSeats,
+  getTableStatusCategory,
   isPlayerTurnAtTable,
+  mergeTableSummaries,
+  areTableSummariesEqual,
   type SavedTableSummary,
 } from '../rules/persistence';
 import {
@@ -17498,6 +17503,424 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         draftGame.round = 8;
         draftGame.phase = 'GAME_OVER';
         expect(isReplayAvailable(draftGame)).toBe(true);
+      });
+
+      it('105. verifies Game Creation Process & Lobby Redesign: 3 primary options, default no expansions, default neutral ship blueprints, staging waiting room gating until all seats taken, tables waiting for players filtering, and turn highlight badge', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = (await import('react')).default;
+        const { getTableStatusCategory, isPlayerTurnAtTable } = await import('../rules/persistence');
+
+        // 1. Initial Game Creation Defaults: no expansions [] and default neutral ship blueprints
+        const defaultGame = createInitialGame(2);
+        expect(defaultGame.expansions).toEqual([]);
+        expect(defaultGame.neutralShipBlueprints).toEqual({
+          ancient: 'default',
+          guardian: 'default',
+          gcds: 'default',
+        });
+        expect(defaultGame.neutralShipSelections).toEqual({
+          ancient: 'default',
+          guardian: 'default',
+          gcds: 'default',
+        });
+
+        // 2. Table Status Categorization: 'need_players', 'running', 'done'
+        const testUserAlice: UserSession = {
+          id: 'usr_alice_105',
+          username: 'Alice105',
+          name: 'Alice 105',
+          role: 'user',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        };
+        const testUserBob: UserSession = {
+          id: 'usr_bob_105',
+          username: 'Bob105',
+          name: 'Bob 105',
+          role: 'user',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        };
+
+        const waitingTableSummary: SavedTableSummary = {
+          id: 'galaxy-105-wait',
+          tableNumber: 105,
+          savedAt: Date.now(),
+          round: 1,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 3,
+          playerNames: ['Player 1', 'Player 2', 'Player 3'],
+          activePlayerName: 'Player 1',
+          activePlayerIndex: 0,
+          members: [
+            { userId: testUserAlice.id, name: 'Alice 105', username: 'Alice105', role: 'user', seat: 0, joinedAt: 100 },
+          ],
+        };
+
+        // Table with 1 of 3 seats occupied is in 'need_players' category
+        expect(getTableStatusCategory(waitingTableSummary)).toBe('need_players');
+
+        // Crucial requirement: Tables waiting for players must NOT trigger false turn highlights
+        expect(isPlayerTurnAtTable(waitingTableSummary, testUserAlice)).toBe(false);
+
+        // When all seats are occupied, table transitions to 'running'
+        const runningTableSummary: SavedTableSummary = {
+          ...waitingTableSummary,
+          id: 'galaxy-105-running',
+          members: [
+            { userId: testUserAlice.id, name: 'Alice 105', username: 'Alice105', role: 'user', seat: 0, joinedAt: 100 },
+            { userId: testUserBob.id, name: 'Bob 105', username: 'Bob105', role: 'user', seat: 1, joinedAt: 101 },
+            { userId: 'usr_charlie_105', name: 'Charlie 105', username: 'Charlie105', role: 'user', seat: 2, joinedAt: 102 },
+          ],
+        };
+        expect(getTableStatusCategory(runningTableSummary)).toBe('running');
+        // Once table is running, active player (seat 0) turn detection works accurately
+        expect(isPlayerTurnAtTable(runningTableSummary, testUserAlice)).toBe(true);
+        expect(isPlayerTurnAtTable(runningTableSummary, testUserBob)).toBe(false);
+
+        // Completed table transitions to 'done'
+        const doneTableSummary: SavedTableSummary = {
+          ...runningTableSummary,
+          id: 'galaxy-105-done',
+          phase: 'GAME_OVER',
+        };
+        expect(getTableStatusCategory(doneTableSummary)).toBe('done');
+        expect(isPlayerTurnAtTable(doneTableSummary, testUserAlice)).toBe(false);
+
+        // 3. Staging Waiting Room Gating (TableWaitingRoom)
+        const { TableWaitingRoom } = await import('../../components/lobby/TableWaitingRoom');
+        const stagedGame = createInitialGame(3);
+        stagedGame.id = 'galaxy-105-staged';
+        (stagedGame as any).members = [
+          { userId: testUserAlice.id, name: 'Alice 105', username: 'Alice105', role: 'user', seat: 0, joinedAt: 100 },
+        ];
+
+        // When seats are not all filled (1 of 3): Game cannot start
+        const waitingRoomHtml = renderToString(
+          React.createElement(TableWaitingRoom, {
+            state: stagedGame,
+            currentSeat: 0,
+            currentUser: testUserAlice,
+            onStartGame: () => {},
+            onClaimSeat: () => {},
+            onReturnToLobby: () => {},
+            onOpenGallery: () => {},
+          })
+        );
+        expect(waitingRoomHtml).toContain('Only if all the seats are taken by players, the game can start.');
+        expect(waitingRoomHtml).toContain('Waiting for Players (1/3)');
+        expect(waitingRoomHtml).toContain('YOU');
+        expect(waitingRoomHtml).toContain('Copy Table Link');
+        expect(waitingRoomHtml).toContain('Gallery');
+        // Host has access to Table Settings controls & Cancel Table button
+        expect(waitingRoomHtml).toContain('Table Settings (Host Controls)');
+        expect(waitingRoomHtml).toContain('Cancel Table');
+        expect(waitingRoomHtml).toContain('Number of Players');
+        expect(waitingRoomHtml).toContain('Neutral Ship Blueprints (NPCs)');
+
+        // All 9 Official Expansion Modules are displayed in the waiting room
+        expect(waitingRoomHtml).toContain('Rift Cannon');
+        expect(waitingRoomHtml).toContain('Remnants of Worlds Afar');
+        expect(waitingRoomHtml).toContain('Turn Order');
+        expect(waitingRoomHtml).toContain('Seekers');
+        expect(waitingRoomHtml).toContain('Outcasts');
+        expect(waitingRoomHtml).toContain('Minor Species');
+        expect(waitingRoomHtml).toContain('Warped Universe');
+        expect(waitingRoomHtml).toContain('Galactic Events');
+        expect(waitingRoomHtml).toContain('Community Balance');
+        expect(waitingRoomHtml).toContain('Select All (9 Modules)');
+        expect(waitingRoomHtml).toContain('Clear All (Base Game)');
+
+        // Faction Selection & Draft Mode Controls
+        expect(waitingRoomHtml).toContain('Faction Selection &amp; Draft Mode');
+        expect(waitingRoomHtml).toContain('Standard Mode');
+        expect(waitingRoomHtml).toContain('Faction Draft Mode');
+        expect(waitingRoomHtml).toContain('Standard Faction Selection');
+        expect(waitingRoomHtml).toContain('Quick Randomize');
+        expect(waitingRoomHtml).toContain('Browse');
+
+        // Waiting room in Draft Mode
+        const draftModeGame = createInitialGame(3, undefined, [], undefined, true);
+        draftModeGame.id = 'galaxy-105-draft';
+        (draftModeGame as any).members = [
+          { userId: testUserAlice.id, name: 'Alice 105', username: 'Alice105', role: 'user', seat: 0, joinedAt: 100 },
+        ];
+        const draftWaitingRoomHtml = renderToString(
+          React.createElement(TableWaitingRoom, {
+            state: draftModeGame,
+            currentSeat: 0,
+            currentUser: testUserAlice,
+            onStartGame: () => {},
+            onClaimSeat: () => {},
+            onReturnToLobby: () => {},
+          })
+        );
+        expect(draftWaitingRoomHtml).toContain('Draft Mode Active');
+        expect(draftWaitingRoomHtml).toContain('reverse turn order');
+        expect(draftWaitingRoomHtml).toContain('Drafts faction upon entering galaxy');
+
+        // Unseated commander / spectator sees open seats, cannot edit host settings
+        const spectatorWaitingRoomHtml = renderToString(
+          React.createElement(TableWaitingRoom, {
+            state: stagedGame,
+            currentSeat: 'spectator',
+            currentUser: { id: 'usr_guest', name: 'Guest', username: 'guest', role: 'guest', createdAt: 0, lastActiveAt: 0 },
+            onStartGame: () => {},
+            onClaimSeat: () => {},
+            onReturnToLobby: () => {},
+          })
+        );
+        expect(spectatorWaitingRoomHtml).toContain('Take Seat 2');
+        expect(spectatorWaitingRoomHtml).toContain('Take Seat 3');
+        expect(spectatorWaitingRoomHtml).toContain('Settings managed by host');
+
+        // When all seats are filled (3 of 3): Game start button unlocks
+        (stagedGame as any).members = [
+          { userId: testUserAlice.id, name: 'Alice 105', username: 'Alice105', role: 'user', seat: 0, joinedAt: 100 },
+          { userId: testUserBob.id, name: 'Bob 105', username: 'Bob105', role: 'user', seat: 1, joinedAt: 101 },
+          { userId: 'usr_charlie_105', name: 'Charlie 105', username: 'Charlie105', role: 'user', seat: 2, joinedAt: 102 },
+        ];
+        const readyWaitingRoomHtml = renderToString(
+          React.createElement(TableWaitingRoom, {
+            state: stagedGame,
+            currentSeat: 0,
+            currentUser: testUserAlice,
+            onStartGame: () => {},
+            onClaimSeat: () => {},
+            onReturnToLobby: () => {},
+          })
+        );
+        expect(readyWaitingRoomHtml).toContain('Start Game (Enter Galaxy)');
+        expect(readyWaitingRoomHtml).toContain('All commanders are seated!');
+
+        // Table cancellation: deleteSavedTable removes the table from saved tables
+        const { deleteSavedTable, listSavedTables, leaveTable, getUserTables } = await import('../rules/persistence');
+        saveGameState(stagedGame);
+        deleteSavedTable(stagedGame.id);
+        const remainingSavedTables = listSavedTables();
+        expect(remainingSavedTables.some((t) => t.id === stagedGame.id)).toBe(false);
+
+        // Player leaving table: frees attachment with the table and opens the seat again
+        const leaveTestTable = createInitialGame(3);
+        leaveTestTable.id = 'galaxy-105-leave';
+        (leaveTestTable as any).isGameStarted = false;
+        leaveTestTable.members = [
+          { userId: testUserAlice.id, name: 'Alice 105', username: 'Alice105', role: 'user', seat: 0, joinedAt: 100 },
+          { userId: testUserBob.id, name: 'Bob 105', username: 'Bob105', role: 'user', seat: 1, joinedAt: 101 },
+        ];
+        leaveTestTable.players[1].name = 'Bob105';
+        saveGameState(leaveTestTable);
+
+        // Before leaving: Bob is attached to the table, Seat 1 is occupied
+        const tablesBeforeLeave = listSavedTables();
+        const bobTablesBefore = getUserTables(tablesBeforeLeave, testUserBob);
+        expect(bobTablesBefore.some((t) => t.id === 'galaxy-105-leave')).toBe(true);
+        const occupiedBefore = getTableOccupiedSeats(tablesBeforeLeave.find((t) => t.id === 'galaxy-105-leave')!);
+        expect(occupiedBefore.has(1)).toBe(true);
+
+        // Bob leaves the table
+        const leaveResult = await leaveTable('galaxy-105-leave', testUserBob.id);
+        expect(leaveResult.success).toBe(true);
+        expect(leaveResult.members?.some((m) => m.userId === testUserBob.id)).toBe(false);
+
+        // After leaving: table is freed from Bob's attachment in "View My Games"
+        const tablesAfterLeave = listSavedTables();
+        const bobTablesAfter = getUserTables(tablesAfterLeave, testUserBob);
+        expect(bobTablesAfter.some((t) => t.id === 'galaxy-105-leave')).toBe(false);
+
+        // Seat 1 is open again and ready for others to take
+        const updatedTableSummary = tablesAfterLeave.find((t) => t.id === 'galaxy-105-leave')!;
+        const occupiedAfter = getTableOccupiedSeats(updatedTableSummary);
+        expect(occupiedAfter.has(0)).toBe(true);
+        expect(occupiedAfter.has(1)).toBe(false); // Seat 1 is now open!
+        expect(getTableStatusCategory(updatedTableSummary)).toBe('need_players');
+
+        // Verification for newly created game in user mode:
+        // Even though createInitialGame creates Step 0 in replaySteps (length === 1),
+        // having isGameStarted: false must categorize the table as 'need_players'
+        const freshUserTable = createInitialGame(2);
+        freshUserTable.id = 'galaxy-105-fresh';
+        (freshUserTable as any).isGameStarted = false;
+        (freshUserTable as any).members = [
+          { userId: testUserBob.id, name: 'Bob 105', username: 'Bob105', role: 'user', seat: 0, joinedAt: 200 },
+        ];
+        expect(freshUserTable.replaySteps?.length).toBe(1);
+        expect(getTableStatusCategory(freshUserTable as any)).toBe('need_players');
+        expect(isPlayerTurnAtTable(freshUserTable as any, testUserBob)).toBe(false);
+
+        // 4. Lobby UI Options & Navigation Hub
+        const { LobbyView } = await import('../../components/lobby/LobbyView');
+        const lobbyHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+            onOpenGallery: () => {},
+          })
+        );
+        // 3 Primary Lobby Hub options
+        expect(lobbyHtml).toContain('Create New Game');
+        expect(lobbyHtml).toContain('Join Other Games');
+        expect(lobbyHtml).toContain('View My Games');
+        // Gallery option available throughout
+        expect(lobbyHtml).toContain('Gallery');
+
+        // 5. Turn highlight computation for View My Games
+        const userTables = [waitingTableSummary, runningTableSummary, doneTableSummary];
+        const activeTurnsForAlice = userTables.filter((t) => isPlayerTurnAtTable(t, testUserAlice)).length;
+        expect(activeTurnsForAlice).toBe(1); // Only runningTableSummary, NOT waitingTableSummary or doneTableSummary
+      });
+
+      test('106. verifies Lobby Anti-Flicker & Table Synchronization: mergeTableSummaries preserves isGameStarted and stateJson, areTableSummariesEqual prevents state churn, and isPlayerTurnAtTable stays stable', async () => {
+        const aliceUser = { id: 'usr_alice_106', username: 'Alice', role: 'user' as const };
+        const bobUser = { id: 'usr_bob_106', username: 'Bob', role: 'user' as const };
+
+        // 1. Waiting room table created locally: isGameStarted: false, stateJson present
+        const localWaitingTable: SavedTableSummary = {
+          id: 'galaxy-106-wait',
+          tableNumber: 106,
+          savedAt: 1000,
+          round: 1,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 2,
+          playerNames: ['Alice (Terran)', 'Player 2'],
+          activePlayerName: 'Alice',
+          activePlayerIndex: 0,
+          isGameStarted: false,
+          stateJson: JSON.stringify({ id: 'galaxy-106-wait', isGameStarted: false }),
+          members: [
+            { userId: aliceUser.id, username: 'Alice', role: 'user', seat: 0, joinedAt: 1000, isCreator: true },
+          ],
+        };
+
+        // Server summary arrived (e.g. from /api/tables, which does not send stateJson, and bob joined)
+        const remoteWaitingTable: SavedTableSummary = {
+          id: 'galaxy-106-wait',
+          tableNumber: 106,
+          savedAt: 1050,
+          round: 1,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 2,
+          playerNames: ['Alice (Terran)', 'Bob (Orion)'],
+          activePlayerName: 'Alice',
+          activePlayerIndex: 0,
+          isGameStarted: false,
+          members: [
+            { userId: aliceUser.id, username: 'Alice', role: 'user', seat: 0, joinedAt: 1000, isCreator: true },
+            { userId: bobUser.id, username: 'Bob', role: 'user', seat: 1, joinedAt: 1050 },
+          ],
+        };
+
+        // Merge local + remote
+        const merged = mergeTableSummaries([localWaitingTable], [remoteWaitingTable]);
+        expect(merged.length).toBe(1);
+        const mergedTable = merged[0];
+
+        // Must retain stateJson from local table
+        expect(mergedTable.stateJson).toBe(localWaitingTable.stateJson);
+        // Must retain isGameStarted === false
+        expect(mergedTable.isGameStarted).toBe(false);
+        // Members must have both Alice and Bob
+        expect(mergedTable.members?.length).toBe(2);
+        // Table category must remain 'need_players' because isGameStarted is false
+        expect(getTableStatusCategory(mergedTable)).toBe('need_players');
+        // Alice must NOT have an active turn while waiting in the room
+        expect(isPlayerTurnAtTable(mergedTable, aliceUser)).toBe(false);
+        expect(isPlayerTurnAtTable(mergedTable, bobUser)).toBe(false);
+
+        // 2. Fallback protection: Even if remote summary arrived without isGameStarted (undefined)
+        const remoteOmittedIsGameStarted: SavedTableSummary = {
+          ...remoteWaitingTable,
+          savedAt: 1100,
+          isGameStarted: undefined,
+        };
+        const mergedWithOmission = mergeTableSummaries([mergedTable], [remoteOmittedIsGameStarted]);
+        // Must preserve isGameStarted: false from existing entry
+        expect(mergedWithOmission[0].isGameStarted).toBe(false);
+        expect(isPlayerTurnAtTable(mergedWithOmission[0], aliceUser)).toBe(false);
+
+        // 3. areTableSummariesEqual equality checks to prevent React state flicker
+        expect(areTableSummariesEqual(merged, merged)).toBe(true);
+        const identicalClone = JSON.parse(JSON.stringify(merged));
+        expect(areTableSummariesEqual(merged, identicalClone)).toBe(true);
+
+        // Modifying activePlayerIndex or savedAt breaks equality
+        const modified = [{ ...merged[0], activePlayerIndex: 1 }];
+        expect(areTableSummariesEqual(merged, modified)).toBe(false);
+
+        // 4. Running game turn stability
+        const runningTable: SavedTableSummary = {
+          ...mergedTable,
+          isGameStarted: true,
+          savedAt: 2000,
+        };
+        expect(getTableStatusCategory(runningTable)).toBe('running');
+        // Alice is seat 0 and activePlayerIndex is 0 -> Alice turn
+        expect(isPlayerTurnAtTable(runningTable, aliceUser)).toBe(true);
+        expect(isPlayerTurnAtTable(runningTable, bobUser)).toBe(false);
+      });
+
+      test('107. verifies Faction & Player Display Name Formatting: getFactionShortName, getPlayerDisplayName, and clear faction identification across in-game banner and top-left HUD', async () => {
+        // 1. Faction short name extraction
+        expect(getFactionShortName('Terran Directorate')).toBe('Terran');
+        expect(getFactionShortName('Terran Federation')).toBe('Terran');
+        expect(getFactionShortName('Wardens of Magellan')).toBe('Magellan');
+        expect(getFactionShortName('Descendants of Draco')).toBe('Draco');
+        expect(getFactionShortName('Enlightened of Lyra')).toBe('Lyra');
+        expect(getFactionShortName('The Exiles')).toBe('Exiles');
+        expect(getFactionShortName('Rho Indi Syndicate')).toBe('Rho Indi');
+        expect(getFactionShortName('Orion Hegemony')).toBe('Orion');
+        expect(getFactionShortName('Hydran Progress')).toBe('Hydran');
+        expect(getFactionShortName('Eridani Empire')).toBe('Eridani');
+        expect(getFactionShortName('Planta')).toBe('Planta');
+        expect(getFactionShortName('Mechanema')).toBe('Mechanema');
+
+        // 2. Full and short player display name with custom user names
+        const alicePlayer = {
+          name: 'alice',
+          faction: { id: 'terran_directorate', name: 'Terran Directorate' },
+        };
+        expect(getPlayerDisplayName(alicePlayer)).toBe('Terran Directorate (alice)');
+        expect(getPlayerDisplayName(alicePlayer, { short: true })).toBe('Terran (alice)');
+
+        const bobPlayer = {
+          name: 'bob',
+          faction: { id: 'wardens_of_magellan', name: 'Wardens of Magellan' },
+        };
+        expect(getPlayerDisplayName(bobPlayer)).toBe('Wardens of Magellan (bob)');
+        expect(getPlayerDisplayName(bobPlayer, { short: true })).toBe('Magellan (bob)');
+
+        // 3. Numbered players (e.g. "Player 1", "Player 2")
+        const numberedPlayer = {
+          name: 'Player 1',
+          faction: { id: 'planta', name: 'Planta' },
+        };
+        expect(getPlayerDisplayName(numberedPlayer)).toBe('Planta (Player 1)');
+        expect(getPlayerDisplayName(numberedPlayer, { short: true })).toBe('Planta (Player 1)');
+
+        // 4. Default player where name is already the faction name
+        const defaultPlayer = {
+          name: 'Terran Directorate',
+          faction: { id: 'terran_directorate', name: 'Terran Directorate' },
+        };
+        expect(getPlayerDisplayName(defaultPlayer)).toBe('Terran Directorate');
+        expect(getPlayerDisplayName(defaultPlayer, { short: true })).toBe('Terran');
+
+        // 5. Short faction as name (e.g. "Terran")
+        const shortNamedPlayer = {
+          name: 'Terran',
+          faction: { id: 'terran_directorate', name: 'Terran Directorate' },
+        };
+        expect(getPlayerDisplayName(shortNamedPlayer)).toBe('Terran Directorate');
+        expect(getPlayerDisplayName(shortNamedPlayer, { short: true })).toBe('Terran');
+
+        // 6. Graceful handling of missing faction or string input
+        expect(getPlayerDisplayName({ name: 'Charlie' })).toBe('Charlie');
+        expect(getPlayerDisplayName('Wardens of Magellan')).toBe('Wardens of Magellan');
+        expect(getPlayerDisplayName('Wardens of Magellan', { short: true })).toBe('Magellan');
+        expect(getPlayerDisplayName(null)).toBe('');
       });
     });
   });

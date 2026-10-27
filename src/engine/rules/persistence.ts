@@ -13,6 +13,7 @@ export interface SavedTableSummary {
   playerNames: string[];
   activePlayerName: string;
   activePlayerIndex?: number;
+  isGameStarted?: boolean;
   stateJson?: string;
   members?: TableMember[];
   hasReplay?: boolean;
@@ -55,13 +56,24 @@ export function getStorage() {
 /**
  * Computes a deterministic 3-digit table number from game ID.
  */
-export function getTableNumber(state: GameState): number {
-  if ((state as any).tableNumber) {
-    return (state as any).tableNumber;
+export function getTableNumber(stateOrId: GameState | string): number {
+  if (typeof stateOrId === 'string') {
+    const num = parseInt(stateOrId.replace(/\D/g, ''), 10);
+    if (!isNaN(num) && num > 0) return num;
+    let hash = 0;
+    for (let i = 0; i < stateOrId.length; i++) {
+      hash = (hash << 5) - hash + stateOrId.charCodeAt(i);
+      hash |= 0;
+    }
+    return 100 + (Math.abs(hash) % 900);
   }
+  if ((stateOrId as any)?.tableNumber) {
+    return (stateOrId as any).tableNumber;
+  }
+  const idStr = stateOrId?.id || '';
   let hash = 0;
-  for (let i = 0; i < state.id.length; i++) {
-    hash = (hash << 5) - hash + state.id.charCodeAt(i);
+  for (let i = 0; i < idStr.length; i++) {
+    hash = (hash << 5) - hash + idStr.charCodeAt(i);
     hash |= 0;
   }
   return 100 + (Math.abs(hash) % 900);
@@ -124,20 +136,9 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
 
     const existingTable = tables[state.id];
     let members: TableMember[] = [];
-    if (state.members && Array.isArray(state.members) && state.members.length > 0) {
+    if (Array.isArray(state.members)) {
       members = [...state.members];
-      if (existingTable?.members && Array.isArray(existingTable.members)) {
-        const memberMap = new Map<string, TableMember>();
-        const getKey = (m: TableMember) => m.userId || `${m.username || m.name}:${m.seat}`;
-        for (const m of existingTable.members) {
-          if (m) memberMap.set(getKey(m), m);
-        }
-        for (const m of members) {
-          if (m) memberMap.set(getKey(m), m);
-        }
-        members = Array.from(memberMap.values());
-      }
-    } else if (existingTable?.members && Array.isArray(existingTable.members) && existingTable.members.length > 0) {
+    } else if (existingTable?.members && Array.isArray(existingTable.members)) {
       members = [...existingTable.members];
     }
     state.members = members;
@@ -187,6 +188,11 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     const hasReplay = isReplayAvailable(state);
     const replayStepsCount = state.replaySteps?.length || 0;
 
+    const isGameStarted =
+      typeof (state as any).isGameStarted === 'boolean'
+        ? (state as any).isGameStarted
+        : (state.round > 1 || ((state as any).replaySteps && (state as any).replaySteps.length > 1));
+
     tables[state.id] = {
       id: state.id,
       tableNumber,
@@ -198,6 +204,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       playerNames: state.players.map((p) => `${p.name} (${p.faction.name})`),
       activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
       activePlayerIndex: effectiveActiveIndex,
+      isGameStarted,
       stateJson,
       members,
       hasReplay,
@@ -429,16 +436,162 @@ export async function fetchSavedTablesFromServer(): Promise<SavedTableSummary[]>
 }
 
 /**
+ * Merges local and remote table summaries, giving precedence to whichever has the newer savedAt timestamp,
+ * while preserving vital local properties (e.g. stateJson, isGameStarted) and updating localStorage.
+ */
+export function mergeTableSummaries(
+  localList: SavedTableSummary[],
+  remoteList: SavedTableSummary[]
+): SavedTableSummary[] {
+  const map = new Map<string, SavedTableSummary>();
+  for (const local of localList) {
+    if (local && local.id) {
+      map.set(local.id, local);
+    }
+  }
+
+  for (const remote of remoteList) {
+    if (!remote || !remote.id) continue;
+    const local = map.get(remote.id);
+    if (!local) {
+      map.set(remote.id, remote);
+      continue;
+    }
+
+    const localSavedAt = Number(local.savedAt) || 0;
+    const remoteSavedAt = Number(remote.savedAt) || 0;
+
+    const isGameStarted =
+      typeof remote.isGameStarted === 'boolean'
+        ? remote.isGameStarted
+        : typeof local.isGameStarted === 'boolean'
+        ? local.isGameStarted
+        : undefined;
+
+    const members =
+      remoteSavedAt >= localSavedAt && remote.members && remote.members.length > 0
+        ? remote.members
+        : local.members && local.members.length > 0
+        ? local.members
+        : remote.members || [];
+
+    if (remoteSavedAt >= localSavedAt) {
+      map.set(remote.id, {
+        ...local,
+        ...remote,
+        isGameStarted,
+        members,
+        stateJson: local.stateJson || remote.stateJson,
+      });
+    } else {
+      map.set(remote.id, {
+        ...remote,
+        ...local,
+        isGameStarted,
+        members,
+      });
+    }
+  }
+
+  const merged = Array.from(map.values()).sort((a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0));
+
+  // Sync merged summaries back into localStorage so local cache is never stale
+  try {
+    const storage = getStorage();
+    const raw = storage.getItem(SAVED_TABLES_KEY);
+    const storedMap: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
+    let updated = false;
+    for (const item of merged) {
+      const existing = storedMap[item.id];
+      if (!existing || (Number(item.savedAt) || 0) >= (Number(existing.savedAt) || 0)) {
+        storedMap[item.id] = {
+          ...(existing || {}),
+          ...item,
+          stateJson: existing?.stateJson || item.stateJson,
+        };
+        updated = true;
+      }
+    }
+    if (updated) {
+      storage.setItem(SAVED_TABLES_KEY, JSON.stringify(storedMap));
+    }
+  } catch {}
+
+  return merged;
+}
+
+/**
+ * Checks whether two lists of table summaries are structurally and semantically identical
+ * regarding properties that affect lobby rendering (turn count, phase, round, players, members).
+ */
+export function areTableSummariesEqual(a: SavedTableSummary[], b: SavedTableSummary[]): boolean {
+  if (a === b) return true;
+  if (!a || !b) return false;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const tA = a[i];
+    const tB = b[i];
+    if (tA.id !== tB.id) return false;
+    if (tA.savedAt !== tB.savedAt) return false;
+    if (tA.round !== tB.round) return false;
+    if (tA.phase !== tB.phase) return false;
+    if (tA.activePlayerIndex !== tB.activePlayerIndex) return false;
+    if (tA.activePlayerName !== tB.activePlayerName) return false;
+    if (tA.isGameStarted !== tB.isGameStarted) return false;
+    if (tA.playerCount !== tB.playerCount) return false;
+    const memA = tA.members || [];
+    const memB = tB.members || [];
+    if (memA.length !== memB.length) return false;
+    for (let j = 0; j < memA.length; j++) {
+      if (memA[j].userId !== memB[j].userId || memA[j].seat !== memB[j].seat) return false;
+    }
+  }
+  return true;
+}
+
+/**
+ * Broadcasts table cancellation event across tabs via BroadcastChannel.
+ */
+export function broadcastTableCancelled(tableId: string): void {
+  const channel = getSyncChannel();
+  if (channel) {
+    channel.postMessage({
+      type: 'ECLIPSE_TABLE_CANCELLED',
+      tableId,
+      timestamp: Date.now(),
+    });
+  }
+}
+
+/**
  * Removes a table from localStorage and server storage.
  */
 export function deleteSavedTable(tableId: string): void {
   try {
     const storage = getStorage();
     const raw = storage.getItem(SAVED_TABLES_KEY);
-    if (!raw) return;
-    const tables: Record<string, SavedTableSummary> = JSON.parse(raw);
-    delete tables[tableId];
-    storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+    if (raw) {
+      const tables: Record<string, SavedTableSummary> = JSON.parse(raw);
+      delete tables[tableId];
+      for (const k of Object.keys(tables)) {
+        if (tables[k]?.id === tableId) {
+          delete tables[k];
+        }
+      }
+      storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+    }
+
+    const activeRaw = storage.getItem(ACTIVE_GAME_KEY);
+    if (activeRaw) {
+      try {
+        const parsedActive = JSON.parse(activeRaw);
+        if (parsedActive?.id === tableId) {
+          storage.removeItem(ACTIVE_GAME_KEY);
+        }
+      } catch {}
+    }
+
+    broadcastTableCancelled(tableId);
 
     if (typeof fetch !== 'undefined') {
       fetch(`/api/tables/${encodeURIComponent(tableId)}`, { method: 'DELETE' }).catch(() => {});
@@ -741,6 +894,79 @@ export async function registerTableMember(
 }
 
 /**
+ * Vacates a user's seat and detaches them from the table members list.
+ */
+export async function leaveTable(
+  tableId: string,
+  userId: string
+): Promise<{ success: boolean; members?: TableMember[]; error?: string }> {
+  try {
+    const storage = getStorage();
+    const raw = storage.getItem(SAVED_TABLES_KEY);
+    const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
+    const table = tables[tableId];
+
+    let updatedMembers: TableMember[] = [];
+    if (table) {
+      const curMembers = table.members || [];
+      const leavingMember = curMembers.find((m) => m.userId === userId);
+      updatedMembers = curMembers.filter((m) => m.userId !== userId);
+      table.members = updatedMembers;
+      table.savedAt = Date.now();
+
+      if (table.stateJson) {
+        try {
+          const parsed = JSON.parse(table.stateJson);
+          parsed.members = updatedMembers;
+          if (leavingMember && typeof leavingMember.seat === 'number' && parsed.players?.[leavingMember.seat]) {
+            parsed.players[leavingMember.seat].name =
+              parsed.players[leavingMember.seat].faction?.name || `Player ${leavingMember.seat + 1}`;
+          }
+          table.stateJson = JSON.stringify(parsed);
+          saveGameState(parsed);
+        } catch {}
+      }
+      storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+    }
+
+    // Call server endpoint if available
+    if (typeof fetch !== 'undefined') {
+      try {
+        const res = await fetch(`/api/tables/${encodeURIComponent(tableId)}/leave`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data?.members) {
+            updatedMembers = data.members;
+            if (tables[tableId]) {
+              tables[tableId].members = updatedMembers;
+              storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+            }
+          }
+        }
+      } catch {}
+    }
+
+    const channel = getSyncChannel();
+    if (channel) {
+      channel.postMessage({
+        type: 'ECLIPSE_GAME_SYNC',
+        tableId,
+        timestamp: Date.now(),
+      });
+    }
+
+    return { success: true, members: updatedMembers };
+  } catch (err: any) {
+    console.error('Failed to leave table:', err);
+    return { success: false, error: err?.message || 'Failed to leave table' };
+  }
+}
+
+/**
  * Filters a list of tables based on the current user's role:
  * - Admin sees all tables.
  * - Regular users & guests see only tables where they are a registered member.
@@ -760,6 +986,8 @@ export function filterTablesForUser(
   });
 }
 
+export const getUserTables = filterTablesForUser;
+
 export type TableStatusCategory = 'need_players' | 'running' | 'done';
 
 /**
@@ -767,7 +995,7 @@ export type TableStatusCategory = 'need_players' | 'running' | 'done';
  */
 export function getTableOccupiedSeats(table: SavedTableSummary): Set<number> {
   const occupied = new Set<number>();
-  const pCount = table.playerCount || 2;
+  const pCount = table.playerCount || (table as any).players?.length || 2;
   if (Array.isArray(table.members)) {
     for (const m of table.members) {
       if (m.seat === 'all') {
@@ -790,8 +1018,11 @@ export function getTableStatusCategory(table: SavedTableSummary): TableStatusCat
   if (table.phase === 'GAME_OVER') {
     return 'done';
   }
+  if ((table as any).isGameStarted === false) {
+    return 'need_players';
+  }
   const occupied = getTableOccupiedSeats(table);
-  const pCount = table.playerCount || 2;
+  const pCount = table.playerCount || (table as any).players?.length || 2;
   if (occupied.size < pCount) {
     return 'need_players';
   }
@@ -807,6 +1038,8 @@ export function isPlayerTurnAtTable(
 ): boolean {
   if (!user || !table) return false;
   if (table.phase === 'GAME_OVER') return false;
+  if (table.isGameStarted === false) return false;
+  if (getTableStatusCategory(table) === 'need_players') return false;
 
   const myMembership = (table.members || []).find((m) => m.userId === user.id);
   if (!myMembership) return false;

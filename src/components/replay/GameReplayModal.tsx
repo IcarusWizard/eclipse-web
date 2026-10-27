@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo } from 'react';
 import { GameState } from '../../engine/types/state';
 import { SectorTile } from '../../engine/types/galaxy';
 import { isReplayAvailable } from '../../engine/rules/replay';
-import { getPlayerShortName } from '../../engine/rules/gameReducer';
+import { getPlayerShortName, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { HexGalaxyMap } from '../map/HexGalaxyMap';
 import {
   History,
@@ -424,7 +424,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
                     style={{ backgroundColor: p.color }}
                   />
                   <span className="font-bold text-slate-200">
-                    {getPlayerShortName(p)}
+                    {getPlayerDisplayName(p, { short: true })}
                   </span>
                   <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400">
                     <span title="Credits (Money)" className="text-amber-400">💰{p.resources?.money ?? 0}</span>

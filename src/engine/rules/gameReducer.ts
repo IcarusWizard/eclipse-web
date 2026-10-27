@@ -56,6 +56,61 @@ import {
 import { commitReplayStep, createCleanSnapshot, isReplayAvailable } from './replay';
 export { commitReplayStep, createCleanSnapshot, isReplayAvailable };
 
+export function getFactionShortName(factionOrName?: { name: string } | string | null): string {
+  if (!factionOrName) return '';
+  const name = typeof factionOrName === 'string' ? factionOrName : factionOrName.name;
+  if (!name) return '';
+  if (name.includes(' of ')) {
+    return name.split(' of ').pop() || name;
+  }
+  if (name.startsWith('The ')) {
+    return name.replace(/^The\s+/, '');
+  }
+  if (name === 'Rho Indi Syndicate') {
+    return 'Rho Indi';
+  }
+  if (name === 'Terran Federation' || name.startsWith('Terran ')) {
+    return name.split(' ')[0] || name;
+  }
+  if (name === 'Eridani Empire') return 'Eridani';
+  if (name === 'Hydran Progress') return 'Hydran';
+  if (name === 'Orion Hegemony') return 'Orion';
+  return name.split(' ')[0] || name;
+}
+
+/**
+ * Formats a player's display identity as either "Faction Name" or "Faction Name (Player Name)"
+ * (or short version like "Faction (Player Name)") so players can clearly identify opposing factions.
+ */
+export function getPlayerDisplayName(
+  playerOrName?: { name: string; faction?: { id: string; name: string } } | string | null,
+  options?: { short?: boolean }
+): string {
+  if (!playerOrName) return '';
+  if (typeof playerOrName === 'string') {
+    return options?.short ? getFactionShortName(playerOrName) : playerOrName;
+  }
+  const factionName = playerOrName.faction?.name?.trim();
+  const playerName = playerOrName.name?.trim();
+
+  if (!factionName) {
+    return playerName || '';
+  }
+
+  const shortFaction = getFactionShortName(factionName);
+  const factionToUse = options?.short ? shortFaction : factionName;
+
+  if (
+    !playerName ||
+    playerName.toLowerCase() === factionName.toLowerCase() ||
+    playerName.toLowerCase() === shortFaction.toLowerCase()
+  ) {
+    return factionToUse;
+  }
+
+  return `${factionToUse} (${playerName})`;
+}
+
 export function getPlayerShortName(playerOrName?: { name: string; faction?: { id: string; name: string } } | string | null): string {
   if (!playerOrName) return '';
   const name = typeof playerOrName === 'string' ? playerOrName : playerOrName.name;

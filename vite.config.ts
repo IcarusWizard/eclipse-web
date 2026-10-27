@@ -917,6 +917,67 @@ function tableStoragePlugin(): Plugin {
         return;
       }
 
+      // 0b. POST /api/tables/:id/leave -> vacate seat and remove user from table members
+      if (req.method === 'POST' && targetParam && parts[3] === 'leave') {
+        let body = '';
+        req.on('data', (chunk: any) => {
+          body += chunk;
+        });
+        req.on('end', () => {
+          try {
+            const { userId } = JSON.parse(body || '{}');
+            if (!userId) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Missing userId' }));
+              return;
+            }
+            const filePath = path.join(TABLES_DIR, `${targetParam}.json`);
+            let tableData: any = null;
+            if (fs.existsSync(filePath)) {
+              tableData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            }
+            if (!tableData) {
+              const num = parseInt(targetParam, 10);
+              const files = fs.readdirSync(TABLES_DIR).filter((f) => f.endsWith('.json'));
+              for (const file of files) {
+                const c = JSON.parse(fs.readFileSync(path.join(TABLES_DIR, file), 'utf-8'));
+                if (c.id === targetParam || (!isNaN(num) && c.tableNumber === num)) {
+                  tableData = c;
+                  break;
+                }
+              }
+            }
+            if (!tableData) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Table not found' }));
+              return;
+            }
+
+            const leavingMember = (tableData.members || []).find((m: any) => m.userId === userId);
+            if (leavingMember && typeof leavingMember.seat === 'number' && tableData.players?.[leavingMember.seat]) {
+              const p = tableData.players[leavingMember.seat];
+              p.name = p.faction?.name || `Player ${leavingMember.seat + 1}`;
+            }
+
+            tableData.members = (tableData.members || []).filter((m: any) => m.userId !== userId);
+            tableData.savedAt = Date.now();
+
+            const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
+            fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, members: tableData.members }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: err?.message || 'Server error' }));
+          }
+        });
+        return;
+      }
+
       // 1. GET /api/tables -> list all table summaries
       if (req.method === 'GET' && !targetParam) {
         try {
@@ -932,6 +993,10 @@ function tableStoragePlugin(): Plugin {
                 const cIdx = data.players?.findIndex((p: any) => p.id === data.combat.activePlayerId);
                 if (typeof cIdx === 'number' && cIdx >= 0) effectiveActiveSeat = cIdx;
               }
+              const isGameStarted =
+                typeof data.isGameStarted === 'boolean'
+                  ? data.isGameStarted
+                  : (data.round > 1 || (data.replaySteps && data.replaySteps.length > 1));
               list.push({
                 id: data.id,
                 tableNumber: data.tableNumber,
@@ -943,6 +1008,7 @@ function tableStoragePlugin(): Plugin {
                 playerNames: data.players?.map((p: any) => `${p.name} (${p.faction?.name || ''})`) || [],
                 activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
                 activePlayerIndex: effectiveActiveSeat,
+                isGameStarted,
                 members: data.members || [],
                 hasReplay: Boolean(
                   data.replaySteps &&
@@ -1092,17 +1158,10 @@ function tableStoragePlugin(): Plugin {
             if (fs.existsSync(filePath)) {
               try {
                 existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-                if (existing.members && Array.isArray(existing.members)) {
-                  const incomingMembers = Array.isArray(data.members) ? data.members : [];
-                  const memberMap = new Map();
-                  const getMemberKey = (m: any) => m.userId || `${m.username || m.name}:${m.seat}`;
-                  for (const m of existing.members) {
-                    if (m) memberMap.set(getMemberKey(m), m);
-                  }
-                  for (const m of incomingMembers) {
-                    if (m) memberMap.set(getMemberKey(m), m);
-                  }
-                  data.members = Array.from(memberMap.values());
+                if (Array.isArray(data.members)) {
+                  data.members = [...data.members];
+                } else if (existing?.members && Array.isArray(existing.members)) {
+                  data.members = [...existing.members];
                 }
                 // Preserve & merge historical replaySteps so live sync never wipes out history
                 if (existing.replaySteps && Array.isArray(existing.replaySteps) && existing.replaySteps.length > 0) {

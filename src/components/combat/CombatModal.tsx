@@ -9,7 +9,7 @@ import {
   CombatUnit,
 } from '../../engine/rules/combatEngine';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
-import { playerHasWormholeGenerator, getPlayerShortName } from '../../engine/rules/gameReducer';
+import { playerHasWormholeGenerator, getPlayerShortName, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 
 interface CombatModalProps {
   state: GameState;
@@ -579,7 +579,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         >
                           {eligibleEnemyTargets.map((eu) => {
                             const pOwner = state.players.find((p) => p.id === eu.ownerId);
-                            const ownerName = pOwner ? getPlayerShortName(pOwner) : eu.ownerId.toUpperCase();
+                            const ownerName = pOwner ? getPlayerDisplayName(pOwner, { short: true }) : eu.ownerId.toUpperCase();
                             const remHp = Math.max(0, eu.maxHull - eu.currentDamage);
                             return (
                               <option key={eu.id} value={eu.id}>
@@ -831,7 +831,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
                   <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                   <span>
-                    Waiting for Commander <strong className="text-amber-300">{attackerOwner?.name || 'attacker'}</strong> to assign damage...
+                    Waiting for Commander <strong className="text-amber-300">{attackerOwner ? getPlayerDisplayName(attackerOwner) : 'attacker'}</strong> to assign damage...
                   </span>
                 </div>
               ) : (
@@ -883,8 +883,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                       <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                       <span>
                         {isSpectator
-                          ? `Spectator Mode: Waiting for ${isNpcShip ? 'commanders' : attackerOwner?.name ? `Commander ${attackerOwner.name}` : 'active ship'} to resolve...`
-                          : `Waiting for Commander ${attackerOwner?.name || 'opponent'} to command their ${activeGroup?.type.toUpperCase()}...`}
+                          ? `Spectator Mode: Waiting for ${isNpcShip ? 'commanders' : attackerOwner ? `Commander ${getPlayerDisplayName(attackerOwner)}` : 'active ship'} to resolve...`
+                          : `Waiting for Commander ${attackerOwner ? getPlayerDisplayName(attackerOwner) : 'opponent'} to command their ${activeGroup?.type.toUpperCase()}...`}
                       </span>
                     </div>
                   </div>

@@ -10,6 +10,7 @@ import {
   saveGameState,
   filterTablesForUser,
   isPlayerTurnAtTable,
+  mergeTableSummaries,
 } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
@@ -52,7 +53,7 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
   const [inputTableNum, setInputTableNum] = useState<string>('');
-  const [savedTables, setSavedTables] = useState<SavedTableSummary[]>([]);
+  const [savedTables, setSavedTables] = useState<SavedTableSummary[]>(() => listSavedTables());
   const [copied, setCopied] = useState<boolean>(false);
   const [joinError, setJoinError] = useState<string | null>(null);
 
@@ -61,25 +62,12 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
   }, []);
 
   useEffect(() => {
-    setSavedTables(listSavedTables());
+    const local = listSavedTables();
     fetchSavedTablesFromServer().then((remoteTables) => {
-      if (remoteTables && remoteTables.length > 0) {
-        setSavedTables((prev) => {
-          const map = new Map<string, SavedTableSummary>();
-          for (const t of prev) map.set(t.id, t);
-          for (const t of remoteTables) {
-            const local = map.get(t.id);
-            const mergedMembers =
-              t.members && t.members.length > 0
-                ? t.members
-                : local?.members && local.members.length > 0
-                ? local.members
-                : [];
-            map.set(t.id, { ...t, members: mergedMembers });
-          }
-          return Array.from(map.values()).sort((a, b) => b.savedAt - a.savedAt);
-        });
-      }
+      const merged = mergeTableSummaries(local, remoteTables || []);
+      setSavedTables(merged);
+    }).catch(() => {
+      setSavedTables(local);
     });
   }, [currentUser]);
 

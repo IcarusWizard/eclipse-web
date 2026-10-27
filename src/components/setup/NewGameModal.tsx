@@ -51,7 +51,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
   const [draftedFactions, setDraftedFactions] = useState<string[]>([]);
   const [currentDrafterIndex, setCurrentDrafterIndex] = useState<number>(0);
   const [filterCategory, setFilterCategory] = useState<'all' | 'alien' | 'human'>('all');
-  const [selectedExpansions, setSelectedExpansions] = useState<string[]>(['rift_cannon']);
+  const [selectedExpansions, setSelectedExpansions] = useState<string[]>([]);
   const [neutralShipSelections, setNeutralShipSelections] = useState<NeutralShipSelectionConfig>({
     ancient: 'default',
     guardian: 'default',

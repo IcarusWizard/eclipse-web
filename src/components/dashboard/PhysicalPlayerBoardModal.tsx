@@ -16,7 +16,7 @@ import { calculateBlueprintStats, countPlayerShips, SHIP_LIMITS } from '../../en
 import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
 import { ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
-import { getPlayerShortName, playerHasWormholeGenerator, canExchangeAmbassadors } from '../../engine/rules/gameReducer';
+import { getPlayerShortName, getPlayerDisplayName, playerHasWormholeGenerator, canExchangeAmbassadors } from '../../engine/rules/gameReducer';
 import {
   X,
   Zap,
@@ -148,7 +148,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
             <div>
               <div className="flex items-center gap-2">
                 <h1 className="text-base sm:text-lg font-extrabold tracking-wide text-slate-100 font-display">
-                  {player.name}
+                  {getPlayerDisplayName(player)}
                 </h1>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 uppercase font-bold">
                   {player.faction.isHuman ? 'Terran Faction' : 'Alien Faction'}
@@ -194,7 +194,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     className="w-2.5 h-2.5 rounded-full"
                     style={{ backgroundColor: p.color }}
                   />
-                  <span>{getPlayerShortName(p)}</span>
+                  <span>{getPlayerDisplayName(p, { short: true })}</span>
                 </button>
               ))}
             </div>

@@ -187,6 +187,10 @@ export interface GameState {
 
   id: string;
   tableNumber?: number;
+  creatorUserId?: string;
+  creatorUsername?: string;
+  isGameStarted?: boolean;
+  isDraftMode?: boolean;
   members?: TableMember[];
   expansions?: string[];
   neutralShipBlueprints?: NeutralShipConfig;

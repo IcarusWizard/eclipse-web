@@ -22,7 +22,7 @@ import {
   ChevronUp,
   Handshake,
 } from 'lucide-react';
-import { canExchangeAmbassadors } from '../../engine/rules/gameReducer';
+import { canExchangeAmbassadors, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 
 interface PlayerBoardProps {
@@ -98,8 +98,11 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               className="w-3 h-3 rounded-full ring-2 ring-white/20 shrink-0"
               style={{ backgroundColor: player.color }}
             />
-            <span className="font-bold text-xs text-slate-100 font-display truncate">
-              {player.name}
+            <span
+              className="font-bold text-xs text-slate-100 font-display truncate"
+              title={getPlayerDisplayName(player)}
+            >
+              {getPlayerDisplayName(player)}
             </span>
             {player.hasPassed && (
               <span className="text-[9px] bg-slate-800 text-amber-400 px-1 py-0.2 rounded uppercase">
@@ -335,7 +338,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           />
           <div className="min-w-0">
             <div className="font-bold text-xs sm:text-sm text-slate-100 flex items-center gap-1.5 font-display truncate">
-              <span>{player.name}</span>
+              <span title={getPlayerDisplayName(player)}>{getPlayerDisplayName(player)}</span>
               {player.hasPassed && (
                 <span className="text-[9px] bg-slate-800 text-amber-400 px-1 py-0.2 rounded uppercase font-sans">
                   Passed

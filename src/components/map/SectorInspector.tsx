@@ -24,6 +24,7 @@ export function getSubsectorEdgesDescription(subIdx: 1 | 2 | 3, rotation: number
   return `Edges ${EDGE_NAMES[boardEdgeA]} & ${EDGE_NAMES[boardEdgeB]}`;
 }
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
+import { getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import {
   Rocket,
   Shield,
@@ -178,7 +179,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                   className="w-3 h-3 rounded-full ring-2 ring-white/30"
                   style={{ backgroundColor: discOwner.color }}
                 />
-                <span className="text-slate-100">{discOwner.name}</span>
+                <span className="text-slate-100">{getPlayerDisplayName(discOwner)}</span>
               </div>
             ) : isNebula || isBlackHole ? (
               <span className="text-slate-400 font-medium italic">Spacetime Anomaly (No Influence Disc)</span>

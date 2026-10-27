@@ -49,6 +49,7 @@ import { TableSessionModal } from './components/layout/TableSessionModal';
 import { ArtifactKeyModal } from './components/actions/ArtifactKeyModal';
 import { BankruptcyModal } from './components/actions/BankruptcyModal';
 import { LobbyView } from './components/lobby/LobbyView';
+import { TableWaitingRoom } from './components/lobby/TableWaitingRoom';
 import { GalacticGalleryModal } from './components/gallery/GalacticGalleryModal';
 import { GameReplayModal } from './components/replay/GameReplayModal';
 import { BugReportModal } from './components/feedback/BugReportModal';
@@ -68,6 +69,9 @@ import {
   registerTableMember,
   isSeatTaken,
   canUserUseHotseat,
+  deleteSavedTable,
+  getTableOccupiedSeats,
+  leaveTable,
 } from './engine/rules/persistence';
 import { getCurrentUser, subscribeToUserSession } from './engine/rules/userSession';
 import { UserSession } from './engine/types/user';
@@ -531,14 +535,14 @@ export const App: React.FC = () => {
     isDraftMode?: boolean
   ) => {
     const user = getCurrentUser();
-    let effectiveSeat = seat;
-    if (effectiveSeat === 'all' && !canUserUseHotseat(user.role)) {
-      effectiveSeat = 0;
-    }
+    const effectiveSeat = typeof seat === 'number' ? seat : 0;
     const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips, isDraftMode);
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
     newGame.id = tableId;
+    (newGame as any).creatorUserId = user.id;
+    (newGame as any).creatorUsername = user.username || user.name;
+    (newGame as any).isGameStarted = false;
     const initialMember = {
       userId: user.id,
       name: user.name,
@@ -548,6 +552,7 @@ export const App: React.FC = () => {
       emailNotifications: user.emailNotifications,
       seat: effectiveSeat,
       joinedAt: Date.now(),
+      isCreator: true,
     };
     (newGame as any).members = [initialMember];
     saveGameState(newGame);
@@ -658,6 +663,20 @@ export const App: React.FC = () => {
       setSelectedViewIndex(seat);
     } else {
       setSelectedViewIndex(state.activePlayerIndex || 0);
+    }
+    if (currentUser) {
+      const updatedMembers = (state.members || []).filter((m: any) => m.userId !== currentUser.id);
+      updatedMembers.push({
+        userId: currentUser.id,
+        name: currentUser.name,
+        username: currentUser.username || currentUser.name,
+        role: currentUser.role,
+        email: currentUser.email,
+        emailNotifications: currentUser.emailNotifications,
+        seat,
+        joinedAt: Date.now(),
+      });
+      setState((prev) => ({ ...prev, members: updatedMembers }));
     }
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -2234,6 +2253,18 @@ export const App: React.FC = () => {
     ) || null;
   }, [pendingExploreCoords, state.sectors]);
 
+  const isTableWaitingForPlayers = React.useMemo(() => {
+    if (!inGame || !state || !state.players) return false;
+    if (state.phase === 'GAME_OVER') return false;
+    if ((state as any).isGameStarted === false) return true;
+    if ((state as any).isGameStarted === true) return false;
+    if (state.round > 1 || ((state as any).replaySteps && (state as any).replaySteps.length > 1)) {
+      return false;
+    }
+    const occupied = getTableOccupiedSeats(state as any);
+    return occupied.size < state.players.length;
+  }, [inGame, state, state?.members, state?.players?.length, (state as any)?.isGameStarted, state?.phase, state?.round]);
+
   if (!inGame) {
     return (
       <>
@@ -2263,6 +2294,83 @@ export const App: React.FC = () => {
             tableNumber={replayTableNumber}
             onClose={() => setReplayState(null)}
           />
+        )}
+      </>
+    );
+  }
+
+  if (inGame && isTableWaitingForPlayers) {
+    return (
+      <>
+        <TableWaitingRoom
+          state={state}
+          currentSeat={currentSeat}
+          currentUser={currentUser}
+          onStartGame={() => {
+            const updated = {
+              ...state,
+              isGameStarted: true,
+            };
+            saveGameState(updated);
+            setState(updated);
+          }}
+          onClaimSeat={handleChangeSeat}
+          onReturnToLobby={handleReturnToLobby}
+          onCancelTable={() => {
+            deleteSavedTable(state.id);
+            handleReturnToLobby();
+          }}
+          onLeaveTable={async () => {
+            const leavingMember = (state.members || []).find((m: any) => m.userId === currentUser.id);
+            const mySeat = leavingMember?.seat;
+            const updatedMembers = (state.members || []).filter((m: any) => m.userId !== currentUser.id);
+            const updatedPlayers = state.players.map((p, idx) => {
+              if (idx === mySeat) {
+                return {
+                  ...p,
+                  name: p.faction?.name || `Player ${idx + 1}`,
+                };
+              }
+              return p;
+            });
+            const updated = {
+              ...state,
+              members: updatedMembers,
+              players: updatedPlayers,
+            };
+            saveGameState(updated);
+            setState(updated);
+            await leaveTable(state.id, currentUser.id);
+            handleReturnToLobby();
+          }}
+          onOpenGallery={() => setIsGalleryOpen(true)}
+          onUpdateState={(remoteState) => setState(remoteState)}
+        />
+        <GalacticGalleryModal
+          isOpen={isGalleryOpen}
+          onClose={() => setIsGalleryOpen(false)}
+        />
+        <BugReportCornerButton onClick={() => setIsBugReportOpen(true)} />
+        <BugReportModal
+          isOpen={isBugReportOpen}
+          onClose={() => setIsBugReportOpen(false)}
+          state={state}
+          tableNumber={tableNum}
+          context={`Waiting Room (Table ${tableNum})`}
+          currentUser={currentUser}
+          onSuccess={(msg) => showToast(msg)}
+        />
+        {replayState && (
+          <GameReplayModal
+            state={replayState}
+            tableNumber={replayTableNumber}
+            onClose={() => setReplayState(null)}
+          />
+        )}
+        {errorMessage && (
+          <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-rose-600 text-white px-4 py-2 rounded-xl text-xs font-bold shadow-2xl animate-bounce">
+            {errorMessage}
+          </div>
         )}
       </>
     );

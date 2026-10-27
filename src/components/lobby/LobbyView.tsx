@@ -16,6 +16,8 @@ import {
   TableStatusCategory,
   isPlayerTurnAtTable,
   getSyncChannel,
+  mergeTableSummaries,
+  areTableSummariesEqual,
 } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
@@ -61,6 +63,11 @@ import {
   Flag,
   Zap,
   History,
+  ArrowLeft,
+  Clock,
+  ArrowRight,
+  Globe,
+  Bookmark,
 } from 'lucide-react';
 import {
   NeutralShipType,
@@ -83,16 +90,19 @@ interface LobbyViewProps {
   onOpenReplay?: (tableId: string) => void;
 }
 
+export type LobbySection = 'hub' | 'create' | 'join' | 'my_games';
+
 export const LobbyView: React.FC<LobbyViewProps> = ({
   onStartNewGame,
   onJoinTable,
   onOpenGallery,
   onOpenReplay,
 }) => {
+  const isSSR = typeof window === 'undefined';
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
-  const [tableFilterTab, setTableFilterTab] = useState<'my' | 'all'>('all');
-  const [tableStatusFilter, setTableStatusFilter] = useState<'all' | 'need_players' | 'running' | 'done'>('all');
+  const [activeSection, setActiveSection] = useState<LobbySection>('hub');
+  const [myGamesStatusFilter, setMyGamesStatusFilter] = useState<'all' | 'need_players' | 'running' | 'done'>('all');
   const [savedTables, setSavedTables] = useState<SavedTableSummary[]>(() => listSavedTables());
 
   useEffect(() => {
@@ -105,30 +115,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     });
   }, []);
 
-  const refreshTables = () => {
-    setSavedTables(listSavedTables());
-    fetchSavedTablesFromServer().then((remoteTables) => {
-      if (remoteTables && remoteTables.length > 0) {
-        setSavedTables((prev) => {
-          const map = new Map<string, SavedTableSummary>();
-          for (const t of prev) map.set(t.id, t);
-          for (const t of remoteTables) {
-            const local = map.get(t.id);
-            const mergedMembers =
-              t.members && t.members.length > 0
-                ? t.members
-                : local?.members && local.members.length > 0
-                ? local.members
-                : [];
-            map.set(t.id, {
-              ...t,
-              members: mergedMembers,
-            });
-          }
-          return Array.from(map.values()).sort((a, b) => b.savedAt - a.savedAt);
-        });
-      }
-    });
+  const refreshTables = async () => {
+    try {
+      const localTables = listSavedTables();
+      const remoteTables = await fetchSavedTablesFromServer();
+      const merged = mergeTableSummaries(localTables, remoteTables);
+      setSavedTables((prev) => {
+        if (areTableSummariesEqual(prev, merged)) {
+          return prev;
+        }
+        return merged;
+      });
+    } catch (err) {
+      console.warn('Failed to refresh tables in LobbyView:', err);
+      const local = listSavedTables();
+      setSavedTables((prev) => (areTableSummariesEqual(prev, local) ? prev : local));
+    }
   };
 
   useEffect(() => {
@@ -187,7 +189,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     'descendants_of_draco', // Yellow
   ]);
   const [mySeat, setMySeat] = useState<number | 'all'>(0);
-  const [selectedExpansions, setSelectedExpansions] = useState<string[]>(['rift_cannon']);
+
+  // Default MUST be no expansions as requested
+  const [selectedExpansions, setSelectedExpansions] = useState<string[]>([]);
+
+  // Default MUST be 'default' for neutral ships
   const [neutralShipSelections, setNeutralShipSelections] = useState<NeutralShipSelectionConfig>({
     ancient: 'default',
     guardian: 'default',
@@ -196,47 +202,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const hasRemnants = selectedExpansions.includes('remnants_of_worlds_afar');
   const availableFactions = getAvailableFactions(selectedExpansions);
 
-  // Adaptive Display & Scrolling Options
-  const [displayMode, setDisplayMode] = useState<'compact' | 'detailed'>(() => {
-    if (typeof window !== 'undefined') {
-      return (localStorage.getItem('eclipse_lobby_display_mode') as 'compact' | 'detailed') || 'compact';
-    }
-    return 'compact';
-  });
-
-  const [isScrollableMode, setIsScrollableMode] = useState<boolean>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = localStorage.getItem('eclipse_lobby_scrollable_mode');
-      return saved !== null ? saved === 'true' : true;
-    }
-    return true;
-  });
+  // Join Table State
+  const [joinTableInput, setJoinTableInput] = useState<string>('');
+  const [joinSeat, setJoinSeat] = useState<number | 'all' | 'spectator'>(0);
+  const [joinError, setJoinError] = useState<string | null>(null);
+  const [isJoining, setIsJoining] = useState<boolean>(false);
+  const [copiedLinkTableId, setCopiedLinkTableId] = useState<string | null>(null);
 
   const [isExpansionsOpen, setIsExpansionsOpen] = useState<boolean>(true);
   const [isBlueprintsOpen, setIsBlueprintsOpen] = useState<boolean>(true);
 
-  const toggleDisplayMode = () => {
-    setDisplayMode((prev) => {
-      const next = prev === 'compact' ? 'detailed' : 'compact';
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('eclipse_lobby_display_mode', next);
-      }
-      return next;
-    });
-  };
-
-  const toggleScrollableMode = () => {
-    setIsScrollableMode((prev) => {
-      const next = !prev;
-      if (typeof window !== 'undefined') {
-        localStorage.setItem('eclipse_lobby_scrollable_mode', String(next));
-      }
-      return next;
-    });
-  };
-
+  // Expansions Management
   const allExpansionIds = AVAILABLE_EXPANSIONS.map((e) => e.id);
-  const allExpansionsSelected = allExpansionIds.every((id) => selectedExpansions.includes(id));
+  const allExpansionsSelected = allExpansionIds.length > 0 && allExpansionIds.every((id) => selectedExpansions.includes(id));
 
   const toggleAllExpansions = () => {
     const next = allExpansionsSelected ? [] : allExpansionIds;
@@ -281,7 +259,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         }));
       }
 
-      // If any selected faction requires an expansion that is no longer active, replace it
       const nextAvailable = getAvailableFactions(next);
       setSelectedFactions((currentFactions) => {
         const updated = [...currentFactions];
@@ -305,13 +282,6 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       return next;
     });
   };
-
-  // Join Table State
-  const [joinTableInput, setJoinTableInput] = useState<string>('');
-  const [joinSeat, setJoinSeat] = useState<number | 'all' | 'spectator'>(0);
-  const [joinError, setJoinError] = useState<string | null>(null);
-  const [isJoining, setIsJoining] = useState<boolean>(false);
-  const [copiedLinkTableId, setCopiedLinkTableId] = useState<string | null>(null);
 
   const handleFactionChange = (playerIdx: number, factionId: string) => {
     if (!availableFactions.some((f) => f.id === factionId)) return;
@@ -368,6 +338,47 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       selectedExpansions,
       sanitizedNeutralShips,
       isDraftMode
+    );
+  };
+
+  const handleCreateNewTableImmediately = () => {
+    const existingNums = new Set(
+      savedTables
+        .map((t) => t.tableNumber || parseInt(t.id.replace(/\D/g, ''), 10))
+        .filter((n) => !isNaN(n) && n > 0)
+    );
+    let nextNum = 101;
+    while (existingNums.has(nextNum)) {
+      nextNum++;
+    }
+    const tableId = `galaxy-${nextNum}`;
+
+    if (mySeat === 'all' && !canUserUseHotseat(currentUser.role)) {
+      alert('Only administrators are allowed to use the hotseat function.');
+      return;
+    }
+
+    const effectiveSeat = 0;
+
+    registerTableMember(tableId, {
+      userId: currentUser.id,
+      username: currentUser.username,
+      role: currentUser.role,
+      email: currentUser.email,
+      emailNotifications: currentUser.emailNotifications,
+      seat: effectiveSeat,
+      joinedAt: Date.now(),
+      isCreator: true,
+    });
+
+    onStartNewGame(
+      2,
+      [],
+      tableId,
+      effectiveSeat,
+      [],
+      { ancient: 'default', guardian: 'default', gcds: 'default' },
+      false
     );
   };
 
@@ -460,19 +471,43 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleDelete = (tableId: string) => {
-    deleteSavedTable(tableId);
-    setSavedTables(listSavedTables());
+    if (window.confirm(`Are you sure you want to permanently delete table ${tableId}?`)) {
+      deleteSavedTable(tableId);
+      refreshTables();
+    }
   };
 
-  const handleCopySeatLink = (tableId: string, seat: number | 'all') => {
-    const origin = window.location.origin;
-    const pathname = window.location.pathname;
-    const seatParam = seat === 'all' ? '' : `&seat=${seat}`;
-    const url = `${origin}${pathname}?table=${tableId}${seatParam}`;
-    navigator.clipboard.writeText(url);
-    setCopiedLinkTableId(`${tableId}_${seat}`);
-    setTimeout(() => setCopiedLinkTableId(null), 2500);
+  const handleCopyShareLink = (tableId: string, seatNum?: number) => {
+    if (typeof window === 'undefined') return;
+    const base = window.location.origin + window.location.pathname;
+    const seatQuery = typeof seatNum === 'number' ? `&seat=${seatNum}` : '';
+    const shareUrl = `${base}?table=${tableId}${seatQuery}`;
+    navigator.clipboard.writeText(shareUrl).then(() => {
+      const key = typeof seatNum === 'number' ? `${tableId}_${seatNum}` : tableId;
+      setCopiedLinkTableId(key);
+      setTimeout(() => setCopiedLinkTableId(null), 2000);
+    });
   };
+
+  // Filtered Lists
+  // 1. Tables waiting for players (not started yet)
+  const waitingTables = savedTables.filter(
+    (t) => getTableStatusCategory(t) === 'need_players' && t.phase !== 'GAME_OVER'
+  );
+
+  // 2. User's personal tables (only available after login)
+  const isUserLoggedIn = currentUser.role !== 'guest';
+  const myTables = isUserLoggedIn ? filterTablesForUser(savedTables, currentUser) : [];
+  const myTurnCount = myTables.filter((t) => isPlayerTurnAtTable(t, currentUser)).length;
+
+  const myWaitingCount = myTables.filter((t) => getTableStatusCategory(t) === 'need_players').length;
+  const myRunningCount = myTables.filter((t) => getTableStatusCategory(t) === 'running').length;
+  const myDoneCount = myTables.filter((t) => getTableStatusCategory(t) === 'done').length;
+
+  const filteredMyTables = myTables.filter((t) => {
+    if (myGamesStatusFilter === 'all') return true;
+    return getTableStatusCategory(t) === myGamesStatusFilter;
+  });
 
   return (
     <div className="min-h-screen h-full w-full bg-slate-950 text-slate-100 flex flex-col items-center justify-start p-3 sm:p-5 lg:p-8 relative overflow-x-hidden overflow-y-auto selection:bg-cyan-500 selection:text-slate-950">
@@ -482,23 +517,25 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_80%,rgba(234,88,12,0.08),transparent_40%)] pointer-events-none" />
 
       {/* Main Header */}
-      <header className="relative z-10 text-center max-w-3xl mb-8">
-        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-semibold uppercase tracking-wider mb-3">
+      <header className="relative z-10 text-center max-w-4xl mb-6 w-full">
+        <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-semibold uppercase tracking-wider mb-2">
           <Sparkles className="w-3.5 h-3.5" />
           <span>Second Dawn for the Galaxy</span>
         </div>
-        <h1 className="text-4xl sm:text-5xl lg:text-6xl font-display font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-400 drop-shadow-sm">
+        <h1 className="text-3xl sm:text-4xl lg:text-5xl font-display font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-400 drop-shadow-sm">
           ECLIPSE: WEB COMMAND
         </h1>
-        <p className="text-slate-400 text-sm sm:text-base mt-2 max-w-xl mx-auto leading-relaxed">
-          High-fidelity multiplayer web adaptation of Eclipse: Second Dawn. Create tables, distribute private seat links to commanders, or play local hotseat.
+        <p className="text-slate-400 text-xs sm:text-sm mt-1.5 max-w-xl mx-auto leading-relaxed">
+          High-fidelity multiplayer web adaptation of Eclipse: Second Dawn. Create tables, browse matches waiting for players, or resume your campaigns.
         </p>
-        <div className="mt-4 flex flex-wrap items-center justify-center gap-3">
+
+        {/* Identity & Global Gallery Header Toolbar */}
+        <div className="mt-3.5 flex flex-wrap items-center justify-center gap-3">
           {/* Active User Identity Pill */}
           <button
             type="button"
             onClick={() => setShowUserModal(true)}
-            className={`inline-flex items-center gap-2 px-4 py-2 rounded-xl border text-xs font-bold tracking-wider uppercase shadow-lg transition-all cursor-pointer ${
+            className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-bold tracking-wider uppercase shadow-lg transition-all cursor-pointer ${
               currentUser.role === 'admin'
                 ? 'bg-rose-950/70 border-rose-500/60 hover:border-rose-400 text-rose-300 hover:bg-rose-900/80 shadow-rose-950/40'
                 : currentUser.role === 'user'
@@ -507,11 +544,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             }`}
           >
             {currentUser.role === 'admin' ? (
-              <Shield className="w-4 h-4 text-rose-400" />
+              <Shield className="w-3.5 h-3.5 text-rose-400" />
             ) : currentUser.role === 'user' ? (
-              <User className="w-4 h-4 text-cyan-400" />
+              <User className="w-3.5 h-3.5 text-cyan-400" />
             ) : (
-              <Sparkles className="w-4 h-4 text-amber-400" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
             )}
             <span>{currentUser.username}</span>
             <span className="text-[10px] font-mono opacity-80 lowercase bg-black/40 px-1.5 py-0.5 rounded">
@@ -520,110 +557,288 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             <span className="text-slate-400 text-[10px] underline ml-0.5">Switch</span>
           </button>
 
+          {/* Gallery Option - Always available throughout */}
           {onOpenGallery && (
             <button
               type="button"
               onClick={onOpenGallery}
-              className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900/90 border border-cyan-500/40 hover:border-cyan-400 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 text-xs font-bold tracking-wider uppercase shadow-lg shadow-cyan-950/40 transition-all cursor-pointer"
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border border-cyan-500/40 hover:border-cyan-400 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 text-xs font-bold tracking-wider uppercase shadow-lg shadow-cyan-950/40 transition-all cursor-pointer"
+              title="Inspect component gallery, ships, technologies, and discovery tiles"
             >
-              <BookOpen className="w-4 h-4 text-cyan-400" />
+              <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
               <span>📚 Gallery</span>
             </button>
           )}
+
+          {activeSection !== 'hub' && (
+            <button
+              type="button"
+              onClick={() => setActiveSection('hub')}
+              className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold tracking-wider uppercase border border-slate-700 hover:border-slate-500 transition shadow cursor-pointer"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span>Back to Lobby Hub</span>
+            </button>
+          )}
+        </div>
+
+        {/* Top Navigation Bar: Create New Game | Join Other Games | View My Games */}
+        <div className="mt-5 flex flex-wrap items-center justify-center gap-2 max-w-2xl mx-auto bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
+          <button
+            type="button"
+            onClick={handleCreateNewTableImmediately}
+            className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              activeSection === 'create'
+                ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Rocket className="w-4 h-4 text-cyan-400" />
+            <span>Create New Game</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveSection('join')}
+            className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              activeSection === 'join'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Globe className="w-4 h-4 text-blue-400" />
+            <span>Join Other Games</span>
+            {waitingTables.length > 0 && (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-500/40">
+                {waitingTables.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              if (!isUserLoggedIn) {
+                setShowUserModal(true);
+              } else {
+                setActiveSection('my_games');
+              }
+            }}
+            className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
+              activeSection === 'my_games'
+                ? 'bg-purple-600 text-white shadow-md shadow-purple-600/30'
+                : myTurnCount > 0
+                ? 'bg-emerald-950/70 border border-emerald-500/70 text-emerald-300 hover:bg-emerald-900/80 ring-2 ring-emerald-500/40 shadow-lg shadow-emerald-950/50'
+                : 'text-slate-300 hover:text-white hover:bg-slate-800/80'
+            }`}
+          >
+            <Bookmark className={`w-4 h-4 ${myTurnCount > 0 ? 'text-emerald-400 animate-bounce' : 'text-purple-400'}`} />
+            <span>View My Games</span>
+            {!isUserLoggedIn ? (
+              <Lock className="w-3 h-3 text-slate-500" />
+            ) : myTurnCount > 0 ? (
+              <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-emerald-500 text-slate-950 animate-pulse">
+                {myTurnCount} Your Turn
+              </span>
+            ) : myTables.length > 0 ? (
+              <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
+                {myTables.length}
+              </span>
+            ) : null}
+          </button>
         </div>
       </header>
 
-      {/* Main Grid */}
-      <div className="relative z-10 w-full max-w-6xl grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
-        {/* Left Column: Create New Table (7 cols) */}
-        <div className="lg:col-span-7 bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-4 sm:p-6 shadow-2xl shadow-cyan-950/20 flex flex-col">
-          <div className="flex flex-wrap items-center justify-between border-b border-slate-800 pb-3 mb-4 gap-2.5">
-            <div className="flex items-center gap-3">
-              <div className="p-2 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
-                <PlusCircle className="w-5 h-5" />
-              </div>
-              <div>
-                <h2 className="text-lg font-display font-bold text-slate-100">
-                  Establish New Sector Table
+      {/* Content Rendering based on activeSection */}
+      <div className="relative z-10 w-full max-w-5xl flex flex-col items-center">
+        {/* ========================================================================= */}
+        {/* SECTION 1: LOBBY HUB (3 Primary Options) */}
+        {/* ========================================================================= */}
+        {(isSSR || activeSection === 'hub') && (
+          <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch mt-2">
+            {/* Option 1: Create New Game */}
+            <div
+              onClick={handleCreateNewTableImmediately}
+              className="group bg-slate-900/90 border border-slate-800 hover:border-cyan-500/60 rounded-2xl p-6 shadow-xl shadow-cyan-950/10 hover:shadow-cyan-950/30 transition-all cursor-pointer flex flex-col justify-between gap-5 relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/20 transition-all pointer-events-none" />
+              <div className="space-y-3">
+                <div className="w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
+                  <Rocket className="w-6 h-6" />
+                </div>
+                <h2 className="text-xl font-display font-bold text-white group-hover:text-cyan-300 transition-colors">
+                  Create New Game
                 </h2>
-                <p className="text-[11px] text-slate-400">
-                  Configure species factions, player count, and assign your starting seat.
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Establish a new galaxy match. Configure 2–6 players, expansions (default: none), and neutral ship blueprints. Starts once all seats are filled.
                 </p>
               </div>
+
+              <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-cyan-400 group-hover:text-cyan-300">
+                <span>Create & Enter Table</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
             </div>
 
-            {/* Adaptive Display & Scrolling Controls */}
-            <div className="flex items-center gap-1.5 bg-slate-950/90 p-1 rounded-xl border border-slate-800 text-xs shrink-0">
-              <button
-                type="button"
-                onClick={toggleDisplayMode}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer text-xs ${
-                  displayMode === 'compact'
-                    ? 'bg-cyan-500/25 border border-cyan-500/50 text-cyan-200'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Toggle between Compact adaptive layout and Detailed layout"
-              >
-                {displayMode === 'compact' ? (
-                  <Minimize2 className="w-3.5 h-3.5 text-cyan-400" />
-                ) : (
-                  <Maximize2 className="w-3.5 h-3.5" />
-                )}
-                <span>{displayMode === 'compact' ? 'Compact' : 'Detailed'}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={toggleScrollableMode}
-                className={`flex items-center gap-1 px-2.5 py-1 rounded-lg font-semibold transition cursor-pointer text-xs ${
-                  isScrollableMode
-                    ? 'bg-purple-500/25 border border-purple-500/50 text-purple-200'
-                    : 'text-slate-400 hover:text-slate-200'
-                }`}
-                title="Toggle internal scrollable container with fixed docked launch button"
-              >
-                <SlidersHorizontal className="w-3.5 h-3.5" />
-                <span>{isScrollableMode ? 'Scrollable' : 'Expanded'}</span>
-              </button>
-            </div>
-          </div>
-
-          <form onSubmit={handleLaunchGame} className="flex flex-col flex-1">
-            {/* Scrollable Form Body Container */}
+            {/* Option 2: Join Other Games */}
             <div
-              className={`space-y-4 ${
-                isScrollableMode
-                  ? 'max-h-[min(540px,calc(100vh-280px))] overflow-y-auto pr-1.5 scrollbar-thin'
-                  : ''
+              onClick={() => setActiveSection('join')}
+              className="group bg-slate-900/90 border border-slate-800 hover:border-blue-500/60 rounded-2xl p-6 shadow-xl shadow-blue-950/10 hover:shadow-blue-950/30 transition-all cursor-pointer flex flex-col justify-between gap-5 relative overflow-hidden"
+            >
+              <div className="absolute top-0 right-0 w-32 h-32 bg-blue-500/10 rounded-full blur-2xl group-hover:bg-blue-500/20 transition-all pointer-events-none" />
+              <div className="space-y-3">
+                <div className="w-12 h-12 rounded-xl bg-blue-500/20 border border-blue-500/30 flex items-center justify-center text-blue-400 group-hover:scale-110 transition-transform">
+                  <Globe className="w-6 h-6" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-display font-bold text-white group-hover:text-blue-300 transition-colors">
+                    Join Other Games
+                  </h2>
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-950 border border-blue-500/40 text-blue-300">
+                    {waitingTables.length} Open
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Browse tables waiting for commanders to join (not started yet). Select an open seat to step into the command chair and prepare for galactic war.
+                </p>
+              </div>
+
+              <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-blue-400 group-hover:text-blue-300">
+                <span>Browse Waiting Tables</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+
+            {/* Option 3: View My Games */}
+            <div
+              onClick={() => {
+                if (!isUserLoggedIn) {
+                  setShowUserModal(true);
+                } else {
+                  setActiveSection('my_games');
+                }
+              }}
+              className={`group bg-slate-900/90 rounded-2xl p-6 shadow-xl transition-all cursor-pointer flex flex-col justify-between gap-5 relative overflow-hidden ${
+                myTurnCount > 0
+                  ? 'border-2 border-emerald-500 ring-2 ring-emerald-500/50 shadow-emerald-950/50 bg-gradient-to-br from-emerald-950/30 via-slate-900 to-slate-900 hover:border-emerald-400'
+                  : 'border border-slate-800 hover:border-purple-500/60 shadow-purple-950/10 hover:shadow-purple-950/30'
               }`}
             >
-              {/* Table Name & Player Count */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div
+                className={`absolute top-0 right-0 w-32 h-32 rounded-full blur-2xl pointer-events-none transition-all ${
+                  myTurnCount > 0 ? 'bg-emerald-500/20 group-hover:bg-emerald-500/30' : 'bg-purple-500/10 group-hover:bg-purple-500/20'
+                }`}
+              />
+              <div className="space-y-3">
+                <div
+                  className={`w-12 h-12 rounded-xl flex items-center justify-center group-hover:scale-110 transition-transform ${
+                    myTurnCount > 0
+                      ? 'bg-emerald-500/20 border border-emerald-500/40 text-emerald-400'
+                      : 'bg-purple-500/20 border border-purple-500/30 text-purple-400'
+                  }`}
+                >
+                  <Bookmark className="w-6 h-6" />
+                </div>
+                <div className="flex items-center justify-between gap-2">
+                  <h2
+                    className={`text-xl font-display font-bold transition-colors ${
+                      myTurnCount > 0 ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-white group-hover:text-purple-300'
+                    }`}
+                  >
+                    View My Games
+                  </h2>
+                  {!isUserLoggedIn ? (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Login Required
+                    </span>
+                  ) : myTurnCount > 0 ? (
+                    <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500 text-slate-950 animate-pulse flex items-center gap-1">
+                      <Zap className="w-3 h-3 fill-current" /> {myTurnCount} Your Turn
+                    </span>
+                  ) : (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-950 border border-purple-500/40 text-purple-300">
+                      {myTables.length} Tables
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  {!isUserLoggedIn
+                    ? 'Log in to track your personal tables, rejoin active matches, and get notified when it is your turn.'
+                    : myTurnCount > 0
+                    ? `You have ${myTurnCount} match(es) waiting for you to make a move! Rejoin now to take your turn.`
+                    : 'View all matches you belong to: tables waiting for players, games in progress, and completed match chronicles.'}
+                </p>
+              </div>
+
+              <div
+                className={`pt-3 border-t flex items-center justify-between text-xs font-bold uppercase tracking-wider ${
+                  myTurnCount > 0
+                    ? 'border-emerald-500/40 text-emerald-400 group-hover:text-emerald-300'
+                    : 'border-slate-800/80 text-purple-400 group-hover:text-purple-300'
+                }`}
+              >
+                <span>{!isUserLoggedIn ? 'Log In to View' : 'Open My Tables'}</span>
+                <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* SECTION 2: CREATE NEW GAME VIEW */}
+        {/* ========================================================================= */}
+        {(isSSR || activeSection === 'create') && (
+          <div className="w-full bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 sm:p-7 shadow-2xl shadow-cyan-950/20 flex flex-col gap-5">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-cyan-500/20 text-cyan-400 border border-cyan-500/30">
+                  <Rocket className="w-5 h-5" />
+                </div>
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
-                    Table ID / Code
+                  <h2 className="text-xl font-display font-bold text-white">Create New Game Table</h2>
+                  <p className="text-xs text-slate-400">
+                    Configure players, expansions, and neutral ship blueprints. Game starts once all seats are filled.
+                  </p>
+                </div>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveSection('hub')}
+                className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+            </div>
+
+            <form onSubmit={handleLaunchGame} className="space-y-5">
+              {/* Table Name & Player Count */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                    Table ID / Identifier
                   </label>
                   <input
                     type="text"
                     value={customTableId}
                     onChange={(e) => setCustomTableId(e.target.value)}
                     placeholder="e.g. galaxy-101"
-                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3 py-2 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
+                    className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
                     required
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
                     Player Count: <span className="text-cyan-400 font-bold">{playerCount} Commanders</span>
                   </label>
-                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-700">
+                  <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-700">
                     {[2, 3, 4, 5, 6].map((num) => (
                       <button
                         key={num}
                         type="button"
                         onClick={() => setPlayerCount(num)}
-                        className={`flex-1 py-1 rounded-lg text-xs font-bold font-mono transition-all ${
+                        className={`flex-1 py-1.5 rounded-lg text-xs font-bold font-mono transition-all cursor-pointer ${
                           playerCount === num
                             ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
@@ -637,95 +852,112 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               </div>
 
               {/* Faction Draft Mode Toggle */}
-              <div className="p-3 rounded-xl bg-indigo-950/40 border border-indigo-700/50 flex items-center justify-between gap-3 text-xs">
-                <div className="flex items-center gap-2.5 min-w-0">
+              <div className="p-3.5 rounded-xl bg-indigo-950/40 border border-indigo-700/50 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-3">
                   <Compass className="w-5 h-5 text-indigo-400 shrink-0" />
-                  <div className="min-w-0">
+                  <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-indigo-200 text-xs">
-                        Faction Draft Mode
-                      </span>
+                      <span className="font-bold text-indigo-200 text-xs">Faction Draft Mode</span>
                       {isDraftMode && (
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500 text-white">
                           Active
                         </span>
                       )}
                     </div>
-                    <span className="text-[10px] text-slate-400 block truncate sm:whitespace-normal">
-                      Randomly seat commanders on Ring 2; draft factions in reverse turn order in-game.
-                    </span>
+                    <p className="text-[11px] text-slate-400 mt-0.5">
+                      {isDraftMode
+                        ? 'Players draft factions counter-clockwise during setup after Ring 2 positions are established.'
+                        : 'Fixed factions pre-selected below.'}
+                    </p>
                   </div>
                 </div>
+
                 <button
                   type="button"
                   onClick={() => setIsDraftMode(!isDraftMode)}
-                  className={`px-3 py-1.5 rounded-lg text-xs font-bold border transition cursor-pointer shrink-0 ${
+                  className={`px-3 py-1.5 rounded-lg font-bold text-xs transition border cursor-pointer shrink-0 ${
                     isDraftMode
-                      ? 'bg-indigo-600 border-indigo-400 text-white shadow-md shadow-indigo-600/30'
-                      : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                      ? 'bg-indigo-600 text-white border-indigo-500 shadow-sm'
+                      : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
                   }`}
                 >
-                  {isDraftMode ? 'Draft Mode ON' : 'Enable Faction Draft'}
+                  {isDraftMode ? 'Draft Enabled' : 'Enable Faction Draft'}
                 </button>
               </div>
 
-              {/* Faction Assignment Per Seat / In-game Draft Banner */}
-              {isDraftMode ? (
-                <div className="p-4 rounded-xl bg-indigo-950/20 border-2 border-dashed border-indigo-700/50 text-center space-y-2">
-                  <div className="flex items-center justify-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wide">
-                    <Compass className="w-4 h-4 text-indigo-400 animate-spin" />
-                    In-Game Faction Draft Enabled
-                  </div>
-                  <p className="text-[11px] text-slate-400 max-w-md mx-auto leading-relaxed">
-                    Factions do not need to be selected in advance. When launched, all {playerCount} commanders are assigned random Ring 2 positions. A random first player is chosen to establish clockwise turn order, and factions are drafted counter-clockwise starting from the last player!
-                  </p>
+              {/* Creator's Assigned Seat */}
+              <div>
+                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
+                  Your Starting Seat
+                </label>
+                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                  {Array.from({ length: playerCount }).map((_, idx) => (
+                    <button
+                      key={idx}
+                      type="button"
+                      onClick={() => setMySeat(idx)}
+                      className={`p-2 rounded-xl border text-center transition cursor-pointer ${
+                        mySeat === idx
+                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 font-bold shadow-md shadow-cyan-950/40'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[10px] font-mono text-slate-500 uppercase">Seat</div>
+                      <div className="text-sm font-bold">{idx + 1}</div>
+                    </button>
+                  ))}
+                  {currentUser.role === 'admin' && (
+                    <button
+                      type="button"
+                      onClick={() => setMySeat('all')}
+                      className={`p-2 rounded-xl border text-center transition cursor-pointer ${
+                        mySeat === 'all'
+                          ? 'bg-purple-500/20 border-purple-400 text-purple-200 font-bold shadow-md shadow-purple-950/40'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                      }`}
+                    >
+                      <div className="text-[10px] font-mono text-purple-400 uppercase">Hotseat</div>
+                      <div className="text-xs font-bold">All Seats</div>
+                    </button>
+                  )}
                 </div>
-              ) : (
-                <div>
-                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                    Faction Roster by Seat
+              </div>
+
+              {/* Preset Factions Roster (Only if not in draft mode) */}
+              {!isDraftMode && (
+                <div className="space-y-2.5">
+                  <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
+                    Species Factions Selection ({playerCount} Required)
                   </label>
-                  <div
-                    className={`grid grid-cols-1 sm:grid-cols-2 gap-2 ${
-                      displayMode === 'compact' ? 'max-h-48' : 'max-h-64'
-                    } overflow-y-auto pr-1 scrollbar-thin`}
-                  >
-                    {Array.from({ length: playerCount }).map((_, idx) => {
-                      const currentFactionId = selectedFactions[idx] || 'terran_federation';
-                      const faction = ALL_FACTIONS.find((f) => f.id === currentFactionId);
-
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
+                    {Array.from({ length: playerCount }).map((_, pIdx) => {
+                      const curFaction = ALL_FACTIONS.find((f) => f.id === selectedFactions[pIdx]);
                       return (
-                        <div
-                          key={idx}
-                          className="p-2 rounded-xl bg-slate-950/60 border border-slate-800 flex items-center justify-between gap-2"
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="w-5 h-5 rounded-md bg-slate-800 text-slate-300 text-[11px] font-bold font-mono flex items-center justify-center shrink-0">
-                              {idx + 1}
-                            </span>
-                            <div className="min-w-0">
-                              <div className="text-xs font-semibold text-slate-200 truncate">
-                                Seat {idx + 1}
-                              </div>
-                              <div className="text-[10px] text-slate-400 truncate">
-                                {faction?.isHuman ? 'Terran' : 'Alien'} ({faction?.reputationSlots ?? 5} Rep)
-                              </div>
-                            </div>
+                        <div key={pIdx} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between text-[11px] text-slate-400">
+                            <span className="font-mono font-bold">Seat {pIdx + 1}</span>
+                            {mySeat === pIdx && (
+                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                                Your Seat
+                              </span>
+                            )}
                           </div>
-
                           <select
-                            value={currentFactionId}
-                            onChange={(e) => handleFactionChange(idx, e.target.value)}
-                            className="bg-slate-900 border border-slate-700 text-xs font-medium rounded-lg px-2 py-1 text-slate-200 focus:outline-none focus:border-cyan-400 max-w-[130px]"
+                            value={selectedFactions[pIdx] || ''}
+                            onChange={(e) => handleFactionChange(pIdx, e.target.value)}
+                            className="w-full bg-slate-900 border border-slate-700 text-xs font-bold rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 cursor-pointer"
                           >
                             {availableFactions.map((f) => {
-                              const conflictSeat = selectedFactions.slice(0, playerCount).findIndex(
-                                (otherId, otherIdx) => otherIdx !== idx && areFactionsConflictingColor(otherId, f.id)
-                              );
-                              const isDisabled = conflictSeat !== -1;
+                              const isTakenByOther = selectedFactions
+                                .slice(0, playerCount)
+                                .some((otherId, otherIdx) => otherIdx !== pIdx && otherId === f.id);
+                              const hasConflict = selectedFactions
+                                .slice(0, playerCount)
+                                .some((otherId, otherIdx) => otherIdx !== pIdx && areFactionsConflictingColor(otherId, f.id));
                               return (
-                                <option key={f.id} value={f.id} disabled={isDisabled}>
-                                  {f.name}{isDisabled ? ` (Color: S${conflictSeat + 1})` : ''}
+                                <option key={f.id} value={f.id} disabled={isTakenByOther || hasConflict}>
+                                  {f.name} ({f.defaultColor.toUpperCase()})
+                                  {isTakenByOther ? ' - Picked' : hasConflict ? ' - Color Conflict' : ''}
                                 </option>
                               );
                             })}
@@ -737,506 +969,241 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </div>
               )}
 
-              {/* Your Starting Control Mode / Seat */}
-              <div>
-                <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1">
-                  Your Control Mode on this Device
-                </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
-                  <button
-                    type="button"
-                    disabled={!canUserUseHotseat(currentUser.role)}
-                    onClick={() => {
-                      if (canUserUseHotseat(currentUser.role)) {
-                        setMySeat('all');
-                      }
-                    }}
-                    title={!canUserUseHotseat(currentUser.role) ? 'Hotseat mode is restricted to administrators' : undefined}
-                    className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 ${
-                      !canUserUseHotseat(currentUser.role)
-                        ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
-                        : mySeat === 'all'
-                        ? 'bg-purple-600/30 border-purple-400 text-purple-200 shadow-md shadow-purple-600/20 cursor-pointer'
-                        : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200 cursor-pointer'
-                    }`}
-                  >
-                    {!canUserUseHotseat(currentUser.role) ? (
-                      <Lock className="w-3.5 h-3.5" />
-                    ) : (
-                      <Users className="w-3.5 h-3.5" />
-                    )}
-                    <span>Hotseat (All){!canUserUseHotseat(currentUser.role) ? ' (Admin Only)' : ''}</span>
-                  </button>
-                  {Array.from({ length: Math.min(3, playerCount) }).map((_, sIdx) => (
-                    <button
-                      key={sIdx}
-                      type="button"
-                      onClick={() => setMySeat(sIdx)}
-                      className={`py-1.5 px-2.5 rounded-xl border text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
-                        mySeat === sIdx
-                          ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-md shadow-cyan-500/20'
-                          : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <span>Seat {sIdx + 1} Only</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Expansion Modules */}
-              <div>
-                <div
-                  onClick={() => setIsExpansionsOpen(!isExpansionsOpen)}
-                  className="flex items-center justify-between mb-1.5 cursor-pointer select-none group"
-                >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400 group-hover:text-slate-200 transition">
-                      {isExpansionsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
+              {/* Expansions Selection (Default: No expansions) */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-cyan-400" />
+                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                      Expansions Module (Default: No Expansions)
                     </span>
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 group-hover:text-slate-100 transition cursor-pointer">
-                      Expansions & Modules
-                    </label>
+                    <span className="text-[11px] font-mono font-bold text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-800">
+                      {selectedExpansions.length} Active
+                    </span>
                   </div>
+
                   <div className="flex items-center gap-2">
                     <button
                       type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleAllExpansions();
-                      }}
-                      className="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider transition bg-purple-900/40 hover:bg-purple-800/60 border border-purple-500/50 text-purple-200 cursor-pointer"
+                      onClick={toggleAllExpansions}
+                      className="text-[11px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
                     >
-                      {allExpansionsSelected ? 'Disable All' : 'Enable All'}
+                      {allExpansionsSelected ? 'Clear All' : 'Select All'}
                     </button>
-                    <span className="text-[11px] font-mono text-cyan-400">
-                      {selectedExpansions.length} Enabled
-                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setIsExpansionsOpen(!isExpansionsOpen)}
+                      className="text-slate-400 hover:text-slate-200 p-1"
+                    >
+                      {isExpansionsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
                   </div>
                 </div>
 
-                {isExpansionsOpen ? (
-                  displayMode === 'compact' ? (
-                    <div className="flex flex-wrap gap-2">
-                      {AVAILABLE_EXPANSIONS.map((exp) => {
-                        const isChecked = selectedExpansions.includes(exp.id);
-                        return (
-                          <button
-                            key={exp.id}
-                            type="button"
-                            onClick={() => toggleExpansion(exp.id)}
-                            className={`px-3 py-1.5 rounded-xl border text-xs font-semibold flex items-center gap-2 transition cursor-pointer ${
-                              isChecked
-                                ? 'bg-purple-900/50 border-purple-500 text-purple-200 shadow-sm shadow-purple-950'
-                                : 'bg-slate-950/70 border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          >
-                            <span
-                              className={`w-2 h-2 rounded-full ${
-                                isChecked ? 'bg-purple-400' : 'bg-slate-600'
+                {isExpansionsOpen && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+                    {AVAILABLE_EXPANSIONS.map((exp) => {
+                      const active = selectedExpansions.includes(exp.id);
+                      return (
+                        <div
+                          key={exp.id}
+                          onClick={() => toggleExpansion(exp.id)}
+                          className={`p-2.5 rounded-xl border transition-all cursor-pointer flex items-start gap-2.5 select-none ${
+                            active
+                              ? 'bg-cyan-950/40 border-cyan-500/60 text-slate-200 shadow-sm'
+                              : 'bg-slate-900/60 border-slate-800 text-slate-400 hover:border-slate-700'
+                          }`}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={active}
+                            onChange={() => {}}
+                            className="mt-0.5 rounded border-slate-700 bg-slate-950 text-cyan-500 pointer-events-none"
+                          />
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold text-slate-200">{exp.name}</div>
+                            <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">{exp.description}</div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
+
+              {/* Neutral Ship Blueprints Selection (Default: 'default') */}
+              <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Shield className="w-4 h-4 text-purple-400" />
+                    <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
+                      Neutral Ship Blueprints (NPCs) (Default: Default)
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 text-xs">
+                    <span className="text-[10px] text-slate-400">Layout:</span>
+                    <button type="button" className="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
+                      Compact
+                    </button>
+                    <button type="button" className="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
+                      Scrollable
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIsBlueprintsOpen(!isBlueprintsOpen)}
+                      className="text-slate-400 hover:text-slate-200 p-1"
+                    >
+                      {isBlueprintsOpen ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {isBlueprintsOpen && (
+                  <div className="space-y-3 pt-1 text-xs">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      {(
+                        [
+                          {
+                            type: 'ancient' as const,
+                            label: 'Ancient Ship',
+                          },
+                          {
+                            type: 'guardian' as const,
+                            label: 'Guardian',
+                          },
+                          {
+                            type: 'gcds' as const,
+                            label: 'Galactic Center Defense System (GCDS)',
+                          },
+                        ]
+                      ).map(({ type, label }) => (
+                        <div key={type} className="bg-slate-900/80 p-2.5 rounded-xl border border-slate-800 flex flex-col gap-1.5">
+                          <span className="font-bold text-slate-300 capitalize">{label}</span>
+                          <div className="flex flex-wrap items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setNeutralShipSelections((prev) => ({
+                                  ...prev,
+                                  [type]: 'default',
+                                }))
+                              }
+                              className={`flex-1 py-1 px-1.5 rounded text-[11px] font-bold transition cursor-pointer text-center ${
+                                neutralShipSelections[type] === 'default'
+                                  ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-500/40'
+                                  : 'text-slate-400 hover:text-slate-200'
                               }`}
-                            />
-                            <span>{exp.name}</span>
-                            <span className="px-1.5 py-0.2 rounded text-[9px] font-mono font-bold bg-purple-950 border border-purple-600/40 text-purple-300">
-                              {exp.badge}
-                            </span>
-                          </button>
-                        );
-                      })}
+                            >
+                              Default
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setNeutralShipSelections((prev) => ({
+                                  ...prev,
+                                  [type]: 'advanced',
+                                }))
+                              }
+                              className={`flex-1 py-1 px-1.5 rounded text-[11px] font-bold transition cursor-pointer text-center ${
+                                neutralShipSelections[type] === 'advanced'
+                                  ? 'bg-amber-500/25 text-amber-200 border border-amber-500/40'
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              Advanced
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setNeutralShipSelections((prev) => ({
+                                  ...prev,
+                                  [type]: 'random',
+                                }))
+                              }
+                              className={`flex-1 py-1 px-1.5 rounded text-[11px] font-bold transition cursor-pointer text-center ${
+                                neutralShipSelections[type] === 'random'
+                                  ? 'bg-purple-500/25 text-purple-200 border border-purple-500/40'
+                                  : 'text-slate-400 hover:text-slate-200'
+                              }`}
+                            >
+                              Random
+                            </button>
+                            <button
+                              type="button"
+                              disabled={!hasRemnants}
+                              onClick={() =>
+                                setNeutralShipSelections((prev) => ({
+                                  ...prev,
+                                  [type]: 'expert',
+                                }))
+                              }
+                              className={`flex-1 py-1 px-1.5 rounded text-[11px] font-bold transition cursor-pointer text-center ${
+                                neutralShipSelections[type] === 'expert'
+                                  ? 'bg-emerald-500/25 text-emerald-200 border border-emerald-500/40'
+                                  : hasRemnants
+                                  ? 'text-slate-400 hover:text-slate-200'
+                                  : 'text-slate-600 opacity-50 cursor-not-allowed'
+                              }`}
+                              title={!hasRemnants ? 'Expert Blueprint requires Remnants of Worlds Afar expansion' : 'Expert blueprint variant'}
+                            >
+                              Exp
+                            </button>
+                          </div>
+                        </div>
+                      ))}
                     </div>
-                  ) : (
-                    <div className="space-y-2">
-                      {AVAILABLE_EXPANSIONS.map((exp) => {
-                        const isChecked = selectedExpansions.includes(exp.id);
-                        return (
-                          <label
-                            key={exp.id}
-                            className={`flex items-start gap-3 p-2.5 rounded-xl border transition-all cursor-pointer ${
-                              isChecked
-                                ? 'bg-purple-950/40 border-purple-500/60 text-purple-100 shadow-sm shadow-purple-900/20'
-                                : 'bg-slate-950/60 border-slate-800 text-slate-400 hover:border-slate-700'
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={isChecked}
-                              onChange={() => toggleExpansion(exp.id)}
-                              className="mt-1 h-4 w-4 rounded border-slate-700 bg-slate-900 text-purple-500 focus:ring-purple-400 focus:ring-offset-0 cursor-pointer"
-                            />
-                            <div className="min-w-0 flex-1">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-slate-100">{exp.name}</span>
-                                <span className="px-1.5 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-900/80 text-purple-300 border border-purple-600/40">
-                                  {exp.badge}
-                                </span>
-                              </div>
-                              <p className="text-[11px] text-slate-400 mt-0.5 leading-snug">
-                                {exp.description}
-                              </p>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                  )
-                ) : (
-                  <div className="p-2 rounded-xl bg-slate-950/50 border border-slate-800/80 text-[11px] font-mono text-slate-400">
-                    {selectedExpansions.length > 0 ? (
-                      <span>
-                        Active:{' '}
-                        {selectedExpansions
-                          .map((id) => AVAILABLE_EXPANSIONS.find((e) => e.id === id)?.name || id)
-                          .join(', ')}
-                      </span>
-                    ) : (
-                      <span>No expansions enabled (Base Game only)</span>
+
+                    {!hasRemnants && (
+                      <div className="text-[10px] text-slate-500 italic">
+                        Expert Blueprint requires Remnants of Worlds Afar expansion
+                      </div>
                     )}
                   </div>
                 )}
               </div>
 
-              {/* Neutral Ship Blueprints (NPCs) */}
-              <div>
-                <div
-                  onClick={() => setIsBlueprintsOpen(!isBlueprintsOpen)}
-                  className="flex items-center justify-between mb-1.5 cursor-pointer select-none group"
+              {/* Submit Buttons */}
+              <div className="sticky bottom-0 bg-slate-900/95 backdrop-blur-md pt-3 pb-2 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-end gap-3 z-20">
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('hub')}
+                  className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider transition cursor-pointer"
                 >
-                  <div className="flex items-center gap-1.5">
-                    <span className="text-slate-400 group-hover:text-slate-200 transition">
-                      {isBlueprintsOpen ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronUp className="w-3.5 h-3.5" />}
-                    </span>
-                    <label className="text-xs font-semibold uppercase tracking-wider text-slate-300 group-hover:text-slate-100 transition cursor-pointer">
-                      Neutral Ship Blueprints (NPCs)
-                    </label>
-                  </div>
-                  <span className="text-[11px] font-mono text-cyan-400">
-                    Ancients • Guardians • GCDS
-                  </span>
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-display font-black text-xs uppercase tracking-wider shadow-lg shadow-cyan-950/50 hover:shadow-cyan-900/80 transition-all cursor-pointer flex items-center justify-center gap-2"
+                >
+                  <Rocket className="w-4 h-4" />
+                  <span>Launch Galactic Conflict (Enter Waiting Room)</span>
+                </button>
+              </div>
+            </form>
+          </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* SECTION 3: JOIN OTHER GAMES VIEW (Tables waiting for players) */}
+        {/* ========================================================================= */}
+        {(isSSR || activeSection === 'join') && (
+          <div className="w-full bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 sm:p-7 shadow-2xl shadow-blue-950/20 flex flex-col gap-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
+                  <Globe className="w-5 h-5" />
                 </div>
-
-                {isBlueprintsOpen ? (
-                  displayMode === 'compact' ? (
-                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                      {(
-                        [
-                          {
-                            type: 'ancient' as const,
-                            label: 'Ancient Ship',
-                            defaultDesc: 'Init 2, 2H, 2Y (+1)',
-                            advDesc: 'Init 1, 3H, 1O (+1)',
-                            expertDesc: 'Init 3, 2H, 1Y (+2)',
-                          },
-                          {
-                            type: 'guardian' as const,
-                            label: 'Guardian',
-                            defaultDesc: 'Init 3, 3H, 3Y (+2/-1)',
-                            advDesc: 'Init 1, 4H, 2O Msl + 1R (+1)',
-                            expertDesc: 'Init 3, 4H, 2O (+1/-1)',
-                          },
-                          {
-                            type: 'gcds' as const,
-                            label: 'Galactic Center Defense System (GCDS)',
-                            defaultDesc: 'Init 0, 7H, 4Y (+2)',
-                            advDesc: 'Init 2, 4H, 4Y Msl + 1R (+2)',
-                            expertDesc: 'Init 3, 5H, 2O (+2/-2)',
-                          },
-                        ]
-                      ).map(({ type, label, defaultDesc, advDesc, expertDesc }) => {
-                        const currentSel = neutralShipSelections[type];
-                        return (
-                          <div
-                            key={type}
-                            className="p-2 rounded-xl border bg-slate-950/60 border-slate-800 flex flex-col justify-between gap-1.5"
-                          >
-                            <div className="flex items-center justify-between gap-1">
-                              <span className="text-xs font-bold text-slate-200 truncate">{label}</span>
-                            </div>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
-                                }
-                                title="Default Blueprint"
-                                className={`flex-1 py-1 rounded text-[10px] font-bold transition cursor-pointer text-center ${
-                                  currentSel === 'default'
-                                    ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400 shadow-sm'
-                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                                }`}
-                              >
-                                Def
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
-                                }
-                                title="Advanced Blueprint"
-                                className={`flex-1 py-1 rounded text-[10px] font-bold transition cursor-pointer text-center ${
-                                  currentSel === 'advanced'
-                                    ? 'bg-amber-500/25 text-amber-200 border border-amber-400 shadow-sm'
-                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                                }`}
-                              >
-                                Adv
-                              </button>
-                              <button
-                                type="button"
-                                disabled={!hasRemnants}
-                                onClick={() => {
-                                  if (hasRemnants) {
-                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }));
-                                  }
-                                }}
-                                title={
-                                  hasRemnants
-                                    ? 'Expert Blueprint (Remnants)'
-                                    : 'Expert Blueprint requires Remnants of Worlds Afar expansion'
-                                }
-                                className={`flex-1 py-1 rounded text-[10px] font-bold transition text-center ${
-                                  !hasRemnants
-                                    ? 'bg-slate-950 text-slate-600 border border-slate-900 cursor-not-allowed opacity-40'
-                                    : currentSel === 'expert'
-                                    ? 'bg-rose-500/25 text-rose-200 border border-rose-400 shadow-sm cursor-pointer'
-                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 cursor-pointer'
-                                }`}
-                              >
-                                Exp
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
-                                }
-                                title={
-                                  hasRemnants
-                                    ? 'Random Blueprint (Default / Advanced / Expert)'
-                                    : 'Random Blueprint (50% Default / 50% Advanced)'
-                                }
-                                className={`px-1.5 py-1 rounded text-[10px] font-bold transition cursor-pointer flex items-center justify-center gap-0.5 ${
-                                  currentSel === 'random'
-                                    ? 'bg-purple-500/25 text-purple-200 border border-purple-400 shadow-sm'
-                                    : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                                }`}
-                              >
-                                <Dices className="w-2.5 h-2.5" />
-                                <span>Rnd</span>
-                              </button>
-                            </div>
-                            <div className="text-[10px] font-mono truncate pt-0.5">
-                              {currentSel === 'default' && (
-                                <span className="text-slate-400">{defaultDesc}</span>
-                              )}
-                              {currentSel === 'advanced' && (
-                                <span className="text-amber-300 font-medium">{advDesc}</span>
-                              )}
-                              {currentSel === 'expert' && (
-                                <span className="text-rose-300 font-medium">{expertDesc}</span>
-                              )}
-                              {currentSel === 'random' && (
-                                <span className="text-purple-300 italic">
-                                  🎲 Random {hasRemnants ? '(Def/Adv/Exp)' : '(50/50)'}
-                                </span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <div className="space-y-2.5">
-                      {(
-                        [
-                          {
-                            type: 'ancient' as const,
-                            label: 'Ancient Ship',
-                            badge: 'Outer & Middle Sectors',
-                            defaultDesc: '2 Yellow Cannons (+1 Hit) • 2 Hull • Init 2',
-                            advDesc: '1 Orange Cannon (+1 Hit) • 2 Hull • Init 1',
-                            expertDesc: '1 Yellow Cannon (+2 Hit) • 1 Hull • Init 3',
-                          },
-                          {
-                            type: 'guardian' as const,
-                            label: 'Guardian',
-                            badge: 'Guardian Sectors',
-                            defaultDesc: '3 Yellow Cannons (+2 Hit, -1 Shield) • 3 Hull • Init 3 • 2 VP',
-                            advDesc: '2 Orange Missiles, 1 Red Cannon (+1 Hit) • 3 Hull • Init 1 • 2 VP',
-                            expertDesc: '2 Orange Cannons (+1 Hit, -1 Shield) • 3 Hull • Init 3 • 2 VP',
-                          },
-                          {
-                            type: 'gcds' as const,
-                            label: 'Galactic Center Defense System (GCDS)',
-                            badge: 'Center Sector 001',
-                            defaultDesc: '4 Yellow Cannons (+2 Hit) • 7 Hull • Init 0 • 4 VP',
-                            advDesc: '4 Yellow Missiles, 1 Red Cannon (+2 Hit) • 3 Hull • Init 2 • 4 VP',
-                            expertDesc: '2 Orange Cannons (+2 Hit, -2 Shield) • 4 Hull • Init 3 • 4 VP',
-                          },
-                        ]
-                      ).map(({ type, label, badge, defaultDesc, advDesc, expertDesc }) => {
-                        const currentSel = neutralShipSelections[type];
-                        return (
-                          <div
-                            key={type}
-                            className="p-3 rounded-xl border bg-slate-950/60 border-slate-800 space-y-2"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div className="flex items-center gap-2">
-                                <span className="text-xs font-bold text-slate-100">{label}</span>
-                                <span className="px-1.5 py-0.5 rounded text-[9px] font-mono text-slate-400 bg-slate-900 border border-slate-800">
-                                  {badge}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-1">
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'default' }))
-                                  }
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                    currentSel === 'default'
-                                      ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-400 shadow-sm shadow-cyan-500/20'
-                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                                  }`}
-                                >
-                                  Default
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'advanced' }))
-                                  }
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                                    currentSel === 'advanced'
-                                      ? 'bg-amber-500/25 text-amber-200 border border-amber-400 shadow-sm shadow-amber-500/20'
-                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                                  }`}
-                                >
-                                  Advanced
-                                </button>
-                                <button
-                                  type="button"
-                                  disabled={!hasRemnants}
-                                  onClick={() => {
-                                    if (hasRemnants) {
-                                      setNeutralShipSelections((prev) => ({ ...prev, [type]: 'expert' }));
-                                    }
-                                  }}
-                                  title={
-                                    hasRemnants
-                                      ? 'Expert Blueprint (Remnants of Worlds Afar)'
-                                      : 'Expert Blueprint requires Remnants of Worlds Afar expansion'
-                                  }
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition ${
-                                    !hasRemnants
-                                      ? 'bg-slate-950 text-slate-600 border border-slate-900 cursor-not-allowed opacity-40'
-                                      : currentSel === 'expert'
-                                      ? 'bg-rose-500/25 text-rose-200 border border-rose-400 shadow-sm shadow-rose-500/20 cursor-pointer'
-                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800 cursor-pointer'
-                                  }`}
-                                >
-                                  Expert
-                                </button>
-                                <button
-                                  type="button"
-                                  onClick={() =>
-                                    setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
-                                  }
-                                  title={
-                                    hasRemnants
-                                      ? 'Random Blueprint (Default / Advanced / Expert)'
-                                      : 'Random Blueprint (50% Default / 50% Advanced)'
-                                  }
-                                  className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1 ${
-                                    currentSel === 'random'
-                                      ? 'bg-purple-500/25 text-purple-200 border border-purple-400 shadow-sm shadow-purple-500/20'
-                                      : 'bg-slate-900 text-slate-400 hover:text-slate-200 border border-slate-800'
-                                  }`}
-                                >
-                                  <Dices className="w-3 h-3" />
-                                  <span>Random</span>
-                                </button>
-                              </div>
-                            </div>
-                            <div className="text-[11px] font-mono pl-0.5">
-                              {currentSel === 'default' && (
-                                <div className="text-slate-400 flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 shrink-0" />
-                                  <span>{defaultDesc}</span>
-                                </div>
-                              )}
-                              {currentSel === 'advanced' && (
-                                <div className="text-amber-300 flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-amber-400 shrink-0" />
-                                  <span>{advDesc}</span>
-                                </div>
-                              )}
-                              {currentSel === 'expert' && (
-                                <div className="text-rose-300 flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-rose-400 shrink-0" />
-                                  <span>{expertDesc}</span>
-                                </div>
-                              )}
-                              {currentSel === 'random' && (
-                                <div className="text-purple-300 flex items-center gap-1.5">
-                                  <span className="w-1.5 h-1.5 rounded-full bg-purple-400 shrink-0" />
-                                  <span className="italic">
-                                    {hasRemnants
-                                      ? 'Random: Selects among Default, Advanced, and Expert variants'
-                                      : 'Random: 50% chance Default or Advanced upon game start'}
-                                  </span>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  )
-                ) : (
-                  <div className="p-2 rounded-xl bg-slate-950/50 border border-slate-800/80 text-[11px] font-mono text-slate-400">
-                    <span>
-                      Ancients: <strong className="text-slate-200 capitalize">{neutralShipSelections.ancient}</strong> •{' '}
-                      Guardians: <strong className="text-slate-200 capitalize">{neutralShipSelections.guardian}</strong> •{' '}
-                      GCDS: <strong className="text-slate-200 capitalize">{neutralShipSelections.gcds}</strong>
-                    </span>
-                  </div>
-                )}
+                <div>
+                  <h2 className="text-xl font-display font-bold text-white">Join Other Games</h2>
+                  <p className="text-xs text-slate-400">
+                    Tables that are waiting for players (not started yet). Select an open seat to join.
+                  </p>
+                </div>
               </div>
-            </div>
 
-            {/* Sticky / Docked Launch Button */}
-            <div className="pt-3.5 mt-3 border-t border-slate-800 sticky bottom-0 bg-slate-900/95 backdrop-blur-md z-10">
-              <button
-                type="submit"
-                className="w-full py-3 sm:py-3.5 rounded-xl font-display font-bold uppercase tracking-wider bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 shadow-lg shadow-cyan-500/25 transition-all flex items-center justify-center gap-2 cursor-pointer"
-              >
-                <Rocket className="w-5 h-5" />
-                <span>Launch Galactic Conflict</span>
-              </button>
-            </div>
-          </form>
-        </div>
-
-        {/* Right Column: Join Existing & Saved Tables (5 cols) */}
-        <div className="lg:col-span-5 space-y-6">
-          {/* Join by Code Card */}
-          <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 shadow-2xl shadow-cyan-950/10">
-            <div className="flex items-center gap-3 border-b border-slate-800 pb-3.5 mb-4">
-              <div className="p-2 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/30">
-                <LogIn className="w-5 h-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-display font-bold text-slate-100">
-                  Connect by Table Code
-                </h3>
-                <p className="text-[11px] text-slate-400">
-                  Enter a shared code or table number to join an ongoing battle.
-                </p>
-              </div>
-            </div>
-
-            <form onSubmit={handleConnectTable} className="space-y-3.5">
-              <div>
+              {/* Quick Table Code Direct Entry Form */}
+              <form onSubmit={handleConnectTable} className="flex flex-wrap items-center gap-2">
                 <input
                   type="text"
                   value={joinTableInput}
@@ -1244,19 +1211,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     setJoinTableInput(e.target.value);
                     if (joinError) setJoinError(null);
                   }}
-                  placeholder="Enter Table Code (e.g. 101 or galaxy-101)"
-                  className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-blue-400 transition"
-                  required
+                  placeholder="Code (e.g. 101)"
+                  className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-blue-400 w-32"
                 />
-              </div>
-
-              {joinError && (
-                <div className="p-2.5 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold">
-                  {joinError}
-                </div>
-              )}
-
-              <div className="flex items-center gap-2">
                 <select
                   value={joinSeat.toString()}
                   onChange={(e) => {
@@ -1273,7 +1230,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       setJoinSeat(parseInt(val, 10));
                     }
                   }}
-                  className="bg-slate-950 border border-slate-700 text-xs font-medium rounded-xl px-3 py-2 text-slate-200 focus:outline-none focus:border-blue-400 flex-1"
+                  className="bg-slate-950 border border-slate-700 text-xs font-medium rounded-xl px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-blue-400"
                 >
                   <option value="0">Seat 1 (Player 1)</option>
                   <option value="1">Seat 2 (Player 2)</option>
@@ -1286,570 +1243,382 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   </option>
                   <option value="spectator">Spectator / Observer</option>
                 </select>
-
                 <button
                   type="submit"
                   disabled={isJoining}
-                  className="py-2 px-4 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-blue-600 hover:bg-blue-500 text-white shadow-md shadow-blue-600/20 transition-all flex items-center gap-1.5 shrink-0 disabled:opacity-50"
+                  className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer disabled:opacity-50"
                 >
-                  <Play className="w-3.5 h-3.5" />
-                  <span>{isJoining ? 'Joining...' : 'Join'}</span>
+                  {isJoining ? 'Joining...' : 'Quick Join'}
                 </button>
-              </div>
-            </form>
-          </div>
-
-          {/* Saved Tables List */}
-          <div className="bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 shadow-2xl shadow-cyan-950/10">
-            {/* Header with Scope & Status Tabs */}
-            <div className="border-b border-slate-800 pb-3 mb-3 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2">
-                  {currentUser.role === 'admin' ? (
-                    <Shield className="w-4 h-4 text-rose-400" />
-                  ) : (
-                    <Users className="w-4 h-4 text-cyan-400" />
-                  )}
-                  <h3 className="text-sm font-display font-bold uppercase tracking-wider text-slate-200">
-                    Galaxy Tables
-                  </h3>
-                </div>
-
-                {currentUser.role !== 'admin' ? (
-                  <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
-                    <button
-                      type="button"
-                      onClick={() => setTableFilterTab('all')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                        tableFilterTab === 'all'
-                          ? 'bg-blue-500/25 text-blue-200 border border-blue-500/40 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      All Tables ({savedTables.length})
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setTableFilterTab('my')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                        tableFilterTab === 'my'
-                          ? 'bg-cyan-500/25 text-cyan-200 border border-cyan-500/40 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200'
-                      }`}
-                    >
-                      <span>★ My Tables ({filterTablesForUser(savedTables, currentUser).length})</span>
-                      {(() => {
-                        const myT = filterTablesForUser(savedTables, currentUser);
-                        const turnCount = myT.filter((t) => isPlayerTurnAtTable(t, currentUser)).length;
-                        if (turnCount === 0) return null;
-                        return (
-                          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 animate-pulse flex items-center gap-0.5 shadow-sm">
-                            <Zap className="w-2.5 h-2.5 fill-slate-950" />
-                            <span>{turnCount} turn{turnCount > 1 ? 's' : ''}</span>
-                          </span>
-                        );
-                      })()}
-                    </button>
-                  </div>
-                ) : (
-                  <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-rose-950/90 border border-rose-600 text-rose-300">
-                    ADMIN VIEW
-                  </span>
-                )}
-              </div>
-
-              {/* Status Filter Tabs (Need Players, Running, Done, All) */}
-              {(() => {
-                const myTables = filterTablesForUser(savedTables, currentUser);
-                const scopedTables = tableFilterTab === 'my' && currentUser.role !== 'admin' ? myTables : savedTables;
-                const needPlayersCount = scopedTables.filter((t) => getTableStatusCategory(t) === 'need_players').length;
-                const runningCount = scopedTables.filter((t) => getTableStatusCategory(t) === 'running').length;
-                const doneCount = scopedTables.filter((t) => getTableStatusCategory(t) === 'done').length;
-
-                return (
-                  <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                    <button
-                      type="button"
-                      onClick={() => setTableStatusFilter('all')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                        tableStatusFilter === 'all'
-                          ? 'bg-slate-800 text-white border border-slate-600 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-200 hover:bg-slate-950'
-                      }`}
-                    >
-                      <span>All</span>
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-900 border border-slate-700">
-                        {scopedTables.length}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setTableStatusFilter('need_players')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                        tableStatusFilter === 'need_players'
-                          ? 'bg-emerald-950 text-emerald-200 border border-emerald-500 shadow-sm shadow-emerald-950/40'
-                          : 'text-emerald-400/80 hover:text-emerald-300 hover:bg-emerald-950/40'
-                      }`}
-                    >
-                      <UserPlus className="w-3.5 h-3.5" />
-                      <span>Need Players</span>
-                      <span
-                        className={`px-1.5 py-0.5 rounded-full text-[10px] ${
-                          needPlayersCount > 0
-                            ? 'bg-emerald-500 text-slate-950 font-extrabold'
-                            : 'bg-emerald-950/80 text-emerald-300 border border-emerald-800'
-                        }`}
-                      >
-                        {needPlayersCount}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setTableStatusFilter('running')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                        tableStatusFilter === 'running'
-                          ? 'bg-cyan-950 text-cyan-200 border border-cyan-500 shadow-sm shadow-cyan-950/40'
-                          : 'text-cyan-400/80 hover:text-cyan-300 hover:bg-cyan-950/40'
-                      }`}
-                    >
-                      <Play className="w-3.5 h-3.5" />
-                      <span>Running</span>
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-cyan-950/80 text-cyan-300 border border-cyan-800">
-                        {runningCount}
-                      </span>
-                    </button>
-
-                    <button
-                      type="button"
-                      onClick={() => setTableStatusFilter('done')}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5 ${
-                        tableStatusFilter === 'done'
-                          ? 'bg-slate-800 text-slate-200 border border-slate-500 shadow-sm'
-                          : 'text-slate-400 hover:text-slate-300 hover:bg-slate-950'
-                      }`}
-                    >
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      <span>Done</span>
-                      <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-slate-950 text-slate-400 border border-slate-800">
-                        {doneCount}
-                      </span>
-                    </button>
-                  </div>
-                );
-              })()}
+              </form>
             </div>
 
-            {(() => {
-              const myTables = filterTablesForUser(savedTables, currentUser);
-              const scopedTables = tableFilterTab === 'my' && currentUser.role !== 'admin' ? myTables : savedTables;
+            {joinError && (
+              <div className="p-3 rounded-xl bg-red-500/10 border border-red-500/30 text-red-400 text-xs font-semibold">
+                {joinError}
+              </div>
+            )}
 
-              if (scopedTables.length === 0) {
-                return (
-                  <div className="p-6 text-center text-slate-500 text-xs space-y-2">
-                    <p>
-                      {tableFilterTab === 'my' && currentUser.role !== 'admin'
-                        ? `You haven't joined any tables yet as ${currentUser.username}.`
-                        : 'No tables found on server.'}
-                    </p>
-                    {tableFilterTab === 'my' && savedTables.length > 0 && (
-                      <button
-                        type="button"
-                        onClick={() => setTableFilterTab('all')}
-                        className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold transition cursor-pointer"
-                      >
-                        Browse All Tables ({savedTables.length})
-                      </button>
-                    )}
-                  </div>
-                );
-              }
+            {/* Waiting Tables List */}
+            {waitingTables.length === 0 ? (
+              <div className="p-12 text-center flex flex-col items-center justify-center gap-3 bg-slate-950/50 rounded-2xl border border-dashed border-slate-800">
+                <Users className="w-10 h-10 text-slate-600 mb-1" />
+                <h3 className="text-base font-bold text-slate-300">No Tables Waiting for Players</h3>
+                <p className="text-xs text-slate-500 max-w-sm">
+                  There are currently no open tables waiting for players. Establish a new table and invite commanders to launch a match!
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('create')}
+                  className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold uppercase tracking-wider transition shadow cursor-pointer"
+                >
+                  <Rocket className="w-3.5 h-3.5" />
+                  <span>Create New Game</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {waitingTables.map((table) => {
+                  const occupiedSeats = getTableOccupiedSeats(table);
+                  const isUserSeated = Boolean(
+                    (table.members || []).some(
+                      (m) => m.userId === currentUser.id && typeof m.seat === 'number' && m.seat >= 0
+                    )
+                  );
+                  const myMembership = (table.members || []).find((m) => m.userId === currentUser.id);
 
-              const needPlayersTables = scopedTables
-                .filter((t) => getTableStatusCategory(t) === 'need_players')
-                .sort((a, b) => {
-                  const aTurn = isPlayerTurnAtTable(a, currentUser) ? 1 : 0;
-                  const bTurn = isPlayerTurnAtTable(b, currentUser) ? 1 : 0;
-                  if (bTurn !== aTurn) return bTurn - aTurn;
-                  return (b.savedAt || 0) - (a.savedAt || 0);
-                });
-              const runningTables = scopedTables
-                .filter((t) => getTableStatusCategory(t) === 'running')
-                .sort((a, b) => {
-                  const aTurn = isPlayerTurnAtTable(a, currentUser) ? 1 : 0;
-                  const bTurn = isPlayerTurnAtTable(b, currentUser) ? 1 : 0;
-                  if (bTurn !== aTurn) return bTurn - aTurn;
-                  return (b.savedAt || 0) - (a.savedAt || 0);
-                });
-              const doneTables = scopedTables.filter((t) => getTableStatusCategory(t) === 'done');
-              const myTablesTurnCount = scopedTables.filter((t) => isPlayerTurnAtTable(t, currentUser)).length;
-
-              const renderTableItem = (table: SavedTableSummary) => {
-                const category = getTableStatusCategory(table);
-                const isMyTurn = isPlayerTurnAtTable(table, currentUser);
-                const occupiedSeats = getTableOccupiedSeats(table);
-                const openCount = Math.max(0, (table.playerCount || 2) - occupiedSeats.size);
-                const myMembership = (table.members || []).find((m) => m.userId === currentUser.id);
-                const mySeat = myMembership?.seat;
-                const hasMySeat = myMembership && typeof mySeat !== 'undefined';
-
-                return (
-                  <div
-                    key={table.id}
-                    className={`p-3 rounded-xl transition-all space-y-2.5 border ${
-                      isMyTurn
-                        ? 'bg-gradient-to-br from-amber-950/60 via-slate-950/90 to-amber-950/30 border-amber-400 shadow-lg shadow-amber-950/60 ring-1 ring-amber-400/70'
-                        : hasMySeat
-                        ? 'bg-slate-950/70 border-emerald-500/40 shadow-sm shadow-emerald-950/30'
-                        : category === 'need_players'
-                        ? 'border-emerald-900/60 hover:border-emerald-700/80 shadow-sm shadow-emerald-950/15 bg-slate-950/70'
-                        : 'border-slate-800 hover:border-slate-700 bg-slate-950/70'
-                    }`}
-                  >
-                    {/* Table Header Row */}
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <div className="flex items-center gap-2 min-w-0 flex-wrap">
-                        <span className={`px-2 py-0.5 rounded font-mono font-bold text-xs ${
-                          isMyTurn
-                            ? 'bg-amber-400 text-slate-950 border border-amber-300 shadow-sm'
-                            : 'bg-cyan-950/80 border border-cyan-800/80 text-cyan-300'
-                        }`}>
-                          #{table.tableNumber || table.id}
-                        </span>
-                        <span className="text-xs font-semibold text-slate-200 truncate">
-                          Round {table.round}/{table.maxRounds} • {table.playerCount}P
-                        </span>
-
-                        {/* Status Badges */}
-                        {isMyTurn && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-amber-400 text-slate-950 flex items-center gap-1 shadow-md shadow-amber-400/30 animate-pulse">
-                            <Zap className="w-3 h-3 fill-slate-950 shrink-0" />
-                            <span>YOUR TURN TO ACT</span>
+                  return (
+                    <div
+                      key={table.id}
+                      className="bg-slate-950/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-between gap-4 shadow-md"
+                    >
+                      <div className="space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm font-display font-black text-white">
+                            Table #{table.tableNumber || table.id}
                           </span>
-                        )}
-                        {!isMyTurn && category === 'need_players' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-950/90 border border-emerald-500/50 text-emerald-300 flex items-center gap-1.5 shadow-sm">
-                            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-                            <span>NEED PLAYERS ({openCount} open)</span>
+                          <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                            {occupiedSeats.size} of {table.playerCount} Seated
                           </span>
-                        )}
-                        {!isMyTurn && category === 'running' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950/90 border border-cyan-500/50 text-cyan-300 flex items-center gap-1.5">
-                            <span className="w-1.5 h-1.5 rounded-full bg-cyan-400" />
-                            <span>RUNNING</span>
-                          </span>
-                        )}
-                        {category === 'done' && (
-                          <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 border border-slate-600 text-slate-300 flex items-center gap-1.5">
-                            <Flag className="w-2.5 h-2.5 text-slate-400" />
-                            <span>DONE</span>
-                          </span>
-                        )}
-                      </div>
-
-                      {(currentUser.role === 'admin' || myMembership?.isCreator) && (
-                        <button
-                          type="button"
-                          onClick={() => handleDelete(table.id)}
-                          className="p-1 rounded text-slate-500 hover:text-rose-400 hover:bg-rose-950/30 transition cursor-pointer"
-                          title="Delete Table"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
-                      )}
-                    </div>
-
-                    {/* Status & Turn */}
-                    <div className="text-[11px] text-slate-400 truncate">
-                      {category === 'done' ? (
-                        <span className="text-slate-300 font-medium">Game Completed • Final Standing Recorded</span>
-                      ) : (
-                        <>
-                          Turn: <strong className={isMyTurn ? 'text-amber-300 font-bold' : 'text-slate-200'}>{table.activePlayerName}</strong> •{' '}
-                          {table.phase.replace('_', ' ')}
-                        </>
-                      )}
-                    </div>
-
-                    {/* Prominent Action Prompt for Current User */}
-                    {isMyTurn ? (
-                      <div className="flex items-center justify-between px-3 py-2 rounded-lg bg-amber-500/15 border border-amber-400/50 text-amber-200 text-xs shadow-inner">
-                        <div className="flex items-center gap-2 min-w-0">
-                          <span className="relative flex h-2.5 w-2.5 shrink-0">
-                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75" />
-                            <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-400" />
-                          </span>
-                          <div className="min-w-0">
-                            <div className="font-extrabold text-amber-300 uppercase tracking-wide text-[11px] flex items-center gap-1.5 truncate">
-                              <span>It is Your Turn!</span>
-                              <span className="text-[10px] font-mono text-amber-400/90">
-                                ({typeof mySeat === 'number' ? `Seat ${mySeat + 1}` : mySeat})
-                              </span>
-                            </div>
-                            <div className="text-[10px] text-amber-200/80 truncate">
-                              Your orders are needed in {table.phase.replace('_', ' ')} (Round {table.round})
-                            </div>
-                          </div>
                         </div>
-                        <button
-                          type="button"
-                          onClick={() => handleJoinFromList(table.id, mySeat)}
-                          className="px-3.5 py-1.5 rounded-lg bg-amber-400 hover:bg-amber-300 text-slate-950 font-black text-xs uppercase tracking-wider transition cursor-pointer shadow-md hover:scale-105 active:scale-95 flex items-center gap-1.5 shrink-0"
-                        >
-                          <Play className="w-3.5 h-3.5 fill-slate-950 shrink-0" />
-                          <span>Take Action</span>
-                        </button>
+
+                        <div className="text-[11px] text-slate-400">
+                          {table.playerNames && table.playerNames.length > 0
+                            ? table.playerNames.join(', ')
+                            : `${table.playerCount} Players`}
+                        </div>
                       </div>
-                    ) : (
-                      hasMySeat && (
-                        <div className="flex items-center justify-between px-2.5 py-1.5 rounded-lg bg-emerald-950/60 border border-emerald-500/40 text-emerald-300 text-xs">
-                          <div className="flex items-center gap-1.5">
-                            <Star className="w-3.5 h-3.5 text-emerald-400 fill-emerald-400 shrink-0" />
-                            <span>
-                              Your Seat: <strong>{typeof mySeat === 'number' ? `Seat ${mySeat + 1}` : mySeat}</strong>
-                            </span>
-                          </div>
+
+                      {/* Seating Roster with Join Buttons */}
+                      <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                        <span className="text-[10px] font-mono uppercase text-slate-500 font-bold block">
+                          Seats & Availability
+                        </span>
+                        <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+                          {Array.from({ length: table.playerCount }).map((_, sIdx) => {
+                            const occupant = (table.members || []).find((m) => m.seat === sIdx);
+                            const isTaken = Boolean(occupant);
+                            const isMySeat = occupant?.userId === currentUser.id;
+
+                            if (isTaken) {
+                              return (
+                                <div
+                                  key={sIdx}
+                                  className={`p-1.5 rounded-lg border text-center text-[10px] ${
+                                    isMySeat
+                                      ? 'bg-cyan-950/60 border-cyan-500/60 text-cyan-200 font-bold'
+                                      : 'bg-slate-900 border-slate-800 text-slate-400'
+                                  }`}
+                                >
+                                  <div className="text-[9px] opacity-70">Seat {sIdx + 1}</div>
+                                  <div className="truncate font-semibold">{isMySeat ? 'YOU' : occupant?.username || 'Taken'}</div>
+                                </div>
+                              );
+                            }
+
+                            return (
+                              <button
+                                key={sIdx}
+                                type="button"
+                                onClick={() => handleJoinFromList(table.id, sIdx)}
+                                className="p-1.5 rounded-lg border border-blue-500/50 hover:border-blue-400 bg-blue-950/50 hover:bg-blue-900/80 text-blue-200 text-center text-[10px] font-bold transition cursor-pointer"
+                              >
+                                <div>Seat {sIdx + 1}</div>
+                                <div className="text-[9px] text-blue-400 uppercase">Join</div>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Card Footer Actions */}
+                      <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
+                        <div className="flex items-center gap-1.5">
                           <button
                             type="button"
-                            onClick={() => handleJoinFromList(table.id, mySeat)}
-                            className="px-2.5 py-0.5 rounded bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-[10px] uppercase tracking-wider transition cursor-pointer shadow"
+                            disabled={!canUserUseHotseat(currentUser.role)}
+                            onClick={() => {
+                              if (canUserUseHotseat(currentUser.role)) {
+                                handleJoinFromList(table.id, 'all');
+                              }
+                            }}
+                            title={!canUserUseHotseat(currentUser.role) ? 'Hotseat is restricted to administrators' : 'Join as Hotseat (Control All)'}
+                            className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
+                              !canUserUseHotseat(currentUser.role)
+                                ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
+                                : 'bg-purple-950/40 hover:bg-purple-900/60 border-purple-800/60 text-purple-300 hover:text-white cursor-pointer'
+                            }`}
                           >
-                            Rejoin
+                            {!canUserUseHotseat(currentUser.role) && <Lock className="w-2.5 h-2.5" />}
+                            <span>Hotseat</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyShareLink(table.id)}
+                            className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer"
+                          >
+                            <Share2 className="w-3 h-3" />
+                            <span>{copiedLinkTableId === table.id ? 'Copied!' : 'Share'}</span>
                           </button>
                         </div>
-                      )
-                    )}
 
-                    {/* Members List */}
-                    {table.members && table.members.length > 0 && (
-                      <div className="text-[11px] text-slate-400 flex flex-wrap items-center gap-1 pt-1">
-                        <span className="text-slate-500 font-semibold text-[10px] uppercase tracking-wider">
-                          Members:
-                        </span>
-                        {table.members.map((m, mIdx) => (
-                          <span
-                            key={mIdx}
-                            className={`px-1.5 py-0.5 rounded text-[10px] font-mono border ${
-                              m.userId === currentUser.id
-                                ? 'bg-emerald-950/80 border-emerald-500 text-emerald-300 font-bold'
-                                : m.role === 'admin'
-                                ? 'bg-rose-950/80 border-rose-700 text-rose-300'
-                                : m.role === 'user'
-                                ? 'bg-cyan-950/80 border-cyan-700 text-cyan-300'
-                                : 'bg-amber-950/80 border-amber-700 text-amber-300'
-                            }`}
+                        {isUserSeated && (
+                          <button
+                            type="button"
+                            onClick={() => onJoinTable(table.id, typeof myMembership?.seat === 'number' ? myMembership.seat : 0)}
+                            className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer"
                           >
-                            {m.username} {typeof m.seat === 'number' ? `(S${m.seat + 1})` : m.seat ? `(${m.seat})` : ''}
-                          </span>
-                        ))}
+                            <span>Rejoin Table</span>
+                            <ArrowRight className="w-3 h-3" />
+                          </button>
+                        )}
                       </div>
-                    )}
-
-                    {/* Direct Seat Launch Links */}
-                    <div className="flex flex-wrap items-center gap-1.5 pt-1.5 border-t border-slate-800/60">
-                      <button
-                        type="button"
-                        disabled={!canUserUseHotseat(currentUser.role)}
-                        onClick={() => {
-                          if (canUserUseHotseat(currentUser.role)) {
-                            handleJoinFromList(table.id, 'all');
-                          }
-                        }}
-                        title={
-                          !canUserUseHotseat(currentUser.role)
-                            ? 'Hotseat is restricted to administrators'
-                            : 'Join as Hotseat (Control All)'
-                        }
-                        className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
-                          !canUserUseHotseat(currentUser.role)
-                            ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
-                            : 'bg-purple-950/40 hover:bg-purple-900/60 border-purple-800/60 text-purple-300 hover:text-white cursor-pointer'
-                        }`}
-                      >
-                        {!canUserUseHotseat(currentUser.role) && <Lock className="w-2.5 h-2.5" />}
-                        <span>Hotseat</span>
-                      </button>
-
-                      {/* Spectate Button */}
-                      {!hasMySeat && (
-                        <button
-                          type="button"
-                          onClick={() => handleJoinFromList(table.id, 'spectator')}
-                          className="px-2 py-1 border border-slate-700 hover:border-slate-500 bg-slate-900 hover:bg-slate-800 text-slate-300 hover:text-white rounded text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer"
-                          title="Observe game as Spectator"
-                        >
-                          <Eye className="w-2.5 h-2.5 text-slate-400" />
-                          <span>Spectate</span>
-                        </button>
-                      )}
-
-                      {/* Replay Button */}
-                      {onOpenReplay && (
-                        <button
-                          type="button"
-                          onClick={() => onOpenReplay(table.id)}
-                          className="px-2 py-1 border border-indigo-700/80 hover:border-indigo-500 bg-indigo-950/60 hover:bg-indigo-900/80 text-indigo-300 hover:text-white rounded text-[10px] font-semibold transition flex items-center gap-1 cursor-pointer shadow-sm"
-                          title="Replay entire match history"
-                        >
-                          <History className="w-2.5 h-2.5 text-indigo-400" />
-                          <span>Replay</span>
-                        </button>
-                      )}
-
-                      {Array.from({ length: table.playerCount }).map((_, sIdx) => {
-                        const isCopied = copiedLinkTableId === `${table.id}_${sIdx}`;
-                        const isMySeatHere = mySeat === sIdx;
-                        const occupant = (table.members || []).find((m) => m.seat === sIdx);
-                        const isTakenByOther = occupant && occupant.userId !== currentUser.id;
-
-                        return (
-                          <div
-                            key={sIdx}
-                            className={`inline-flex items-center rounded border text-[10px] ${
-                              isMySeatHere
-                                ? 'border-emerald-500 bg-emerald-950/80'
-                                : isTakenByOther
-                                ? 'border-slate-800 bg-slate-950/50 opacity-60'
-                                : 'border-emerald-600/80 bg-emerald-950/50 hover:border-emerald-400 shadow-sm'
-                            }`}
-                          >
-                            <button
-                              type="button"
-                              disabled={Boolean(isTakenByOther)}
-                              onClick={() => {
-                                if (!isTakenByOther) {
-                                  handleJoinFromList(table.id, sIdx);
-                                }
-                              }}
-                              title={
-                                isTakenByOther
-                                  ? `Seat ${sIdx + 1} is already taken by ${occupant?.username || occupant?.name}`
-                                  : isMySeatHere
-                                  ? `Your Seat (Seat ${sIdx + 1})`
-                                  : `Join Seat ${sIdx + 1}`
-                              }
-                              className={`px-2 py-1 transition rounded-l ${
-                                isTakenByOther
-                                  ? 'text-slate-500 cursor-not-allowed line-through'
-                                  : isMySeatHere
-                                  ? 'text-emerald-300 font-bold hover:bg-emerald-900/60 cursor-pointer'
-                                  : 'text-emerald-300 font-bold hover:text-white hover:bg-emerald-800/80 cursor-pointer'
-                              }`}
-                            >
-                              {isTakenByOther
-                                ? `Seat ${sIdx + 1} (${occupant?.username || occupant?.name})`
-                                : isMySeatHere
-                                ? `Seat ${sIdx + 1} (You)`
-                                : `▶ Join Seat ${sIdx + 1}`}
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleCopySeatLink(table.id, sIdx)}
-                              className="px-1.5 py-1 text-cyan-400 hover:bg-cyan-950/50 border-l border-slate-700 transition rounded-r cursor-pointer"
-                              title={`Copy Seat ${sIdx + 1} Link`}
-                            >
-                              {isCopied ? '✓' : <Share2 className="w-2.5 h-2.5" />}
-                            </button>
-                          </div>
-                        );
-                      })}
                     </div>
-                  </div>
-                );
-              };
-
-              // Grouped sections when 'all' is selected
-              if (tableStatusFilter === 'all') {
-                return (
-                  <div className="space-y-4 max-h-96 overflow-y-auto pr-1">
-                    {/* Need Players Section */}
-                    {needPlayersTables.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 px-1 text-xs font-bold uppercase tracking-wider text-emerald-400">
-                          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                          <span>Tables Needing Players ({needPlayersTables.length})</span>
-                        </div>
-                        <div className="space-y-2.5">
-                          {needPlayersTables.map(renderTableItem)}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Running Section */}
-                    {runningTables.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 px-1 text-xs font-bold uppercase tracking-wider text-cyan-400">
-                          <Play className="w-3.5 h-3.5" />
-                          <span>Tables Running ({runningTables.length})</span>
-                        </div>
-                        <div className="space-y-2.5">
-                          {runningTables.map(renderTableItem)}
-                        </div>
-                      </div>
-                    )}
-
-                    {/* Done Section */}
-                    {doneTables.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2 px-1 text-xs font-bold uppercase tracking-wider text-slate-400">
-                          <CheckCircle2 className="w-3.5 h-3.5" />
-                          <span>Tables Done ({doneTables.length})</span>
-                        </div>
-                        <div className="space-y-2.5">
-                          {doneTables.map(renderTableItem)}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                );
-              }
-
-              // Specific Category Filter
-              const targetList =
-                tableStatusFilter === 'need_players'
-                  ? needPlayersTables
-                  : tableStatusFilter === 'running'
-                  ? runningTables
-                  : doneTables;
-
-              if (targetList.length === 0) {
-                return (
-                  <div className="p-6 text-center text-slate-500 text-xs space-y-2">
-                    <p>
-                      {tableStatusFilter === 'need_players'
-                        ? 'No tables currently need players.'
-                        : tableStatusFilter === 'running'
-                        ? 'No tables currently in progress.'
-                        : 'No completed tables.'}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => setTableStatusFilter('all')}
-                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-cyan-300 text-xs font-semibold transition cursor-pointer"
-                    >
-                      View All Tables ({scopedTables.length})
-                    </button>
-                  </div>
-                );
-              }
-
-              return (
-                <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-                  {targetList.map(renderTableItem)}
-                </div>
-              );
-            })()}
+                  );
+                })}
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* ========================================================================= */}
+        {/* SECTION 4: VIEW MY GAMES (Only available after login) */}
+        {/* ========================================================================= */}
+        {(isSSR || activeSection === 'my_games') && (
+          <div className="w-full bg-slate-900/90 border border-slate-800 backdrop-blur-xl rounded-2xl p-5 sm:p-7 shadow-2xl shadow-purple-950/20 flex flex-col gap-6">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-4">
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
+                  <Bookmark className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className="text-xl font-display font-bold text-white">My Game Tables</h2>
+                  <p className="text-xs text-slate-400">
+                    All tables you are registered in across waiting rooms, active matches, and finished games.
+                  </p>
+                </div>
+              </div>
+
+              {/* Status Filter Tabs */}
+              <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800 text-xs">
+                {(['all', 'need_players', 'running', 'done'] as const).map((status) => (
+                  <button
+                    key={status}
+                    type="button"
+                    onClick={() => setMyGamesStatusFilter(status)}
+                    className={`px-3 py-1 rounded-lg font-bold text-xs capitalize transition cursor-pointer ${
+                      myGamesStatusFilter === status
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-400 hover:text-slate-200'
+                    }`}
+                  >
+                    {status === 'need_players' ? 'Waiting' : status === 'running' ? 'Active' : status}
+                    {status === 'all'
+                      ? ` (${myTables.length})`
+                      : status === 'need_players'
+                      ? ` (${myWaitingCount})`
+                      : status === 'running'
+                      ? ` (${myRunningCount})`
+                      : ` (${myDoneCount})`}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* If not logged in, display required login prompt */}
+            {!isUserLoggedIn ? (
+              <div className="p-10 text-center flex flex-col items-center justify-center gap-3 bg-slate-950/50 rounded-2xl border border-slate-800">
+                <Lock className="w-10 h-10 text-amber-400 mb-1" />
+                <h3 className="text-base font-bold text-white">Login Required</h3>
+                <p className="text-xs text-slate-400 max-w-sm">
+                  You must be logged in to view and rejoin your personalized tables. Please log in or register.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setShowUserModal(true)}
+                  className="mt-2 inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold uppercase tracking-wider transition shadow cursor-pointer"
+                >
+                  <LogIn className="w-4 h-4" />
+                  <span>Log In / Register</span>
+                </button>
+              </div>
+            ) : filteredMyTables.length === 0 ? (
+              <div className="p-10 text-center flex flex-col items-center justify-center gap-3 bg-slate-950/50 rounded-2xl border border-dashed border-slate-800">
+                <Bookmark className="w-10 h-10 text-slate-600 mb-1" />
+                <h3 className="text-base font-bold text-slate-300">No Tables Found</h3>
+                <p className="text-xs text-slate-500 max-w-sm">
+                  You are not currently participating in any tables under this category.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => setActiveSection('create')}
+                  className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold uppercase tracking-wider transition shadow cursor-pointer"
+                >
+                  <Rocket className="w-3.5 h-3.5" />
+                  <span>Create a New Table</span>
+                </button>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {filteredMyTables.map((table) => {
+                  const statusCat = getTableStatusCategory(table);
+                  const isMyTurn = isPlayerTurnAtTable(table, currentUser);
+                  const myMem = (table.members || []).find((m) => m.userId === currentUser.id);
+                  const mySeatNum = typeof myMem?.seat === 'number' ? myMem.seat : 0;
+
+                  return (
+                    <div
+                      key={table.id}
+                      className={`rounded-2xl p-5 border flex flex-col justify-between gap-4 transition-all shadow-md ${
+                        isMyTurn
+                          ? 'bg-gradient-to-br from-emerald-950/40 via-slate-950 to-slate-950 border-emerald-500 ring-2 ring-emerald-500/50 shadow-emerald-950/40'
+                          : 'bg-slate-950 border-slate-800'
+                      }`}
+                    >
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <span className="text-base font-display font-black text-white">
+                            Table #{table.tableNumber || table.id}
+                          </span>
+
+                          {isMyTurn ? (
+                            <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500 text-slate-950 flex items-center gap-1 animate-pulse">
+                              <Zap className="w-3 h-3 fill-current" /> YOUR TURN
+                            </span>
+                          ) : statusCat === 'need_players' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 border border-amber-500/30 text-amber-300">
+                              Waiting for Players ({getTableOccupiedSeats(table).size}/{table.playerCount})
+                            </span>
+                          ) : statusCat === 'running' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
+                              Round {table.round} • {table.phase}
+                            </span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
+                              Completed
+                            </span>
+                          )}
+                        </div>
+
+                        <div className="text-xs text-slate-400">
+                          <span>Seated as: </span>
+                          <span className="text-slate-200 font-bold">
+                            Seat {mySeatNum + 1}
+                            {myMem?.role === 'admin' && myMem?.seat === 'all' ? ' (Hotseat)' : ''}
+                          </span>
+                          {table.activePlayerName && statusCat === 'running' && (
+                            <div className="text-[11px] text-slate-500 mt-0.5">
+                              Active Player: <span className="text-slate-300 font-semibold">{table.activePlayerName}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Action Button Row */}
+                      <div className="flex items-center justify-between pt-3 border-t border-slate-800/80">
+                        <div className="flex items-center gap-2">
+                          <button
+                            type="button"
+                            disabled={!canUserUseHotseat(currentUser.role)}
+                            onClick={() => {
+                              if (canUserUseHotseat(currentUser.role)) {
+                                handleJoinFromList(table.id, 'all');
+                              }
+                            }}
+                            title={!canUserUseHotseat(currentUser.role) ? 'Hotseat is restricted to administrators' : 'Join as Hotseat (Control All)'}
+                            className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
+                              !canUserUseHotseat(currentUser.role)
+                                ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
+                                : 'bg-purple-950/40 hover:bg-purple-900/60 border-purple-800/60 text-purple-300 hover:text-white cursor-pointer'
+                            }`}
+                          >
+                            {!canUserUseHotseat(currentUser.role) && <Lock className="w-2.5 h-2.5" />}
+                            <span>Hotseat</span>
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleCopyShareLink(table.id)}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 text-xs transition cursor-pointer"
+                            title="Copy Table Link"
+                          >
+                            <Share2 className="w-3.5 h-3.5" />
+                          </button>
+
+                          {(currentUser.role === 'admin' || (myMem as any)?.isCreator) && (
+                            <button
+                              type="button"
+                              onClick={() => handleDelete(table.id)}
+                              className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-900 text-xs transition cursor-pointer"
+                              title="Delete Table"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          {statusCat === 'done' && onOpenReplay && (
+                            <button
+                              type="button"
+                              onClick={() => onOpenReplay(table.id)}
+                              className="px-3 py-1.5 rounded-xl border border-indigo-700 bg-indigo-950/60 hover:bg-indigo-900 text-indigo-300 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                            >
+                              <History className="w-3.5 h-3.5" />
+                              <span>Replay</span>
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => onJoinTable(table.id, myMem?.seat ?? 0)}
+                            className={`px-4 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition shadow flex items-center gap-1.5 cursor-pointer ${
+                              isMyTurn
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
+                                : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-950/30'
+                            }`}
+                          >
+                            <span>{isMyTurn ? 'Take Turn' : statusCat === 'need_players' ? 'Rejoin Waiting Room' : 'Open Game'}</span>
+                            <ArrowRight className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
+      {/* User Login Modal */}
       {showUserModal && (
         <UserLoginModal
           currentUser={currentUser}
           onUserChanged={(u) => {
             setCurrentUser(u);
-            if (u.role === 'admin') setTableFilterTab('all');
+            setShowUserModal(false);
+            refreshTables();
           }}
           onClose={() => setShowUserModal(false)}
         />
