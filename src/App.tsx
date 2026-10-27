@@ -1858,7 +1858,8 @@ export const App: React.FC = () => {
     equipSlotIndex?: number,
     chosenTechId?: string,
     colonizeOrbitalResource?: 'money' | 'science',
-    chosenResource?: 'money' | 'science' | 'material'
+    chosenResource?: 'money' | 'science' | 'material',
+    claimInfluence?: boolean
   ) => {
     if (!state.pendingDiscovery) return;
     if (!canActForPlayer(state.pendingDiscovery.playerId)) {
@@ -1875,6 +1876,7 @@ export const App: React.FC = () => {
       chosenTechId,
       colonizeOrbitalResource,
       chosenResource,
+      claimInfluence,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -2387,7 +2389,7 @@ export const App: React.FC = () => {
   }
 
   return (
-    <div className="w-screen h-screen flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
+    <div className="w-screen h-screen h-dvh min-h-dvh flex flex-col bg-slate-950 text-slate-100 overflow-hidden font-sans select-none">
       {/* Top Header */}
       <Header
         state={state}
@@ -2404,6 +2406,7 @@ export const App: React.FC = () => {
         onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
         onOpenReplay={() => handleOpenReplay()}
         onReturnToLobby={handleReturnToLobby}
+        onSwitchTable={(tableId, seat) => handleJoinTableFromLobby(tableId, seat)}
         currentSeat={currentSeat}
         onChangeSeat={handleChangeSeat}
       />
@@ -2827,6 +2830,8 @@ export const App: React.FC = () => {
             }
             techSupply={state.techSupply}
             sectors={state.sectors}
+            sectorId={state.pendingDiscovery.sectorId}
+            fromExplore={state.pendingDiscovery.fromExplore}
             onChoice={handleDiscoveryChoice}
           />
         ) : (

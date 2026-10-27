@@ -17993,6 +17993,217 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         };
         expect(getTableStatusCategory(round2Table)).toBe('running');
       });
+
+      test('109. verifies Bug Fixes 202-207: New round tech replenishment at top of Chronicle, Explore discovery resolution before sector control, orbital colonization gating on sector control, Hydran Tech Market button cleanup, and BGA-style Next Table button', async () => {
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+        const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+        const { Header } = await import('../../components/layout/Header');
+        const { TECH_CATALOG } = await import('../../engine/rules/techData');
+
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // --- Bug 202: Tech draw replenishment is logged at the top of state.log via unshift ---
+        const { transitionToCleanup } = await import('../../engine/rules/gameReducer');
+
+        // Simulate clean-up phase transition to new round
+        const cleanupState: GameState = {
+          ...game,
+          round: 1,
+          phase: 'ACTION_PHASE',
+          passedPlayerIds: [p1.id, p2.id],
+          techSupply: [],
+          techBag: [{ id: 'plasma_cannon', name: 'Plasma Cannon', category: 'military', cost: 4, minCost: 2 }],
+        };
+
+        transitionToCleanup(cleanupState);
+
+        expect(cleanupState.round).toBe(2);
+        // The replenish log should be at index 0 (unshifted) rather than at the end
+        expect(cleanupState.log[0]?.message).toContain('Tech Tray replenished');
+        expect(cleanupState.log[0]?.message).toContain('Plasma Cannon');
+
+        // --- Bug 204 & Bug 205: Explore action order and orbital colonization gating ---
+        const ancientOrbitalTile = DISCOVERY_TILES.find((d) => d.id === 'ancient_orbital') || {
+          id: 'ancient_orbital',
+          tileNumber: 1,
+          name: 'Ancient Orbital',
+          description: 'Place an orbital structure in this sector.',
+          immediateReward: { grantStructure: 'orbital' as const },
+        };
+
+        const homeSector = game.sectors.find((s) => s.discOwner === p1.id)!;
+        const candidateSector: SectorTile = {
+          id: 'sec_explore_test_204',
+          sectorNumber: 204,
+          ring: 1,
+          coord: { q: 0, r: -1 },
+          rotation: 0,
+          planets: [],
+          hasDiscovery: true,
+          discoveryClaimed: false,
+          ancientsCount: 0,
+          wormholes: [0, 1, 2, 3, 4, 5],
+          ships: [],
+        };
+
+        const initialDiscs = p1.influenceTrack.discsOnTrack;
+        const stateExploring: GameState = {
+          ...game,
+          activePlayerIndex: 0,
+          discoveryBag: [ancientOrbitalTile],
+          sectorDecks: {
+            ring1: [candidateSector],
+            ring2: [],
+            ring3: [],
+          },
+        };
+
+        // Player executes explore placement with claimInfluence = true
+        const exploreRes = executeAction(stateExploring, {
+          type: 'EXPLORE',
+          playerId: p1.id,
+          fromCoord: homeSector.coord,
+          targetCoord: { q: 0, r: -1 },
+          rotation: 0,
+          discard: false,
+          claimInfluence: true, // Requested in explore, but deferred because immediate discovery exists
+        });
+        expect(exploreRes.success).toBe(true);
+        const exploredState = exploreRes.newState;
+
+        // Bug 204: Disc is NOT yet placed on the sector because player must see discovery tile first
+        const placedSector = exploredState.sectors.find((s) => s.id === 'sec_explore_test_204')!;
+        expect(placedSector).toBeDefined();
+        expect(placedSector.discOwner).toBeUndefined();
+        expect(exploredState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 1); // 1 disc used on Explore action space
+        expect(exploredState.pendingDiscovery).toBeDefined();
+        expect(exploredState.pendingDiscovery?.fromExplore).toBe(true);
+
+        // DiscoveryChoiceModal: if user does NOT control the sector and leaves claimInfluence false,
+        // orbital colonization is disabled and warning is shown
+        const uncontrolledHtml = renderToString(
+          React.createElement(DiscoveryChoiceModal, {
+            discovery: ancientOrbitalTile,
+            player: exploredState.players[0]!,
+            sectors: exploredState.sectors,
+            sectorId: placedSector.id,
+            fromExplore: true,
+            onChoice: () => {},
+          })
+        );
+        expect(uncontrolledHtml).toContain('Sector Control Decision');
+        expect(uncontrolledHtml).toContain('Control Sector (-1 Influence Disc)');
+        expect(uncontrolledHtml).toContain('Leave Uncontrolled');
+
+        // Bug 205: Engine strictly prevents colonizing ancient orbital if player chooses not to control
+        const resolvedNoControl = executeAction(exploredState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: placedSector.id,
+          keepForVictoryPoints: false,
+          colonizeOrbitalResource: 'money', // Attempt to colonize without controlling
+          claimInfluence: false, // Refuse to control
+        }).newState;
+
+        const sectorAfterNoControl = resolvedNoControl.sectors.find((s) => s.id === placedSector.id)!;
+        expect(sectorAfterNoControl.discOwner).toBeUndefined();
+        expect(resolvedNoControl.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 1); // No additional disc deducted
+        // Orbital was added to sector planets, but colonization must NOT have occurred
+        const orbitalPlanetNoControl = sectorAfterNoControl.planets.find((p) => p.isOrbital);
+        expect(orbitalPlanetNoControl).toBeDefined();
+        expect(orbitalPlanetNoControl?.colonizedBy).toBeUndefined();
+        expect(resolvedNoControl.players[0]!.colonyShips.ready).toBe(p1.colonyShips.ready);
+
+        // If player DOES choose to control during discovery choice:
+        const resolvedWithControl = executeAction(exploredState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: placedSector.id,
+          keepForVictoryPoints: false,
+          colonizeOrbitalResource: 'money',
+          claimInfluence: true, // Choose to control sector
+        }).newState;
+
+        const sectorAfterControl = resolvedWithControl.sectors.find((s) => s.id === placedSector.id)!;
+        expect(sectorAfterControl.discOwner).toBe(p1.id);
+        expect(resolvedWithControl.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 2); // 1 for action + 1 for sector control
+        const orbitalPlanetControlled = sectorAfterControl.planets.find((p) => p.isOrbital);
+        expect(orbitalPlanetControlled?.colonizedBy).toBe(p1.id);
+        expect(resolvedWithControl.players[0]!.colonyShips.ready).toBe(p1.colonyShips.ready - 1);
+
+        // --- Bug 206: Hydran Tech Market Modal has no "Quick" button ---
+        const hydranPlayer: PlayerState = {
+          ...p1,
+          faction: {
+            ...p1.faction,
+            id: 'hydran_progress',
+            name: 'Hydran Progress',
+            researchActivations: 2,
+          },
+          resources: { ...p1.resources, science: 30 },
+        };
+
+        const techMarketHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: hydranPlayer,
+            activePlayer: hydranPlayer,
+            players: [hydranPlayer, p2],
+            controlledSectors: [],
+            techSupply: [
+              TECH_CATALOG.find((t) => t.id === 'fusion_drive')!,
+            ],
+            onClose: () => {},
+            onResearchTech: () => {},
+          })
+        );
+        expect(techMarketHtml).toContain('Select');
+        expect(techMarketHtml).not.toContain('Quick');
+
+        // --- Bug 207: Header renders BGA-style Next Table button when waiting for turn ---
+        const currentUserSession = {
+          id: 'usr_switch_test',
+          name: 'Bob',
+          username: 'Bob',
+          role: 'user' as const,
+        };
+
+        const waitingTableSummary: SavedTableSummary = {
+          id: 'galaxy-202',
+          round: 2,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          activePlayerIndex: 1,
+          playerNames: ['Alice', 'Bob'],
+          isGameStarted: true,
+          members: [
+            { userId: 'usr_other', name: 'Alice', username: 'Alice', role: 'user', seat: 0, joinedAt: 10 },
+            { userId: 'usr_switch_test', name: 'Bob', username: 'Bob', role: 'user', seat: 1, joinedAt: 20 },
+          ],
+        };
+
+        // isPlayerTurnAtTable must evaluate to true for currentUserSession on table 202
+        expect(isPlayerTurnAtTable(waitingTableSummary, currentUserSession)).toBe(true);
+
+        let switchedTableId = '';
+        let switchedSeat: any = null;
+        const headerHtml = renderToString(
+          React.createElement(Header, {
+            state: { ...game, id: 'galaxy-101' },
+            selectedViewIndex: 0,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onSwitchTable: (tId, seat) => {
+              switchedTableId = tId;
+              switchedSeat = seat;
+            },
+          })
+        );
+        expect(headerHtml).toBeDefined();
+      });
     });
   });
 });

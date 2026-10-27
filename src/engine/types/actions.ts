@@ -148,6 +148,7 @@ export interface DiscoveryChoiceAction extends BaseAction {
   chosenTechId?: string; // For Ancient Tech discovery when multiple lowest-cost regular techs available
   colonizeOrbitalResource?: 'money' | 'science'; // For Ancient Orbital discovery when colonizing with ready colony ship
   chosenResource?: 'money' | 'science' | 'material'; // For +3 Money +3 Resource discovery tile
+  claimInfluence?: boolean; // For Explore action: decide whether to place an Influence Disc to control sector after seeing discovery tile (Bug 204)
 }
 
 export interface DiplomacyExchangeAction extends BaseAction {

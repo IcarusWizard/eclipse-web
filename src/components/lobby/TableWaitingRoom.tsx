@@ -406,7 +406,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
   ];
 
   return (
-    <div className="min-h-screen h-full w-full bg-slate-950 text-slate-100 flex flex-col items-center justify-start p-4 sm:p-6 lg:p-10 relative overflow-x-hidden overflow-y-auto selection:bg-cyan-500 selection:text-slate-950">
+    <div className="min-h-screen min-h-dvh h-full w-full pb-[calc(2rem+env(safe-area-inset-bottom,0px))] bg-slate-950 text-slate-100 flex flex-col items-center justify-start p-4 sm:p-6 lg:p-10 relative overflow-x-hidden overflow-y-auto selection:bg-cyan-500 selection:text-slate-950">
       {/* Background Starfield and Nebula Glow */}
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(56,189,248,0.15),transparent_50%)] pointer-events-none" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_80%_60%,rgba(168,85,247,0.10),transparent_40%)] pointer-events-none" />

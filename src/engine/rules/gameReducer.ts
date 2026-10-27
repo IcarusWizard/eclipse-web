@@ -2500,7 +2500,16 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       if (!action.discard && isConnected) {
         // Place on map (Draco can place influence discs in sectors with Ancients)
+        // Bug 204: Defer disc placement if sector has an immediate discovery tile (decide after seeing tile)
+        const hasImmediateDiscovery =
+          !drawnTile.isNebula &&
+          !drawnTile.isBlackHole &&
+          drawnTile.hasDiscovery &&
+          newState.discoveryBag.length > 0 &&
+          drawnTile.ancientsCount === 0;
+
         const canClaimInfluence =
+          !hasImmediateDiscovery &&
           !drawnTile.isNebula &&
           !drawnTile.isBlackHole &&
           (drawnTile.ancientsCount === 0 || isDraco) &&
@@ -2566,6 +2575,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
                 sectorId: drawnTile.id,
                 discovery: disc,
                 playerId: player.id,
+                fromExplore: true,
               };
               addLog(`${player.name} discovered Ancient artifact "${disc.name}" in Sector ${drawnTile.sectorNumber}! Awaiting commander's decision...`);
             } else {
@@ -3443,6 +3453,25 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         sector.discoveryClaimed = true;
         sector.discoveryTile = undefined;
       }
+
+      // Bug 204: Decide whether to control sector after seeing discovery tile during Explore action
+      if (typeof action.claimInfluence === 'boolean' && sector) {
+        if (action.claimInfluence && !sector.discOwner && player.influenceTrack.discsOnTrack > 0) {
+          sector.discOwner = player.id;
+          player.influenceTrack.discsOnTrack -= 1;
+          if (sector.isPulsar) {
+            sector.pulsarSlot = 'move';
+            if (!newState.galacticEvents) newState.galacticEvents = createGalacticEventsState();
+            newState.galacticEvents.pulsars[sector.id] = { currentSlot: 'move', activatedThisRound: false };
+          }
+          addLog(`${player.name} placed an Influence Disc on Sector ${sector.sectorNumber} to take control!`);
+        } else if (!action.claimInfluence && sector.discOwner === player.id) {
+          sector.discOwner = undefined;
+          player.influenceTrack.discsOnTrack += 1;
+          addLog(`${player.name} chose not to control Sector ${sector.sectorNumber}.`);
+        }
+      }
+
       if (action.keepForVictoryPoints) {
         player.keptDiscoveryTiles = player.keptDiscoveryTiles || [];
         player.keptDiscoveryTiles.push(disc);
@@ -3455,7 +3484,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           sector.structures = sector.structures || {};
           sector.structures.orbital = true;
           const choice = action.colonizeOrbitalResource;
+          // Bug 205: A player can NEVER place population in a sector they do not control
+          const isControlled = sector.discOwner === player.id;
           const canColonize =
+            isControlled &&
             choice &&
             player.colonyShips.ready > 0 &&
             (choice === 'money' || choice === 'science') &&
@@ -5810,7 +5842,7 @@ export function transitionToCleanup(state: GameState): void {
   state.techBag = remainingBag;
   const drawnNames = newTechs.map((t) => t.name).join(', ');
   const drawnDetail = drawnNames ? `: ${drawnNames}.` : '.';
-  state.log.push({
+  state.log.unshift({
     id: `log_${Date.now()}_tech_replenish`,
     timestamp: Date.now(),
     round: state.round,

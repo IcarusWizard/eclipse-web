@@ -450,23 +450,13 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               </button>
             ) : canResearch ? (
               maxResearch > 1 ? (
-                <div className="flex items-center gap-1">
-                  <button
-                    onClick={toggleSelect}
-                    disabled={selectedForResearch.length >= maxResearch}
-                    className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600/70 text-cyan-300 disabled:opacity-30 disabled:cursor-not-allowed shadow transition-all font-sans"
-                  >
-                    Select
-                  </button>
-                  <button
-                    onClick={() => onResearchTech([{ techId: tech.id, targetTrack: chosenTrack }], undefined, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined, shrinePlacement)}
-                    disabled={isShrinePartiallySelected}
-                    className="px-2 py-1.5 rounded-lg text-[10px] font-semibold bg-slate-800 hover:bg-slate-750 border border-slate-700 text-slate-300 hover:text-white transition-all font-sans disabled:opacity-40"
-                    title={isShrinePartiallySelected ? "Select target planet for Shrine or deselect Shrine" : "Research only this single technology immediately"}
-                  >
-                    Quick
-                  </button>
-                </div>
+                <button
+                  onClick={toggleSelect}
+                  disabled={selectedForResearch.length >= maxResearch}
+                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600/70 text-cyan-300 disabled:opacity-30 disabled:cursor-not-allowed shadow transition-all font-sans"
+                >
+                  Select
+                </button>
               ) : (
                 <button
                   onClick={() => onResearchTech(tech.id, chosenTrack, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined, shrinePlacement)}

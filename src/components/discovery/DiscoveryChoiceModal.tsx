@@ -1,5 +1,5 @@
 import React from 'react';
-import { Rocket, Wrench, Archive, Trophy, Zap, Cpu, AlertTriangle, Minimize2, Maximize2 } from 'lucide-react';
+import { Rocket, Wrench, Archive, Trophy, Zap, Cpu, AlertTriangle, Minimize2, Maximize2, CircleDot, Check, X } from 'lucide-react';
 import { SectorTile, DiscoveryTile, ShipType } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
 import { Technology } from '../../engine/types/tech';
@@ -11,13 +11,16 @@ interface DiscoveryChoiceModalProps {
   player: PlayerState;
   techSupply?: Technology[];
   sectors?: SectorTile[];
+  sectorId?: string;
+  fromExplore?: boolean;
   onChoice: (
     keepForVictoryPoints: boolean,
     equipShipType?: ShipType,
     equipSlotIndex?: number,
     chosenTechId?: string,
     colonizeOrbitalResource?: 'money' | 'science',
-    chosenResource?: 'money' | 'science' | 'material'
+    chosenResource?: 'money' | 'science' | 'material',
+    claimInfluence?: boolean
   ) => void;
 }
 
@@ -26,9 +29,21 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   player,
   techSupply,
   sectors,
+  sectorId,
+  fromExplore,
   onChoice,
 }) => {
   const part = discovery.shipPartId ? SHIP_PARTS[discovery.shipPartId] : null;
+
+  const sector = sectors?.find((s) => s.id === sectorId);
+  const isSectorAlreadyControlled = sector ? sector.discOwner === player.id : false;
+  // Bug 204: Decide whether to control sector after seeing discovery tile
+  const [claimInfluence, setClaimInfluence] = React.useState<boolean>(() => {
+    if (isSectorAlreadyControlled) return true;
+    if (fromExplore && player.influenceTrack.discsOnTrack > 0) return true;
+    return false;
+  });
+  const effectiveIsControlled = !sector ? true : (isSectorAlreadyControlled || claimInfluence);
 
   const [isMinimized, setIsMinimized] = React.useState<boolean>(false);
   const [selectedShipType, setSelectedShipType] = React.useState<ShipType>('cruiser');
@@ -295,7 +310,14 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   <p className="text-[11px] text-slate-300 mb-2">
                     You may immediately colonize the new Orbital using 1 ready Colony Ship. Orbitals can produce Money or Science.
                   </p>
-                  {hasColonyShipReady ? (
+                  {!effectiveIsControlled ? (
+                    <div className="p-2.5 rounded-lg bg-amber-950/60 border border-amber-500/40 text-[11px] text-amber-300 flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>
+                        <strong>Cannot Colonize:</strong> You do not control this sector. Place an Influence Disc to control this sector to enable colonization.
+                      </span>
+                    </div>
+                  ) : hasColonyShipReady ? (
                     <div className="flex flex-wrap gap-2">
                       <button
                         type="button"
@@ -497,13 +519,63 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           </div>
         )}
 
+        {/* Bug 204: Sector Control Decision (from exploration) */}
+        {fromExplore && sector && !isSectorAlreadyControlled && (
+          <div className="w-full mb-3 p-3 rounded-xl bg-slate-900/80 border border-slate-700 text-left">
+            <div className="flex items-center justify-between mb-1.5">
+              <div className="flex items-center gap-2">
+                <CircleDot className="w-4 h-4 text-cyan-400" />
+                <span className="text-xs font-bold text-slate-200">
+                  Sector Control Decision (Sector {sector.sectorNumber || sector.id})
+                </span>
+              </div>
+              <span className="text-[11px] font-mono text-slate-400">
+                Discs on Track: <strong className={player.influenceTrack.discsOnTrack > 0 ? 'text-cyan-300' : 'text-amber-400'}>{player.influenceTrack.discsOnTrack}</strong>
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mb-2.5">
+              Eclipse rule: After viewing the discovery tile, decide whether to place an Influence Disc to control this sector. You must control the sector to colonize its planets or an Ancient Orbital.
+            </p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                disabled={player.influenceTrack.discsOnTrack <= 0}
+                onClick={() => setClaimInfluence(true)}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
+                  claimInfluence
+                    ? 'bg-cyan-600/30 border-cyan-400 text-cyan-200 font-bold shadow ring-1 ring-cyan-500/50'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-600'
+                } disabled:opacity-40 disabled:cursor-not-allowed`}
+              >
+                <Check className="w-3.5 h-3.5 text-cyan-400" />
+                Control Sector (-1 Influence Disc)
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setClaimInfluence(false);
+                  setColonizeOrbitalResource(null);
+                }}
+                className={`px-3 py-1.5 rounded-lg border text-xs font-semibold flex items-center gap-1.5 transition ${
+                  !claimInfluence
+                    ? 'bg-amber-600/30 border-amber-400 text-amber-200 font-bold shadow ring-1 ring-amber-500/50'
+                    : 'bg-slate-800 border-slate-700 text-slate-300 hover:border-slate-600'
+                }`}
+              >
+                <X className="w-3.5 h-3.5 text-slate-400" />
+                Leave Uncontrolled (No Disc)
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Action Buttons */}
         {part ? (
           <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2">
             <button
               type="button"
               disabled={isPowerDeficit}
-              onClick={() => onChoice(false, selectedShipType, isMuonSource ? -1 : selectedSlotIndex)}
+              onClick={() => onChoice(false, selectedShipType, isMuonSource ? -1 : selectedSlotIndex, undefined, undefined, undefined, claimInfluence)}
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 disabled:opacity-30 disabled:cursor-not-allowed transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
@@ -520,7 +592,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
             <button
               type="button"
-              onClick={() => onChoice(false)}
+              onClick={() => onChoice(false, undefined, undefined, undefined, undefined, undefined, claimInfluence)}
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-800 transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-slate-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
@@ -533,7 +605,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
             <button
               type="button"
-              onClick={() => onChoice(true)}
+              onClick={() => onChoice(true, undefined, undefined, undefined, undefined, undefined, claimInfluence)}
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
@@ -557,7 +629,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
             <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => onChoice(true)}
+                onClick={() => onChoice(true, undefined, undefined, undefined, undefined, undefined, claimInfluence)}
                 className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
               >
                 <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
@@ -577,8 +649,9 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                     undefined,
                     undefined,
                     selectedTechId || tiedTechs[0]?.id,
-                    colonizeOrbitalResource || undefined,
-                    chosenBonusResource
+                    effectiveIsControlled ? (colonizeOrbitalResource || undefined) : undefined,
+                    chosenBonusResource,
+                    claimInfluence
                   )
                 }
                 className={`flex flex-col items-center justify-center p-3.5 rounded-xl border transition group cursor-pointer ${

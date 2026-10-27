@@ -203,7 +203,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   const maxInfluence = getMaxInfluenceActivations(activePlayer);
 
   return (
-    <div className="fixed bottom-2 sm:bottom-3 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-1.5 bg-slate-950/95 backdrop-blur-md p-2 rounded-2xl border border-slate-800 shadow-2xl w-[calc(100vw-12px)] max-w-fit">
+    <div className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-3 left-1/2 -translate-x-1/2 z-30 flex flex-col items-center gap-1.5 bg-slate-950/95 backdrop-blur-md p-2 rounded-2xl border border-slate-800 shadow-2xl w-[calc(100vw-12px)] max-w-fit">
       {/* Status Header */}
       <div className="w-full flex items-center justify-between gap-3 px-2 pb-1 border-b border-slate-800/80 text-xs">
         <div className="flex items-center gap-2 min-w-0">

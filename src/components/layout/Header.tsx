@@ -1,7 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { GameState } from '../../engine/types/state';
 import { computeCurrentScores, getPlayerShortName, getPlayerDisplayName } from '../../engine/rules/gameReducer';
-import { getTableNumber, isSeatTaken, canUserUseHotseat } from '../../engine/rules/persistence';
+import {
+  getTableNumber,
+  isSeatTaken,
+  canUserUseHotseat,
+  listSavedTables,
+  fetchSavedTablesFromServer,
+  mergeTableSummaries,
+  isPlayerTurnAtTable,
+  SavedTableSummary,
+} from '../../engine/rules/persistence';
 import {
   getCurrentUser,
   subscribeToUserSession,
@@ -28,6 +37,7 @@ import {
   Shield,
   Sparkles,
   History,
+  Zap,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -45,6 +55,7 @@ interface HeaderProps {
   onOpenTurnOrder?: () => void;
   onOpenMinorSpecies?: () => void;
   onOpenReplay?: () => void;
+  onSwitchTable?: (tableId: string, seat: number | 'all' | 'spectator') => void;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
   initialDrawerOpen?: boolean;
@@ -65,6 +76,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTurnOrder,
   onOpenMinorSpecies,
   onOpenReplay,
+  onSwitchTable,
   currentSeat = 'all',
   onChangeSeat,
   initialDrawerOpen = false,
@@ -73,13 +85,49 @@ export const Header: React.FC<HeaderProps> = ({
   const [copiedSeat, setCopiedSeat] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
+  const [waitingTables, setWaitingTables] = useState<SavedTableSummary[]>([]);
 
   useEffect(() => {
     return subscribeToUserSession((u) => setCurrentUser(u));
   }, []);
 
-  const { scores } = computeCurrentScores(state);
   const tableNum = getTableNumber(state);
+
+  // Bug 207: Check other tables where it is currently the user's turn (BGA-style)
+  useEffect(() => {
+    let isMounted = true;
+    const checkOtherTables = async () => {
+      if (!currentUser) {
+        if (isMounted) setWaitingTables([]);
+        return;
+      }
+      try {
+        const localTables = listSavedTables();
+        const remoteTables = await fetchSavedTablesFromServer().catch(() => []);
+        const allSummaries = mergeTableSummaries(localTables, remoteTables);
+
+        const otherTurnTables = allSummaries.filter((t) => {
+          if (t.id === state.id || getTableNumber(t) === tableNum) return false;
+          return isPlayerTurnAtTable(t, currentUser);
+        });
+
+        if (isMounted) {
+          setWaitingTables(otherTurnTables);
+        }
+      } catch (err) {
+        console.error('Failed to check other tables for turn:', err);
+      }
+    };
+
+    checkOtherTables();
+    const interval = setInterval(checkOtherTables, 6000);
+    return () => {
+      isMounted = false;
+      clearInterval(interval);
+    };
+  }, [currentUser, state.id, tableNum]);
+
+  const { scores } = computeCurrentScores(state);
 
   const handleCopySeatLink = () => {
     if (typeof window === 'undefined') return;
@@ -172,6 +220,29 @@ export const Header: React.FC<HeaderProps> = ({
                   {state.minorSpeciesSupply.length}
                 </span>
               )}
+            </button>
+          )}
+
+          {/* BGA-style Switch to Next Table Button (Bug 207) */}
+          {onSwitchTable && waitingTables.length > 0 && (
+            <button
+              onClick={() => {
+                const nextT = waitingTables[0];
+                const mem = nextT.members?.find((m) => m.userId === currentUser?.id);
+                const seatToJoin = mem ? mem.seat : 'all';
+                onSwitchTable(nextT.id, seatToJoin);
+              }}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black shadow-lg shadow-amber-950/40 border border-amber-300 animate-pulse transition-all cursor-pointer shrink-0"
+              title={`Switch to Table #${getTableNumber(waitingTables[0])} where it is your turn!${
+                waitingTables.length > 1 ? ` (${waitingTables.length} tables waiting)` : ''
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5 fill-current" />
+              <span>
+                Table #{getTableNumber(waitingTables[0])} (Your Turn)
+                {waitingTables.length > 1 ? ` +${waitingTables.length - 1}` : ''}
+              </span>
+              <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
             </button>
           )}
         </div>

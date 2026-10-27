@@ -162,7 +162,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     activeTile?.isBlackHole || activeTile?.sectorNumber === 396 || activeTile?.sectorNumber === 399
   );
 
+  const hasImmediateDiscovery =
+    !isBlackHoleTile &&
+    Boolean(activeTile?.hasDiscovery) &&
+    activeTile?.ancientsCount === 0;
+
   const canClaimDisc =
+    !hasImmediateDiscovery &&
     !isBlackHoleTile &&
     (activeTile?.ancientsCount === 0 || isDraco) &&
     player.influenceTrack.discsOnTrack > 0 &&
@@ -625,6 +631,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
           {isBlackHoleTile ? (
             <div className="text-[11px] text-indigo-400 font-medium shrink-0 flex items-center gap-1 bg-indigo-950/40 px-2 py-0.5 rounded-lg border border-indigo-900/50">
               <span>🕳️</span> Spacetime Anomaly (No Influence Disc)
+            </div>
+          ) : hasImmediateDiscovery ? (
+            <div className="text-[11px] text-cyan-300 font-medium shrink-0 flex items-center gap-1 bg-cyan-950/50 px-2.5 py-1 rounded-lg border border-cyan-700/60 shadow">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
+              <span>Discovery tile: Decide sector control after viewing</span>
             </div>
           ) : activeTile.ancientsCount === 0 || isDraco ? (
             <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer shrink-0 select-none bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors">

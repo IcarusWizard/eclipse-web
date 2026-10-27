@@ -95,6 +95,7 @@ export interface PendingDiscovery {
   sectorId: string;
   discovery: DiscoveryTile;
   playerId: string;
+  fromExplore?: boolean;
 }
 
 export interface BombardmentRoll {
