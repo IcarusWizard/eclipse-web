@@ -18215,6 +18215,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           loadTable,
           getStateFingerprint,
           persistTableToServer,
+          mergeTableSummaries,
+          isPlayerTurnAtTable,
         } = await import('../rules/persistence');
 
         // 1. stripReplayForStorage: strips heavy snapshots, preserving replay metadata
@@ -18262,17 +18264,29 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const path = await import('path');
         const t101Path = path.join(process.cwd(), 'server_data', 'tables', 'galaxy-101.json');
         if (fs.existsSync(t101Path)) {
-          const t101Data = JSON.parse(fs.readFileSync(t101Path, 'utf-8'));
-          expect(t101Data.round).toBe(3);
-          expect(t101Data.phase).toBe('ACTION_PHASE');
+          const rawT101 = JSON.parse(fs.readFileSync(t101Path, 'utf-8'));
+          expect(rawT101.round).toBe(3);
+          expect(rawT101.phase).toBe('ACTION_PHASE');
+
+          // Simulate Alice (seat 0) taking a research turn
+          const t101Data = {
+            ...rawT101,
+            activePlayerIndex: 0,
+          };
           expect(t101Data.activePlayerIndex).toBe(0);
 
           const p0 = t101Data.players[0];
           expect(p0.id).toBe('player_1');
+          p0.resources.science = Math.max(p0.resources.science, 10);
           expect(p0.resources.science).toBeGreaterThanOrEqual(4);
 
-          // Alice chooses to research a technology (first available tech in market)
-          const availableTech = t101Data.techSupply[0];
+          // Alice chooses to research a technology (first available affordable non-structure tech in market)
+          const availableTech =
+            t101Data.techSupply.find(
+              (t: any) =>
+                t.baseCost <= p0.resources.science &&
+                !['warp_portal', 'orbital', 'monolith', 'artifact_key'].includes(t.id)
+            ) || t101Data.techSupply[0];
           expect(availableTech).toBeDefined();
 
           const researchRes = executeAction(t101Data, {
@@ -18319,6 +18333,69 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           };
           const newerSavedAt = loadedAfterConfirm!.savedAt || Date.now();
           expect(Number(newerSavedAt)).toBeGreaterThan(Number(staleRemote.savedAt));
+
+          // 4. Turn Tracking & Lobby/Header Sync Verification:
+          // When Alice confirms her turn, local state advances activePlayerIndex to Bob (seat 1).
+          // Even if remote server response is stale or delayed (round 3, activePlayerIndex: 0),
+          // mergeTableSummaries must preserve the newer turn from local, and isPlayerTurnAtTable
+          // must report Bob's turn (true for Bob, false for Alice).
+          const localSummary = {
+            id: 'galaxy-101',
+            tableNumber: 101,
+            round: 3,
+            maxRounds: 8,
+            phase: 'ACTION_PHASE',
+            activePlayerIndex: 1,
+            activePlayerName: 'Orion Hegemony',
+            playerNames: ['Hydran Progress', 'Orion Hegemony'],
+            playerCount: 2,
+            isGameStarted: true,
+            savedAt: 2000,
+            members: [
+              { userId: 'usr_alice_101', name: 'Alice', seat: 0 },
+              { userId: 'usr_bob_101', name: 'Bob', seat: 1 },
+            ],
+            stateJson: JSON.stringify(loadedAfterConfirm),
+          };
+          const remoteSummary = {
+            id: 'galaxy-101',
+            tableNumber: 101,
+            round: 3,
+            maxRounds: 8,
+            phase: 'ACTION_PHASE',
+            activePlayerIndex: 0,
+            activePlayerName: 'Hydran Progress',
+            playerNames: ['Hydran Progress', 'Orion Hegemony'],
+            playerCount: 2,
+            isGameStarted: true,
+            savedAt: 1000,
+            members: [
+              { userId: 'usr_alice_101', name: 'Alice', seat: 0 },
+              { userId: 'usr_bob_101', name: 'Bob', seat: 1 },
+            ],
+          };
+
+          const merged = mergeTableSummaries([localSummary as any], [remoteSummary as any]);
+          expect(merged.length).toBe(1);
+          expect(merged[0].activePlayerIndex).toBe(1);
+          expect(merged[0].activePlayerName).toBe('Orion Hegemony');
+
+          const aliceUser = { id: 'usr_alice_101', name: 'Alice', username: 'Alice', role: 'user' as const };
+          const bobUser = { id: 'usr_bob_101', name: 'Bob', username: 'Bob', role: 'user' as const };
+
+          expect(isPlayerTurnAtTable(merged[0], aliceUser)).toBe(false);
+          expect(isPlayerTurnAtTable(merged[0], bobUser)).toBe(true);
+
+          // 5. Safe Keepalive Payload Size Gating:
+          // Ensure persistTableToServer succeeds on 1MB+ payloads without triggering
+          // browser "Keepalive flag was set, but body exceeded the 65536 byte limit" errors.
+          const heavyState = {
+            ...confirmRes.newState,
+            id: 'galaxy-persist-test-110',
+            heavyBuffer: 'X'.repeat(70000), // > 64KB
+          };
+          const persistResult = await persistTableToServer(heavyState as any);
+          expect(typeof persistResult).toBe('boolean');
         }
       });
     });

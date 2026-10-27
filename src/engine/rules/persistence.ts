@@ -175,11 +175,13 @@ export function resolveApiUrl(path: string): string {
 export async function persistTableToServer(state: GameState): Promise<boolean> {
   if (typeof fetch === 'undefined' || !state || !state.id) return false;
   try {
+    const body = JSON.stringify(state);
+    const useKeepalive = body.length <= 64000;
     const res = await fetch(resolveApiUrl(`/api/tables/${state.id}`), {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(state),
-      keepalive: true,
+      body,
+      ...(useKeepalive ? { keepalive: true } : {}),
     });
     return res.ok;
   } catch (err) {
@@ -238,8 +240,6 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
   const now = Date.now();
   state.savedAt = now;
 
-  const fullServerPayloadJson = JSON.stringify(state);
-
   // 1. Safe localStorage persistence (prunes replay snapshots to prevent 5MB QuotaExceededError)
   try {
     const storage = getStorage();
@@ -290,6 +290,8 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
         }
       } catch {}
     }
+
+    const fullServerPayloadJson = JSON.stringify(state);
 
     const storageState = stripReplayForStorage(state);
     const storageStateJson = JSON.stringify(storageState);
@@ -342,14 +344,16 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     }
   }
 
-  // 3. Persist to server API with keepalive: true (independent of localStorage)
+  // 3. Persist to server API with keepalive: true if within 64KB limit (independent of localStorage)
   if (!skipBroadcast && typeof fetch !== 'undefined') {
     try {
+      const serverPayload = JSON.stringify(state);
+      const useKeepalive = serverPayload.length <= 64000;
       fetch(resolveApiUrl(`/api/tables/${state.id}`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: fullServerPayloadJson,
-        keepalive: true,
+        body: serverPayload,
+        ...(useKeepalive ? { keepalive: true } : {}),
       }).catch((err) => {
         console.warn('Failed to persist table to server:', err);
       });
@@ -649,12 +653,18 @@ export function mergeTableSummaries(
     const winner = remoteSavedAt >= localSavedAt ? remote : local;
     const base = remoteSavedAt >= localSavedAt ? local : remote;
 
-    const round = Math.max(Number(remote.round) || 1, Number(local.round) || 1);
+    const remoteRound = Number(remote.round) || 1;
+    const localRound = Number(local.round) || 1;
+    const roundAhead =
+      remoteRound > localRound
+        ? remote
+        : localRound > remoteRound
+        ? local
+        : winner;
+
+    const round = Math.max(remoteRound, localRound);
     const maxRounds = Math.max(Number(remote.maxRounds) || 8, Number(local.maxRounds) || 8);
-    const phase =
-      (remote.round || 1) >= (local.round || 1)
-        ? (remote.phase || local.phase)
-        : (local.phase || remote.phase);
+    const phase = roundAhead.phase || winner.phase || base.phase;
     const playerCount = Math.max(
       Number(remote.playerCount) || 0,
       Number(local.playerCount) || 0,
@@ -662,23 +672,29 @@ export function mergeTableSummaries(
       (local as any).players?.length || 0
     );
     const playerNames =
-      (remote.round || 1) >= (local.round || 1) && remote.playerNames && remote.playerNames.length > 0
-        ? remote.playerNames
-        : local.playerNames && local.playerNames.length > 0
-        ? local.playerNames
-        : remote.playerNames || local.playerNames || [];
+      roundAhead.playerNames && roundAhead.playerNames.length > 0
+        ? roundAhead.playerNames
+        : winner.playerNames && winner.playerNames.length > 0
+        ? winner.playerNames
+        : base.playerNames && base.playerNames.length > 0
+        ? base.playerNames
+        : [];
     const activePlayerName =
-      (remote.round || 1) >= (local.round || 1) && remote.activePlayerName && remote.activePlayerName !== 'Unknown'
-        ? remote.activePlayerName
-        : local.activePlayerName && local.activePlayerName !== 'Unknown'
-        ? local.activePlayerName
-        : remote.activePlayerName || local.activePlayerName || 'Unknown';
+      roundAhead.activePlayerName && roundAhead.activePlayerName !== 'Unknown'
+        ? roundAhead.activePlayerName
+        : winner.activePlayerName && winner.activePlayerName !== 'Unknown'
+        ? winner.activePlayerName
+        : base.activePlayerName && base.activePlayerName !== 'Unknown'
+        ? base.activePlayerName
+        : 'Unknown';
     const activePlayerIndex =
-      (remote.round || 1) >= (local.round || 1) && typeof remote.activePlayerIndex === 'number'
-        ? remote.activePlayerIndex
-        : typeof local.activePlayerIndex === 'number'
-        ? local.activePlayerIndex
-        : remote.activePlayerIndex ?? local.activePlayerIndex ?? 0;
+      typeof roundAhead.activePlayerIndex === 'number'
+        ? roundAhead.activePlayerIndex
+        : typeof winner.activePlayerIndex === 'number'
+        ? winner.activePlayerIndex
+        : typeof base.activePlayerIndex === 'number'
+        ? base.activePlayerIndex
+        : 0;
 
     const hasReplay = Boolean(remote.hasReplay || local.hasReplay);
     const replayStepsCount = Math.max(
@@ -700,7 +716,7 @@ export function mergeTableSummaries(
       members,
       hasReplay,
       replayStepsCount,
-      stateJson: local.stateJson || remote.stateJson,
+      stateJson: winner.stateJson || base.stateJson || local.stateJson || remote.stateJson,
     });
   }
 
@@ -718,7 +734,7 @@ export function mergeTableSummaries(
         storedMap[item.id] = {
           ...(existing || {}),
           ...item,
-          stateJson: existing?.stateJson || item.stateJson,
+          stateJson: item.stateJson || existing?.stateJson,
         };
         updated = true;
       }
@@ -857,13 +873,8 @@ export function subscribeToGameSync(
 
         // Anti-Regression Protection: Never overwrite newer local confirmed state with older server state!
         if (localTime > remoteTime) {
-          if (currentLocal && typeof fetch !== 'undefined') {
-            fetch(resolveApiUrl(`/api/tables/${currentLocal.id}`), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(currentLocal),
-              keepalive: true,
-            }).catch(() => {});
+          if (currentLocal) {
+            persistTableToServer(currentLocal).catch(() => {});
           }
           return;
         }
@@ -951,13 +962,8 @@ export function subscribeToGameSync(
 
         // Anti-Regression Protection
         if (localTime > remoteTime) {
-          if (currentLocal && typeof fetch !== 'undefined') {
-            fetch(resolveApiUrl(`/api/tables/${currentLocal.id}`), {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify(currentLocal),
-              keepalive: true,
-            }).catch(() => {});
+          if (currentLocal) {
+            persistTableToServer(currentLocal).catch(() => {});
           }
           return;
         }
