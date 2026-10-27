@@ -462,35 +462,90 @@ export function mergeTableSummaries(
     const remoteSavedAt = Number(remote.savedAt) || 0;
 
     const isGameStarted =
-      typeof remote.isGameStarted === 'boolean'
-        ? remote.isGameStarted
-        : typeof local.isGameStarted === 'boolean'
-        ? local.isGameStarted
+      remote.isGameStarted === true ||
+      local.isGameStarted === true ||
+      (remote.round || 1) > 1 ||
+      (local.round || 1) > 1
+        ? true
+        : remote.isGameStarted === false || local.isGameStarted === false
+        ? false
         : undefined;
 
-    const members =
-      remoteSavedAt >= localSavedAt && remote.members && remote.members.length > 0
-        ? remote.members
-        : local.members && local.members.length > 0
-        ? local.members
-        : remote.members || [];
-
-    if (remoteSavedAt >= localSavedAt) {
-      map.set(remote.id, {
-        ...local,
-        ...remote,
-        isGameStarted,
-        members,
-        stateJson: local.stateJson || remote.stateJson,
-      });
-    } else {
-      map.set(remote.id, {
-        ...remote,
-        ...local,
-        isGameStarted,
-        members,
-      });
+    // Merge members by user ID and seat so players from both server and local are retained
+    const memberMap = new Map<string, TableMember>();
+    for (const m of remote.members || []) {
+      if (m) {
+        const key = m.userId ? `user:${m.userId}` : `seat:${m.seat}`;
+        memberMap.set(key, m);
+      }
     }
+    for (const m of local.members || []) {
+      if (m) {
+        const key = m.userId ? `user:${m.userId}` : `seat:${m.seat}`;
+        const existing = memberMap.get(key);
+        if (!existing || (Number(m.joinedAt) || 0) >= (Number(existing.joinedAt) || 0)) {
+          memberMap.set(key, { ...(existing || {}), ...m });
+        }
+      }
+    }
+    const members = Array.from(memberMap.values());
+
+    const winner = remoteSavedAt >= localSavedAt ? remote : local;
+    const base = remoteSavedAt >= localSavedAt ? local : remote;
+
+    const round = Math.max(Number(remote.round) || 1, Number(local.round) || 1);
+    const maxRounds = Math.max(Number(remote.maxRounds) || 8, Number(local.maxRounds) || 8);
+    const phase =
+      (remote.round || 1) >= (local.round || 1)
+        ? (remote.phase || local.phase)
+        : (local.phase || remote.phase);
+    const playerCount = Math.max(
+      Number(remote.playerCount) || 0,
+      Number(local.playerCount) || 0,
+      (remote as any).players?.length || 0,
+      (local as any).players?.length || 0
+    );
+    const playerNames =
+      (remote.round || 1) >= (local.round || 1) && remote.playerNames && remote.playerNames.length > 0
+        ? remote.playerNames
+        : local.playerNames && local.playerNames.length > 0
+        ? local.playerNames
+        : remote.playerNames || local.playerNames || [];
+    const activePlayerName =
+      (remote.round || 1) >= (local.round || 1) && remote.activePlayerName && remote.activePlayerName !== 'Unknown'
+        ? remote.activePlayerName
+        : local.activePlayerName && local.activePlayerName !== 'Unknown'
+        ? local.activePlayerName
+        : remote.activePlayerName || local.activePlayerName || 'Unknown';
+    const activePlayerIndex =
+      (remote.round || 1) >= (local.round || 1) && typeof remote.activePlayerIndex === 'number'
+        ? remote.activePlayerIndex
+        : typeof local.activePlayerIndex === 'number'
+        ? local.activePlayerIndex
+        : remote.activePlayerIndex ?? local.activePlayerIndex ?? 0;
+
+    const hasReplay = Boolean(remote.hasReplay || local.hasReplay);
+    const replayStepsCount = Math.max(
+      Number(remote.replayStepsCount) || 0,
+      Number(local.replayStepsCount) || 0
+    );
+
+    map.set(remote.id, {
+      ...base,
+      ...winner,
+      round,
+      maxRounds,
+      phase,
+      playerCount,
+      playerNames,
+      activePlayerName,
+      activePlayerIndex,
+      isGameStarted,
+      members,
+      hasReplay,
+      replayStepsCount,
+      stateJson: local.stateJson || remote.stateJson,
+    });
   }
 
   const merged = Array.from(map.values()).sort((a, b) => (Number(b.savedAt) || 0) - (Number(a.savedAt) || 0));
@@ -842,16 +897,19 @@ export async function registerTableMember(
       table.members = curMembers;
       storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
     } else {
+      const loaded = loadTable(tableId);
       tables[tableId] = {
         id: tableId,
         tableNumber: parseInt(tableId.replace(/\D/g, ''), 10) || 101,
-        savedAt: Date.now(),
-        round: 1,
-        maxRounds: 8,
-        phase: 'ACTION_PHASE',
-        playerCount: 2,
-        playerNames: [],
-        activePlayerName: 'Unknown',
+        savedAt: loaded?.savedAt || Date.now(),
+        round: loaded?.round || 1,
+        maxRounds: loaded?.maxRounds || 8,
+        phase: loaded?.phase || 'ACTION_PHASE',
+        playerCount: loaded?.players?.length || 2,
+        playerNames: loaded?.players?.map((p) => `${p.name} (${p.faction?.name || ''})`) || [],
+        activePlayerName: loaded?.players?.[loaded?.activePlayerIndex]?.name || 'Unknown',
+        activePlayerIndex: loaded?.activePlayerIndex ?? 0,
+        isGameStarted: loaded ? (loaded as any).isGameStarted : undefined,
         members: [{ ...member, joinedAt: Date.now() }],
       };
       curMembers = tables[tableId].members!;
@@ -1022,6 +1080,12 @@ export function getTableStatusCategory(table: SavedTableSummary): TableStatusCat
   }
   if ((table as any).isGameStarted === false) {
     return 'need_players';
+  }
+  if ((table as any).isGameStarted === true) {
+    return 'running';
+  }
+  if (table.round > 1 || ((table as any).replayStepsCount && (table as any).replayStepsCount > 1)) {
+    return 'running';
   }
   const occupied = getTableOccupiedSeats(table);
   const pCount = table.playerCount || (table as any).players?.length || 2;

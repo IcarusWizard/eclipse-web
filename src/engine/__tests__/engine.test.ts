@@ -17922,6 +17922,77 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(getPlayerDisplayName('Wardens of Magellan', { short: true })).toBe('Magellan');
         expect(getPlayerDisplayName(null)).toBe('');
       });
+
+      test('108. verifies Active Table Status Categorization: ongoing matches (round > 1 or isGameStarted) are never categorized as waiting rooms, and merge preserves active status', async () => {
+        const { getTableStatusCategory, mergeTableSummaries, isPlayerTurnAtTable } = await import('../rules/persistence');
+
+        // 1. Table 101 simulation: Round 3, 2 players, Alice & Bob
+        const activeTable101: SavedTableSummary = {
+          id: 'galaxy-101',
+          tableNumber: 101,
+          savedAt: 1793099700846,
+          round: 3,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 2,
+          playerNames: ['Hydran Progress (Hydran Progress)', 'Orion Hegemony (Orion Hegemony)'],
+          activePlayerName: 'Hydran Progress',
+          activePlayerIndex: 0,
+          isGameStarted: true,
+          members: [
+            { userId: 'usr_alice_101', name: 'Alice', username: 'Alice', role: 'user', seat: 0, joinedAt: 100 },
+            { userId: 'usr_bob_101', username: 'Bob', role: 'user', seat: 1, joinedAt: 200 },
+          ],
+          hasReplay: true,
+          replayStepsCount: 32,
+        };
+
+        // Ongoing table MUST be 'running', never 'need_players'
+        expect(getTableStatusCategory(activeTable101)).toBe('running');
+        expect(isPlayerTurnAtTable(activeTable101, { id: 'usr_alice_101', name: 'Alice', username: 'Alice', role: 'user' })).toBe(true);
+
+        // 2. Even if a local browser had a stale waiting room stub with only 1 member and isGameStarted: false or undefined
+        const staleLocalStub: SavedTableSummary = {
+          id: 'galaxy-101',
+          tableNumber: 101,
+          savedAt: 1793099900000, // Newer local timestamp from opening lobby
+          round: 1,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 2,
+          playerNames: [],
+          activePlayerName: 'Unknown',
+          activePlayerIndex: 0,
+          isGameStarted: false,
+          members: [
+            { userId: 'usr_alice_101', name: 'Alice', username: 'Alice', role: 'user', seat: 0, joinedAt: 100 },
+          ],
+        };
+
+        // Merging local stub with authoritative remote active table
+        const merged = mergeTableSummaries([staleLocalStub], [activeTable101]);
+        expect(merged.length).toBe(1);
+        const resolvedTable = merged[0];
+
+        // Authoritative active status must be preserved
+        expect(resolvedTable.isGameStarted).toBe(true);
+        expect(resolvedTable.round).toBe(3);
+        expect(resolvedTable.members?.length).toBe(2);
+        expect(getTableStatusCategory(resolvedTable)).toBe('running');
+        expect(isPlayerTurnAtTable(resolvedTable, { id: 'usr_alice_101', name: 'Alice', username: 'Alice', role: 'user' })).toBe(true);
+
+        // 3. Round > 1 table without explicit isGameStarted must still be 'running'
+        const round2Table: SavedTableSummary = {
+          ...activeTable101,
+          id: 'galaxy-102',
+          round: 2,
+          isGameStarted: undefined,
+          members: [
+            { userId: 'usr_alice_101', name: 'Alice', username: 'Alice', role: 'user', seat: 0, joinedAt: 100 },
+          ],
+        };
+        expect(getTableStatusCategory(round2Table)).toBe('running');
+      });
     });
   });
 });

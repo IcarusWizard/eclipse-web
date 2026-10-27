@@ -586,8 +586,18 @@ export const App: React.FC = () => {
       return;
     }
     let loaded = loadTable(tableId);
-    if (!loaded) {
-      loaded = await fetchTableFromServer(tableId);
+    const remote = await fetchTableFromServer(tableId);
+    if (remote) {
+      const localSavedAt = Number(loaded?.savedAt) || 0;
+      const remoteSavedAt = Number(remote.savedAt) || 0;
+      if (
+        !loaded ||
+        remoteSavedAt >= localSavedAt ||
+        (remote.round || 1) > (loaded.round || 1) ||
+        ((remote as any).isGameStarted && !(loaded as any).isGameStarted)
+      ) {
+        loaded = remote;
+      }
     }
     if (!loaded) {
       alert(`Table "${tableId}" does not exist.`);
