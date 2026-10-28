@@ -256,7 +256,8 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     return (
       <div
         key={tech.id}
-        className={`relative rounded-xl border flex flex-col justify-between p-3 transition-all ${
+        title={`${tech.name}: ${tech.description}`}
+        className={`group relative rounded-xl border flex flex-col justify-between p-3 transition-all ${
           isSelected
             ? 'ring-2 ring-cyan-400 bg-cyan-950/40 border-cyan-500 shadow-lg shadow-cyan-950/60'
             : categoryTheme.border + ' ' + categoryTheme.bg
@@ -266,6 +267,26 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             : 'opacity-60 bg-slate-950/40 border-slate-900'
         } ${isOwned ? 'ring-1 ring-emerald-500/40' : ''}`}
       >
+        {/* Detailed Description Hover Tooltip (Bug 214) */}
+        <div className="hidden group-hover:block absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+8px)] z-50 w-72 p-3 bg-slate-950/98 border border-amber-500/80 rounded-xl shadow-2xl text-xs text-slate-100 pointer-events-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+          <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 mb-1.5">
+            <span className="font-bold text-amber-300 text-sm font-display">{tech.name}</span>
+            <span className="text-[10px] text-cyan-300 font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700">
+              {tech.category}
+            </span>
+          </div>
+          <p className="text-slate-200 text-xs leading-relaxed mb-2 font-normal">
+            {tech.description}
+          </p>
+          <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+            <span>Base Cost: {tech.baseCost}🔬</span>
+            <span>Min Cost: {tech.minCost}🔬</span>
+            {tech.victoryPoints ? (
+              <span className="text-amber-400 font-bold">+{tech.victoryPoints} VP</span>
+            ) : null}
+          </div>
+        </div>
+
         {/* Selected badge */}
         {isSelected && (
           <div className="absolute -top-2.5 -right-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full shadow-md z-10 flex items-center gap-1">
@@ -308,7 +329,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           </div>
 
           {/* Description / Effect */}
-          <p className="text-[11px] text-slate-300 leading-snug mb-2 line-clamp-3">
+          <p className="text-[11px] text-slate-300 leading-snug mb-2 line-clamp-3 group-hover:line-clamp-none transition-all cursor-help" title={tech.description}>
             {tech.description}
           </p>
 

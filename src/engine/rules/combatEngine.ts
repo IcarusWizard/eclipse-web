@@ -372,44 +372,40 @@ export function autoAssignSalvoDamage(
       continue;
     }
 
-    // Sort target candidates
-    const candidates = [...aliveTargets].sort((a, b) => {
+    const canHit = (cand: CombatUnit) => {
+      if (r.dieColor === 'purple') return r.damage > 0;
+      if (r.roll === 6) return true;
+      if (r.roll === 1) return false;
+      return r.roll + activeGroup.computerBonus - cand.shieldBonus >= 6;
+    };
+
+    const validHitTargets = aliveTargets.filter(canHit);
+    const targetPool = validHitTargets.length > 0 ? validHitTargets : aliveTargets;
+
+    // Sort target candidates: destroy a ship if possible, otherwise hit largest ship
+    const candidates = [...targetPool].sort((a, b) => {
       const hpA = a.maxHull - a.currentDamage;
       const hpB = b.maxHull - b.currentDamage;
       const rankA = SHIP_SIZE_RANK[a.type] ?? 0;
       const rankB = SHIP_SIZE_RANK[b.type] ?? 0;
+      const canKillA = hpA <= r.damage;
+      const canKillB = hpB <= r.damage;
 
-      if (isNpc) {
-        // Official NPC rule (p. 19): destroy largest to smallest; if none destroyed, max damage largest to smallest
-        if (rankB !== rankA) return rankB - rankA;
-        return hpA - hpB;
-      } else {
-        // Player default auto-assign: destroy ships first (lowest remaining HP first to kill), else largest rank
-        if (hpA !== hpB) return hpA - hpB;
+      // Priority 1: if damage can destroy a ship, destroy a ship!
+      if (canKillA !== canKillB) {
+        return canKillA ? -1 : 1;
+      }
+
+      // Priority 2: if both can be destroyed (or neither), target largest ship
+      if (rankB !== rankA) {
         return rankB - rankA;
       }
+
+      // Priority 3: tie-break with lowest remaining HP
+      return hpA - hpB;
     });
 
-    let chosenTarget: CombatUnit | null = null;
-    for (const cand of candidates) {
-      if (r.dieColor === 'purple') {
-        if (r.damage > 0) chosenTarget = cand;
-        break;
-      }
-      let isHit = false;
-      if (r.roll === 6) isHit = true;
-      else if (r.roll === 1) isHit = false;
-      else isHit = r.roll + activeGroup.computerBonus - cand.shieldBonus >= 6;
-
-      if (isHit) {
-        chosenTarget = cand;
-        break;
-      }
-    }
-
-    if (!chosenTarget) {
-      chosenTarget = candidates[0]!;
-    }
+    const chosenTarget = candidates[0]!;
 
     r.targetShipId = chosenTarget.id;
     if (r.dieColor === 'purple') {

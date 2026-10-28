@@ -70,6 +70,21 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const currentSlot = slots[activeSlotIndex] || slots[0];
   const currentSector = sectors.find((s) => s.id === currentSlot?.sectorId);
 
+  const otherSlotHasMonolithInSector = slots.some(
+    (s, idx) => idx !== activeSlotIndex && s.sectorId === currentSlot?.sectorId && s.itemType === 'monolith'
+  );
+  const currentSectorHasMonolith = !!(currentSector?.structures?.monolith || currentSector?.hasMonolith || otherSlotHasMonolithInSector);
+
+  const otherSlotHasOrbitalInSector = slots.some(
+    (s, idx) => idx !== activeSlotIndex && s.sectorId === currentSlot?.sectorId && s.itemType === 'orbital'
+  );
+  const currentSectorHasOrbital = !!(
+    currentSector?.structures?.orbital ||
+    currentSector?.hasOrbital ||
+    currentSector?.planets.some((p) => p.isOrbital) ||
+    otherSlotHasOrbitalInSector
+  );
+
   const isMechanema = player.faction.id === 'mechanema';
   const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
   const isExiles = player.faction.id === 'the_exiles';
@@ -178,8 +193,12 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       type: 'orbital',
       name: isExiles ? 'Exiles Orbital' : 'Orbital Structure',
       cost: getItemCost('orbital'),
-      unlocked: hasOrbitalTech,
-      disabledReason: !hasOrbitalTech ? 'Requires Orbital tech' : undefined,
+      unlocked: hasOrbitalTech && !currentSectorHasOrbital,
+      disabledReason: !hasOrbitalTech
+        ? 'Requires Orbital tech'
+        : currentSectorHasOrbital
+        ? 'Sector already has Orbital'
+        : undefined,
       description: isExiles
         ? `Armed orbital station acting as a combat ship when colonized (Cost 5 Mats, max 1 per sector).`
         : `Artificial satellite providing a Money or Science population slot (Cost ${getItemCost('orbital')} Mats, max 1 per sector).`,
@@ -188,8 +207,12 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       type: 'monolith',
       name: 'Monolith',
       cost: getItemCost('monolith'),
-      unlocked: hasMonolithTech,
-      disabledReason: !hasMonolithTech ? 'Requires Monolith tech' : undefined,
+      unlocked: hasMonolithTech && !currentSectorHasMonolith,
+      disabledReason: !hasMonolithTech
+        ? 'Requires Monolith tech'
+        : currentSectorHasMonolith
+        ? 'Sector already has Monolith'
+        : undefined,
       description: `Ancient mega-structure granting 3 Victory Points at game end (Cost ${getItemCost('monolith')} Mats, requires Monolith tech).`,
     },
   ];
@@ -198,11 +221,21 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const canAfford = player.resources.materials >= totalCost;
   const allSlotsValid =
     slots.length > 0 &&
-    slots.every((s) => {
+    slots.every((s, idx) => {
       if (!s.sectorId) return false;
+      const sec = sectors.find((sector) => sector.id === s.sectorId);
+      if (!sec) return false;
       if (s.itemType === 'starbase' && !hasStarbaseTech) return false;
-      if (s.itemType === 'orbital' && !hasOrbitalTech) return false;
-      if (s.itemType === 'monolith' && !hasMonolithTech) return false;
+      if (s.itemType === 'orbital') {
+        if (!hasOrbitalTech) return false;
+        if (sec.structures?.orbital || sec.hasOrbital || sec.planets.some((p) => p.isOrbital)) return false;
+        if (slots.slice(0, idx).some((prev) => prev.sectorId === s.sectorId && prev.itemType === 'orbital')) return false;
+      }
+      if (s.itemType === 'monolith') {
+        if (!hasMonolithTech) return false;
+        if (sec.structures?.monolith || sec.hasMonolith) return false;
+        if (slots.slice(0, idx).some((prev) => prev.sectorId === s.sectorId && prev.itemType === 'monolith')) return false;
+      }
       return true;
     });
 

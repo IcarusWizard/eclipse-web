@@ -1297,9 +1297,9 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 </g>
 
                 {/* Sector VP Badge */}
-                {((sector.victoryPoints || 0) > 0 || sector.structures?.monolith || sector.hasRareWarpPortal || sector.hasDiscoveryWarpPortal) && (() => {
+                {((sector.victoryPoints || 0) > 0 || sector.structures?.monolith || sector.hasMonolith || sector.hasRareWarpPortal || sector.hasDiscoveryWarpPortal) && (() => {
                   const baseVP = sector.victoryPoints || 0;
-                  const hasMonolith = !!sector.structures?.monolith;
+                  const hasMonolith = !!(sector.structures?.monolith || sector.hasMonolith);
                   const warpVP = sector.hasRareWarpPortal ? 1 : (sector.hasDiscoveryWarpPortal ? 2 : 0);
                   const totalVP = baseVP + (hasMonolith ? 3 : 0) + warpVP;
                   const bonusParts: string[] = [];
@@ -1396,11 +1396,11 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   </g>
                 )}
 
-                {/* Warp Portal Structure / Tile Icon (Bug 61) */}
-                {(sector.hasWarpPortal || sector.structures?.warpPortal || sector.sectorNumber === 281 || sector.sectorNumber === 381 || sector.sectorNumber === 382) && (
+                {/* Warp Portal Structure / Tile Icon (Bug 61 & Bug 208) */}
+                {(sector.hasWarpPortal || sector.structures?.warpPortal || sector.hasRareWarpPortal || sector.hasDiscoveryWarpPortal || sector.sectorNumber === 281 || sector.sectorNumber === 381 || sector.sectorNumber === 382) && (
                   <g
                     transform={`translate(${
-                      sector.structures?.monolith
+                      sector.structures?.monolith || sector.hasMonolith
                         ? x - 24
                         : sector.ancientsCount > 0
                         ? x - 24
@@ -1426,11 +1426,13 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   </g>
                 )}
 
-                {/* Monolith Structure Icon */}
-                {sector.structures?.monolith && (
+                {/* Monolith Structure Icon (Bug 208) */}
+                {(sector.structures?.monolith || sector.hasMonolith) && (
                   <g
                     transform={`translate(${
-                      sector.ancientsCount > 0
+                      sector.hasWarpPortal || sector.structures?.warpPortal || sector.hasRareWarpPortal || sector.hasDiscoveryWarpPortal || sector.sectorNumber === 281 || sector.sectorNumber === 381 || sector.sectorNumber === 382
+                        ? x + 22
+                        : sector.ancientsCount > 0
                         ? x + 24
                         : sector.hasArtifact || sector.discoveryTile
                         ? x - 24
@@ -1479,15 +1481,23 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 {/* Artifact Icon */}
                 {sector.hasArtifact && (() => {
                   const hasDiscovery = sector.discoveryTile || (sector.hasDiscovery && !sector.discoveryClaimed);
+                  const hasWarp = sector.hasWarpPortal || sector.structures?.warpPortal || sector.hasRareWarpPortal || sector.hasDiscoveryWarpPortal;
+                  const hasMono = sector.structures?.monolith || sector.hasMonolith;
                   const hasOther = sector.hasGCDS || sector.ancientsCount > 0 || hasDiscovery;
-                  const posX = !hasOther
+                  const posX = (hasWarp && hasMono)
+                    ? x
+                    : !hasOther
                     ? x
                     : sector.hasGCDS
                     ? x - 22
                     : sector.ancientsCount > 0
                     ? x - 26
                     : x - 18;
-                  const posY = !hasOther ? y - 15 : y - 12;
+                  const posY = (hasWarp && hasMono)
+                    ? y - 26
+                    : !hasOther
+                    ? y - 15
+                    : y - 12;
 
                   return (
                     <g

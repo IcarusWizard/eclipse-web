@@ -286,6 +286,11 @@ export interface SetAutoPassAction extends BaseAction {
   enabled: boolean;
 }
 
+export interface SetPassInAdvanceAction extends BaseAction {
+  type: 'SET_PASS_IN_ADVANCE';
+  enabled: boolean;
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -317,4 +322,5 @@ export type GameAction =
   | ReturnBlackHoleShipAction
   | DraftFactionAction
   | BetrayAllianceAction
-  | SetAutoPassAction;
+  | SetAutoPassAction
+  | SetPassInAdvanceAction;

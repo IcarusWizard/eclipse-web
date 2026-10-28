@@ -294,6 +294,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
   const handleLaunchGame = (e: React.FormEvent) => {
     e.preventDefault();
+    if (currentUser.role === 'guest') {
+      alert('To start or host a game, you must first log in or register an account so you can reconnect to your table later.');
+      setShowUserModal(true);
+      return;
+    }
     const activeFactions = selectedFactions.slice(0, playerCount);
     if (!isDraftMode) {
       for (let i = 0; i < activeFactions.length; i++) {
@@ -342,6 +347,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleCreateNewTableImmediately = () => {
+    if (currentUser.role === 'guest') {
+      alert('To start or host a game, you must first log in or register an account so you can reconnect to your table later.');
+      setShowUserModal(true);
+      return;
+    }
     const existingNums = new Set(
       savedTables
         .map((t) => t.tableNumber || parseInt(t.id.replace(/\D/g, ''), 10))
@@ -586,7 +596,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2 max-w-2xl mx-auto bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
           <button
             type="button"
-            onClick={handleCreateNewTableImmediately}
+            onClick={() => {
+              if (!isUserLoggedIn) {
+                setShowUserModal(true);
+              } else {
+                handleCreateNewTableImmediately();
+              }
+            }}
             className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               activeSection === 'create'
                 ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
@@ -595,6 +611,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           >
             <Rocket className="w-4 h-4 text-cyan-400" />
             <span>Create New Game</span>
+            {!isUserLoggedIn && <Lock className="w-3 h-3 text-slate-500" />}
           </button>
 
           <button
@@ -658,7 +675,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch mt-2">
             {/* Option 1: Create New Game */}
             <div
-              onClick={handleCreateNewTableImmediately}
+              onClick={() => {
+                if (!isUserLoggedIn) {
+                  setShowUserModal(true);
+                } else {
+                  handleCreateNewTableImmediately();
+                }
+              }}
               className="group bg-slate-900/90 border border-slate-800 hover:border-cyan-500/60 rounded-2xl p-6 shadow-xl shadow-cyan-950/10 hover:shadow-cyan-950/30 transition-all cursor-pointer flex flex-col justify-between gap-5 relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/20 transition-all pointer-events-none" />
@@ -666,16 +689,23 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 <div className="w-12 h-12 rounded-xl bg-cyan-500/20 border border-cyan-500/30 flex items-center justify-center text-cyan-400 group-hover:scale-110 transition-transform">
                   <Rocket className="w-6 h-6" />
                 </div>
-                <h2 className="text-xl font-display font-bold text-white group-hover:text-cyan-300 transition-colors">
-                  Create New Game
-                </h2>
+                <div className="flex items-center justify-between">
+                  <h2 className="text-xl font-display font-bold text-white group-hover:text-cyan-300 transition-colors">
+                    Create New Game
+                  </h2>
+                  {!isUserLoggedIn && (
+                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
+                      <Lock className="w-3 h-3" /> Login Required
+                    </span>
+                  )}
+                </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
                   Establish a new galaxy match. Configure 2–6 players, expansions (default: none), and neutral ship blueprints. Starts once all seats are filled.
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-cyan-400 group-hover:text-cyan-300">
-                <span>Create & Enter Table</span>
+                <span>{!isUserLoggedIn ? 'Log In to Create' : 'Create & Enter Table'}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>

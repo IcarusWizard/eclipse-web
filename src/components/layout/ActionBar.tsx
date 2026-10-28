@@ -54,6 +54,9 @@ interface ActionBarProps {
   onToggleAutoPass?: () => void;
   isInvaded?: boolean;
   canToggleAutoPass?: boolean;
+  passInAdvance?: boolean;
+  onTogglePassInAdvance?: () => void;
+  canTogglePassInAdvance?: boolean;
 }
 
 export const ActionBar: React.FC<ActionBarProps> = ({
@@ -83,6 +86,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onToggleAutoPass,
   isInvaded = false,
   canToggleAutoPass = true,
+  passInAdvance = false,
+  onTogglePassInAdvance,
+  canTogglePassInAdvance = true,
 }) => {
   const readyBlackHoleShip = !isSpectator && !isTurnGated
     ? (delayedBlackHoleShips || []).find(
@@ -124,7 +130,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           {pendingConfirmation.actionType === 'EXPLORE' && activePlayer.colonyShips.ready > 0 && (
             <span className="text-[10px] text-cyan-300 font-medium flex items-center gap-1 mt-0.5">
               <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
-              You may colonize hex planets before confirming!
+              You can click population slot on the sector to colonize!
             </span>
           )}
           {pendingConfirmation.actionType === 'INFLUENCE' && (
@@ -227,9 +233,34 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               👁️ Spectator Mode (Observing)
             </span>
           ) : isTurnGated ? (
-            <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-              ⏳ Opponent's Turn
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
+                ⏳ Opponent's Turn
+              </span>
+              {onTogglePassInAdvance && !hasPassed && (
+                <button
+                  type="button"
+                  disabled={!canTogglePassInAdvance}
+                  onClick={onTogglePassInAdvance}
+                  title={
+                    passInAdvance
+                      ? "Pass in Advance is ON: you will automatically pass when your turn arrives (Click to revert/cancel)"
+                      : "Enable Pass in Advance: automatically pass your turn when it becomes your turn"
+                  }
+                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                    passInAdvance
+                      ? 'bg-purple-950/90 border-purple-500 text-purple-200 hover:border-purple-400 ring-1 ring-purple-500'
+                      : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                  }`}
+                >
+                  <CircleOff className={`w-3 h-3 ${passInAdvance ? 'text-purple-400' : 'text-slate-400'}`} />
+                  <span className="hidden sm:inline">Pass in Advance:</span>
+                  <span className={passInAdvance ? 'text-purple-300 font-black' : 'text-slate-400 font-bold'}>
+                    {passInAdvance ? 'ON (Revert)' : 'OFF'}
+                  </span>
+                </button>
+              )}
+            </div>
           ) : null}
           <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-bold text-cyan-300">
             <CircleDot className="w-3 h-3 text-cyan-400" />
@@ -448,35 +479,58 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           </button>
         )}
 
-        {/* Pass */}
-        <button
-          disabled={!canPass}
-          onClick={onPass}
-          title={
-            hasPendingExplore
-              ? 'Must finish exploration before passing'
-              : hasPassed
-              ? 'Pass reaction turn'
-              : isTurnOrderVariant && nextPassTileNum
-              ? `Pass turn (claims Next Turn Order Tile #${nextPassTileNum}${nextPassTileNum === 1 ? ' & +2 Credits bonus' : ''})`
-              : 'Pass turn (receive 2 Credits for 1st pass)'
-          }
-          className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
-            canPass
-              ? 'bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-300 border border-slate-700 hover:scale-105'
-              : 'bg-slate-900/40 text-slate-600 border border-slate-900'
-          }`}
-        >
-          <CircleOff className="w-4 h-4 shrink-0" />
-          <span className="leading-tight">PASS</span>
-          {isTurnOrderVariant && nextPassTileNum && !hasPassed ? (
-            <span className="text-[8.5px] text-purple-400 font-mono font-bold leading-none">
-              #{nextPassTileNum}
+        {/* Pass / Pass in Advance (Bug 210) */}
+        {isTurnGated && !isSpectator && !hasPassed && onTogglePassInAdvance ? (
+          <button
+            type="button"
+            onClick={onTogglePassInAdvance}
+            title={
+              passInAdvance
+                ? 'Pass in Advance is active: click to revert/cancel'
+                : 'Pass in Advance: automatically pass when it becomes your turn'
+            }
+            className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer min-w-[44px] sm:min-w-[52px] ${
+              passInAdvance
+                ? 'bg-purple-950 hover:bg-purple-900 text-purple-200 border-2 border-purple-500 ring-1 ring-purple-400 hover:scale-105'
+                : 'bg-slate-800 hover:bg-purple-950 hover:text-purple-300 text-slate-300 border border-slate-700 hover:scale-105'
+            }`}
+          >
+            <CircleOff className={`w-4 h-4 shrink-0 ${passInAdvance ? 'text-purple-400 animate-pulse' : ''}`} />
+            <span className="leading-tight">PASS</span>
+            <span className={`text-[8.5px] font-mono font-bold leading-none ${passInAdvance ? 'text-purple-300' : 'text-slate-400'}`}>
+              {passInAdvance ? 'ADV: ON' : 'ADV: OFF'}
             </span>
-          ) : (
-            <span className="text-[8.5px] opacity-0 leading-none">(-)</span>
-          )}
-        </button>
+          </button>
+        ) : (
+          <button
+            disabled={!canPass}
+            onClick={onPass}
+            title={
+              hasPendingExplore
+                ? 'Must finish exploration before passing'
+                : hasPassed
+                ? 'Pass reaction turn'
+                : isTurnOrderVariant && nextPassTileNum
+                ? `Pass turn (claims Next Turn Order Tile #${nextPassTileNum}${nextPassTileNum === 1 ? ' & +2 Credits bonus' : ''})`
+                : 'Pass turn (receive 2 Credits for 1st pass)'
+            }
+            className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
+              canPass
+                ? 'bg-slate-800 hover:bg-rose-950 hover:text-rose-400 text-slate-300 border border-slate-700 hover:scale-105'
+                : 'bg-slate-900/40 text-slate-600 border border-slate-900'
+            }`}
+          >
+            <CircleOff className="w-4 h-4 shrink-0" />
+            <span className="leading-tight">PASS</span>
+            {isTurnOrderVariant && nextPassTileNum && !hasPassed ? (
+              <span className="text-[8.5px] text-purple-400 font-mono font-bold leading-none">
+                #{nextPassTileNum}
+              </span>
+            ) : (
+              <span className="text-[8.5px] opacity-0 leading-none">(-)</span>
+            )}
+          </button>
+        )}
       </div>
     </div>
   );

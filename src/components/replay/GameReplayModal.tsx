@@ -17,6 +17,7 @@ import {
   Info,
   CheckCircle2,
   AlertTriangle,
+  Swords,
 } from 'lucide-react';
 
 export interface GameReplayModalProps {
@@ -181,6 +182,13 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
   const actorPlayer = stepState.players?.find((p) => p.id === currentStep?.actorPlayerId);
   const effectiveTableNum = tableNumber || (state as any).tableNumber;
 
+  const isCombatStep =
+    currentStep?.actionType === 'RESOLVE_COMBAT_STEP' ||
+    Boolean(stepState.activeCombat?.lastRolls?.length) ||
+    Boolean(currentStep?.summary?.includes('⚔️') || currentStep?.summary?.includes('salvo'));
+  const lastRolls = stepState.activeCombat?.lastRolls || [];
+  const destroyedShips = stepState.activeCombat?.destroyedShips || [];
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950 flex flex-col overflow-hidden select-none animate-in fade-in duration-200">
       {/* Top Header Bar */}
@@ -252,6 +260,90 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
           selectedSectorId={selectedSector?.id || null}
           onSelectSector={(s) => setSelectedSector(s)}
         />
+
+        {/* Floating Combat Step Details Card (Bug 211) */}
+        {isCombatStep && (
+          <div className="absolute top-4 left-4 z-20 max-w-sm sm:max-w-md bg-slate-950/95 border border-rose-500/50 rounded-xl shadow-2xl p-3 text-xs text-slate-200 backdrop-blur-md animate-in fade-in slide-in-from-top-2 duration-200">
+            <div className="flex items-center justify-between pb-1.5 border-b border-rose-900/50 mb-2">
+              <div className="flex items-center gap-1.5">
+                <Swords className="w-4 h-4 text-rose-400" />
+                <span className="font-bold text-rose-300 uppercase tracking-wider text-xs">
+                  Combat Salvo {stepState.activeCombat?.sectorId ? `• Sector ${stepState.activeCombat.sectorId}` : ''}
+                </span>
+              </div>
+              <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 font-mono text-[10px] font-bold border border-rose-800">
+                Round {stepState.activeCombat?.roundNumber || stepState.round}
+              </span>
+            </div>
+
+            {/* Salvo rolls display */}
+            {lastRolls.length > 0 && (
+              <div className="mb-2">
+                <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 flex items-center justify-between">
+                  <span>Dice Rolled & Damage</span>
+                  <span className="text-amber-300 font-mono font-bold">
+                    {lastRolls.filter((r) => r.isHit).length} Hit(s) •{' '}
+                    {lastRolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0)} Dmg
+                  </span>
+                </div>
+                <div className="flex flex-wrap gap-1.5 p-1.5 rounded-lg bg-slate-900/90 border border-slate-800">
+                  {lastRolls.map((roll, rIdx) => {
+                    const dieBg =
+                      roll.dieColor === 'red'
+                        ? 'bg-red-950 border-red-500 text-red-200'
+                        : roll.dieColor === 'blue'
+                        ? 'bg-blue-950 border-blue-500 text-blue-200'
+                        : roll.dieColor === 'orange'
+                        ? 'bg-amber-950 border-amber-500 text-amber-200'
+                        : roll.dieColor === 'purple'
+                        ? 'bg-purple-950 border-purple-500 text-purple-200'
+                        : 'bg-yellow-950 border-yellow-500 text-yellow-200';
+
+                    return (
+                      <div
+                        key={rIdx}
+                        className={`flex items-center gap-1 px-2 py-1 rounded border font-mono text-xs font-bold ${dieBg} ${
+                          roll.isHit ? 'ring-1 ring-emerald-400' : 'opacity-60'
+                        }`}
+                        title={`${roll.dieColor.toUpperCase()} Die: Rolled ${roll.roll} (Mod: ${roll.modifiedRoll}) -> ${
+                          roll.isHit ? `HIT (${roll.damage} dmg)` : 'MISS'
+                        }`}
+                      >
+                        <span>{roll.roll}</span>
+                        <span>{roll.isHit ? '✓' : '✗'}</span>
+                        {roll.isHit && (
+                          <span className="text-[10px] text-emerald-400 font-bold">
+                            +{roll.damage}
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* Damage Assignment & Summary */}
+            <div className="p-2 rounded-lg bg-slate-900/60 border border-slate-800/80 text-[11px] leading-relaxed text-slate-300">
+              <span className="font-semibold text-slate-100">{currentStep?.summary}</span>
+            </div>
+
+            {/* Casualties / Destroyed Ships */}
+            {destroyedShips.length > 0 && (
+              <div className="mt-2 pt-1.5 border-t border-slate-800 flex items-center gap-1.5 flex-wrap text-[10px]">
+                <span className="font-bold text-rose-400">Casualties:</span>
+                {destroyedShips.map((des, dIdx) => (
+                  <span
+                    key={dIdx}
+                    className="px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-800 text-rose-300 font-mono font-bold"
+                  >
+                    💥 {des.ownerId} {des.type.toUpperCase()}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Floating Sector Detail Popup on Map Click */}
         {selectedSector && (

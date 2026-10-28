@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { GameState, CombatDamageAssignment } from './engine/types/state';
 import { SectorTile, HexCoord, ShipType, SectorShip, HexEdge } from './engine/types/galaxy';
 import { ShipPart } from './engine/types/blueprints';
@@ -10,6 +10,7 @@ import {
   playerHasWormholeGenerator,
   isPlayerInvaded,
 } from './engine/rules/gameReducer';
+import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups } from './engine/rules/combatEngine';
@@ -407,6 +408,21 @@ export const App: React.FC = () => {
     typeof currentSeat === 'number' &&
     viewedPlayer.id !== state.players[currentSeat]?.id &&
     state.phase !== 'GAME_OVER';
+
+  // Play hint chime sound when it becomes this player's active turn (Bug 216)
+  const prevIsMyTurnRef = useRef<boolean>(false);
+  useEffect(() => {
+    const isLivePlayerTurn =
+      !isTurnGated &&
+      !isSpectator &&
+      state.phase !== 'GAME_OVER' &&
+      state.phase !== 'CLEANUP_PHASE';
+
+    if (isLivePlayerTurn && !prevIsMyTurnRef.current) {
+      playTurnNotificationSound();
+    }
+    prevIsMyTurnRef.current = isLivePlayerTurn;
+  }, [isTurnGated, isSpectator, state.phase, state.activePlayerIndex]);
 
   // Load table from server if URL query param ?table=XXX is specified and not loaded locally
   useEffect(() => {
@@ -1714,6 +1730,33 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleTogglePassInAdvance = (targetPlayerId?: string) => {
+    const pId = targetPlayerId || (typeof currentSeat === 'number' ? state.players[currentSeat]?.id : activePlayer.id);
+    if (!pId || !canActForPlayer(pId)) {
+      showToast('Cannot change Pass in Advance settings for this player.');
+      return;
+    }
+    const targetPlayer = state.players.find((p) => p.id === pId);
+    if (!targetPlayer) return;
+
+    const newSetting = !targetPlayer.passInAdvance;
+    const res = executeAction(state, {
+      type: 'SET_PASS_IN_ADVANCE',
+      playerId: pId,
+      enabled: newSetting,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(
+        newSetting
+          ? `Pass in Advance enabled for ${targetPlayer.name} (will pass automatically when your turn arrives).`
+          : `Pass in Advance cancelled for ${targetPlayer.name}.`
+      );
+    } else {
+      showToast(res.error || 'Failed to update Pass in Advance.');
+    }
+  };
+
   // Ambassador exchange
   const handleExchangeAmbassador = (targetPlayerId: string) => {
     if (!canActForPlayer(activePlayer.id)) {
@@ -2617,6 +2660,9 @@ export const App: React.FC = () => {
             onToggleAutoPass={() => handleToggleAutoPass(myControlledPlayer?.id)}
             isInvaded={myControlledPlayer ? isPlayerInvaded(state, myControlledPlayer.id) : false}
             canToggleAutoPass={Boolean(myControlledPlayer && canActForPlayer(myControlledPlayer.id))}
+            passInAdvance={myControlledPlayer?.passInAdvance}
+            onTogglePassInAdvance={() => handleTogglePassInAdvance(myControlledPlayer?.id)}
+            canTogglePassInAdvance={Boolean(myControlledPlayer && canActForPlayer(myControlledPlayer.id))}
           />
         )}
 

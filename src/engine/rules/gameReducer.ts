@@ -18,6 +18,7 @@ import {
   DraftFactionAction,
   PassAction,
   SetAutoPassAction,
+  SetPassInAdvanceAction,
 } from '../types/actions';
 import {
   rollYellowDie,
@@ -419,6 +420,74 @@ export function advanceTurnOrAutoPass(state: GameState): void {
     if (!activeP || activeP.isEliminated) break;
 
     const hasPassed = activeP.hasPassed || state.passedPlayerIds.includes(activeP.id);
+
+    // Pass in Advance: automatically execute pass when active player's turn arrives
+    if (!hasPassed && activeP.passInAdvance) {
+      if (isPlayerInvaded(state, activeP.id)) {
+        activeP.passInAdvance = false;
+        state.log.unshift({
+          id: `log_${Date.now()}_invaded_adv_${activeP.id}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          playerId: activeP.id,
+          message: `⚠️ Pass in Advance cancelled for ${activeP.name}: enemy fleet invasion detected!`,
+          type: 'system',
+        });
+        break;
+      }
+
+      activeP.passInAdvance = false;
+      activeP.hasPassed = true;
+      if (!state.passedPlayerIds.includes(activeP.id)) {
+        state.passedPlayerIds.push(activeP.id);
+      }
+      if (!state.firstPlayerPassedThisRound) {
+        state.firstPlayerPassedThisRound = activeP.id;
+        activeP.isFirstPasser = true;
+        activeP.resources.money += 2;
+        state.log.unshift({
+          id: `log_${Date.now()}_first_pass_${activeP.id}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          playerId: activeP.id,
+          message: `🏳️ ${activeP.name} was the first to pass via Pass in Advance (+2 Money, claims Starting Player Tile for next round)!`,
+          type: 'action',
+        });
+      } else {
+        state.log.unshift({
+          id: `log_${Date.now()}_pass_${activeP.id}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          playerId: activeP.id,
+          message: `🏳️ ${activeP.name} passed their turn via Pass in Advance.`,
+          type: 'action',
+        });
+      }
+
+      state.consecutivePasses = (state.consecutivePasses || 0) + 1;
+      if ((state.consecutivePasses || 0) >= activePlayers.length) {
+        state.log.unshift({
+          id: `log_${Date.now()}_combat_all_passed`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          message: `All commanders have passed consecutively! Proceeding to Combat Phase.`,
+          type: 'system',
+        });
+        state.phase = 'COMBAT_PHASE';
+        state.resolvedCombatSectorIds = [];
+        checkAndTriggerCombat(state);
+        return;
+      }
+
+      state.activePlayerIndex = getNextActivePlayerIndex(state);
+      loopCount++;
+      continue;
+    }
+
     if (!hasPassed || !activeP.autoPassReactions) {
       break;
     }
@@ -505,7 +574,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
-      action.type !== 'SET_AUTO_PASS'
+      action.type !== 'SET_AUTO_PASS' &&
+      action.type !== 'SET_PASS_IN_ADVANCE'
     ) {
       return {
         valid: false,
@@ -537,7 +607,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
-      action.type !== 'SET_AUTO_PASS'
+      action.type !== 'SET_AUTO_PASS' &&
+      action.type !== 'SET_PASS_IN_ADVANCE'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -557,7 +628,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'DIPLOMACY_EXCHANGE' &&
       action.type !== 'PROPOSE_DIPLOMACY' &&
       action.type !== 'RESPOND_DIPLOMACY' &&
-      action.type !== 'SET_AUTO_PASS'
+      action.type !== 'SET_AUTO_PASS' &&
+      action.type !== 'SET_PASS_IN_ADVANCE'
     ) {
       return {
         valid: false,
@@ -935,6 +1007,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         starbase: 0,
         orbital: 0,
       };
+      const queuedMonolithSectors = new Set<string>();
+      const queuedOrbitalSectors = new Set<string>();
 
       let totalMaterialsCost = 0;
       for (const item of action.items) {
@@ -984,24 +1058,38 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (!player.techTrack.researched.some((t) => t.id === 'orbital')) {
             return { valid: false, error: 'Must research Orbital tech before building Orbitals.' };
           }
-          if (sector.structures?.orbital || sector.planets.some((p) => p.isOrbital)) {
+          if (sector.structures?.orbital || sector.hasOrbital || sector.planets.some((p) => p.isOrbital)) {
             return {
               valid: false,
               error: `Sector ${sector.sectorNumber} already contains an Orbital structure (maximum 1 per sector).`,
             };
           }
+          if (queuedOrbitalSectors.has(sector.id)) {
+            return {
+              valid: false,
+              error: `Cannot construct multiple Orbitals in Sector ${sector.sectorNumber} in the same action.`,
+            };
+          }
+          queuedOrbitalSectors.add(sector.id);
         }
 
         if (item.itemType === 'monolith') {
           if (!player.techTrack.researched.some((t) => t.id === 'monolith')) {
             return { valid: false, error: 'Must research Monolith tech before building Monoliths.' };
           }
-          if (sector.structures?.monolith) {
+          if (sector.structures?.monolith || sector.hasMonolith) {
             return {
               valid: false,
               error: `Sector ${sector.sectorNumber} already contains a Monolith (maximum 1 per sector).`,
             };
           }
+          if (queuedMonolithSectors.has(sector.id)) {
+            return {
+              valid: false,
+              error: `Cannot construct multiple Monoliths in Sector ${sector.sectorNumber} in the same action.`,
+            };
+          }
+          queuedMonolithSectors.add(sector.id);
         }
 
         const isMechanema = player.faction.id === 'mechanema';
@@ -2058,6 +2146,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'SET_PASS_IN_ADVANCE': {
+      if (player.hasPassed || state.passedPlayerIds.includes(player.id)) {
+        return { valid: false, error: 'You have already passed this round.' };
+      }
+      return { valid: true };
+    }
+
     default:
       return { valid: true };
   }
@@ -2864,10 +2959,12 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         if (item.itemType === 'monolith') {
           sector.structures = sector.structures || {};
           sector.structures.monolith = true;
+          sector.hasMonolith = true;
           addLog(`🏗️ ${player.name} built a Monolith in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
         } else if (item.itemType === 'orbital') {
           sector.structures = sector.structures || {};
           sector.structures.orbital = true;
+          sector.hasOrbital = true;
           sector.planets.push({
             id: `orbital_${sector.id}_${Date.now()}`,
             resource: 'science',
@@ -4679,6 +4776,27 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       }
       return { success: true, newState };
     }
+
+    case 'SET_PASS_IN_ADVANCE': {
+      const passInAdvAct = action as SetPassInAdvanceAction;
+      player.passInAdvance = passInAdvAct.enabled;
+      addLog(
+        `${player.name} ${passInAdvAct.enabled ? 'enabled Pass in Advance' : 'cancelled Pass in Advance'}.`,
+        'system'
+      );
+      const isPlayerTurn =
+        newState.phase === 'ACTION_PHASE' &&
+        newState.activePlayerIndex === newState.players.findIndex((p) => p.id === player.id);
+      if (
+        passInAdvAct.enabled &&
+        isPlayerTurn &&
+        !newState.pendingActionConfirmation &&
+        !newState.pendingExplore
+      ) {
+        advanceTurnOrAutoPass(newState);
+      }
+      return { success: true, newState };
+    }
   }
 
   // Turn management during ACTION_PHASE
@@ -4799,7 +4917,7 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
   }
 
   // Pure client UI setting toggles (like auto-pass preference) do not modify galactic state
-  if (action.type === 'SET_AUTO_PASS') {
+  if (action.type === 'SET_AUTO_PASS' || action.type === 'SET_PASS_IN_ADVANCE') {
     return result;
   }
 
@@ -4819,7 +4937,35 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
   } else if (action.type === 'TRADE') {
     summary = `${actorName} traded resources`;
   } else if (action.type === 'RESOLVE_COMBAT_STEP') {
-    summary = `Combat step resolved in sector ${newState.activeCombat?.sectorId || ''}`;
+    const combatLogs = newState.log?.filter((l) => l.type === 'combat') || [];
+    if (newState.activeCombat?.lastRolls && newState.activeCombat.lastRolls.length > 0) {
+      const rolls = newState.activeCombat.lastRolls;
+      const firingOwner = rolls[0]?.shipOwner;
+      const firingPlayer = newState.players.find((p) => p.id === firingOwner);
+      const firingLabel = firingPlayer ? firingPlayer.name : firingOwner?.toUpperCase() || 'Fleet';
+      const hits = rolls.filter((r) => r.isHit).length;
+      const totalDmg = rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0);
+      const diceSummary = rolls.map((r) => `${r.roll}${r.isHit ? '✓' : '✗'}`).join(' ');
+
+      const assignedTargets: string[] = [];
+      for (const r of rolls) {
+        if (r.isHit && r.targetShipId) {
+          const targetUnit = newState.sectors
+            .flatMap((s) => s.ships)
+            .find((s) => s.id === r.targetShipId);
+          if (targetUnit) {
+            const targetOwner = newState.players.find((p) => p.id === targetUnit.ownerId)?.name || targetUnit.ownerId;
+            assignedTargets.push(`${targetOwner} ${targetUnit.type} [${r.damage} dmg]`);
+          }
+        }
+      }
+      const assignStr = assignedTargets.length > 0 ? ` ➔ Damage: ${assignedTargets.join(', ')}` : '';
+      summary = `⚔️ ${firingLabel} salvo [${diceSummary}] (${hits} hits, ${totalDmg} dmg)${assignStr}`;
+    } else if (combatLogs.length > 0) {
+      summary = combatLogs[0].message;
+    } else {
+      summary = `Combat step resolved in sector ${newState.activeCombat?.sectorId || ''}`;
+    }
   } else if (action.type === 'COMBAT_CONQUEST') {
     summary = `${actorName} resolved sector conquest`;
   } else if (action.type === 'CLAIM_REPUTATION_TILE') {
@@ -5816,6 +5962,7 @@ export function transitionToCleanup(state: GameState): void {
   for (const player of state.players) {
     player.hasPassed = false;
     player.autoPassReactions = false;
+    player.passInAdvance = false;
     // Discs used on actions return to the influence track!
     // Discs placed on sectors remain on sectors.
     const sectorsClaimed = state.sectors.filter((s) => s.discOwner === player.id).length;

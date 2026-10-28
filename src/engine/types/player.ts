@@ -119,6 +119,7 @@ export interface PlayerState {
   lyraExtraDiscClaimed?: boolean; // Lyra: Row 3 bonus (+1 disc)
   hasPassed: boolean;
   autoPassReactions?: boolean;
+  passInAdvance?: boolean;
   isFirstPasser: boolean;
   actionsTakenThisRound: number;
   graveyardShips: { type: string; count: number }[];
