@@ -17135,7 +17135,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       test('101. verifies Galactic Replay Action Tracking, Scrubbing Snapshots, and Backward Compatibility', async () => {
         const { createInitialGame } = await import('../rules/setup');
         const { executeAction } = await import('../rules/gameReducer');
-        const { createCleanSnapshot, isReplayAvailable } = await import('../rules/replay');
+        const { createCleanSnapshot, isReplayAvailable, resolveStepState } = await import('../rules/replay');
         const { saveGameState, loadTable } = await import('../rules/persistence');
 
         // 1. Initial game setup creates Step 0 in replaySteps
@@ -17207,9 +17207,17 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(confirmRes.newState.replaySteps![2]!.actionType).toBe('BUILD');
         expect(confirmRes.newState.replaySteps![2]!.summary).toContain('constructed interceptor');
 
-        // 6. Each snapshot in replaySteps is a self-contained valid GameState ready to render
-        for (const step of confirmRes.newState.replaySteps!) {
-          const parsed = JSON.parse(step.snapshot);
+        // 6. Keyframe & Delta verification: Step 0 is a full Keyframe, intermediate steps are Deltas,
+        // and every step cleanly resolves into a valid self-contained GameState
+        expect(confirmRes.newState.replaySteps![0]!.isKeyframe).toBe(true);
+        expect(confirmRes.newState.replaySteps![0]!.snapshot).toBeDefined();
+        expect(confirmRes.newState.replaySteps![1]!.isKeyframe).toBe(false);
+        expect(confirmRes.newState.replaySteps![1]!.delta).toBeDefined();
+        expect(confirmRes.newState.replaySteps![2]!.isKeyframe).toBe(false);
+        expect(confirmRes.newState.replaySteps![2]!.delta).toBeDefined();
+
+        for (let sIdx = 0; sIdx < confirmRes.newState.replaySteps!.length; sIdx++) {
+          const parsed = resolveStepState(confirmRes.newState.replaySteps!, sIdx);
           expect(parsed.sectors).toBeDefined();
           expect(parsed.players).toBeDefined();
           expect(parsed.replaySteps).toBeUndefined();
@@ -19211,6 +19219,140 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         deleteSavedTable('table-draft-115');
         deleteSavedTable('table-waiting-exp-115');
         saveUserSession(originalSession);
+      });
+
+      test('116. Keyframe & Delta Replay Architecture: round start keyframes, intermediate action deltas, game over keyframes, and fast seek resolution', async () => {
+        const {
+          commitReplayStep,
+          computeStateDelta,
+          applyStateDelta,
+          resolveStepState,
+          compactReplaySteps,
+          isStepKeyframe,
+        } = await import('../rules/replay');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        expect(game.replaySteps).toBeDefined();
+        expect(game.replaySteps!.length).toBe(1);
+
+        // 1. Step 0 (Game setup / Round 1 Start) is a Keyframe
+        const step0 = game.replaySteps![0]!;
+        expect(step0.isKeyframe).toBe(true);
+        expect(step0.snapshot).toBeDefined();
+        expect(step0.delta).toBeUndefined();
+        expect(isStepKeyframe(game, undefined, 0)).toBe(true);
+
+        // 2. Intermediate actions in Round 1 are Deltas
+        const p1 = game.players[0]!;
+        const pass1Res = executeAction(game, {
+          type: 'PASS',
+          playerId: p1.id,
+        });
+        expect(pass1Res.success).toBe(true);
+        const state1 = pass1Res.newState;
+        expect(state1.replaySteps!.length).toBe(2);
+
+        const step1 = state1.replaySteps![1]!;
+        expect(step1.isKeyframe).toBe(false);
+        expect(step1.snapshot).toBeUndefined();
+        expect(step1.delta).toBeDefined();
+        expect(step1.actionType).toBe('PASS');
+
+        // Resolve step 1 from step 0 keyframe + delta
+        const resolved1 = resolveStepState(state1.replaySteps!, 1);
+        expect(resolved1.passedPlayerIds).toContain(p1.id);
+        expect(resolved1.round).toBe(1);
+
+        // 3. Round Increment transition creates a Keyframe
+        const round2State = JSON.parse(JSON.stringify(state1));
+        round2State.round = 2;
+        round2State.phase = 'ACTION_PHASE';
+        commitReplayStep(round2State, 'ROUND_STARTED', 'Round 2 Initialized', undefined, state1);
+        const step2 = round2State.replaySteps![2]!;
+        expect(step2.isKeyframe).toBe(true);
+        expect(step2.snapshot).toBeDefined();
+        expect(step2.delta).toBeUndefined();
+
+        // 4. Game Over creates a Keyframe
+        const gameOverState = JSON.parse(JSON.stringify(round2State));
+        gameOverState.phase = 'GAME_OVER';
+        commitReplayStep(gameOverState, 'GAME_OVER', 'Galactic War Concluded', undefined, round2State);
+        const step3 = gameOverState.replaySteps![3]!;
+        expect(step3.isKeyframe).toBe(true);
+        expect(step3.snapshot).toBeDefined();
+        expect(step3.delta).toBeUndefined();
+
+        // 5. Seek & Cache Resolution
+        const cache = new Map();
+        const r0 = resolveStepState(gameOverState.replaySteps!, 0, cache);
+        const r1 = resolveStepState(gameOverState.replaySteps!, 1, cache);
+        const r2 = resolveStepState(gameOverState.replaySteps!, 2, cache);
+        const r3 = resolveStepState(gameOverState.replaySteps!, 3, cache);
+
+        expect(r0.round).toBe(1);
+        expect(r0.passedPlayerIds).toEqual([]);
+        expect(r1.round).toBe(1);
+        expect(r1.passedPlayerIds).toContain(p1.id);
+        expect(r2.round).toBe(2);
+        expect(r3.phase).toBe('GAME_OVER');
+
+        // 6. compactReplaySteps helper verification
+        // Create an uncompressed legacy replay steps array with full snapshots on every step
+        const legacySteps = [
+          {
+            stepIndex: 0,
+            timestamp: 100,
+            round: 1,
+            phase: 'ACTION_PHASE' as any,
+            actionType: 'GAME_SETUP',
+            summary: 'Setup',
+            snapshot: JSON.stringify(r0),
+          },
+          {
+            stepIndex: 1,
+            timestamp: 101,
+            round: 1,
+            phase: 'ACTION_PHASE' as any,
+            actionType: 'PASS',
+            summary: 'Pass',
+            snapshot: JSON.stringify(r1),
+          },
+          {
+            stepIndex: 2,
+            timestamp: 102,
+            round: 2,
+            phase: 'ACTION_PHASE' as any,
+            actionType: 'ROUND_START',
+            summary: 'Round 2',
+            snapshot: JSON.stringify(r2),
+          },
+          {
+            stepIndex: 3,
+            timestamp: 103,
+            round: 2,
+            phase: 'GAME_OVER' as any,
+            actionType: 'GAME_OVER',
+            summary: 'Done',
+            snapshot: JSON.stringify(r3),
+          },
+        ];
+
+        const compacted = compactReplaySteps(legacySteps);
+        expect(compacted).toHaveLength(4);
+        expect(compacted[0].isKeyframe).toBe(true);
+        expect(compacted[0].snapshot).toBeDefined();
+        expect(compacted[1].isKeyframe).toBe(false);
+        expect(compacted[1].delta).toBeDefined();
+        expect(compacted[1].snapshot).toBeUndefined();
+        expect(compacted[2].isKeyframe).toBe(true);
+        expect(compacted[2].snapshot).toBeDefined();
+        expect(compacted[3].isKeyframe).toBe(true);
+        expect(compacted[3].snapshot).toBeDefined();
+
+        // Resolving compacted steps reproduces the exact same states
+        const compR1 = resolveStepState(compacted, 1);
+        expect(compR1.passedPlayerIds).toContain(p1.id);
+        expect(compR1.round).toBe(1);
       });
     });
   });

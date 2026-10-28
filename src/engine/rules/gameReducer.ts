@@ -4978,7 +4978,26 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     summary = `${actorName} performed ${actionType}`;
   }
 
-  commitReplayStep(newState, actionType, summary, action.playerId);
+  let actionData: any = undefined;
+  if (action.type === 'RESOLVE_COMBAT_STEP') {
+    actionData = {
+      type: action.type,
+      sectorId: newState.activeCombat?.sectorId,
+      rolls: newState.activeCombat?.lastRolls,
+    };
+  } else if (action.type === 'CONFIRM_TURN_ACTION') {
+    actionData = newState.lastConfirmedAction?.actionPayload || { type: actionType };
+  } else if (action.type === 'EXPLORE') {
+    actionData = {
+      ...action,
+      drawnSectorNumber: newState.pendingExplore?.tile?.sectorNumber,
+      discoveryTile: newState.pendingExplore?.tile?.discoveryTile?.id,
+    };
+  } else {
+    actionData = { ...action };
+  }
+
+  commitReplayStep(newState, actionType, summary, action.playerId, state, actionData);
   return result;
 }
 

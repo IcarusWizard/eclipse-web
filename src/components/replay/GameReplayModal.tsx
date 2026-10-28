@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { GameState } from '../../engine/types/state';
 import { SectorTile } from '../../engine/types/galaxy';
-import { isReplayAvailable } from '../../engine/rules/replay';
+import { isReplayAvailable, resolveStepState } from '../../engine/rules/replay';
 import { getPlayerShortName, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { HexGalaxyMap } from '../map/HexGalaxyMap';
 import {
@@ -80,18 +80,19 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
   const totalSteps = steps.length;
   const currentStep = steps[stepIndex] || steps[0];
 
-  // Reconstruct GameState from snapshot at this step
+  // In-memory cache for reconstructed states to keep seek & scrub latency at 0ms
+  const stateCacheRef = useRef<Map<number, GameState>>(new Map());
+
+  // Reconstruct GameState from keyframe snapshot + sequential deltas at this step
   const stepState: GameState = useMemo(() => {
     try {
-      if (currentStep?.snapshot) {
-        const parsed = JSON.parse(currentStep.snapshot);
-        return parsed as GameState;
-      }
+      if (steps.length === 0) return state;
+      return resolveStepState(steps, stepIndex, stateCacheRef.current);
     } catch (err) {
-      console.error('Failed to parse replay step snapshot:', err);
+      console.error('Failed to resolve replay step state:', err);
+      return state;
     }
-    return state;
-  }, [currentStep, state]);
+  }, [steps, stepIndex, state]);
 
   // Synchronize selectedSector reference with the new stepState
   useEffect(() => {

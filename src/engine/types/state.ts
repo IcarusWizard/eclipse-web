@@ -181,7 +181,10 @@ export interface ReplayStep {
   summary: string;
   actorPlayerId?: string;
   actorPlayerName?: string;
-  snapshot: string; // Clean JSON string of GameState at this step (excluding replaySteps)
+  isKeyframe?: boolean;
+  snapshot?: string; // Clean JSON string of GameState at keyframes (or legacy steps)
+  delta?: any; // State delta from preceding step
+  actionData?: any; // Detailed action parameters (rolls, drawn tiles, action payload)
 }
 
 export interface GameState {
