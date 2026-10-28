@@ -48,6 +48,7 @@ import {
   LogIn,
   BookOpen,
   Dices,
+  Gamepad2,
   ChevronDown,
   ChevronUp,
   SlidersHorizontal,
@@ -84,7 +85,8 @@ interface LobbyViewProps {
     seat: number | 'all',
     expansions?: string[],
     neutralShips?: NeutralShipSelectionConfig,
-    isDraftMode?: boolean
+    isDraftMode?: boolean,
+    isLocalGame?: boolean
   ) => void;
   onJoinTable: (tableId: string, seat: number | 'all' | 'spectator') => void;
   onOpenGallery?: () => void;
@@ -107,16 +109,21 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const [activeSection, setActiveSection] = useState<LobbySection>('hub');
   const [myGamesStatusFilter, setMyGamesStatusFilter] = useState<'all' | 'need_players' | 'running' | 'done'>('all');
   const [savedTables, setSavedTables] = useState<SavedTableSummary[]>(() => listSavedTables());
+  const [gameMode, setGameMode] = useState<'normal' | 'local'>(() => currentUser.role === 'guest' ? 'local' : 'normal');
 
   useEffect(() => {
     return subscribeToUserSession((updated) => {
       setCurrentUser(updated);
-      if (updated.role !== 'admin') {
-        setMySeat((prev) => (prev === 'all' ? 0 : prev));
+      if (updated.role === 'guest') {
+        setGameMode('local');
+        setMySeat('all');
+        setJoinSeat('spectator');
+      } else if (updated.role !== 'admin') {
+        setMySeat((prev) => (prev === 'all' && gameMode !== 'local' ? 0 : prev));
         setJoinSeat((prev) => (prev === 'all' ? 0 : prev));
       }
     });
-  }, []);
+  }, [gameMode]);
 
   const refreshTables = async () => {
     try {
@@ -191,7 +198,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     'eridani_empire',    // Red
     'descendants_of_draco', // Yellow
   ]);
-  const [mySeat, setMySeat] = useState<number | 'all'>(0);
+  const [mySeat, setMySeat] = useState<number | 'all'>(() => (currentUser.role === 'guest' ? 'all' : 0));
 
   // Default MUST be no expansions as requested
   const [selectedExpansions, setSelectedExpansions] = useState<string[]>([]);
@@ -207,7 +214,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
   // Join Table State
   const [joinTableInput, setJoinTableInput] = useState<string>('');
-  const [joinSeat, setJoinSeat] = useState<number | 'all' | 'spectator'>(0);
+  const [joinSeat, setJoinSeat] = useState<number | 'all' | 'spectator'>(() => (currentUser.role === 'guest' ? 'spectator' : 0));
   const [joinError, setJoinError] = useState<string | null>(null);
   const [isJoining, setIsJoining] = useState<boolean>(false);
   const [copiedLinkTableId, setCopiedLinkTableId] = useState<string | null>(null);
@@ -297,8 +304,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
   const handleLaunchGame = (e: React.FormEvent) => {
     e.preventDefault();
-    if (currentUser.role === 'guest') {
-      alert('To start or host a game, you must first log in or register an account so you can reconnect to your table later.');
+    const isLocal = gameMode === 'local';
+    if (!isLocal && currentUser.role === 'guest') {
+      alert('To start or host an online multiplayer game, you must first log in or register an account so other commanders can join your table.');
       setShowUserModal(true);
       return;
     }
@@ -323,9 +331,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       guardian: !hasRemnants && neutralShipSelections.guardian === 'expert' ? 'default' : neutralShipSelections.guardian,
       gcds: !hasRemnants && neutralShipSelections.gcds === 'expert' ? 'default' : neutralShipSelections.gcds,
     };
-    const tableId = customTableId.trim() || `galaxy-${Date.now() % 1000}`;
-    if (mySeat === 'all' && !canUserUseHotseat(currentUser.role)) {
-      alert('Only administrators are allowed to use the hotseat function.');
+    const prefix = isLocal ? 'local' : 'galaxy';
+    const tableId = customTableId.trim() || `${prefix}-${Date.now() % 1000}`;
+    const effectiveSeat = isLocal ? 'all' : mySeat;
+
+    if (effectiveSeat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
+      alert('Only administrators are allowed to use the hotseat function in online games.');
       return;
     }
     registerTableMember(tableId, {
@@ -334,24 +345,26 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       role: currentUser.role,
       email: currentUser.email,
       emailNotifications: currentUser.emailNotifications,
-      seat: mySeat,
+      seat: effectiveSeat,
       joinedAt: Date.now(),
       isCreator: true,
-    });
+    }, isLocal);
     onStartNewGame(
       playerCount,
       isDraftMode ? [] : activeFactions,
       tableId,
-      mySeat,
+      effectiveSeat,
       selectedExpansions,
       sanitizedNeutralShips,
-      isDraftMode
+      isDraftMode,
+      isLocal
     );
   };
 
-  const handleCreateNewTableImmediately = () => {
-    if (currentUser.role === 'guest') {
-      alert('To start or host a game, you must first log in or register an account so you can reconnect to your table later.');
+  const handleCreateNewTableImmediately = (mode: 'normal' | 'local' = 'normal') => {
+    const isLocal = mode === 'local';
+    if (!isLocal && currentUser.role === 'guest') {
+      alert('To start or host an online multiplayer game, you must first log in or register an account so you can reconnect to your table later.');
       setShowUserModal(true);
       return;
     }
@@ -364,14 +377,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     while (existingNums.has(nextNum)) {
       nextNum++;
     }
-    const tableId = `galaxy-${nextNum}`;
+    const tableId = isLocal ? `local-${nextNum}` : `galaxy-${nextNum}`;
+    const effectiveSeat = isLocal ? 'all' : 0;
 
-    if (mySeat === 'all' && !canUserUseHotseat(currentUser.role)) {
-      alert('Only administrators are allowed to use the hotseat function.');
+    if (effectiveSeat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
+      alert('Only administrators are allowed to use the hotseat function in online games.');
       return;
     }
-
-    const effectiveSeat = 0;
 
     registerTableMember(tableId, {
       userId: currentUser.id,
@@ -382,7 +394,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       seat: effectiveSeat,
       joinedAt: Date.now(),
       isCreator: true,
-    });
+    }, isLocal);
 
     onStartNewGame(
       2,
@@ -391,7 +403,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       effectiveSeat,
       [],
       { ancient: 'default', guardian: 'default', gcds: 'default' },
-      false
+      false,
+      isLocal
     );
   };
 
@@ -417,8 +430,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         return;
       }
       const targetId = loaded.id || id;
-      if (joinSeat === 'all' && !canUserUseHotseat(currentUser.role)) {
-        setJoinError('Only administrators are allowed to use the hotseat function.');
+      const isLocal = Boolean(loaded.isLocalGame);
+
+      if (!isLocal && currentUser.role === 'guest' && joinSeat !== 'spectator') {
+        setJoinError('Guest players can only join online multiplayer games as a spectator. Please select Spectator or log in.');
+        setShowUserModal(true);
+        setIsJoining(false);
+        return;
+      }
+
+      if (joinSeat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
+        setJoinError('Only administrators are allowed to use the hotseat function in online games.');
         setIsJoining(false);
         return;
       }
@@ -439,7 +461,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         emailNotifications: currentUser.emailNotifications,
         seat: joinSeat,
         joinedAt: Date.now(),
-      });
+      }, isLocal);
       if (!regRes.success && regRes.error) {
         setJoinError(regRes.error);
         setIsJoining(false);
@@ -454,11 +476,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleJoinFromList = async (tableId: string, seat: number | 'all' | 'spectator') => {
-    if (seat === 'all' && !canUserUseHotseat(currentUser.role)) {
-      alert('Only administrators are allowed to use the hotseat function.');
+    const table = savedTables.find((t) => t.id === tableId);
+    const isLocal = Boolean(table?.isLocalGame);
+    if (!isLocal && currentUser.role === 'guest' && seat !== 'spectator') {
+      alert('Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.');
+      setShowUserModal(true);
       return;
     }
-    const table = savedTables.find((t) => t.id === tableId);
+    if (seat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
+      alert('Only administrators are allowed to use the hotseat function in online games.');
+      return;
+    }
     if (typeof seat === 'number' && table) {
       const seatCheck = isSeatTaken(table.members, seat, currentUser.id);
       if (seatCheck.isTaken && seatCheck.occupant) {
@@ -475,7 +503,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       emailNotifications: currentUser.emailNotifications,
       seat,
       joinedAt: Date.now(),
-    });
+    }, isLocal);
     if (!regRes.success && regRes.error) {
       alert(regRes.error);
       return;
@@ -503,14 +531,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   // Filtered Lists
-  // 1. Tables waiting for players (not started yet)
+  // 1. Tables waiting for players (not started yet, online tables only)
   const waitingTables = savedTables.filter(
-    (t) => getTableStatusCategory(t) === 'need_players' && t.phase !== 'GAME_OVER'
+    (t) => !t.isLocalGame && getTableStatusCategory(t) === 'need_players' && t.phase !== 'GAME_OVER'
   );
 
-  // 2. User's personal tables (only available after login)
+  // 2. User's personal tables (logged in users see personal tables; guests see their local hotseat games)
   const isUserLoggedIn = currentUser.role !== 'guest';
-  const myTables = isUserLoggedIn ? filterTablesForUser(savedTables, currentUser) : [];
+  const myTables = isUserLoggedIn
+    ? filterTablesForUser(savedTables, currentUser)
+    : savedTables.filter((t) => t.isLocalGame);
   const myTurnCount = myTables.filter((t) => isPlayerTurnAtTable(t, currentUser)).length;
 
   const myWaitingCount = myTables.filter((t) => getTableStatusCategory(t) === 'need_players').length;
@@ -612,13 +642,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         <div className="mt-5 flex flex-wrap items-center justify-center gap-2 max-w-2xl mx-auto bg-slate-900/80 p-1.5 rounded-2xl border border-slate-800 shadow-xl">
           <button
             type="button"
-            onClick={() => {
-              if (!isUserLoggedIn) {
-                setShowUserModal(true);
-              } else {
-                handleCreateNewTableImmediately();
-              }
-            }}
+            onClick={() => setActiveSection('create')}
             className={`flex-1 min-w-[140px] inline-flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer ${
               activeSection === 'create'
                 ? 'bg-cyan-500 text-slate-950 shadow-md shadow-cyan-500/30'
@@ -626,8 +650,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             }`}
           >
             <Rocket className="w-4 h-4 text-cyan-400" />
-            <span>Create New Game</span>
-            {!isUserLoggedIn && <Lock className="w-3 h-3 text-slate-500" />}
+            <span>Create Game</span>
           </button>
 
           <button
@@ -651,7 +674,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
           <button
             type="button"
             onClick={() => {
-              if (!isUserLoggedIn) {
+              if (!isUserLoggedIn && myTables.length === 0) {
                 setShowUserModal(true);
               } else {
                 setActiveSection('my_games');
@@ -666,8 +689,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             }`}
           >
             <Bookmark className={`w-4 h-4 ${myTurnCount > 0 ? 'text-emerald-400 animate-bounce' : 'text-purple-400'}`} />
-            <span>View My Games</span>
-            {!isUserLoggedIn ? (
+            <span>{!isUserLoggedIn && myTables.length > 0 ? 'My Local Games' : 'View My Games'}</span>
+            {!isUserLoggedIn && myTables.length === 0 ? (
               <Lock className="w-3 h-3 text-slate-500" />
             ) : myTurnCount > 0 ? (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-emerald-500 text-slate-950 animate-pulse">
@@ -689,15 +712,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         {/* ========================================================================= */}
         {(isSSR || activeSection === 'hub') && (
           <div className="w-full grid grid-cols-1 md:grid-cols-3 gap-5 items-stretch mt-2">
-            {/* Option 1: Create New Game */}
+            {/* Option 1: Create Game */}
             <div
-              onClick={() => {
-                if (!isUserLoggedIn) {
-                  setShowUserModal(true);
-                } else {
-                  handleCreateNewTableImmediately();
-                }
-              }}
+              onClick={() => setActiveSection('create')}
               className="group bg-slate-900/90 border border-slate-800 hover:border-cyan-500/60 rounded-2xl p-6 shadow-xl shadow-cyan-950/10 hover:shadow-cyan-950/30 transition-all cursor-pointer flex flex-col justify-between gap-5 relative overflow-hidden"
             >
               <div className="absolute top-0 right-0 w-32 h-32 bg-cyan-500/10 rounded-full blur-2xl group-hover:bg-cyan-500/20 transition-all pointer-events-none" />
@@ -707,21 +724,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </div>
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-display font-bold text-white group-hover:text-cyan-300 transition-colors">
-                    Create New Game
+                    Create Game
                   </h2>
-                  {!isUserLoggedIn && (
-                    <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Login Required
-                    </span>
-                  )}
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800 flex items-center gap-1">
+                    Local & Online
+                  </span>
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Establish a new galaxy match. Configure 2–6 players, expansions (default: none), and neutral ship blueprints. Starts once all seats are filled.
+                  Start a match! Play a <strong>Local Game</strong> (Pass-and-play hotseat in this browser, no account needed) or host a <strong>Normal Game</strong> (Online multiplayer server hosted).
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-cyan-400 group-hover:text-cyan-300">
-                <span>{!isUserLoggedIn ? 'Log In to Create' : 'Create & Enter Table'}</span>
+                <span>Configure & Start</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
@@ -758,7 +773,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             {/* Option 3: View My Games */}
             <div
               onClick={() => {
-                if (!isUserLoggedIn) {
+                if (!isUserLoggedIn && myTables.length === 0) {
                   setShowUserModal(true);
                 } else {
                   setActiveSection('my_games');
@@ -791,9 +806,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       myTurnCount > 0 ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-white group-hover:text-purple-300'
                     }`}
                   >
-                    View My Games
+                    {!isUserLoggedIn && myTables.length > 0 ? 'My Local Games' : 'View My Games'}
                   </h2>
-                  {!isUserLoggedIn ? (
+                  {!isUserLoggedIn && myTables.length === 0 ? (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
                       <Lock className="w-3 h-3" /> Login Required
                     </span>
@@ -808,8 +823,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   )}
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  {!isUserLoggedIn
+                  {!isUserLoggedIn && myTables.length === 0
                     ? 'Log in to track your personal tables, rejoin active matches, and get notified when it is your turn.'
+                    : !isUserLoggedIn && myTables.length > 0
+                    ? `You have ${myTables.length} local hotseat match(es) saved in this browser. Click to resume playing.`
                     : myTurnCount > 0
                     ? `You have ${myTurnCount} match(es) waiting for you to make a move! Rejoin now to take your turn.`
                     : 'View all matches you belong to: tables waiting for players, games in progress, and completed match chronicles.'}
@@ -823,7 +840,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     : 'border-slate-800/80 text-purple-400 group-hover:text-purple-300'
                 }`}
               >
-                <span>{!isUserLoggedIn ? 'Log In to View' : 'Open My Tables'}</span>
+                <span>{!isUserLoggedIn && myTables.length === 0 ? 'Log In to View' : 'Open My Tables'}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
@@ -890,6 +907,74 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             </div>
 
             <form onSubmit={handleLaunchGame} className="space-y-5">
+              {/* Game Mode Selector: Local Hotseat vs Normal Online */}
+              <div className="p-1.5 bg-slate-950 rounded-2xl border border-slate-800 grid grid-cols-1 sm:grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setGameMode('local');
+                    setMySeat('all');
+                  }}
+                  className={`p-3.5 rounded-xl border text-left transition flex flex-col gap-1 cursor-pointer ${
+                    gameMode === 'local'
+                      ? 'bg-purple-950/60 border-purple-500/80 text-white shadow-lg shadow-purple-950/40 ring-1 ring-purple-500/50'
+                      : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-display font-bold text-sm text-purple-300 flex items-center gap-1.5">
+                      <Gamepad2 className="w-4 h-4 text-purple-400" />
+                      Local Game (Pass & Play)
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-900/80 text-purple-200 border border-purple-700">
+                      Hotseat Mode
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">
+                    Stored locally in your browser. Single user controls all factions. Not uploaded to server or table list. Guest friendly!
+                  </p>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (currentUser.role === 'guest') {
+                      alert('To create and host a normal online multiplayer game, please log in or register.');
+                      setShowUserModal(true);
+                      return;
+                    }
+                    setGameMode('normal');
+                    if (mySeat === 'all' && currentUser.role !== 'admin') {
+                      setMySeat(0);
+                    }
+                  }}
+                  className={`p-3.5 rounded-xl border text-left transition flex flex-col gap-1 cursor-pointer ${
+                    gameMode === 'normal'
+                      ? 'bg-cyan-950/60 border-cyan-500/80 text-white shadow-lg shadow-cyan-950/40 ring-1 ring-cyan-500/50'
+                      : 'bg-slate-900/60 border-slate-800/80 text-slate-400 hover:text-slate-200 hover:bg-slate-900'
+                  }`}
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="font-display font-bold text-sm text-cyan-300 flex items-center gap-1.5">
+                      <Globe className="w-4 h-4 text-cyan-400" />
+                      Normal Game (Online Multiplayer)
+                    </span>
+                    {currentUser.role === 'guest' ? (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
+                        <Lock className="w-2.5 h-2.5" /> Login Required
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-900/80 text-cyan-200 border border-cyan-700">
+                        Server-Hosted
+                      </span>
+                    )}
+                  </div>
+                  <p className="text-[11px] text-slate-400 leading-snug">
+                    Hosted on the server. Other commanders can join via table ID or invite link. Enter a waiting room until seats fill.
+                  </p>
+                </button>
+              </div>
+
               {/* Table Name & Player Count */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -963,42 +1048,54 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </button>
               </div>
 
-              {/* Creator's Assigned Seat */}
+              {/* Creator's Assigned Seat / Hotseat Mode */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Your Starting Seat
+                  Your Command Mode
                 </label>
-                <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
-                  {Array.from({ length: playerCount }).map((_, idx) => (
-                    <button
-                      key={idx}
-                      type="button"
-                      onClick={() => setMySeat(idx)}
-                      className={`p-2 rounded-xl border text-center transition cursor-pointer ${
-                        mySeat === idx
-                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 font-bold shadow-md shadow-cyan-950/40'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-[10px] font-mono text-slate-500 uppercase">Seat</div>
-                      <div className="text-sm font-bold">{idx + 1}</div>
-                    </button>
-                  ))}
-                  {currentUser.role === 'admin' && (
-                    <button
-                      type="button"
-                      onClick={() => setMySeat('all')}
-                      className={`p-2 rounded-xl border text-center transition cursor-pointer ${
-                        mySeat === 'all'
-                          ? 'bg-purple-500/20 border-purple-400 text-purple-200 font-bold shadow-md shadow-purple-950/40'
-                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="text-[10px] font-mono text-purple-400 uppercase">Hotseat</div>
-                      <div className="text-xs font-bold">All Seats</div>
-                    </button>
-                  )}
-                </div>
+                {gameMode === 'local' ? (
+                  <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-600/40 text-xs text-purple-200 flex items-center gap-3">
+                    <Zap className="w-5 h-5 text-purple-400 shrink-0" />
+                    <div>
+                      <div className="font-bold text-white text-xs">Hotseat Mode (All Factions)</div>
+                      <p className="text-[11px] text-purple-300/80 mt-0.5">
+                        In a Local Game, you command all {playerCount} factions in turn-by-turn pass-and-play mode on this device.
+                      </p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-2">
+                    {Array.from({ length: playerCount }).map((_, idx) => (
+                      <button
+                        key={idx}
+                        type="button"
+                        onClick={() => setMySeat(idx)}
+                        className={`p-2 rounded-xl border text-center transition cursor-pointer ${
+                          mySeat === idx
+                            ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200 font-bold shadow-md shadow-cyan-950/40'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="text-[10px] font-mono text-slate-500 uppercase">Seat</div>
+                        <div className="text-sm font-bold">{idx + 1}</div>
+                      </button>
+                    ))}
+                    {currentUser.role === 'admin' && (
+                      <button
+                        type="button"
+                        onClick={() => setMySeat('all')}
+                        className={`p-2 rounded-xl border text-center transition cursor-pointer ${
+                          mySeat === 'all'
+                            ? 'bg-purple-500/20 border-purple-400 text-purple-200 font-bold shadow-md shadow-purple-950/40'
+                            : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
+                        }`}
+                      >
+                        <div className="text-[10px] font-mono text-purple-400 uppercase">Hotseat</div>
+                        <div className="text-xs font-bold">All Seats</div>
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
 
               {/* Preset Factions Roster (Only if not in draft mode) */}
@@ -1255,7 +1352,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   className="w-full sm:w-auto px-8 py-3 rounded-xl bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white font-display font-black text-xs uppercase tracking-wider shadow-lg shadow-cyan-950/50 hover:shadow-cyan-900/80 transition-all cursor-pointer flex items-center justify-center gap-2"
                 >
                   <Rocket className="w-4 h-4" />
-                  <span>Launch Galactic Conflict (Enter Waiting Room)</span>
+                  <span>
+                    {gameMode === 'local'
+                      ? 'Launch Galactic Conflict (Local Hotseat)'
+                      : 'Launch Galactic Conflict (Enter Waiting Room)'}
+                  </span>
                 </button>
               </div>
             </form>
@@ -1298,24 +1399,28 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     const val = e.target.value;
                     if (val === 'all') {
                       if (!canUserUseHotseat(currentUser.role)) {
-                        alert('Only administrators are allowed to use the hotseat function.');
+                        alert('Only administrators are allowed to use the hotseat function in online games.');
                         return;
                       }
                       setJoinSeat(val);
                     } else if (val === 'spectator') {
                       setJoinSeat(val);
                     } else {
+                      if (currentUser.role === 'guest') {
+                        alert('Guest players can only join online multiplayer games as a spectator. Please log in or register.');
+                        setShowUserModal(true);
+                        return;
+                      }
                       setJoinSeat(parseInt(val, 10));
                     }
                   }}
                   className="bg-slate-950 border border-slate-700 text-xs font-medium rounded-xl px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-blue-400"
                 >
-                  <option value="0">Seat 1 (Player 1)</option>
-                  <option value="1">Seat 2 (Player 2)</option>
-                  <option value="2">Seat 3 (Player 3)</option>
-                  <option value="3">Seat 4 (Player 4)</option>
-                  <option value="4">Seat 5 (Player 5)</option>
-                  <option value="5">Seat 6 (Player 6)</option>
+                  {[0, 1, 2, 3, 4, 5].map((s) => (
+                    <option key={s} value={s.toString()} disabled={currentUser.role === 'guest'}>
+                      Seat {s + 1} (Player {s + 1}){currentUser.role === 'guest' ? ' (Spectator Only)' : ''}
+                    </option>
+                  ))}
                   <option value="all" disabled={!canUserUseHotseat(currentUser.role)}>
                     Hotseat / All Players{!canUserUseHotseat(currentUser.role) ? ' (Admin Only)' : ''}
                   </option>
@@ -1414,6 +1519,26 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               );
                             }
 
+                            if (currentUser.role === 'guest') {
+                              return (
+                                <button
+                                  key={sIdx}
+                                  type="button"
+                                  onClick={() => {
+                                    alert('Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.');
+                                    setShowUserModal(true);
+                                  }}
+                                  className="p-1.5 rounded-lg border border-slate-700/60 bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-center text-[10px] font-medium transition cursor-pointer"
+                                  title="Login required to claim a player seat in online games"
+                                >
+                                  <div>Seat {sIdx + 1}</div>
+                                  <div className="text-[9px] text-slate-500 flex items-center justify-center gap-0.5">
+                                    <Lock className="w-2.5 h-2.5" /> Login
+                                  </div>
+                                </button>
+                              );
+                            }
+
                             return (
                               <button
                                 key={sIdx}
@@ -1432,6 +1557,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       {/* Card Footer Actions */}
                       <div className="flex items-center justify-between pt-2 border-t border-slate-800/80 text-xs">
                         <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleJoinFromList(table.id, 'spectator')}
+                            className="px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white cursor-pointer"
+                            title="Join this game as a spectator"
+                          >
+                            <Eye className="w-2.5 h-2.5 text-cyan-400" />
+                            <span>Spectate</span>
+                          </button>
                           <button
                             type="button"
                             disabled={!canUserUseHotseat(currentUser.role)}
@@ -1523,13 +1657,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               </div>
             </div>
 
-            {/* If not logged in, display required login prompt */}
-            {!isUserLoggedIn ? (
+            {/* If not logged in and no local games, display required login prompt */}
+            {!isUserLoggedIn && myTables.length === 0 ? (
               <div className="p-10 text-center flex flex-col items-center justify-center gap-3 bg-slate-950/50 rounded-2xl border border-slate-800">
                 <Lock className="w-10 h-10 text-amber-400 mb-1" />
                 <h3 className="text-base font-bold text-white">Login Required</h3>
                 <p className="text-xs text-slate-400 max-w-sm">
-                  You must be logged in to view and rejoin your personalized tables. Please log in or register.
+                  You must be logged in to view and rejoin your personalized online tables. Please log in or register.
                 </p>
                 <button
                   type="button"
@@ -1575,8 +1709,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     >
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
-                          <span className="text-base font-display font-black text-white">
+                          <span className="text-base font-display font-black text-white flex items-center gap-2">
                             Table #{table.tableNumber || table.id}
+                            {table.isLocalGame && (
+                              <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-950 text-purple-300 border border-purple-700">
+                                Local Hotseat
+                              </span>
+                            )}
                           </span>
 
                           {isMyTurn ? (
@@ -1601,8 +1740,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         <div className="text-xs text-slate-400">
                           <span>Seated as: </span>
                           <span className="text-slate-200 font-bold">
-                            Seat {mySeatNum + 1}
-                            {myMem?.role === 'admin' && myMem?.seat === 'all' ? ' (Hotseat)' : ''}
+                            {table.isLocalGame
+                              ? 'Commander (Hotseat - All Factions)'
+                              : myMem?.seat === 'all'
+                              ? 'Admin Hotseat'
+                              : `Seat ${mySeatNum + 1}`}
                           </span>
                           {table.activePlayerName && statusCat === 'running' && (
                             <div className="text-[11px] text-slate-500 mt-0.5">
@@ -1617,20 +1759,20 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         <div className="flex items-center gap-2">
                           <button
                             type="button"
-                            disabled={!canUserUseHotseat(currentUser.role)}
+                            disabled={!canUserUseHotseat(currentUser.role, table.isLocalGame)}
                             onClick={() => {
-                              if (canUserUseHotseat(currentUser.role)) {
+                              if (canUserUseHotseat(currentUser.role, table.isLocalGame)) {
                                 handleJoinFromList(table.id, 'all');
                               }
                             }}
-                            title={!canUserUseHotseat(currentUser.role) ? 'Hotseat is restricted to administrators' : 'Join as Hotseat (Control All)'}
+                            title={!canUserUseHotseat(currentUser.role, table.isLocalGame) ? 'Hotseat is restricted to administrators' : 'Join as Hotseat (Control All)'}
                             className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
-                              !canUserUseHotseat(currentUser.role)
+                              !canUserUseHotseat(currentUser.role, table.isLocalGame)
                                 ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
                                 : 'bg-purple-950/40 hover:bg-purple-900/60 border-purple-800/60 text-purple-300 hover:text-white cursor-pointer'
                             }`}
                           >
-                            {!canUserUseHotseat(currentUser.role) && <Lock className="w-2.5 h-2.5" />}
+                            {!canUserUseHotseat(currentUser.role, table.isLocalGame) && <Lock className="w-2.5 h-2.5" />}
                             <span>Hotseat</span>
                           </button>
                           <button
@@ -1668,14 +1810,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
                           <button
                             type="button"
-                            onClick={() => onJoinTable(table.id, myMem?.seat ?? 0)}
+                            onClick={() => onJoinTable(table.id, table.isLocalGame ? 'all' : (myMem?.seat ?? 0))}
                             className={`px-4 py-1.5 rounded-xl text-xs font-bold uppercase tracking-wider transition shadow flex items-center gap-1.5 cursor-pointer ${
                               isMyTurn
                                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-emerald-950/40'
                                 : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-950/30'
                             }`}
                           >
-                            <span>{isMyTurn ? 'Take Turn' : statusCat === 'need_players' ? 'Rejoin Waiting Room' : 'Open Game'}</span>
+                            <span>{table.isLocalGame ? 'Resume Local Game' : isMyTurn ? 'Take Turn' : statusCat === 'need_players' ? 'Rejoin Waiting Room' : 'Open Game'}</span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         </div>

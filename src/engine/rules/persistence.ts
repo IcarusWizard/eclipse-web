@@ -14,6 +14,7 @@ export interface SavedTableSummary {
   activePlayerName: string;
   activePlayerIndex?: number;
   isGameStarted?: boolean;
+  isLocalGame?: boolean;
   stateJson?: string;
   members?: TableMember[];
   hasReplay?: boolean;
@@ -102,15 +103,25 @@ export function sanitizeTablesMapForStorage(tables: Record<string, SavedTableSum
   if (!tables) return {};
   for (const key of Object.keys(tables)) {
     const table = tables[key];
-    if (table && table.stateJson) {
-      try {
-        const parsed = JSON.parse(table.stateJson);
-        if (parsed && Array.isArray(parsed.replaySteps) && parsed.replaySteps.length > 0) {
-          table.hasReplay = table.hasReplay ?? isReplayAvailable(parsed);
-          table.replayStepsCount = table.replayStepsCount ?? parsed.replaySteps.length;
-          table.stateJson = JSON.stringify(stripReplayForStorage(parsed));
-        }
-      } catch {}
+    if (table) {
+      if (Array.isArray(table.members)) {
+        table.members = table.members.filter((m) => m && m.seat !== 'spectator');
+      }
+      if (table.stateJson) {
+        try {
+          const parsed = JSON.parse(table.stateJson);
+          if (parsed) {
+            if (Array.isArray(parsed.members)) {
+              parsed.members = parsed.members.filter((m: any) => m && m.seat !== 'spectator');
+            }
+            if (Array.isArray(parsed.replaySteps) && parsed.replaySteps.length > 0) {
+              table.hasReplay = table.hasReplay ?? isReplayAvailable(parsed);
+              table.replayStepsCount = table.replayStepsCount ?? parsed.replaySteps.length;
+              table.stateJson = JSON.stringify(stripReplayForStorage(parsed));
+            }
+          }
+        } catch {}
+      }
     }
   }
   return tables;
@@ -173,7 +184,8 @@ export function resolveApiUrl(path: string): string {
  * Persists table state to the server storage API with keepalive: true so browser refreshes do not cancel it.
  */
 export async function persistTableToServer(state: GameState): Promise<boolean> {
-  if (typeof fetch === 'undefined' || !state || !state.id) return false;
+  if (!state || !state.id || state.isLocalGame) return true;
+  if (typeof fetch === 'undefined') return false;
   try {
     const body = JSON.stringify(state);
     const useKeepalive = body.length <= 64000;
@@ -256,6 +268,8 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     } else if (existingTable?.members && Array.isArray(existingTable.members)) {
       members = [...existingTable.members];
     }
+    // Spectator is a temporary seat; who has been the spectator should not be stored.
+    members = members.filter((m) => m && m.seat !== 'spectator');
     state.members = members;
 
     // Retain existing historical replaySteps if current state object had stripped replaySteps
@@ -324,6 +338,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
       activePlayerIndex: effectiveActiveIndex,
       isGameStarted,
+      isLocalGame: Boolean(state.isLocalGame),
       stateJson: storageStateJson,
       members,
       hasReplay,
@@ -345,7 +360,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
   }
 
   // 3. Persist to server API with keepalive: true if within 64KB limit (independent of localStorage)
-  if (!skipBroadcast && typeof fetch !== 'undefined') {
+  if (!skipBroadcast && typeof fetch !== 'undefined' && !state.isLocalGame) {
     try {
       const serverPayload = JSON.stringify(state);
       const useKeepalive = serverPayload.length <= 64000;
@@ -417,6 +432,10 @@ export function loadActiveGameState(): GameState | null {
  */
 export function sanitizeLoadedGameState(state: GameState): GameState {
   if (!state || !state.players) return state;
+  // Spectator is a temporary seat; who has been the spectator should not be stored.
+  if (Array.isArray(state.members)) {
+    state.members = state.members.filter((m) => m && m.seat !== 'spectator');
+  }
   if (state.phase === 'ACTION_PHASE' && state.pendingExploreActivations && state.pendingExploreActivations > 0) {
     const activeP = state.players[state.activePlayerIndex];
     if (activeP?.hasPassed || state.passedPlayerIds?.includes(activeP?.id)) {
@@ -471,7 +490,7 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
     if (tables[idStr]?.stateJson) {
       const parsed: GameState = JSON.parse(tables[idStr].stateJson!);
       (parsed as any).tableNumber = tables[idStr].tableNumber;
-      if ((!parsed.members || parsed.members.length === 0) && tables[idStr].members) {
+      if (tables[idStr].members) {
         parsed.members = tables[idStr].members;
       }
       resultFromSummary = sanitizeLoadedGameState(parsed);
@@ -482,7 +501,7 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
     if (!resultFromSummary && tables[galaxyId]?.stateJson) {
       const parsed: GameState = JSON.parse(tables[galaxyId].stateJson!);
       (parsed as any).tableNumber = tables[galaxyId].tableNumber;
-      if ((!parsed.members || parsed.members.length === 0) && tables[galaxyId].members) {
+      if (tables[galaxyId].members) {
         parsed.members = tables[galaxyId].members;
       }
       resultFromSummary = sanitizeLoadedGameState(parsed);
@@ -505,11 +524,18 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
         if (best?.stateJson) {
           const parsed: GameState = JSON.parse(best.stateJson);
           (parsed as any).tableNumber = best.tableNumber;
-          if ((!parsed.members || parsed.members.length === 0) && best.members) {
+          if (best.members) {
             parsed.members = best.members;
           }
           resultFromSummary = sanitizeLoadedGameState(parsed);
         }
+      }
+    }
+
+    if (activeState) {
+      const summaryMembers = tables[idStr]?.members || tables[galaxyId]?.members;
+      if (summaryMembers && (!activeState.members || activeState.members.length === 0)) {
+        activeState.members = summaryMembers;
       }
     }
 
@@ -631,16 +657,16 @@ export function mergeTableSummaries(
         ? false
         : undefined;
 
-    // Merge members by user ID and seat so players from both server and local are retained
+    // Merge members by user ID and seat so players from both server and local are retained (spectators are never stored)
     const memberMap = new Map<string, TableMember>();
     for (const m of remote.members || []) {
-      if (m) {
+      if (m && m.seat !== 'spectator') {
         const key = m.userId ? `user:${m.userId}` : `seat:${m.seat}`;
         memberMap.set(key, m);
       }
     }
     for (const m of local.members || []) {
-      if (m) {
+      if (m && m.seat !== 'spectator') {
         const key = m.userId ? `user:${m.userId}` : `seat:${m.seat}`;
         const existing = memberMap.get(key);
         if (!existing || (Number(m.joinedAt) || 0) >= (Number(existing.joinedAt) || 0)) {
@@ -648,7 +674,7 @@ export function mergeTableSummaries(
         }
       }
     }
-    const members = Array.from(memberMap.values());
+    const members = Array.from(memberMap.values()).filter((m) => m && m.seat !== 'spectator');
 
     const winner = remoteSavedAt >= localSavedAt ? remote : local;
     const base = remoteSavedAt >= localSavedAt ? local : remote;
@@ -702,6 +728,8 @@ export function mergeTableSummaries(
       Number(local.replayStepsCount) || 0
     );
 
+    const isLocalGame = Boolean(local.isLocalGame || remote.isLocalGame);
+
     map.set(remote.id, {
       ...base,
       ...winner,
@@ -713,6 +741,7 @@ export function mergeTableSummaries(
       activePlayerName,
       activePlayerIndex,
       isGameStarted,
+      isLocalGame,
       members,
       hasReplay,
       replayStepsCount,
@@ -767,8 +796,8 @@ export function areTableSummariesEqual(a: SavedTableSummary[], b: SavedTableSumm
     if (tA.activePlayerName !== tB.activePlayerName) return false;
     if (tA.isGameStarted !== tB.isGameStarted) return false;
     if (tA.playerCount !== tB.playerCount) return false;
-    const memA = tA.members || [];
-    const memB = tB.members || [];
+    const memA = (tA.members || []).filter((m) => m && m.seat !== 'spectator');
+    const memB = (tB.members || []).filter((m) => m && m.seat !== 'spectator');
     if (memA.length !== memB.length) return false;
     for (let j = 0; j < memA.length; j++) {
       if (memA[j].userId !== memB[j].userId || memA[j].seat !== memB[j].seat) return false;
@@ -797,12 +826,17 @@ export function broadcastTableCancelled(tableId: string): void {
 export function deleteSavedTable(tableId: string): void {
   try {
     const storage = getStorage();
+    let wasLocalGame = false;
     const raw = storage.getItem(SAVED_TABLES_KEY);
     if (raw) {
       const tables: Record<string, SavedTableSummary> = JSON.parse(raw);
+      if (tables[tableId]?.isLocalGame) {
+        wasLocalGame = true;
+      }
       delete tables[tableId];
       for (const k of Object.keys(tables)) {
         if (tables[k]?.id === tableId) {
+          if (tables[k]?.isLocalGame) wasLocalGame = true;
           delete tables[k];
         }
       }
@@ -814,6 +848,7 @@ export function deleteSavedTable(tableId: string): void {
       try {
         const parsedActive = JSON.parse(activeRaw);
         if (parsedActive?.id === tableId) {
+          if (parsedActive?.isLocalGame) wasLocalGame = true;
           storage.removeItem(ACTIVE_GAME_KEY);
         }
       } catch {}
@@ -821,7 +856,7 @@ export function deleteSavedTable(tableId: string): void {
 
     broadcastTableCancelled(tableId);
 
-    if (typeof fetch !== 'undefined') {
+    if (typeof fetch !== 'undefined' && !wasLocalGame) {
       fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}`), { method: 'DELETE' }).catch(() => {});
     }
   } catch (err) {
@@ -1037,31 +1072,136 @@ export function isSeatTaken(
  */
 /**
  * Checks if a user role is authorized to use the hotseat function.
- * Only administrators are allowed to use hotseat.
+ * Only administrators are allowed to use hotseat in online games.
+ * In local games, hotseat is enabled for all users.
  */
-export function canUserUseHotseat(role?: UserRole | string | null): boolean {
+export function canUserUseHotseat(role?: UserRole | string | null, isLocalGame?: boolean): boolean {
+  if (isLocalGame) return true;
   return role === 'admin';
 }
 
 export async function registerTableMember(
   tableId: string,
-  member: TableMember
+  member: TableMember,
+  isLocalGame?: boolean,
+  enforceGuestRestriction?: boolean
 ): Promise<{ success: boolean; error?: string; members?: TableMember[] }> {
   try {
-    // Only administrators are allowed to use the hotseat function
-    if (member.seat === 'all' && !canUserUseHotseat(member.role)) {
+    const storage = getStorage();
+    const raw = storage.getItem(SAVED_TABLES_KEY);
+    const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
+
+    const table = tables[tableId];
+    const isLocal = Boolean(isLocalGame || table?.isLocalGame);
+
+    // Only administrators are allowed to use the hotseat function in online games
+    if (member.seat === 'all' && !canUserUseHotseat(member.role, isLocal)) {
       return {
         success: false,
         error: 'Only administrators are allowed to use the hotseat function.',
       };
     }
 
-    const storage = getStorage();
-    const raw = storage.getItem(SAVED_TABLES_KEY);
-    const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
+    if (enforceGuestRestriction && !isLocal && member.role === 'guest' && member.seat !== 'spectator') {
+      return {
+        success: false,
+        error: 'Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.',
+      };
+    }
 
-    const table = tables[tableId];
-    let curMembers: TableMember[] = table?.members ? [...table.members] : [];
+    const isGameRunning = Boolean(
+      table?.isGameStarted === true ||
+      (table && table.round > 1) ||
+      (table && (table as any).replayStepsCount > 1)
+    );
+
+    // Lock seats once an online game has started
+    if (isGameRunning && !isLocal && member.role !== 'admin') {
+      const curMembers = table?.members || [];
+      const existing = curMembers.find((m) => m.userId === member.userId);
+
+      if (member.seat === 'spectator') {
+        if (existing && typeof existing.seat === 'number') {
+          let isEliminated = false;
+          if (table?.stateJson) {
+            try {
+              const parsed = JSON.parse(table.stateJson);
+              if (parsed.players?.[existing.seat]?.isEliminated) {
+                isEliminated = true;
+              }
+            } catch {}
+          }
+          if (!isEliminated) {
+            return {
+              success: false,
+              error: 'Seats are locked once the game has started.',
+            };
+          }
+        }
+      } else if (typeof member.seat === 'number') {
+        if (!existing || existing.seat !== member.seat) {
+          return {
+            success: false,
+            error: 'Seats are locked once the game has started.',
+          };
+        }
+      }
+    }
+
+    // A spectator is a temporary seat; who has been the spectator should not be stored.
+    // If the user previously occupied a permanent player seat, vacate it; otherwise, do not store them.
+    if (member.seat === 'spectator') {
+      let curMembers: TableMember[] = (table?.members ? [...table.members] : []).filter(
+        (m) => m && m.seat !== 'spectator'
+      );
+      const prevIdx = curMembers.findIndex((m) => m.userId === member.userId);
+      if (prevIdx >= 0) {
+        const leavingMember = curMembers[prevIdx];
+        curMembers.splice(prevIdx, 1);
+        if (table) {
+          table.members = curMembers;
+          table.savedAt = Date.now();
+          if (table.stateJson) {
+            try {
+              const parsed = JSON.parse(table.stateJson);
+              parsed.members = curMembers;
+              if (leavingMember && typeof leavingMember.seat === 'number' && parsed.players?.[leavingMember.seat]) {
+                parsed.players[leavingMember.seat].name =
+                  parsed.players[leavingMember.seat].faction?.name || `Player ${leavingMember.seat + 1}`;
+              }
+              table.stateJson = JSON.stringify(parsed);
+              saveGameState(parsed, true);
+            } catch {}
+          }
+          storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+        }
+      }
+
+      if (!isLocal && typeof fetch !== 'undefined') {
+        const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/join`), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ member }),
+        }).catch(() => null);
+
+        if (res && res.ok) {
+          const data = await res.json().catch(() => ({}));
+          if (data && data.members && Array.isArray(data.members)) {
+            curMembers = data.members.filter((m: any) => m && m.seat !== 'spectator');
+            if (tables[tableId]) {
+              tables[tableId].members = curMembers;
+              storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+            }
+          }
+        }
+      }
+
+      return { success: true, members: curMembers };
+    }
+
+    let curMembers: TableMember[] = (table?.members ? [...table.members] : []).filter(
+      (m) => m && m.seat !== 'spectator'
+    );
 
     // Check if the requested seat is already taken by another user
     if (typeof member.seat === 'number') {
@@ -1089,8 +1229,25 @@ export async function registerTableMember(
           joinedAt: Date.now(),
         });
       }
-      table.members = curMembers;
+      table.members = curMembers.filter((m) => m && m.seat !== 'spectator');
+      if (table.stateJson) {
+        try {
+          const parsed = JSON.parse(table.stateJson);
+          parsed.members = table.members;
+          table.stateJson = JSON.stringify(parsed);
+        } catch {}
+      }
       storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+      const activeRaw = storage.getItem(ACTIVE_GAME_KEY);
+      if (activeRaw) {
+        try {
+          const active = JSON.parse(activeRaw);
+          if (active && (active.id === tableId || active.id === `galaxy-${tableId}`)) {
+            active.members = table.members;
+            storage.setItem(ACTIVE_GAME_KEY, JSON.stringify(active));
+          }
+        } catch {}
+      }
     } else {
       const loaded = loadTable(tableId);
       tables[tableId] = {
@@ -1111,7 +1268,7 @@ export async function registerTableMember(
       storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
     }
 
-    if (typeof fetch !== 'undefined') {
+    if (!isLocal && typeof fetch !== 'undefined') {
       const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/join`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1131,7 +1288,7 @@ export async function registerTableMember(
         if (res.ok) {
           const data = await res.json().catch(() => ({}));
           if (data && data.members && Array.isArray(data.members)) {
-            curMembers = data.members;
+            curMembers = data.members.filter((m: any) => m && m.seat !== 'spectator');
             if (tables[tableId]) {
               tables[tableId].members = curMembers;
               storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
@@ -1161,6 +1318,32 @@ export async function leaveTable(
     const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
     const table = tables[tableId];
 
+    const isGameRunning = Boolean(
+      table?.isGameStarted === true ||
+      (table && table.round > 1) ||
+      (table && (table as any).replayStepsCount > 1)
+    );
+
+    if (isGameRunning && !tables[tableId]?.isLocalGame) {
+      const curMembers = table?.members || [];
+      const leavingMember = curMembers.find((m) => m.userId === userId);
+      let isEliminated = false;
+      if (leavingMember && typeof leavingMember.seat === 'number' && table?.stateJson) {
+        try {
+          const parsed = JSON.parse(table.stateJson);
+          if (parsed.players?.[leavingMember.seat]?.isEliminated) {
+            isEliminated = true;
+          }
+        } catch {}
+      }
+      if (!isEliminated) {
+        return {
+          success: false,
+          error: 'Seats are locked once the game has started.',
+        };
+      }
+    }
+
     let updatedMembers: TableMember[] = [];
     if (table) {
       const curMembers = table.members || [];
@@ -1185,7 +1368,7 @@ export async function leaveTable(
     }
 
     // Call server endpoint if available
-    if (typeof fetch !== 'undefined') {
+    if (typeof fetch !== 'undefined' && !tables[tableId]?.isLocalGame) {
       try {
         const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/leave`), {
           method: 'POST',
@@ -1237,7 +1420,7 @@ export function filterTablesForUser(
     if (!t.members || t.members.length === 0) {
       return false;
     }
-    return t.members.some((m) => m.userId === user.id);
+    return t.members.some((m) => m.userId === user.id && m.seat !== 'spectator');
   });
 }
 
@@ -1253,6 +1436,7 @@ export function getTableOccupiedSeats(table: SavedTableSummary): Set<number> {
   const pCount = table.playerCount || (table as any).players?.length || 2;
   if (Array.isArray(table.members)) {
     for (const m of table.members) {
+      if (!m || m.seat === 'spectator') continue;
       if (m.seat === 'all') {
         for (let i = 0; i < pCount; i++) occupied.add(i);
       } else if (typeof m.seat === 'number' && m.seat >= 0 && m.seat < pCount) {
@@ -1302,7 +1486,7 @@ export function isPlayerTurnAtTable(
   if (table.isGameStarted === false) return false;
   if (getTableStatusCategory(table) === 'need_players') return false;
 
-  const myMembership = (table.members || []).find((m) => m.userId === user.id);
+  const myMembership = (table.members || []).find((m) => m.userId === user.id && m.seat !== 'spectator');
   if (!myMembership) return false;
 
   const mySeat = myMembership.seat;

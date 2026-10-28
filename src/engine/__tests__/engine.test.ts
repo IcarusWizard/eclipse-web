@@ -18795,6 +18795,268 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const { CombatSimulatorModal } = await import('../../components/simulator/CombatSimulatorModal');
         expect(typeof CombatSimulatorModal).toBe('function');
       });
+
+      it('113. verifies Local Game vs Normal Game permissions, storage isolation, and guest restrictions', async () => {
+        const {
+          persistTableToServer,
+          saveGameState,
+          deleteSavedTable,
+          canUserUseHotseat,
+          registerTableMember,
+          listSavedTables,
+        } = await import('../rules/persistence');
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { LobbyView } = await import('../../components/lobby/LobbyView');
+
+        // Part 1: canUserUseHotseat role & local game checks
+        // Normal game (isLocalGame is false/undefined): only admin allowed
+        expect(canUserUseHotseat('guest')).toBe(false);
+        expect(canUserUseHotseat('user')).toBe(false);
+        expect(canUserUseHotseat('admin')).toBe(true);
+        expect(canUserUseHotseat('guest', false)).toBe(false);
+        expect(canUserUseHotseat('user', false)).toBe(false);
+        expect(canUserUseHotseat('admin', false)).toBe(true);
+
+        // Local game (isLocalGame === true): all roles (guest, user, admin) allowed hotseat
+        expect(canUserUseHotseat('guest', true)).toBe(true);
+        expect(canUserUseHotseat('user', true)).toBe(true);
+        expect(canUserUseHotseat('admin', true)).toBe(true);
+
+        // Part 2: Local Game persistence and server isolation
+        const localGame = createInitialGame(2);
+        localGame.id = 'table-local-113';
+        localGame.isLocalGame = true;
+        (localGame as any).tableNumber = 113;
+
+        // persistTableToServer returns true immediately without fetch when isLocalGame is true
+        const persistRes = await persistTableToServer(localGame);
+        expect(persistRes).toBe(true);
+
+        // saveGameState saves to localStorage with isLocalGame: true
+        saveGameState(localGame, true);
+        const savedList = listSavedTables();
+        const savedSummary = savedList.find((t) => t.id === 'table-local-113');
+        expect(savedSummary).toBeDefined();
+        expect(savedSummary!.isLocalGame).toBe(true);
+
+        // Part 3: registerTableMember guest permissions
+        // In local game, guest is allowed hotseat (seat: 'all')
+        const guestLocalMemberRes = await registerTableMember('table-local-113', {
+          userId: 'guest_113',
+          username: 'GuestCommander',
+          role: 'guest',
+          seat: 'all',
+          joinedAt: Date.now(),
+        }, true);
+        expect(guestLocalMemberRes.success).toBe(true);
+
+        // In normal game, guest claiming a player seat with enforcement is blocked
+        const normalGameId = 'table-normal-113';
+        const guestNormalPlayerRes = await registerTableMember(normalGameId, {
+          userId: 'guest_113',
+          username: 'GuestCommander',
+          role: 'guest',
+          seat: 0,
+          joinedAt: Date.now(),
+        }, false, true);
+        expect(guestNormalPlayerRes.success).toBe(false);
+        expect(guestNormalPlayerRes.error).toContain('Guest players can only join online multiplayer games as a spectator');
+
+        // In normal game, guest joining as spectator is allowed
+        const guestSpectatorRes = await registerTableMember(normalGameId, {
+          userId: 'guest_113',
+          username: 'GuestCommander',
+          role: 'guest',
+          seat: 'spectator',
+          joinedAt: Date.now(),
+        }, false, true);
+        expect(guestSpectatorRes.success).toBe(true);
+
+        // Part 4: Lobby UI game mode selector and guest spectator options
+        const { saveUserSession } = await import('../rules/userSession');
+        saveUserSession({
+          id: 'guest_113',
+          name: 'Guest-113',
+          username: 'Guest-113',
+          role: 'guest',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        });
+
+        const lobbyHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+        expect(lobbyHtml).toContain('Local Game (Pass');
+        expect(lobbyHtml).toContain('Normal Game (Online Multiplayer)');
+        expect(lobbyHtml).toContain('Hotseat Mode');
+        expect(lobbyHtml).toContain('Resume Local Game');
+        expect(lobbyHtml).toContain('Local Hotseat');
+
+        // Clean up test tables
+        deleteSavedTable('table-local-113');
+        deleteSavedTable('table-normal-113');
+      });
+
+      test('114. verifies spectator temporary seat semantics: spectators are not stored in members, seat vacation upon switching to spectator, and exclusion from user active tables', async () => {
+        const {
+          registerTableMember,
+          saveGameState,
+          loadTable,
+          filterTablesForUser,
+          deleteSavedTable,
+        } = await import('../rules/persistence');
+
+        const tableId = 'table-spec-114';
+        deleteSavedTable(tableId);
+
+        const initialGame = createInitialGame(2);
+        initialGame.id = tableId;
+        (initialGame as any).tableNumber = 114;
+        saveGameState(initialGame);
+
+        // 1. Permanent player registers for seat 0
+        const playerAlice = {
+          id: 'user_alice_114',
+          name: 'Alice',
+          username: 'alice',
+          role: 'user' as const,
+        };
+        const p0Res = await registerTableMember(tableId, {
+          userId: playerAlice.id,
+          name: playerAlice.name,
+          username: playerAlice.username,
+          role: playerAlice.role,
+          seat: 0,
+          joinedAt: Date.now(),
+        });
+        expect(p0Res.success).toBe(true);
+        expect(p0Res.members?.some((m) => m.userId === playerAlice.id && m.seat === 0)).toBe(true);
+
+        // 2. Spectator joins: must return success, but MUST NOT be stored in members
+        const spectatorBob = {
+          id: 'user_bob_114',
+          name: 'Bob',
+          username: 'bob',
+          role: 'user' as const,
+        };
+        const specRes = await registerTableMember(tableId, {
+          userId: spectatorBob.id,
+          name: spectatorBob.name,
+          username: spectatorBob.username,
+          role: spectatorBob.role,
+          seat: 'spectator',
+          joinedAt: Date.now(),
+        });
+        expect(specRes.success).toBe(true);
+        expect(specRes.members?.some((m) => m.userId === spectatorBob.id)).toBe(false);
+        expect(specRes.members?.some((m) => m.seat === 'spectator')).toBe(false);
+
+        // 3. Stored state in localStorage/table summary must not have spectator
+        const loaded = loadTable(tableId);
+        expect(loaded?.members?.some((m) => m.userId === spectatorBob.id)).toBe(false);
+        expect(loaded?.members?.some((m) => m.seat === 'spectator')).toBe(false);
+
+        // 4. filterTablesForUser: Spectator Bob must NOT see table in his personal tables
+        const summaries = [
+          {
+            id: tableId,
+            tableNumber: 114,
+            savedAt: Date.now(),
+            round: 1,
+            maxRounds: 8,
+            phase: 'ACTION_PHASE' as const,
+            playerCount: 2,
+            playerNames: ['Alice', 'Player 2'],
+            activePlayerName: 'Alice',
+            activePlayerIndex: 0,
+            members: loaded?.members,
+          },
+        ];
+        const bobTables = filterTablesForUser(summaries, spectatorBob);
+        expect(bobTables.length).toBe(0);
+
+        const aliceTables = filterTablesForUser(summaries, playerAlice);
+        expect(aliceTables.length).toBe(1);
+
+        // 5. Player Alice switches from Seat 0 to Spectator:
+        // Her Seat 0 must be vacated and she should no longer be stored in members
+        const vacateRes = await registerTableMember(tableId, {
+          userId: playerAlice.id,
+          name: playerAlice.name,
+          username: playerAlice.username,
+          role: playerAlice.role,
+          seat: 'spectator',
+          joinedAt: Date.now(),
+        });
+        expect(vacateRes.success).toBe(true);
+        expect(vacateRes.members?.some((m) => m.userId === playerAlice.id)).toBe(false);
+        expect(vacateRes.members?.length).toBe(0);
+
+        // Clean up
+        deleteSavedTable(tableId);
+
+        // 6. Active Game Seat Locking: Once an online game has started, seats are locked!
+        const activeTableId = 'table-active-114';
+        deleteSavedTable(activeTableId);
+
+        const activeGame = createInitialGame(2);
+        activeGame.id = activeTableId;
+        (activeGame as any).isGameStarted = true;
+        activeGame.members = [
+          { userId: playerAlice.id, name: 'Alice', username: 'alice', role: 'user', seat: 0, joinedAt: 100 },
+          { userId: spectatorBob.id, name: 'Bob', username: 'bob', role: 'user', seat: 1, joinedAt: 101 },
+        ];
+        saveGameState(activeGame);
+
+        // Seated non-eliminated player attempting to abandon seat / switch to spectator in active game is blocked
+        const lockedSpecRes = await registerTableMember(activeTableId, {
+          userId: playerAlice.id,
+          name: playerAlice.name,
+          username: playerAlice.username,
+          role: playerAlice.role,
+          seat: 'spectator',
+          joinedAt: Date.now(),
+        });
+        expect(lockedSpecRes.success).toBe(false);
+        expect(lockedSpecRes.error).toContain('Seats are locked once the game has started');
+
+        // Seated non-eliminated player attempting to change seat is blocked
+        const lockedSeatChange = await registerTableMember(activeTableId, {
+          userId: playerAlice.id,
+          name: playerAlice.name,
+          username: playerAlice.username,
+          role: playerAlice.role,
+          seat: 1,
+          joinedAt: Date.now(),
+        });
+        expect(lockedSeatChange.success).toBe(false);
+        expect(lockedSeatChange.error).toContain('Seats are locked once the game has started');
+
+        // Header UI renders locked badge for seated players during active game
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { Header } = await import('../../components/layout/Header');
+        const headerLockedHtml = renderToString(
+          React.createElement(Header, {
+            state: activeGame,
+            currentSeat: 0,
+            selectedViewIndex: 0,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onChangeSeat: () => {},
+            initialDrawerOpen: true,
+          })
+        );
+        expect(headerLockedHtml).toContain('Locked');
+        expect(headerLockedHtml).not.toContain('<select');
+
+        // Clean up
+        deleteSavedTable(activeTableId);
+      });
     });
   });
 });

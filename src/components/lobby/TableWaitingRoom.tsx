@@ -744,7 +744,13 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
                     {!isOccupied && !isUserSeated && (
                       <button
                         type="button"
-                        onClick={() => onClaimSeat(sIdx)}
+                        onClick={() => {
+                          if (currentUser.role === 'guest') {
+                            alert('Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.');
+                            return;
+                          }
+                          onClaimSeat(sIdx);
+                        }}
                         className="py-1.5 px-3.5 rounded-lg text-xs font-bold uppercase tracking-wider bg-cyan-600 hover:bg-cyan-500 text-white transition shadow cursor-pointer text-center"
                       >
                         {`Take Seat ${sIdx + 1}`}

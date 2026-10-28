@@ -191,6 +191,7 @@ export interface GameState {
   creatorUserId?: string;
   creatorUsername?: string;
   isGameStarted?: boolean;
+  isLocalGame?: boolean;
   isDraftMode?: boolean;
   members?: TableMember[];
   expansions?: string[];

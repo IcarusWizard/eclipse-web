@@ -256,24 +256,36 @@ export const App: React.FC = () => {
   useEffect(() => {
     return subscribeToUserSession((u) => {
       setCurrentUser(u);
-      if (currentSeat === 'all' && !canUserUseHotseat(u.role)) {
+      if (currentSeat === 'all' && !canUserUseHotseat(u.role, state?.isLocalGame)) {
         setCurrentSeat(0);
         showToast('Only administrators are allowed to use the hotseat function.');
       }
     });
-  }, [currentSeat]);
+  }, [currentSeat, state?.isLocalGame]);
 
   // Register current user as member of active table
   const lastRegisteredMemberKeyRef = React.useRef<string | null>(null);
 
   useEffect(() => {
     if (inGame && state.id && currentUser) {
-      if (currentSeat === 'all' && !canUserUseHotseat(currentUser.role)) {
+      if (currentSeat === 'all' && !canUserUseHotseat(currentUser.role, state?.isLocalGame)) {
         showToast('Only administrators are allowed to use the hotseat function.');
         setCurrentSeat(0);
         if (typeof window !== 'undefined') {
           const params = new URLSearchParams(window.location.search);
           params.set('seat', '0');
+          window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        }
+        return;
+      }
+
+      // Guest players in online games can only be spectators
+      if (!state?.isLocalGame && currentUser.role === 'guest' && currentSeat !== 'spectator') {
+        showToast('Guest players can only join online multiplayer games as a spectator. Switched to Spectator.');
+        setCurrentSeat('spectator');
+        if (typeof window !== 'undefined') {
+          const params = new URLSearchParams(window.location.search);
+          params.set('seat', 'spectator');
           window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
         }
         return;
@@ -308,16 +320,50 @@ export const App: React.FC = () => {
 
       lastRegisteredMemberKeyRef.current = regKey;
 
-      registerTableMember(state.id, {
-        userId: currentUser.id,
-        name: currentUser.name,
-        username: currentUser.username,
-        role: currentUser.role,
-        email: currentUser.email,
-        emailNotifications: currentUser.emailNotifications,
-        seat: currentSeat,
-        joinedAt: Date.now(),
-      }).then((res) => {
+      // Spectator is a temporary seat; who has been the spectator should not be stored.
+      // If the user was previously registered in a permanent seat on this table, vacate it.
+      if (currentSeat === 'spectator') {
+        const wasSeated = members.some((m: any) => m.userId === currentUser.id && m.seat !== 'spectator');
+        if (wasSeated) {
+          registerTableMember(
+            state.id,
+            {
+              userId: currentUser.id,
+              name: currentUser.name,
+              username: currentUser.username,
+              role: currentUser.role,
+              email: currentUser.email,
+              emailNotifications: currentUser.emailNotifications,
+              seat: 'spectator',
+              joinedAt: Date.now(),
+            },
+            state.isLocalGame
+          ).then((res) => {
+            if (res.success && res.members) {
+              setState((prev) => ({
+                ...prev,
+                members: res.members,
+              }));
+            }
+          });
+        }
+        return;
+      }
+
+      registerTableMember(
+        state.id,
+        {
+          userId: currentUser.id,
+          name: currentUser.name,
+          username: currentUser.username,
+          role: currentUser.role,
+          email: currentUser.email,
+          emailNotifications: currentUser.emailNotifications,
+          seat: currentSeat,
+          joinedAt: Date.now(),
+        },
+        state.isLocalGame
+      ).then((res) => {
         if (!res.success && res.error) {
           showToast(res.error);
           if (typeof currentSeat === 'number') {
@@ -542,7 +588,7 @@ export const App: React.FC = () => {
 
   // Active Player Presence Heartbeat (pings server every 20s while tab is open)
   useEffect(() => {
-    if (!inGame || !currentUser || currentUser.role === 'guest') return;
+    if (!inGame || !currentUser || currentUser.role === 'guest' || (state as any)?.isLocalGame) return;
     const sendPing = () => {
       if (typeof fetch !== 'undefined') {
         fetch('/api/presence', {
@@ -558,7 +604,7 @@ export const App: React.FC = () => {
     sendPing();
     const interval = setInterval(sendPing, 20000);
     return () => clearInterval(interval);
-  }, [inGame, currentUser?.id, state.id]);
+  }, [inGame, currentUser?.id, state.id, (state as any)?.isLocalGame]);
 
   const handleStartNewGameFromLobby = (
     playerCount: number,
@@ -567,17 +613,19 @@ export const App: React.FC = () => {
     seat: number | 'all',
     expansions?: string[],
     neutralShips?: NeutralShipSelectionConfig,
-    isDraftMode?: boolean
+    isDraftMode?: boolean,
+    isLocalGame?: boolean
   ) => {
     const user = getCurrentUser();
-    const effectiveSeat = typeof seat === 'number' ? seat : 0;
+    const effectiveSeat = isLocalGame ? 'all' : (typeof seat === 'number' ? seat : 0);
     const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips, isDraftMode);
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
     newGame.id = tableId;
     (newGame as any).creatorUserId = user.id;
     (newGame as any).creatorUsername = user.username || user.name;
-    (newGame as any).isGameStarted = false;
+    (newGame as any).isGameStarted = isLocalGame ? true : false;
+    newGame.isLocalGame = Boolean(isLocalGame);
     const initialMember = {
       userId: user.id,
       name: user.name,
@@ -591,11 +639,13 @@ export const App: React.FC = () => {
     };
     (newGame as any).members = [initialMember];
     saveGameState(newGame);
-    registerTableMember(tableId, initialMember).then((res) => {
-      if (res.success && res.members) {
-        setState((prev) => ({ ...prev, members: res.members }));
-      }
-    });
+    if (!isLocalGame) {
+      registerTableMember(tableId, initialMember).then((res) => {
+        if (res.success && res.members) {
+          setState((prev) => ({ ...prev, members: res.members }));
+        }
+      });
+    }
     setState(newGame);
     setCurrentSeat(effectiveSeat);
     if (typeof effectiveSeat === 'number') {
@@ -616,10 +666,6 @@ export const App: React.FC = () => {
     seat: number | 'all' | 'spectator'
   ) => {
     const user = getCurrentUser();
-    if (seat === 'all' && !canUserUseHotseat(user.role)) {
-      alert('Only administrators are allowed to use the hotseat function.');
-      return;
-    }
     let loaded = loadTable(tableId);
     const remote = await fetchTableFromServer(tableId);
     if (remote) {
@@ -636,6 +682,17 @@ export const App: React.FC = () => {
     }
     if (!loaded) {
       alert(`Table "${tableId}" does not exist.`);
+      return;
+    }
+
+    if (!loaded.isLocalGame && user.role === 'guest' && seat !== 'spectator') {
+      alert('Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.');
+      setIsUserModalOpen(true);
+      return;
+    }
+
+    if (seat === 'all' && !canUserUseHotseat(user.role, loaded.isLocalGame)) {
+      alert('Only administrators are allowed to use the hotseat function in online games.');
       return;
     }
     if (typeof seat === 'number') {
@@ -656,13 +713,13 @@ export const App: React.FC = () => {
       emailNotifications: user.emailNotifications,
       seat,
       joinedAt: Date.now(),
-    });
+    }, loaded.isLocalGame);
     if (!regRes.success && regRes.error) {
       alert(regRes.error);
       return;
     }
-    if (regRes.members && regRes.members.length > 0) {
-      loaded.members = regRes.members;
+    if (regRes.members) {
+      loaded.members = regRes.members.filter((m: any) => m && m.seat !== 'spectator');
     }
     saveGameState(loaded, true);
     setState(loaded);
@@ -690,8 +747,34 @@ export const App: React.FC = () => {
   };
 
   const handleChangeSeat = (seat: number | 'all' | 'spectator') => {
-    if (seat === 'all' && !canUserUseHotseat(currentUser.role)) {
-      showToast('Only administrators are allowed to use the hotseat function.');
+    const isGameRunning = Boolean(
+      state.isGameStarted ||
+      state.round > 1 ||
+      (state.replaySteps && state.replaySteps.length > 1)
+    );
+    const isAdmin = currentUser?.role === 'admin';
+    const isEliminated =
+      typeof currentSeat === 'number' && Boolean(state.players[currentSeat]?.isEliminated);
+
+    // Lock seats once an online game has started
+    if (isGameRunning && !state.isLocalGame && !isAdmin) {
+      if (typeof currentSeat === 'number' && !isEliminated && seat !== currentSeat) {
+        showToast('Seats are locked once the game has started.');
+        return;
+      }
+      if (currentSeat === 'spectator' && seat !== 'spectator') {
+        showToast('Seats are locked once the game has started.');
+        return;
+      }
+    }
+
+    if (!state.isLocalGame && currentUser.role === 'guest' && seat !== 'spectator') {
+      showToast('Guest players can only join online multiplayer games as a spectator. Please log in or register.');
+      setIsUserModalOpen(true);
+      return;
+    }
+    if (seat === 'all' && !canUserUseHotseat(currentUser.role, state.isLocalGame)) {
+      showToast('Only administrators are allowed to use the hotseat function in online games.');
       return;
     }
     if (typeof seat === 'number') {
@@ -710,18 +793,46 @@ export const App: React.FC = () => {
       setSelectedViewIndex(state.activePlayerIndex || 0);
     }
     if (currentUser) {
-      const updatedMembers = (state.members || []).filter((m: any) => m.userId !== currentUser.id);
-      updatedMembers.push({
-        userId: currentUser.id,
-        name: currentUser.name,
-        username: currentUser.username || currentUser.name,
-        role: currentUser.role,
-        email: currentUser.email,
-        emailNotifications: currentUser.emailNotifications,
-        seat,
-        joinedAt: Date.now(),
-      });
+      const updatedMembers = (state.members || []).filter(
+        (m: any) => m.userId !== currentUser.id && m.seat !== 'spectator'
+      );
+      if (seat !== 'spectator') {
+        updatedMembers.push({
+          userId: currentUser.id,
+          name: currentUser.name,
+          username: currentUser.username || currentUser.name,
+          role: currentUser.role,
+          email: currentUser.email,
+          emailNotifications: currentUser.emailNotifications,
+          seat,
+          joinedAt: Date.now(),
+        });
+      }
       setState((prev) => ({ ...prev, members: updatedMembers }));
+
+      if (inGame && state.id) {
+        registerTableMember(
+          state.id,
+          {
+            userId: currentUser.id,
+            name: currentUser.name,
+            username: currentUser.username,
+            role: currentUser.role,
+            email: currentUser.email,
+            emailNotifications: currentUser.emailNotifications,
+            seat,
+            joinedAt: Date.now(),
+          },
+          state.isLocalGame
+        ).then((res) => {
+          if (res.success && res.members) {
+            setState((prev) => ({
+              ...prev,
+              members: res.members,
+            }));
+          }
+        }).catch(() => {});
+      }
     }
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
@@ -2332,6 +2443,7 @@ export const App: React.FC = () => {
   const isTableWaitingForPlayers = React.useMemo(() => {
     if (!inGame || !state || !state.players) return false;
     if (state.phase === 'GAME_OVER') return false;
+    if ((state as any).isLocalGame) return false;
     if ((state as any).isGameStarted === false) return true;
     if ((state as any).isGameStarted === true) return false;
     if (state.round > 1 || ((state as any).replaySteps && (state as any).replaySteps.length > 1)) {
@@ -2339,7 +2451,7 @@ export const App: React.FC = () => {
     }
     const occupied = getTableOccupiedSeats(state as any);
     return occupied.size < state.players.length;
-  }, [inGame, state, state?.members, state?.players?.length, (state as any)?.isGameStarted, state?.phase, state?.round]);
+  }, [inGame, state, state?.members, state?.players?.length, (state as any)?.isGameStarted, (state as any)?.isLocalGame, state?.phase, state?.round]);
 
   if (!inGame) {
     return (

@@ -864,7 +864,58 @@ function tableStoragePlugin(): Plugin {
               res.end(JSON.stringify({ success: false, error: 'Table not found' }));
               return;
             }
-            tableData.members = tableData.members || [];
+            tableData.members = (tableData.members || []).filter((m: any) => m && m.seat !== 'spectator');
+
+            const isGameRunning =
+              tableData.isGameStarted === true ||
+              tableData.round > 1 ||
+              (tableData.replaySteps && tableData.replaySteps.length > 1);
+
+            // Lock seats once an online game has started
+            if (isGameRunning && !tableData.isLocalGame && member.role !== 'admin') {
+              const curMembers = tableData.members || [];
+              const existing = curMembers.find((m: any) => m.userId === member.userId);
+              if (member.seat === 'spectator') {
+                if (existing && typeof existing.seat === 'number') {
+                  const isEliminated = Boolean(tableData.players?.[existing.seat]?.isEliminated);
+                  if (!isEliminated) {
+                    res.statusCode = 403;
+                    res.setHeader('Content-Type', 'application/json');
+                    res.end(JSON.stringify({ success: false, error: 'Seats are locked once the game has started.' }));
+                    return;
+                  }
+                }
+              } else if (typeof member.seat === 'number') {
+                if (!existing || existing.seat !== member.seat) {
+                  res.statusCode = 403;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ success: false, error: 'Seats are locked once the game has started.' }));
+                  return;
+                }
+              }
+            }
+
+            // Spectators are temporary and not stored.
+            // If the user previously occupied a player seat, vacate it; otherwise, do not store them.
+            if (member.seat === 'spectator') {
+              const existingIdx = tableData.members.findIndex((m: any) => m.userId === member.userId);
+              if (existingIdx >= 0) {
+                const leaving = tableData.members[existingIdx];
+                if (typeof leaving.seat === 'number' && tableData.players?.[leaving.seat]) {
+                  const p = tableData.players[leaving.seat];
+                  p.name = p.faction?.name || `Player ${leaving.seat + 1}`;
+                }
+                tableData.members.splice(existingIdx, 1);
+                tableData.savedAt = Date.now();
+                const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
+                fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
+              }
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: true, members: tableData.members }));
+              return;
+            }
+
             if (typeof member.seat === 'number') {
               const seatOccupant = tableData.members.find(
                 (m: any) => m.seat === member.seat && m.userId !== member.userId
@@ -902,6 +953,7 @@ function tableStoragePlugin(): Plugin {
                 joinedAt: Date.now(),
               });
             }
+            tableData.members = tableData.members.filter((m: any) => m && m.seat !== 'spectator');
             tableData.savedAt = Date.now();
             const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
             fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
@@ -955,6 +1007,25 @@ function tableStoragePlugin(): Plugin {
               return;
             }
 
+            const isGameRunning =
+              tableData.isGameStarted === true ||
+              tableData.round > 1 ||
+              (tableData.replaySteps && tableData.replaySteps.length > 1);
+
+            if (isGameRunning && !tableData.isLocalGame) {
+              const leavingMember = (tableData.members || []).find((m: any) => m.userId === userId);
+              const isEliminated =
+                leavingMember &&
+                typeof leavingMember.seat === 'number' &&
+                Boolean(tableData.players?.[leavingMember.seat]?.isEliminated);
+              if (!isEliminated) {
+                res.statusCode = 403;
+                res.setHeader('Content-Type', 'application/json');
+                res.end(JSON.stringify({ success: false, error: 'Seats are locked once the game has started.' }));
+                return;
+              }
+            }
+
             const leavingMember = (tableData.members || []).find((m: any) => m.userId === userId);
             if (leavingMember && typeof leavingMember.seat === 'number' && tableData.players?.[leavingMember.seat]) {
               const p = tableData.players[leavingMember.seat];
@@ -987,6 +1058,7 @@ function tableStoragePlugin(): Plugin {
             try {
               const content = fs.readFileSync(path.join(TABLES_DIR, file), 'utf-8');
               const data = JSON.parse(content);
+              if (data.isLocalGame) continue;
               const activePlayer = data.players?.[data.activePlayerIndex];
               let effectiveActiveSeat = typeof data.activePlayerIndex === 'number' ? data.activePlayerIndex : 0;
               if (data.phase === 'COMBAT_PHASE' && data.combat?.activePlayerId) {
@@ -1009,7 +1081,7 @@ function tableStoragePlugin(): Plugin {
                 activePlayerName: activePlayer ? activePlayer.name : 'Unknown',
                 activePlayerIndex: effectiveActiveSeat,
                 isGameStarted,
-                members: data.members || [],
+                members: (data.members || []).filter((m: any) => m && m.seat !== 'spectator'),
                 hasReplay: Boolean(
                   data.replaySteps &&
                   data.replaySteps.length > 0 &&
@@ -1041,6 +1113,9 @@ function tableStoragePlugin(): Plugin {
 
           const sanitizeTable = (t: any) => {
             if (!t) return t;
+            if (Array.isArray(t.members)) {
+              t.members = t.members.filter((m: any) => m && m.seat !== 'spectator');
+            }
             if (!includeReplay && t.replaySteps) {
               const { replaySteps, ...rest } = t;
               const isSetup =
@@ -1105,6 +1180,7 @@ function tableStoragePlugin(): Plugin {
             try {
               const content = fs.readFileSync(path.join(TABLES_DIR, file), 'utf-8');
               const data = JSON.parse(content);
+              if (data.isLocalGame) continue;
               if (data.id === targetParam || (!isNaN(num) && data.tableNumber === num)) {
                 candidates.push(data);
               }
@@ -1144,6 +1220,12 @@ function tableStoragePlugin(): Plugin {
         req.on('end', () => {
           try {
             const data = JSON.parse(body || '{}');
+            if (data.isLocalGame) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Local games cannot be hosted on the server' }));
+              return;
+            }
             const tableId = targetParam || data.id;
             if (!tableId) {
               res.statusCode = 400;
@@ -1214,6 +1296,9 @@ function tableStoragePlugin(): Plugin {
                   data.replayStepsCount = data.replaySteps.length;
                 }
               } catch {}
+            }
+            if (Array.isArray(data.members)) {
+              data.members = data.members.filter((m: any) => m && m.seat !== 'spectator');
             }
             fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8');
 

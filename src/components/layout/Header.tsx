@@ -39,6 +39,7 @@ import {
   History,
   Zap,
   Swords,
+  Lock,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -456,51 +457,85 @@ export const Header: React.FC<HeaderProps> = ({
                         <User className="w-3.5 h-3.5 text-cyan-400" />
                         <span>Current Seat:</span>
                       </div>
-                      {onChangeSeat ? (
-                        <select
-                          value={currentSeat !== undefined ? currentSeat.toString() : 'all'}
-                          onChange={(e) => {
-                            const val = e.target.value;
-                            if (val === 'all') {
-                              if (!canUserUseHotseat(currentUser.role)) {
-                                alert('Only administrators are allowed to use the hotseat function.');
-                                return;
-                              }
-                              onChangeSeat('all');
-                            } else if (val === 'spectator') {
-                              onChangeSeat(val);
-                            } else {
-                              onChangeSeat(parseInt(val, 10));
-                            }
-                          }}
-                          className="bg-slate-950 border border-slate-700 text-xs rounded px-2 py-1 text-cyan-300 font-bold focus:outline-none"
-                        >
-                          <option value="all" disabled={!canUserUseHotseat(currentUser.role)}>
-                            Hotseat (All){!canUserUseHotseat(currentUser.role) ? ' (Admin Only)' : ''}
-                          </option>
-                          {state.players.map((p, idx) => {
-                            const seatCheck = isSeatTaken(state.members, idx, currentUser.id);
-                            const isTaken = seatCheck.isTaken && !!seatCheck.occupant;
-                            return (
-                              <option key={p.id} value={idx.toString()} disabled={isTaken}>
-                                Seat {idx + 1} ({getPlayerDisplayName(p, { short: true })})
-                                {isTaken
-                                  ? ` [Taken: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
-                                  : ''}
+                      {(() => {
+                        const isGameRunning = Boolean(
+                          state.isGameStarted ||
+                          state.round > 1 ||
+                          (state.replaySteps && state.replaySteps.length > 1)
+                        );
+                        const isAdmin = currentUser.role === 'admin';
+                        const isEliminated =
+                          typeof currentSeat === 'number' && Boolean(state.players[currentSeat]?.isEliminated);
+                        const isSeatLocked = isGameRunning && !state.isLocalGame && !isAdmin && !isEliminated;
+
+                        if (onChangeSeat && !isSeatLocked) {
+                          return (
+                            <select
+                              value={currentSeat !== undefined ? currentSeat.toString() : 'all'}
+                              onChange={(e) => {
+                                const val = e.target.value;
+                                if (val === 'all') {
+                                  if (!canUserUseHotseat(currentUser.role, state.isLocalGame)) {
+                                    alert('Only administrators are allowed to use the hotseat function in online games.');
+                                    return;
+                                  }
+                                  onChangeSeat('all');
+                                } else if (val === 'spectator') {
+                                  onChangeSeat(val);
+                                } else {
+                                  if (!state.isLocalGame && currentUser.role === 'guest') {
+                                    alert('Guest players can only join online multiplayer games as a spectator. Please log in or register.');
+                                    return;
+                                  }
+                                  onChangeSeat(parseInt(val, 10));
+                                }
+                              }}
+                              className="bg-slate-950 border border-slate-700 text-xs rounded px-2 py-1 text-cyan-300 font-bold focus:outline-none"
+                            >
+                              <option value="all" disabled={!canUserUseHotseat(currentUser.role, state.isLocalGame)}>
+                                Hotseat (All){!canUserUseHotseat(currentUser.role, state.isLocalGame) ? ' (Admin Only)' : ''}
                               </option>
-                            );
-                          })}
-                          <option value="spectator">Spectator</option>
-                        </select>
-                      ) : (
-                        <span className="font-bold text-cyan-300">
-                          {currentSeat === 'all' || currentSeat === undefined
-                            ? 'Hotseat'
-                            : currentSeat === 'spectator'
-                            ? 'Spectator'
-                            : `Seat ${Number(currentSeat) + 1}`}
-                        </span>
-                      )}
+                              {state.players.map((p, idx) => {
+                                const seatCheck = isSeatTaken(state.members, idx, currentUser.id);
+                                const isTaken = seatCheck.isTaken && !!seatCheck.occupant;
+                                const isGuestBlocked = !state.isLocalGame && currentUser.role === 'guest';
+                                return (
+                                  <option key={p.id} value={idx.toString()} disabled={isTaken || isGuestBlocked}>
+                                    Seat {idx + 1} ({getPlayerDisplayName(p, { short: true })})
+                                    {isTaken
+                                      ? ` [Taken: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
+                                      : isGuestBlocked
+                                      ? ' (Spectator Only)'
+                                      : ''}
+                                  </option>
+                                );
+                              })}
+                              <option value="spectator">Spectator</option>
+                            </select>
+                          );
+                        }
+
+                        return (
+                          <div className="flex items-center gap-1.5 font-bold text-cyan-300">
+                            {isSeatLocked && (
+                              <span
+                                className="text-slate-400 hover:text-slate-300 flex items-center gap-1 text-[11px] bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded"
+                                title="Seats are locked during active matches"
+                              >
+                                <Lock className="w-3 h-3 text-amber-400" />
+                                <span>Locked</span>
+                              </span>
+                            )}
+                            <span>
+                              {currentSeat === 'all' || currentSeat === undefined
+                                ? 'Hotseat'
+                                : currentSeat === 'spectator'
+                                ? 'Spectator'
+                                : `Seat ${Number(currentSeat) + 1} (${getPlayerDisplayName(state.players[currentSeat], { short: true })})`}
+                            </span>
+                          </div>
+                        );
+                      })()}
                     </div>
 
                     {/* Copy Direct Seat URL */}
