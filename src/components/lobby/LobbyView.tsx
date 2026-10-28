@@ -68,6 +68,7 @@ import {
   ArrowRight,
   Globe,
   Bookmark,
+  Swords,
 } from 'lucide-react';
 import {
   NeutralShipType,
@@ -88,6 +89,7 @@ interface LobbyViewProps {
   onJoinTable: (tableId: string, seat: number | 'all' | 'spectator') => void;
   onOpenGallery?: () => void;
   onOpenReplay?: (tableId: string) => void;
+  onOpenCombatSimulator?: () => void;
 }
 
 export type LobbySection = 'hub' | 'create' | 'join' | 'my_games';
@@ -97,6 +99,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   onJoinTable,
   onOpenGallery,
   onOpenReplay,
+  onOpenCombatSimulator,
 }) => {
   const isSSR = typeof window === 'undefined';
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
@@ -580,6 +583,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             </button>
           )}
 
+          {/* Combat Simulator - Always available throughout */}
+          {onOpenCombatSimulator && (
+            <button
+              type="button"
+              onClick={onOpenCombatSimulator}
+              className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border border-red-500/40 hover:border-red-400 hover:bg-slate-800 text-red-300 hover:text-red-200 text-xs font-bold tracking-wider uppercase shadow-lg shadow-red-950/40 transition-all cursor-pointer"
+              title="Open Monte Carlo Combat Simulator"
+            >
+              <Swords className="w-3.5 h-3.5 text-red-400" />
+              <span>⚔️ Simulator</span>
+            </button>
+          )}
+
           {activeSection !== 'hub' && (
             <button
               type="button"
@@ -811,6 +827,38 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
+
+            {/* Tactical Combat Simulator Quick Banner */}
+            {onOpenCombatSimulator && (
+              <div
+                onClick={onOpenCombatSimulator}
+                className="col-span-1 md:col-span-3 flex flex-wrap items-center justify-between p-4 rounded-2xl bg-gradient-to-r from-red-950/40 via-slate-900 to-amber-950/40 border border-red-900/50 hover:border-red-500/80 shadow-lg hover:shadow-red-950/40 transition-all cursor-pointer group"
+              >
+                <div className="flex items-center gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-red-950 border border-red-700/80 flex items-center justify-center text-red-400 group-hover:scale-110 transition-transform shadow">
+                    <Swords className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-display font-bold text-sm text-white group-hover:text-red-300 transition-colors">
+                        Combat Simulator & Fleet Battle Lab
+                      </h3>
+                      <span className="px-2 py-0.2 rounded-full text-[10px] font-mono font-bold bg-red-950 text-red-300 border border-red-700">
+                        1,000 / 10,000 Iterations
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-400">
+                      Simulate battle outcomes, test custom blueprints (with discovery modules), and analyze winning rates & surviving fleet distributions.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-red-400 group-hover:text-red-300">
+                  <span>Launch Simulator</span>
+                  <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
+                </div>
+              </div>
+            )}
           </div>
         )}
 

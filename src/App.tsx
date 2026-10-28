@@ -52,6 +52,7 @@ import { BankruptcyModal } from './components/actions/BankruptcyModal';
 import { LobbyView } from './components/lobby/LobbyView';
 import { TableWaitingRoom } from './components/lobby/TableWaitingRoom';
 import { GalacticGalleryModal } from './components/gallery/GalacticGalleryModal';
+import { CombatSimulatorModal } from './components/simulator/CombatSimulatorModal';
 import { GameReplayModal } from './components/replay/GameReplayModal';
 import { BugReportModal } from './components/feedback/BugReportModal';
 import { BugReportCornerButton } from './components/feedback/BugReportCornerButton';
@@ -122,6 +123,7 @@ export const App: React.FC = () => {
 
   // Modal visibility states
   const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
+  const [isCombatSimulatorOpen, setIsCombatSimulatorOpen] = useState<boolean>(false);
   const [isExploreMode, setIsExploreMode] = useState<boolean>(false);
   const [pendingExploreCoords, setPendingExploreCoords] = useState<{
     from: HexCoord;
@@ -2347,11 +2349,19 @@ export const App: React.FC = () => {
           onJoinTable={handleJoinTableFromLobby}
           onOpenGallery={() => setIsGalleryOpen(true)}
           onOpenReplay={handleOpenReplay}
+          onOpenCombatSimulator={() => setIsCombatSimulatorOpen(true)}
         />
         <GalacticGalleryModal
           isOpen={isGalleryOpen}
           onClose={() => setIsGalleryOpen(false)}
         />
+        {isCombatSimulatorOpen && (
+          <CombatSimulatorModal
+            isOpen={isCombatSimulatorOpen}
+            onClose={() => setIsCombatSimulatorOpen(false)}
+            gameState={null}
+          />
+        )}
         <BugReportCornerButton onClick={() => setIsBugReportOpen(true)} />
         <BugReportModal
           isOpen={isBugReportOpen}
@@ -2418,12 +2428,20 @@ export const App: React.FC = () => {
             handleReturnToLobby();
           }}
           onOpenGallery={() => setIsGalleryOpen(true)}
+          onOpenCombatSimulator={() => setIsCombatSimulatorOpen(true)}
           onUpdateState={(remoteState) => setState(remoteState)}
         />
         <GalacticGalleryModal
           isOpen={isGalleryOpen}
           onClose={() => setIsGalleryOpen(false)}
         />
+        {isCombatSimulatorOpen && (
+          <CombatSimulatorModal
+            isOpen={isCombatSimulatorOpen}
+            onClose={() => setIsCombatSimulatorOpen(false)}
+            gameState={state}
+          />
+        )}
         <BugReportCornerButton onClick={() => setIsBugReportOpen(true)} />
         <BugReportModal
           isOpen={isBugReportOpen}
@@ -2467,6 +2485,7 @@ export const App: React.FC = () => {
         onOpenTurnOrder={() => setIsTurnOrderOpen(true)}
         onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
         onOpenReplay={() => handleOpenReplay()}
+        onOpenCombatSimulator={() => setIsCombatSimulatorOpen(true)}
         onReturnToLobby={handleReturnToLobby}
         onSwitchTable={(tableId, seat) => handleJoinTableFromLobby(tableId, seat)}
         currentSeat={currentSeat}
@@ -3057,6 +3076,14 @@ export const App: React.FC = () => {
         isOpen={isGalleryOpen}
         onClose={() => setIsGalleryOpen(false)}
       />
+
+      {isCombatSimulatorOpen && (
+        <CombatSimulatorModal
+          isOpen={isCombatSimulatorOpen}
+          onClose={() => setIsCombatSimulatorOpen(false)}
+          gameState={state}
+        />
+      )}
 
       <TurnOrderTrackModal
         isOpen={isTurnOrderOpen}

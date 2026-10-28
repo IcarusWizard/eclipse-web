@@ -18296,6 +18296,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
                 !p0.techTrack.researched.some((r: any) => r.id === t.id)
             ) || { id: 'plasma_cannon', name: 'Plasma Cannon', category: 'military', baseCost: 4, minCost: 3 };
           expect(availableTech).toBeDefined();
+          p0.techTrack.researched = p0.techTrack.researched.filter((r: any) => r.id !== availableTech.id);
           if (!t101Data.techSupply.some((t: any) => t.id === availableTech.id)) {
             t101Data.techSupply.push(availableTech);
           }
@@ -18587,6 +18588,212 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(typeof playTurnNotificationSound).toBe('function');
         // Calling it in Node/test environment must execute safely without throwing
         expect(() => playTurnNotificationSound()).not.toThrow();
+      });
+
+      test('112. verifies Combat Simulation Engine, Custom Blueprints, Discovery Parts, Antimatter Splitter, and In-Game Sector Battle Loading', async () => {
+        const {
+          createDefaultSimulatorSide,
+          runCombatSimulation,
+          findSectorsWithPendingCombat,
+          loadBattleFromSector,
+          buildSimulatorUnits,
+        } = await import('../rules/combatSimulator');
+        const { SHIP_PARTS } = await import('../rules/partData');
+
+        // 1. Setup Default Sides and Units
+        const terranSide = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { dreadnought: 1, cruiser: 1 },
+        });
+        expect(terranSide.name).toBe('Terran Federation');
+        expect(terranSide.isNpc).toBe(false);
+        expect(terranSide.blueprints.cruiser).toBeDefined();
+
+        const ancientSide = createDefaultSimulatorSide('ancient', {
+          isNpc: true,
+          npcVariant: 'default',
+          shipCounts: { ancient: 2 },
+        });
+        expect(ancientSide.name).toBe('Ancient Cruiser');
+        expect(ancientSide.isNpc).toBe(true);
+
+        const terranUnits = buildSimulatorUnits(terranSide, 'attacker');
+        expect(terranUnits.length).toBe(2);
+        expect(terranUnits.some((u) => u.type === 'dreadnought')).toBe(true);
+        expect(terranUnits.some((u) => u.type === 'cruiser')).toBe(true);
+
+        const ancientUnits = buildSimulatorUnits(ancientSide, 'defender');
+        expect(ancientUnits.length).toBe(2);
+        expect(ancientUnits[0].type).toBe('ancient');
+        expect(ancientUnits[0].maxHull).toBe(2);
+        expect(ancientUnits[0].initiative).toBe(2);
+
+        // 2. Monte Carlo Simulation Execution (1,000 and 10,000 runs)
+        const sim1000 = runCombatSimulation(terranSide, ancientSide, 1000);
+        expect(sim1000.iterations).toBe(1000);
+        expect(sim1000.attackerWins + sim1000.defenderWins + sim1000.draws).toBe(1000);
+        expect(sim1000.avgRounds).toBeGreaterThan(0);
+        expect(Array.isArray(sim1000.attackerSurvivingOutcomes)).toBe(true);
+        expect(Array.isArray(sim1000.defenderSurvivingOutcomes)).toBe(true);
+
+        const sim10000 = runCombatSimulation(terranSide, ancientSide, 10000);
+        expect(sim10000.iterations).toBe(10000);
+        expect(sim10000.attackerWins + sim10000.defenderWins + sim10000.draws).toBe(10000);
+
+        // 3. NPC Blueprint Variants (Ancient, Guardian, GCDS)
+        const guardianAdv = createDefaultSimulatorSide('guardian', {
+          isNpc: true,
+          npcVariant: 'advanced',
+          shipCounts: { guardian: 1 },
+        });
+        expect(guardianAdv.npcVariant).toBe('advanced');
+        const gUnits = buildSimulatorUnits(guardianAdv, 'defender');
+        expect(gUnits[0].weapons.some((w) => w.isMissile)).toBe(true);
+
+        const gcdsExp = createDefaultSimulatorSide('gcds', {
+          isNpc: true,
+          npcVariant: 'expert',
+          shipCounts: { gcds: 1 },
+        });
+        expect(gcdsExp.npcVariant).toBe('expert');
+        const gcdsUnits = buildSimulatorUnits(gcdsExp, 'defender');
+        expect(gcdsUnits[0].maxHull).toBe(5);
+        expect(gcdsUnits[0].shieldBonus).toBe(2);
+
+        // 4. Custom Blueprints with Discovery Tile Parts
+        const customSide = createDefaultSimulatorSide('terran_directorate', {
+          shipCounts: { cruiser: 1 },
+        });
+        // Equip Ancient Discovery Modules (including Conformal Drive for legal propulsion)
+        customSide.blueprints.cruiser.slots = [
+          SHIP_PARTS.ion_disruptor,   // 1 yellow, +3 init
+          SHIP_PARTS.soliton_charger,  // 1 blue
+          SHIP_PARTS.axion_computer,   // +2 hit, +1 init
+          SHIP_PARTS.flux_shield,      // -3 enemy hit, +1 init
+          SHIP_PARTS.conformal_drive,  // Speed 4, Power 2 (Drive requirement met)
+          SHIP_PARTS.hypergrid_source, // +11 power (Power balance met)
+        ];
+        const customUnits = buildSimulatorUnits(customSide, 'attacker');
+        expect(customUnits.length).toBe(1);
+        expect(customUnits[0].weapons.some((w) => w.color === 'blue')).toBe(true);
+        expect(customUnits[0].computerBonus).toBeGreaterThanOrEqual(2);
+        expect(customUnits[0].shieldBonus).toBeGreaterThanOrEqual(3);
+
+        const simCustom = runCombatSimulation(customSide, ancientSide, 50);
+        expect(simCustom.iterations).toBe(50);
+        expect(simCustom.attackerWins).toBeGreaterThan(0);
+
+        // 5. Antimatter Splitter Tech: Damage Splitting across Multiple Targets
+        const dreadNoSplit = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { dreadnought: 1 },
+          hasAntimatterSplitter: false,
+        });
+        dreadNoSplit.blueprints.dreadnought.slots = [
+          SHIP_PARTS.antimatter_cannon, // 4 damage
+          SHIP_PARTS.antimatter_cannon, // 4 damage
+          SHIP_PARTS.gluon_computer,    // +3 hit
+          SHIP_PARTS.gluon_computer,    // +3 hit
+          SHIP_PARTS.zero_point_source, // +12 power
+          SHIP_PARTS.tachyon_drive,     // Speed 3, -3 power
+          SHIP_PARTS.fusion_source,     // +6 power (Total power produced: 18 >= 15 consumed)
+          SHIP_PARTS.hull,
+        ];
+
+        const dreadWithSplit = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { dreadnought: 1 },
+          hasAntimatterSplitter: true,
+        });
+        dreadWithSplit.blueprints.dreadnought.slots = [...dreadNoSplit.blueprints.dreadnought.slots];
+
+        const swarmDef = createDefaultSimulatorSide('terran_directorate', {
+          shipCounts: { interceptor: 4 },
+        });
+
+        const resNoSplit = runCombatSimulation(dreadNoSplit, swarmDef, 200);
+        const resWithSplit = runCombatSimulation(dreadWithSplit, swarmDef, 200);
+
+        expect(resWithSplit.attackerWinRate).toBeGreaterThanOrEqual(resNoSplit.attackerWinRate);
+
+        // 6. Blueprint Legality Validation in Combat Simulation (Power balance and Drive requirement)
+        const { validateSimulatorSide } = await import('../rules/combatSimulator');
+        
+        // 6a. Side with power deficit
+        const powerDeficitSide = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { cruiser: 1 },
+        });
+        powerDeficitSide.blueprints.cruiser.slots = [
+          SHIP_PARTS.antimatter_cannon, // -4 power
+          SHIP_PARTS.antimatter_cannon, // -4 power
+          SHIP_PARTS.nuclear_drive,     // -1 power
+          SHIP_PARTS.nuclear_source,    // +3 power (Total consumed: 9 > produced: 3)
+          null,
+          null,
+        ];
+        const powerVal = validateSimulatorSide(powerDeficitSide);
+        expect(powerVal.isValid).toBe(false);
+        expect(powerVal.errors.some((e) => e.includes('Insufficient power'))).toBe(true);
+        expect(powerVal.shipErrors.cruiser).toBeDefined();
+
+        // 6b. Side with missing drive
+        const missingDriveSide = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { cruiser: 1 },
+        });
+        missingDriveSide.blueprints.cruiser.slots = [
+          SHIP_PARTS.ion_cannon,
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.hull,
+          null,
+          null,
+          null,
+        ];
+        const driveVal = validateSimulatorSide(missingDriveSide);
+        expect(driveVal.isValid).toBe(false);
+        expect(driveVal.errors.some((e) => e.includes('must have at least one drive'))).toBe(true);
+
+        // 6c. runCombatSimulation halts and returns validationErrors when fleets have illegal blueprints
+        const haltedSim = runCombatSimulation(missingDriveSide, ancientSide, 100);
+        expect(haltedSim.iterations).toBe(0);
+        expect(haltedSim.validationErrors).toBeDefined();
+        expect(haltedSim.validationErrors!.length).toBeGreaterThan(0);
+        expect(haltedSim.validationErrors![0]).toContain('must have at least one drive');
+
+        // 6d. If ship count is 0, illegal blueprint for non-participating ship does not halt simulation
+        const zeroCountIllegalSide = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { cruiser: 0, interceptor: 2 },
+        });
+        zeroCountIllegalSide.blueprints.cruiser.slots = [...missingDriveSide.blueprints.cruiser.slots]; // Cruiser illegal, but count is 0
+        const participatingSim = runCombatSimulation(zeroCountIllegalSide, ancientSide, 50);
+        expect(participatingSim.iterations).toBe(50);
+        expect(participatingSim.validationErrors).toBeUndefined();
+
+        // 7. In-Game Battle Loader
+        const testGame = createInitialGame(2, ['terran_federation', 'hydran_progress']);
+        const sec1 = testGame.sectors[1];
+        sec1.ships.push({
+          id: 'test_ship_p0_cruiser',
+          ownerId: testGame.players[0].id,
+          type: 'cruiser',
+          damage: 0,
+        });
+        sec1.ships.push({
+          id: 'test_ship_ancient_1',
+          ownerId: 'ancient',
+          type: 'ancient',
+          damage: 0,
+        });
+
+        const pendingList = findSectorsWithPendingCombat(testGame);
+        expect(pendingList.some((p) => p.sector.id === sec1.id && p.hasCombat)).toBe(true);
+
+        const loadedBattle = loadBattleFromSector(testGame, sec1.id);
+        expect(loadedBattle).not.toBeNull();
+        expect(loadedBattle!.attacker.factionId).toBe(testGame.players[0].faction.id);
+        expect(loadedBattle!.attacker.shipCounts.cruiser).toBe(1);
+        expect(loadedBattle!.defender.isNpc).toBe(true);
+        expect(loadedBattle!.defender.factionId).toBe('ancient');
+
+        // 8. Verify Component Import and React Hook Hygiene
+        const { CombatSimulatorModal } = await import('../../components/simulator/CombatSimulatorModal');
+        expect(typeof CombatSimulatorModal).toBe('function');
       });
     });
   });

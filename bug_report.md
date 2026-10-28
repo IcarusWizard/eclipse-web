@@ -214,4 +214,5 @@
 - [x] in the tech tray, when the mouse move up on the tech, it should show detailed discription of the tech (Round 3, ACTION_PHASE, Player: Terran Directorate, Table #105)
 - [x] in the auto assign from the NPC, if the priority is if the damage can distropy a ship, then distropy a ship, otherwise hit the largest ship (Round 3, COMBAT_PHASE, Player: Terran Directorate, Table #105)
 - [x] if the player is live, the game should make some hint sound when it is their turn (Round 4, ACTION_PHASE, Player: Guest-6973, Table #105)
+- [x] the combat simulation doesn't validate whether the modified blue print is legal, for example if the power supply is enough for the consumption, or if a ship has an engine (Combat Simulator)
 

@@ -38,6 +38,7 @@ import {
   Sparkles,
   History,
   Zap,
+  Swords,
 } from 'lucide-react';
 
 interface HeaderProps {
@@ -55,6 +56,7 @@ interface HeaderProps {
   onOpenTurnOrder?: () => void;
   onOpenMinorSpecies?: () => void;
   onOpenReplay?: () => void;
+  onOpenCombatSimulator?: () => void;
   onSwitchTable?: (tableId: string, seat: number | 'all' | 'spectator') => void;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
@@ -76,6 +78,7 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenTurnOrder,
   onOpenMinorSpecies,
   onOpenReplay,
+  onOpenCombatSimulator,
   onSwitchTable,
   currentSeat = 'all',
   onChangeSeat,
@@ -220,6 +223,18 @@ export const Header: React.FC<HeaderProps> = ({
                   {state.minorSpeciesSupply.length}
                 </span>
               )}
+            </button>
+          )}
+
+          {/* Combat Simulator Button */}
+          {onOpenCombatSimulator && (
+            <button
+              onClick={onOpenCombatSimulator}
+              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-red-950/70 hover:bg-red-900 border border-red-600/60 text-red-200 text-xs font-bold transition-all shadow cursor-pointer shrink-0"
+              title="Open Combat Simulator"
+            >
+              <Swords className="w-3.5 h-3.5 text-red-400" />
+              <span className="hidden md:inline">Combat Simulator</span>
             </button>
           )}
 
@@ -714,6 +729,28 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
+                      </button>
+                    )}
+
+                    {/* Combat Simulator */}
+                    {onOpenCombatSimulator && (
+                      <button
+                        onClick={() => {
+                          setIsDrawerOpen(false);
+                          onOpenCombatSimulator();
+                        }}
+                        className="w-full flex items-center justify-between p-2.5 rounded-xl bg-slate-900/70 hover:bg-slate-800 border border-slate-800 hover:border-red-600/50 text-slate-200 transition group"
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-7 h-7 rounded-lg bg-red-950/60 border border-red-600/40 flex items-center justify-center text-red-400">
+                            <Swords className="w-3.5 h-3.5" />
+                          </div>
+                          <div className="text-left">
+                            <div className="text-xs font-bold text-red-300">Combat Simulator</div>
+                            <div className="text-[10px] text-slate-400">Monte Carlo battle simulator & fleet analysis</div>
+                          </div>
+                        </div>
+                        <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-red-400 transition" />
                       </button>
                     )}
                   </div>
