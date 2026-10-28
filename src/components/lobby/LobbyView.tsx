@@ -18,6 +18,8 @@ import {
   getSyncChannel,
   mergeTableSummaries,
   areTableSummariesEqual,
+  getTableExpansions,
+  getTableSeatsInfo,
 } from '../../engine/rules/persistence';
 import {
   getCurrentUser,
@@ -1492,6 +1494,38 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         </div>
                       </div>
 
+                      {/* Enabled Expansions List (Bug 222) */}
+                      {(() => {
+                        const expansions = getTableExpansions(table);
+                        return (
+                          <div className="space-y-1 pt-1.5 border-t border-slate-800/80">
+                            <span className="text-[10px] font-mono uppercase text-slate-500 font-bold block">
+                              Expansions Enabled
+                            </span>
+                            <div className="flex flex-wrap gap-1">
+                              {expansions.length === 0 ? (
+                                <span className="px-2 py-0.5 rounded text-[10px] bg-slate-900 border border-slate-800 text-slate-400">
+                                  Base Game (No Expansions)
+                                </span>
+                              ) : (
+                                expansions.map((expId) => {
+                                  const def = AVAILABLE_EXPANSIONS.find((e) => e.id === expId);
+                                  return (
+                                    <span
+                                      key={expId}
+                                      className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-950/70 border border-purple-700/60 text-purple-300"
+                                      title={def?.description || expId}
+                                    >
+                                      {def?.name || expId}
+                                    </span>
+                                  );
+                                })
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {/* Seating Roster with Join Buttons */}
                       <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
                         <span className="text-[10px] font-mono uppercase text-slate-500 font-bold block">
@@ -1751,6 +1785,43 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               Active Player: <span className="text-slate-300 font-semibold">{table.activePlayerName}</span>
                             </div>
                           )}
+                        </div>
+
+                        {/* Every Seat with Seat Number, Player Faction (or Still drafting), and Player Name (Bug 221) */}
+                        <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
+                          <span className="text-[10px] font-mono uppercase text-slate-500 font-bold block">
+                            Seats & Roster
+                          </span>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                            {getTableSeatsInfo(table, currentUser.id).map((seat) => (
+                              <div
+                                key={seat.seatNumber}
+                                className={`p-2 rounded-lg border text-xs flex items-center justify-between gap-2 ${
+                                  seat.isMySeat
+                                    ? 'bg-cyan-950/50 border-cyan-500/50 text-cyan-200'
+                                    : 'bg-slate-900/80 border-slate-800 text-slate-300'
+                                }`}
+                              >
+                                <div className="flex items-center gap-1.5 min-w-0">
+                                  <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-slate-800/90 text-slate-400 shrink-0 font-bold">
+                                    {`Seat ${seat.seatNumber}`}
+                                  </span>
+                                  <span className="truncate font-medium text-slate-200">
+                                    {`${seat.playerName}${seat.isMySeat ? ' (You)' : ''}`}
+                                  </span>
+                                </div>
+                                <span
+                                  className={`shrink-0 text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                                    seat.isDrafting
+                                      ? 'bg-amber-500/15 border border-amber-500/30 text-amber-300'
+                                      : 'bg-slate-800 border border-slate-700/60 text-slate-300'
+                                  }`}
+                                >
+                                  {seat.factionName}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
                         </div>
                       </div>
 

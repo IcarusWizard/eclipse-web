@@ -1088,6 +1088,7 @@ function tableStoragePlugin(): Plugin {
                   !(data.round > 1 && (data.replaySteps[0]?.round > 1 || (data.replaySteps[0]?.actionType !== 'GAME_SETUP' && data.replaySteps[0]?.actionType !== 'DRAFT_INITIALIZED')))
                 ),
                 replayStepsCount: data.replaySteps?.length || 0,
+                expansions: data.expansions || [],
               });
             } catch {}
           }

@@ -457,8 +457,8 @@ export const App: React.FC = () => {
     viewedPlayer.id !== state.players[currentSeat]?.id &&
     state.phase !== 'GAME_OVER';
 
-  // Play hint chime sound when it becomes this player's active turn (Bug 216)
-  const prevIsMyTurnRef = useRef<boolean>(false);
+  // Play hint chime sound when it becomes this player's active turn, including consecutive turns (Bugs 216 & 219)
+  const lastChimedTurnKeyRef = useRef<string>('');
   useEffect(() => {
     const isLivePlayerTurn =
       !isTurnGated &&
@@ -466,11 +466,28 @@ export const App: React.FC = () => {
       state.phase !== 'GAME_OVER' &&
       state.phase !== 'CLEANUP_PHASE';
 
-    if (isLivePlayerTurn && !prevIsMyTurnRef.current) {
-      playTurnNotificationSound();
+    // Unique key identifying the state of the active turn:
+    // When consecutive turns occur (e.g. after other players auto-pass),
+    // replaySteps count or log[0].id changes, signaling a new turn event!
+    const turnKey = `${state.round}:${state.phase}:${state.activePlayerIndex}:${state.replaySteps?.length || 0}:${state.log?.[0]?.id || ''}`;
+
+    if (isLivePlayerTurn) {
+      if (lastChimedTurnKeyRef.current !== turnKey) {
+        playTurnNotificationSound();
+        lastChimedTurnKeyRef.current = turnKey;
+      }
+    } else {
+      lastChimedTurnKeyRef.current = '';
     }
-    prevIsMyTurnRef.current = isLivePlayerTurn;
-  }, [isTurnGated, isSpectator, state.phase, state.activePlayerIndex]);
+  }, [
+    isTurnGated,
+    isSpectator,
+    state.phase,
+    state.round,
+    state.activePlayerIndex,
+    state.replaySteps?.length,
+    state.log?.[0]?.id,
+  ]);
 
   // Load table from server if URL query param ?table=XXX is specified and not loaded locally
   useEffect(() => {

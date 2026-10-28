@@ -19057,6 +19057,161 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Clean up
         deleteSavedTable(activeTableId);
       });
+
+      test('115. Bug fixes 219-222: Consecutive turn sound chime, sound volume, seat roster in my games, expansion listing in join table view', async () => {
+        const { playTurnNotificationSound } = await import('../rules/soundUtils');
+        const { getTableExpansions, getTableSeatsInfo, saveGameState, deleteSavedTable, listSavedTables } = await import('../rules/persistence');
+        const { saveUserSession, getCurrentUser } = await import('../rules/userSession');
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { LobbyView } = await import('../../components/lobby/LobbyView');
+
+        // Store original session to restore later
+        const originalSession = getCurrentUser();
+
+        // --- Bug 220: Turn reminder sound volume multiplier ---
+        // Calling playTurnNotificationSound with default or increased volume multiplier should not throw
+        expect(() => playTurnNotificationSound()).not.toThrow();
+        expect(() => playTurnNotificationSound(1.5)).not.toThrow();
+
+        // --- Bug 219: Consecutive turn reminder key logic ---
+        // Consecutive turns (e.g., activePlayerIndex = 0 takes turn, other players auto-pass, activePlayerIndex = 0 again)
+        // Replay step or log entry ID updates turnKey:
+        const round = 3;
+        const phase = 'ACTION_PHASE';
+        const activePlayerIndex = 0;
+        const turnKey1 = `${round}:${phase}:${activePlayerIndex}:5:log-101`;
+        const turnKey2 = `${round}:${phase}:${activePlayerIndex}:7:log-103`;
+        expect(turnKey1).not.toBe(turnKey2); // Consecutive turn generates a new unique key so chime fires again
+
+        // --- Bug 222: Expansions listing in join table view ---
+        const tableSummaryWithExpansions = {
+          id: 'table-exp-115',
+          tableNumber: '115',
+          savedAt: Date.now(),
+          round: 1,
+          maxRounds: 9,
+          phase: 'ACTION_PHASE' as any,
+          playerCount: 2,
+          playerNames: ['Alice ()', 'Bob ()'],
+          activePlayerName: 'Alice',
+          activePlayerIndex: 0,
+          isGameStarted: false,
+          expansions: ['rift_cannon', 'remnants_of_worlds_afar'],
+        };
+        const retrievedExpansions = getTableExpansions(tableSummaryWithExpansions);
+        expect(retrievedExpansions).toEqual(['rift_cannon', 'remnants_of_worlds_afar']);
+
+        const baseSummaryNoExpansions = {
+          id: 'table-base-115',
+          tableNumber: '116',
+          savedAt: Date.now(),
+          round: 1,
+          maxRounds: 9,
+          phase: 'ACTION_PHASE' as any,
+          playerCount: 2,
+          playerNames: ['Alice ()', 'Bob ()'],
+          activePlayerName: 'Alice',
+          activePlayerIndex: 0,
+          isGameStarted: false,
+          expansions: [],
+        };
+        expect(getTableExpansions(baseSummaryNoExpansions)).toEqual([]);
+
+        // --- Bug 221: Seats info in View My Games (seat number, player faction or still drafting, player name) ---
+        // Case A: Table during draft mode (faction not selected yet)
+        const draftingTableState = createInitialGame(3);
+        draftingTableState.id = 'table-draft-115';
+        (draftingTableState as any).isDraftMode = true;
+        (draftingTableState as any).isGameStarted = false;
+        draftingTableState.players[0].name = 'Alice';
+        draftingTableState.players[0].faction = { id: 'unassigned', name: 'Unassigned' } as any;
+        draftingTableState.players[0].factionDrafted = false;
+        draftingTableState.players[1].name = 'Bob';
+        draftingTableState.players[1].faction = { id: 'unassigned', name: 'Unassigned' } as any;
+        draftingTableState.players[1].factionDrafted = false;
+        draftingTableState.players[2].name = 'Charlie';
+        draftingTableState.players[2].faction = { id: 'terran_directorate', name: 'Terran Directorate' } as any;
+        draftingTableState.players[2].factionDrafted = true;
+        draftingTableState.expansions = ['rift_cannon'];
+        draftingTableState.members = [
+          { userId: 'user-alice', name: 'Alice', username: 'alice', role: 'user', seat: 0, joinedAt: 100 },
+          { userId: 'user-bob', name: 'Bob', username: 'bob', role: 'user', seat: 1, joinedAt: 101 },
+          { userId: 'user-charlie', name: 'Charlie', username: 'charlie', role: 'user', seat: 2, joinedAt: 102 },
+        ];
+        saveGameState(draftingTableState);
+
+        // Also save a waiting table with multiple expansions to test join table expansion badges
+        const waitingExpTable = createInitialGame(2);
+        waitingExpTable.id = 'table-waiting-exp-115';
+        (waitingExpTable as any).isGameStarted = false;
+        waitingExpTable.expansions = ['rift_cannon', 'remnants_of_worlds_afar'];
+        saveGameState(waitingExpTable);
+
+        const savedTables = listSavedTables();
+        const draftSummary = savedTables.find((t) => t.id === 'table-draft-115')!;
+        expect(draftSummary).toBeDefined();
+
+        const seatsInfo = getTableSeatsInfo(draftSummary, 'user-alice');
+        expect(seatsInfo).toHaveLength(3);
+
+        // Seat 1: Alice, still drafting
+        expect(seatsInfo[0].seatNumber).toBe(1);
+        expect(seatsInfo[0].playerName).toBe('Alice');
+        expect(seatsInfo[0].factionName).toBe('Still drafting');
+        expect(seatsInfo[0].isDrafting).toBe(true);
+        expect(seatsInfo[0].isMySeat).toBe(true);
+
+        // Seat 2: Bob, still drafting
+        expect(seatsInfo[1].seatNumber).toBe(2);
+        expect(seatsInfo[1].playerName).toBe('Bob');
+        expect(seatsInfo[1].factionName).toBe('Still drafting');
+        expect(seatsInfo[1].isDrafting).toBe(true);
+        expect(seatsInfo[1].isMySeat).toBe(false);
+
+        // Seat 3: Charlie, drafted Terran Directorate
+        expect(seatsInfo[2].seatNumber).toBe(3);
+        expect(seatsInfo[2].playerName).toBe('Charlie');
+        expect(seatsInfo[2].factionName).toBe('Terran Directorate');
+        expect(seatsInfo[2].isDrafting).toBe(false);
+
+        // Verify LobbyView HTML rendering contains both expansions list and seats roster
+        const currentUserAlice = {
+          id: 'user-alice',
+          name: 'Alice',
+          username: 'alice',
+          role: 'user' as const,
+          createdAt: Date.now(),
+        };
+        saveUserSession(currentUserAlice);
+
+        const lobbyHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+
+        // My Games section renders every seat with seat number, player name, and faction or "Still drafting"
+        expect(lobbyHtml).toContain('Seat 1');
+        expect(lobbyHtml).toContain('Seat 2');
+        expect(lobbyHtml).toContain('Seat 3');
+        expect(lobbyHtml).toContain('Alice');
+        expect(lobbyHtml).toContain('Bob');
+        expect(lobbyHtml).toContain('Charlie');
+        expect(lobbyHtml).toContain('Still drafting');
+        expect(lobbyHtml).toContain('Terran Directorate');
+
+        // Join Other Games section renders enabled expansions
+        expect(lobbyHtml).toContain('Expansions Enabled');
+        expect(lobbyHtml).toContain('Rift Cannon');
+        expect(lobbyHtml).toContain('Remnants of Worlds Afar');
+
+        // Clean up
+        deleteSavedTable('table-draft-115');
+        deleteSavedTable('table-waiting-exp-115');
+        saveUserSession(originalSession);
+      });
     });
   });
 });

@@ -21,13 +21,15 @@ function getAudioContext(): AudioContext | null {
 
 /**
  * Plays a pleasant, two-tone sci-fi chime to alert the player that it is their turn.
+ * Volume is calibrated to be clearly audible (Bug 220).
  */
-export function playTurnNotificationSound(): void {
+export function playTurnNotificationSound(volumeMultiplier: number = 1.0): void {
   try {
     const ctx = getAudioContext();
     if (!ctx) return;
 
     const now = ctx.currentTime;
+    const masterVolume = Math.min(Math.max(volumeMultiplier, 0.1), 2.0);
 
     // Tone 1: D5 (587.33 Hz)
     const osc1 = ctx.createOscillator();
@@ -35,8 +37,9 @@ export function playTurnNotificationSound(): void {
     osc1.type = 'sine';
     osc1.frequency.setValueAtTime(587.33, now);
 
+    const peak1 = 0.40 * masterVolume;
     gain1.gain.setValueAtTime(0.001, now);
-    gain1.gain.exponentialRampToValueAtTime(0.12, now + 0.03);
+    gain1.gain.exponentialRampToValueAtTime(peak1, now + 0.03);
     gain1.gain.exponentialRampToValueAtTime(0.001, now + 0.16);
 
     osc1.connect(gain1);
@@ -51,8 +54,9 @@ export function playTurnNotificationSound(): void {
     osc2.type = 'sine';
     osc2.frequency.setValueAtTime(880.0, now + 0.12);
 
+    const peak2 = 0.50 * masterVolume;
     gain2.gain.setValueAtTime(0.001, now + 0.12);
-    gain2.gain.exponentialRampToValueAtTime(0.15, now + 0.15);
+    gain2.gain.exponentialRampToValueAtTime(peak2, now + 0.15);
     gain2.gain.exponentialRampToValueAtTime(0.0001, now + 0.45);
 
     osc2.connect(gain2);

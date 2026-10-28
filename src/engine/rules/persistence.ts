@@ -19,6 +19,7 @@ export interface SavedTableSummary {
   members?: TableMember[];
   hasReplay?: boolean;
   replayStepsCount?: number;
+  expansions?: string[];
 }
 
 const ACTIVE_GAME_KEY = 'eclipse_active_game';
@@ -343,6 +344,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       members,
       hasReplay,
       replayStepsCount,
+      expansions: state.expansions || [],
     };
 
     safeSetStorageItem(storage, SAVED_TABLES_KEY, JSON.stringify(tables));
@@ -730,6 +732,17 @@ export function mergeTableSummaries(
 
     const isLocalGame = Boolean(local.isLocalGame || remote.isLocalGame);
 
+    const expansions =
+      (winner.expansions && winner.expansions.length > 0)
+        ? winner.expansions
+        : (base.expansions && base.expansions.length > 0)
+        ? base.expansions
+        : (local.expansions && local.expansions.length > 0)
+        ? local.expansions
+        : (remote.expansions && remote.expansions.length > 0)
+        ? remote.expansions
+        : [];
+
     map.set(remote.id, {
       ...base,
       ...winner,
@@ -745,6 +758,7 @@ export function mergeTableSummaries(
       members,
       hasReplay,
       replayStepsCount,
+      expansions,
       stateJson: winner.stateJson || base.stateJson || local.stateJson || remote.stateJson,
     });
   }
@@ -1538,6 +1552,117 @@ export function isPlayerTurnAtTable(
   }
 
   return false;
+}
+
+/**
+ * Retrieves the array of active expansion IDs for a table summary.
+ * Checks both table.expansions and parses table.stateJson fallback.
+ */
+export function getTableExpansions(table: SavedTableSummary): string[] {
+  if (Array.isArray(table.expansions) && table.expansions.length > 0) {
+    return table.expansions;
+  }
+  if (table.stateJson) {
+    try {
+      const parsed = JSON.parse(table.stateJson);
+      if (Array.isArray(parsed.expansions)) return parsed.expansions;
+    } catch {}
+  }
+  return table.expansions || [];
+}
+
+export interface SeatDisplayInfo {
+  seatNumber: number;
+  playerName: string;
+  factionName: string;
+  isDrafting: boolean;
+  isOccupied: boolean;
+  isMySeat: boolean;
+  occupant?: TableMember;
+}
+
+/**
+ * Returns structured information for every seat of a table for display in the lobby.
+ * Reports seat number, player faction (or still drafting), and player name (Bug 221).
+ */
+export function getTableSeatsInfo(table: SavedTableSummary, currentUserId?: string): SeatDisplayInfo[] {
+  let parsedState: any = null;
+  if (table.stateJson) {
+    try {
+      parsedState = JSON.parse(table.stateJson);
+    } catch {}
+  }
+
+  const pCount = table.playerCount || parsedState?.players?.length || 2;
+  const isDraftMode = Boolean(parsedState?.isDraftMode);
+
+  return Array.from({ length: pCount }).map((_, sIdx) => {
+    const occupant = (table.members || []).find((m) => m.seat === sIdx);
+    const parsedPlayer = parsedState?.players?.[sIdx];
+    const isOccupied = Boolean(occupant);
+    const isMySeat = Boolean(occupant && currentUserId && occupant.userId === currentUserId);
+
+    let playerName = occupant?.name || occupant?.username || parsedPlayer?.name || `Player ${sIdx + 1}`;
+    if (!isOccupied && !parsedPlayer) {
+      playerName = 'Open Seat';
+    }
+
+    let factionName = '';
+    let isDrafting = false;
+
+    if (parsedPlayer) {
+      const isUnassigned =
+        !parsedPlayer.faction ||
+        parsedPlayer.faction.id === 'unassigned' ||
+        !parsedPlayer.faction.name ||
+        parsedPlayer.faction.name.toLowerCase().includes('unassigned');
+      if (parsedPlayer.factionDrafted === false || isUnassigned) {
+        isDrafting = true;
+        factionName = 'Still drafting';
+      } else if (parsedPlayer.faction?.name) {
+        factionName = parsedPlayer.faction.name;
+      }
+    }
+
+    if (!factionName) {
+      const rawName = table.playerNames?.[sIdx];
+      if (rawName) {
+        const match = rawName.match(/\(([^)]*)\)/);
+        if (match && match[1] && match[1].trim()) {
+          const inParen = match[1].trim();
+          if (
+            inParen.toLowerCase().includes('draft') ||
+            inParen.toLowerCase().includes('unassigned')
+          ) {
+            isDrafting = true;
+            factionName = 'Still drafting';
+          } else {
+            factionName = inParen;
+          }
+        } else if (isDraftMode || table.isGameStarted === false) {
+          isDrafting = true;
+          factionName = 'Still drafting';
+        }
+      } else if (isDraftMode || table.isGameStarted === false) {
+        isDrafting = true;
+        factionName = 'Still drafting';
+      }
+    }
+
+    if (!factionName) {
+      factionName = isOccupied ? 'Still drafting' : 'Open';
+    }
+
+    return {
+      seatNumber: sIdx + 1,
+      playerName,
+      factionName,
+      isDrafting,
+      isOccupied,
+      isMySeat,
+      occupant,
+    };
+  });
 }
 
 
