@@ -216,3 +216,7 @@
 - [x] if the player is live, the game should make some hint sound when it is their turn (Round 4, ACTION_PHASE, Player: Guest-6973, Table #105)
 - [x] the combat simulation doesn't validate whether the modified blue print is legal, for example if the power supply is enough for the consumption, or if a ship has an engine (Combat Simulator)
 
+- [ ] the turn reminder sound should still play if the player is taking consecutive turns, for example if everyone else passes with auto-pass (Round 3, ACTION_PHASE, Player: Terran Directorate, Table #102)
+- [ ] the volum of the turn sound should be higher (Round 4, ACTION_PHASE, Player: Terran Directorate, Table #102)
+- [ ] In view my game section of the lobby, each game should show every seat with seat number, player faction (or still drafting), player name (Lobby, Player: Alice)
+- [ ] in join table view, the game should list all the expansions it enabled for the other players to decide (Lobby, Player: Alice)
