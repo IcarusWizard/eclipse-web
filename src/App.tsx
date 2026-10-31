@@ -2795,6 +2795,7 @@ export const App: React.FC = () => {
             onOpenTechMarket={() => setIsTechMarketOpen(true)}
             onOpenTrade={() => setIsTradeOpen(true)}
             onOpenPhysicalBoard={() => setIsPhysicalBoardOpen(true)}
+            onOpenCombatSimulator={() => setIsCombatSimulatorOpen(true)}
             onConvertColonyShip={!isTurnGated ? handleConvertColonyShip : undefined}
             hideOpponentReputation={hideOpponentReputation}
             allPlayers={state.players}

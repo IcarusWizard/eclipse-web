@@ -52,7 +52,8 @@ export type GalleryTab =
   | 'sectors'
   | 'discoveries'
   | 'factions'
-  | 'reputation';
+  | 'reputation'
+  | 'minorSpecies';
 
 export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
   isOpen,
@@ -183,6 +184,18 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
     );
   }, [searchQuery]);
 
+  // 6. Minor Species Catalog
+  const filteredMinorSpecies = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return ALL_MINOR_SPECIES_TILES.filter(
+      (tile) =>
+        !q ||
+        tile.name.toLowerCase().includes(q) ||
+        tile.vpDescription.toLowerCase().includes(q) ||
+        tile.abilityDescription.toLowerCase().includes(q)
+    );
+  }, [searchQuery]);
+
   if (!isOpen) return null;
 
   return (
@@ -225,6 +238,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
               { id: 'discoveries', label: 'Discoveries', count: '36', icon: Award },
               { id: 'factions', label: 'Factions', count: ALL_FACTIONS.length, icon: Users },
               { id: 'reputation', label: 'Reputation Bag', count: '33', icon: Shield },
+              { id: 'minorSpecies', label: 'Minor Species', count: ALL_MINOR_SPECIES_TILES.length, icon: Globe },
             ].map((tab) => {
               const Icon = tab.icon;
               const active = activeTab === tab.id;
@@ -339,7 +353,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                               </span>
                             ) : null}
                           </h4>
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex flex-col items-end gap-1 shrink-0">
                             {exp && (
                               <span
                                 className="text-[9px] px-2 py-0.5 rounded font-mono font-bold uppercase bg-purple-900/80 border border-purple-400 text-purple-200 flex items-center gap-1 shadow-sm"
@@ -467,7 +481,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                           <h4 className="text-xs font-bold text-slate-100 flex items-center gap-1">
                             <span>{part.name}</span>
                           </h4>
-                          <div className="flex items-center gap-1 shrink-0">
+                          <div className="flex flex-col items-end gap-1 shrink-0">
                             {exp && (
                               <span
                                 className="text-[9px] px-1.5 py-0.5 rounded font-mono font-bold uppercase bg-purple-900/80 border border-purple-400 text-purple-200 flex items-center gap-1 shadow-sm"
@@ -807,7 +821,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                             <Award className={`w-4 h-4 shrink-0 ${exp ? 'text-purple-400' : 'text-cyan-400'}`} />
                             <span>{tile.name}</span>
                           </h4>
-                          <div className="flex items-center gap-1.5 shrink-0">
+                          <div className="flex flex-col items-end gap-1 shrink-0">
                             {exp && (
                               <span
                                 className="text-[9px] px-2 py-0.5 rounded font-mono font-bold uppercase bg-purple-900/80 border border-purple-400 text-purple-200 flex items-center gap-1 shadow-sm"
@@ -1042,16 +1056,20 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   </ul>
                 </div>
               </div>
+            </div>
+          )}
 
-              {/* Minor Species Expansion Ambassador Tiles */}
+          {/* ===================== TAB 7: MINOR SPECIES ===================== */}
+          {activeTab === 'minorSpecies' && (
+            <div className="space-y-4">
               <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
                 <div className="flex items-center justify-between">
                   <h3 className="text-sm font-bold text-emerald-400 font-display uppercase tracking-wider flex items-center gap-2">
-                    <Users className="w-4 h-4 text-emerald-400" />
-                    Minor Species Expansion: Ambassador Tiles (9 Tiles)
+                    <Globe className="w-4 h-4 text-emerald-400" />
+                    Minor Species Expansion: Ambassador Tiles (9 Authentic Tiles)
                   </h3>
                   <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60 font-bold uppercase">
-                    Minor Species
+                    Minor Species Expansion
                   </span>
                 </div>
                 <p className="text-xs text-slate-300 leading-relaxed">
@@ -1059,10 +1077,10 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                 </p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 pt-2">
-                  {ALL_MINOR_SPECIES_TILES.map((tile) => (
+                  {filteredMinorSpecies.map((tile) => (
                     <div
                       key={tile.id}
-                      className="p-3 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/50 transition flex flex-col justify-between"
+                      className="p-3.5 rounded-xl bg-slate-900/90 border border-slate-800 hover:border-emerald-500/50 transition flex flex-col justify-between"
                     >
                       <div>
                         <div className="flex items-start justify-between gap-2 mb-1.5">
@@ -1074,7 +1092,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         <div className="text-[11px] font-semibold text-indigo-400 mb-2">
                           {tile.vpDescription}
                         </div>
-                        <p className="text-[11px] text-slate-300 leading-relaxed bg-slate-950/60 p-2 rounded-lg border border-slate-800/60">
+                        <p className="text-[11px] text-slate-300 leading-relaxed bg-slate-950/60 p-2.5 rounded-lg border border-slate-800/60">
                           {tile.abilityDescription}
                         </p>
                       </div>

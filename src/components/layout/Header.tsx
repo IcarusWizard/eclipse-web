@@ -210,18 +210,6 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Combat Simulator Button */}
-          {onOpenCombatSimulator && (
-            <button
-              onClick={onOpenCombatSimulator}
-              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-red-950/70 hover:bg-red-900 border border-red-600/60 text-red-200 text-xs font-bold transition-all shadow cursor-pointer shrink-0"
-              title="Open Combat Simulator"
-            >
-              <Swords className="w-3.5 h-3.5 text-red-400" />
-              <span className="hidden md:inline">Combat Simulator</span>
-            </button>
-          )}
-
           {/* BGA-style Switch to Next Table Button (Bug 207) */}
           {onSwitchTable && waitingTables.length > 0 && (
             <button

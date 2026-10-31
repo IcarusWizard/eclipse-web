@@ -21,6 +21,7 @@ import {
   ChevronDown,
   ChevronUp,
   Handshake,
+  Swords,
 } from 'lucide-react';
 import { canExchangeAmbassadors, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
@@ -35,6 +36,7 @@ interface PlayerBoardProps {
   onOpenTrade: () => void;
   onOpenPhysicalBoard?: () => void;
   onConvertColonyShip?: (resource: 'money' | 'science' | 'materials') => void;
+  onOpenCombatSimulator?: () => void;
   hideOpponentReputation?: boolean;
   allPlayers?: PlayerState[];
   traitorPlayerId?: string | null;
@@ -56,6 +58,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   onOpenTrade,
   onOpenPhysicalBoard,
   onConvertColonyShip,
+  onOpenCombatSimulator,
   hideOpponentReputation = false,
   allPlayers = [],
   traitorPlayerId = null,
@@ -158,40 +161,13 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             >
               <Settings className="w-3.5 h-3.5" />
             </button>
-            {allPlayers && allPlayers.length > 1 && (
+            {onOpenCombatSimulator && (
               <button
-                onClick={() => {
-                  const firstEligible = allPlayers.find(
-                    (o) =>
-                      o.id !== player.id &&
-                      canExchangeAmbassadors(
-                        { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
-                        player.id,
-                        o.id
-                      ).canExchange
-                  );
-                  if (firstEligible && onInitiateDiplomacy) {
-                    onInitiateDiplomacy(firstEligible.id);
-                  } else {
-                    setIsCollapsed(false);
-                  }
-                }}
-                className={`p-1 hover:bg-slate-800 rounded transition-colors ${
-                  allPlayers.some(
-                    (o) =>
-                      o.id !== player.id &&
-                      canExchangeAmbassadors(
-                        { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
-                        player.id,
-                        o.id
-                      ).canExchange
-                  )
-                    ? 'text-indigo-400 hover:text-indigo-300 ring-1 ring-indigo-500/50 animate-pulse'
-                    : 'text-slate-400 hover:text-indigo-400'
-                }`}
-                title="Diplomacy / Ambassadors"
+                onClick={onOpenCombatSimulator}
+                className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400 transition-colors"
+                title="Combat Simulator"
               >
-                <Handshake className="w-3.5 h-3.5" />
+                <Swords className="w-3.5 h-3.5" />
               </button>
             )}
             <button
@@ -399,40 +375,13 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           >
             <Settings className="w-4 h-4" />
           </button>
-          {allPlayers && allPlayers.length > 1 && (
+          {onOpenCombatSimulator && (
             <button
-              onClick={() => {
-                const firstEligible = allPlayers.find(
-                  (o) =>
-                    o.id !== player.id &&
-                    canExchangeAmbassadors(
-                      { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
-                      player.id,
-                      o.id
-                    ).canExchange
-                );
-                if (firstEligible && onInitiateDiplomacy) {
-                  onInitiateDiplomacy(firstEligible.id);
-                } else if (onOpenPhysicalBoard) {
-                  onOpenPhysicalBoard();
-                }
-              }}
-              className={`p-1.5 hover:bg-slate-800 rounded transition-colors ${
-                allPlayers.some(
-                  (o) =>
-                    o.id !== player.id &&
-                    canExchangeAmbassadors(
-                      { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
-                      player.id,
-                      o.id
-                    ).canExchange
-                )
-                  ? 'text-indigo-400 hover:text-indigo-300 ring-1 ring-indigo-500/50 animate-pulse'
-                  : 'text-slate-400 hover:text-indigo-400'
-              }`}
-              title="Diplomatic Relations & Ambassadors"
+              onClick={onOpenCombatSimulator}
+              className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400 transition-colors"
+              title="Combat Simulator"
             >
-              <Handshake className="w-4 h-4" />
+              <Swords className="w-4 h-4" />
             </button>
           )}
           <button

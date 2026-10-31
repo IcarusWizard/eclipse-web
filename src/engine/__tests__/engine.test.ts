@@ -10950,17 +10950,26 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(modalHtml).toContain('Cruiser Shipwrights');
         expect(modalHtml).toContain('Available Minor Species in Galaxy');
 
-        // 10. Galactic Gallery Reference
+        // 10. Galactic Gallery Reference - Minor Species has its own dedicated tab (Bug 228)
         const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
         const galleryHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            initialTab: 'minorSpecies',
+            onClose: () => {},
+          })
+        );
+        expect(galleryHtml).toContain('Minor Species Expansion: Ambassador Tiles');
+        expect(galleryHtml).toContain('Cruiser Shipwrights');
+
+        const repHtml = renderToString(
           React.createElement(GalacticGalleryModal, {
             isOpen: true,
             initialTab: 'reputation',
             onClose: () => {},
           })
         );
-        expect(galleryHtml).toContain('Minor Species Expansion: Ambassador Tiles');
-        expect(galleryHtml).toContain('Cruiser Shipwrights');
+        expect(repHtml).not.toContain('Minor Species Expansion: Ambassador Tiles');
       });
 
       it('67. verifies Warped Universe Expansion: 5p, 3p, and 2/4p board geometry, exclusion of Guardian sectors, 1-step wormhole conduit movement across rings, wormhole generator traversal, exploration checks, and map UI rendering', async () => {
@@ -19695,6 +19704,52 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const modalSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'TableSessionModal.tsx'), 'utf-8');
         expect(modalSource).toContain('fetchSavedTablesFromServer');
         expect(modalSource).toContain("from '../../engine/rules/persistence'");
+      });
+
+      test('120. verifies Bug Fixes 228-231: Gallery Minor Species separate tab, two-row expansion tags, Tech Tray persistent visible header, and Combat Simulator moved from Header to PlayerBoard top shortcut', async () => {
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const fs = await import('fs');
+        const path = await import('path');
+
+        // 1. Bug 228: Gallery Minor Species separate tab
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+        const galleryMinorHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            initialTab: 'minorSpecies',
+            onClose: () => {},
+          })
+        );
+        expect(galleryMinorHtml).toContain('Minor Species Expansion: Ambassador Tiles');
+        expect(galleryMinorHtml).toContain('Minor Species');
+
+        const galleryRepHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            initialTab: 'reputation',
+            onClose: () => {},
+          })
+        );
+        expect(galleryRepHtml).not.toContain('Minor Species Expansion: Ambassador Tiles');
+
+        // 2. Bug 229: Two-row tags in gallery for expansion items
+        const gallerySrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'gallery', 'GalacticGalleryModal.tsx'), 'utf-8');
+        expect(gallerySrc).toContain('flex flex-col items-end gap-1 shrink-0');
+
+        // 3. Bug 230: Tech Market Modal View Mode Tabs always visible and unclipped
+        const techMarketSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'tech', 'TechMarketModal.tsx'), 'utf-8');
+        expect(techMarketSrc).toContain('FULL TECH TRAY (ALL TRACKS)');
+        expect(techMarketSrc).toContain('shrink-0 sticky top-0 z-10');
+        expect(techMarketSrc).toContain('flex-1 min-h-0 bg-slate-950/90');
+
+        // 4. Bug 231: Header no longer has Combat Simulator in top bar, PlayerBoard has Combat Simulator in first row shortcut
+        const headerSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Header.tsx'), 'utf-8');
+        expect(headerSrc).not.toContain('title="Open Combat Simulator"');
+
+        const playerBoardSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'dashboard', 'PlayerBoard.tsx'), 'utf-8');
+        expect(playerBoardSrc).toContain('title="Combat Simulator"');
+        expect(playerBoardSrc).toContain('onOpenCombatSimulator');
       });
     });
   });

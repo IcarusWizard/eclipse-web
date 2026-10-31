@@ -515,7 +515,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
       <div className="bg-slate-950 border border-slate-800 rounded-2xl w-full max-w-7xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-slate-100">
         {/* Tray Header */}
-        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border-b border-slate-800 bg-slate-900/80 gap-3">
+        <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border-b border-slate-800 bg-slate-900/80 gap-3 shrink-0">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-pink-950/80 border border-pink-700/60 text-pink-400">
               <Cpu className="w-6 h-6" />
@@ -568,7 +568,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         </div>
 
         {/* Player Switcher & Tech Track Discounts Status Banner */}
-        <div className="bg-slate-900/60 px-5 py-2.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs">
+        <div className="bg-slate-900/60 px-5 py-2.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-slate-400">Viewing Commander:</span>
             {players && players.length > 1 ? (
@@ -629,7 +629,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         </div>
 
         {/* View Mode Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-950 px-4 pt-2 gap-2 text-xs font-bold overflow-x-auto">
+        <div className="flex border-b border-slate-800 bg-slate-950 px-4 pt-2 gap-2 text-xs font-bold overflow-x-auto shrink-0 sticky top-0 z-10">
           {[
             { id: 'all', label: 'FULL TECH TRAY (ALL TRACKS)' },
             { id: 'military', label: 'MILITARY TRACK (RED)' },
@@ -652,7 +652,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         </div>
 
         {/* Tray Rows Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 bg-slate-950/90">
+        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 min-h-0 bg-slate-950/90">
           {/* 1. MILITARY TRACK ROW */}
           {(viewMode === 'all' || viewMode === 'military') && (
             <div className="bg-slate-900/50 rounded-2xl p-4 border border-rose-950/60 shadow-inner">
@@ -743,7 +743,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
         {/* Enlightened of Lyra Shrine Placement Panel */}
         {commander.faction.id === 'enlightened_of_lyra' && commander.shrineBoard && isCommanderTurn && (
-          <div className="px-5 py-3.5 bg-orange-950/20 border-t border-orange-500/40">
+          <div className="px-5 py-3.5 bg-orange-950/20 border-t border-orange-500/40 shrink-0">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-orange-400" />
@@ -883,7 +883,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
         {/* Hydran Double Research Staging Panel */}
         {maxResearch > 1 && (
-          <div className="px-5 py-3 bg-slate-900/95 border-t border-cyan-500/40 flex flex-wrap items-center justify-between gap-4">
+          <div className="px-5 py-3 bg-slate-900/95 border-t border-cyan-500/40 flex flex-wrap items-center justify-between gap-4 shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 font-bold text-base">
                 🔬
@@ -961,7 +961,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         )}
 
         {/* Tray Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs">
+        <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shrink-0">
           <div className="text-slate-400 flex items-center gap-2">
             <HelpCircle className="w-4 h-4 text-cyan-400" />
             <span>
