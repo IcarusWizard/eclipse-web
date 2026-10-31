@@ -225,3 +225,7 @@
 - [x] If I use desktop view on my phone, I can see the action bar, report bus and chronicle on the bottom, but I cannot see the confirm turn bar (Round 2, ACTION_PHASE, Player: Descendants of Draco, Table #819)
 - [x] the combat simulator currently don't support multi-faction attack especially when import from a sector, I think in general, there should be a function to add a defender, and also change the order of defenders and attackers (Round 5, ACTION_PHASE, Player: Mechanema, Table #819)
 - [x] for nebula, the combat simulator should import from subsector other than the whole sector (Round 5, ACTION_PHASE, Player: Mechanema, Table #819)
+- [ ] In gallary, minor species should have a saperate sector, not together with the reputation tiles (Lobby, Player: Alice)
+- [ ] In gallary, some ship parts and discoveries from the expansions have two tags, make them in two rows (Lobby, Player: Alice)
+- [ ] In the tech tray view, when for the FULL TECH TRAY view, the header is covered while for other view, the header (FULL TECH TRAY, GRID TECH etc.) is visiable. The header should always be visiable. (Round 1, ACTION_PHASE, Player: Terran Federation, Table #289)
+- [ ] For the top left window, the icon short cut on the first row, we should replace the diplomacy one with the combat simulator, then remove the combat simulator from the game header (Round 1, ACTION_PHASE, Player: Terran Federation, Table #289)
