@@ -98,7 +98,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   if (pendingConfirmation) {
     const isMyAction = !isTurnGated && !isSpectator;
     return (
-      <div className="fixed md:absolute bottom-2 md:bottom-6 left-1/2 -translate-x-1/2 z-30 flex flex-col md:flex-row items-center gap-2 md:gap-3 bg-slate-950/95 backdrop-blur-md p-3 md:px-5 md:py-3 rounded-2xl border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200 w-[calc(100vw-12px)] max-w-xl md:w-auto md:max-w-fit">
+      <div className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 z-40 flex flex-col md:flex-row items-center gap-2 md:gap-3 bg-slate-950/95 backdrop-blur-md p-3 md:px-5 md:py-3 rounded-2xl border-2 border-emerald-500/60 shadow-2xl shadow-emerald-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200 w-[calc(100vw-12px)] max-w-xl md:w-auto md:max-w-fit">
         {/* Active Commander Indicator */}
         <div className="flex items-center justify-between w-full md:w-auto md:pr-3 md:border-r md:border-slate-800 text-xs">
           <div className="flex items-center gap-2">

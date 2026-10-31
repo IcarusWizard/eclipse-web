@@ -457,24 +457,84 @@ export const App: React.FC = () => {
     viewedPlayer.id !== state.players[currentSeat]?.id &&
     state.phase !== 'GAME_OVER';
 
-  // Play hint chime sound when it becomes this player's active turn, including consecutive turns (Bugs 216 & 219)
+  // Play hint chime sound: only triggered at the beginning of the turn, or when an off-turn decision switches to this player (Bugs 216, 219, 223)
   const lastChimedTurnKeyRef = useRef<string>('');
   useEffect(() => {
-    const isLivePlayerTurn =
-      !isTurnGated &&
-      !isSpectator &&
-      state.phase !== 'GAME_OVER' &&
-      state.phase !== 'CLEANUP_PHASE';
+    if (isSpectator || state.phase === 'GAME_OVER' || state.phase === 'CLEANUP_PHASE') {
+      lastChimedTurnKeyRef.current = '';
+      return;
+    }
 
-    // Unique key identifying the state of the active turn:
-    // When consecutive turns occur (e.g. after other players auto-pass),
-    // replaySteps count or log[0].id changes, signaling a new turn event!
-    const turnKey = `${state.round}:${state.phase}:${state.activePlayerIndex}:${state.replaySteps?.length || 0}:${state.log?.[0]?.id || ''}`;
+    // 1. Determine if there is a pending off-turn decision waiting specifically for this player
+    let offTurnDecisionKey: string | null = null;
+    const myId = myControlledPlayer?.id;
 
-    if (isLivePlayerTurn) {
-      if (lastChimedTurnKeyRef.current !== turnKey) {
+    if (state.activeCombat) {
+      let combatDecisionPlayerId: string | undefined;
+      if (state.activeCombat.pendingDamageAssignment) {
+        combatDecisionPlayerId = state.activeCombat.pendingDamageAssignment.attackerOwnerId;
+      } else if (state.activeCombat.stage !== 'resolved') {
+        const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
+        if (sec) {
+          const units = buildCombatUnitsForSector(
+            sec,
+            state.players,
+            state.activeCombat.participatingPlayerIds,
+            state.neutralShipBlueprints
+          );
+          const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
+          const aliveUnits = sortUnitsByInitiative(
+            units.filter((u) => u.currentDamage < u.maxHull),
+            defenderId
+          );
+          const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
+          const isMissileStage = state.activeCombat.stage === 'missile';
+          const pendingMissileGroups = isMissileStage
+            ? groups.filter(
+                (g) => g.weapons.some((w) => w.isMissile) && !g.shipIds.every((id) => state.activeCombat!.missileFiredShipIds?.includes(id))
+              )
+            : [];
+          const activeGroup = isMissileStage
+            ? (pendingMissileGroups[0] || null)
+            : (groups.length > 0 ? groups[state.activeCombat.currentTurnIndex % groups.length] : null);
+          if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
+            combatDecisionPlayerId = activeGroup.ownerId;
+          }
+        }
+      } else {
+        combatDecisionPlayerId = activePlayer.id;
+      }
+
+      if (combatDecisionPlayerId && (currentSeat === 'all' || myId === combatDecisionPlayerId)) {
+        offTurnDecisionKey = `combat:${state.activeCombat.sectorId}:${state.activeCombat.round}:${state.activeCombat.stage}:${state.activeCombat.currentTurnIndex}:${state.activeCombat.pendingDamageAssignment ? 'dmg' : 'turn'}`;
+      }
+    } else if (state.pendingDiplomacyProposal && (currentSeat === 'all' || state.pendingDiplomacyProposal.targetPlayerId === myId)) {
+      offTurnDecisionKey = `diplomacy:${state.pendingDiplomacyProposal.proposalId || state.pendingDiplomacyProposal.proposerPlayerId}`;
+    } else if (state.pendingCombatConquest && (currentSeat === 'all' || state.pendingCombatConquest.playerId === myId)) {
+      offTurnDecisionKey = `conquest:${state.pendingCombatConquest.sectorId}`;
+    } else if (
+      (state.pendingReputationDraw && (currentSeat === 'all' || state.pendingReputationDraw.playerId === myId)) ||
+      (state.pendingReputationDrawQueue?.[0] && (currentSeat === 'all' || state.pendingReputationDrawQueue[0].playerId === myId))
+    ) {
+      offTurnDecisionKey = `rep_draw:${state.pendingReputationDraw?.sectorId || state.pendingReputationDrawQueue?.[0]?.sectorId || 'rep'}`;
+    } else if (state.pendingBankruptcy && (currentSeat === 'all' || state.pendingBankruptcy.playerId === myId)) {
+      offTurnDecisionKey = `bankruptcy:${state.pendingBankruptcy.playerId}`;
+    } else if (state.isDraftMode && state.factionDraft && (currentSeat === 'all' || state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] === myId)) {
+      offTurnDecisionKey = `draft:${state.factionDraft.currentDraftIndex}`;
+    }
+
+    // 2. Active Main Turn in Action Phase
+    const isLivePlayerTurn = !isTurnGated && state.phase === 'ACTION_PHASE';
+    const mainTurnKey = isLivePlayerTurn
+      ? `turn:${state.round}:${state.activePlayerIndex}:${state.replaySteps?.length || 0}`
+      : null;
+
+    const currentDecisionKey = offTurnDecisionKey || mainTurnKey;
+
+    if (currentDecisionKey) {
+      if (lastChimedTurnKeyRef.current !== currentDecisionKey) {
         playTurnNotificationSound();
-        lastChimedTurnKeyRef.current = turnKey;
+        lastChimedTurnKeyRef.current = currentDecisionKey;
       }
     } else {
       lastChimedTurnKeyRef.current = '';
@@ -482,11 +542,21 @@ export const App: React.FC = () => {
   }, [
     isTurnGated,
     isSpectator,
+    currentSeat,
+    myControlledPlayer?.id,
+    activePlayer.id,
     state.phase,
     state.round,
     state.activePlayerIndex,
     state.replaySteps?.length,
-    state.log?.[0]?.id,
+    state.activeCombat,
+    state.pendingDiplomacyProposal,
+    state.pendingCombatConquest,
+    state.pendingReputationDraw,
+    state.pendingReputationDrawQueue,
+    state.pendingBankruptcy,
+    state.isDraftMode,
+    state.factionDraft,
   ]);
 
   // Load table from server if URL query param ?table=XXX is specified and not loaded locally
@@ -2733,6 +2803,9 @@ export const App: React.FC = () => {
             onInitiateDiplomacy={!isTurnGated ? handleExchangeAmbassador : undefined}
             onBetrayAlliance={!isTurnGated ? handleBetrayAlliance : undefined}
             delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
+            onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
+            minorSpeciesSupply={state.minorSpeciesSupply}
+            hasMinorSpeciesExpansion={Boolean(state.expansions?.includes('minor_species'))}
           />
         </div>
 

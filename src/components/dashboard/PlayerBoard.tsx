@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { canExchangeAmbassadors, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
+import { ALL_MINOR_SPECIES_TILES, MinorSpeciesTile } from '../../engine/rules/minorSpecies';
 
 interface PlayerBoardProps {
   player: PlayerState;
@@ -41,6 +42,9 @@ interface PlayerBoardProps {
   onInitiateDiplomacy?: (targetPlayerId: string) => void;
   onBetrayAlliance?: (targetPlayerId: string) => void;
   delayedBlackHoleShips?: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip[];
+  onOpenMinorSpecies?: () => void;
+  minorSpeciesSupply?: any[];
+  hasMinorSpeciesExpansion?: boolean;
 }
 
 export const PlayerBoard: React.FC<PlayerBoardProps> = ({
@@ -59,6 +63,9 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   onInitiateDiplomacy,
   onBetrayAlliance,
   delayedBlackHoleShips = [],
+  onOpenMinorSpecies,
+  minorSpeciesSupply = [],
+  hasMinorSpeciesExpansion = false,
 }) => {
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
@@ -278,15 +285,18 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             </div>
           )}
 
-          {/* Ambassadors */}
-          {allPlayers && allPlayers.length > 1 && (
+          {/* Ambassadors & Minor Species */}
+          {((allPlayers && allPlayers.length > 1) || hasMinorSpeciesExpansion) && (
             <div
               className={`flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] ${
+                hasMinorSpeciesExpansion && onOpenMinorSpecies ? 'cursor-pointer hover:border-indigo-400' : ''
+              } ${
                 (player.ambassadorTiles?.length || 0) > 0
                   ? 'bg-indigo-950/40 border-indigo-700/60 text-indigo-300'
                   : 'bg-slate-950 border-slate-800 text-slate-400'
               }`}
-              title={`Ambassadors: ${player.ambassadorTiles?.length || 0} / ${player.faction.ambassadorSlots ?? 3}`}
+              onClick={hasMinorSpeciesExpansion ? onOpenMinorSpecies : undefined}
+              title={`Ambassadors: ${player.ambassadorTiles?.length || 0} / ${player.faction.ambassadorSlots ?? 3}${hasMinorSpeciesExpansion ? ' • Click to view Minor Species' : ''}`}
             >
               <Handshake className="w-3 h-3 text-indigo-400" />
               <span>{player.ambassadorTiles?.length || 0}/{player.faction.ambassadorSlots ?? 3}</span>
@@ -618,8 +628,8 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         </div>
       )}
 
-      {/* Ambassadors & Diplomatic Relations */}
-      {allPlayers && allPlayers.length > 1 && (
+      {/* Ambassadors & Diplomatic Relations (including Minor Species) */}
+      {((allPlayers && allPlayers.length > 1) || hasMinorSpeciesExpansion) && (
         <div className="bg-slate-950/60 rounded-lg border border-slate-800/80 p-2 mb-2">
           <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1.5">
             <span className="flex items-center gap-1 text-indigo-400">
@@ -631,98 +641,149 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           </div>
 
           <div className="space-y-1">
-            {allPlayers
-              .filter((other) => other.id !== player.id)
-              .map((other) => {
-                const isAllied = player.ambassadorTiles?.includes(other.id);
-                const check = canExchangeAmbassadors(
-                  { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
-                  player.id,
-                  other.id
-                );
-                const isEligible = check.canExchange && isActive && gamePhase === 'ACTION_PHASE';
-                const cubeType = player.ambassadorCubes?.[other.id];
-                const cubeIcon =
-                  cubeType === 'money' ? '💰' : cubeType === 'science' ? '🔬' : cubeType === 'material' ? '🔨' : '★';
+            {/* 1. Claimed Minor Species Ambassador Tiles */}
+            {hasMinorSpeciesExpansion &&
+              (player.ambassadorTiles || [])
+                .filter((id) => id.startsWith('minor_species_'))
+                .map((id) => {
+                  const ms = ALL_MINOR_SPECIES_TILES.find((t) => t.id === id);
+                  if (!ms) return null;
+                  return (
+                    <div
+                      key={ms.id}
+                      className="flex items-center justify-between px-2 py-1 rounded bg-emerald-950/50 border border-emerald-700/60 text-[10.5px] transition-colors"
+                      title={`Minor Species Ambassador: ${ms.name} • ${ms.abilityDescription} • +${ms.vp} VP`}
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span className="text-xs">🌿</span>
+                        <span className="font-bold text-emerald-200 truncate">{ms.name}</span>
+                        <span className="text-[9px] text-emerald-400/80 truncate">({ms.vpDescription})</span>
+                      </div>
+                      <span className="font-mono text-[9.5px] text-emerald-300 font-bold shrink-0">
+                        Allied (+{ms.vp}★)
+                      </span>
+                    </div>
+                  );
+                })}
 
-                if (isAllied) {
+            {/* 2. Player-to-Player Diplomatic Relations */}
+            {allPlayers &&
+              allPlayers
+                .filter((other) => other.id !== player.id)
+                .map((other) => {
+                  const isAllied = player.ambassadorTiles?.includes(other.id);
+                  const check = canExchangeAmbassadors(
+                    { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
+                    player.id,
+                    other.id
+                  );
+                  const isEligible = check.canExchange && isActive && gamePhase === 'ACTION_PHASE';
+                  const cubeType = player.ambassadorCubes?.[other.id];
+                  const cubeIcon =
+                    cubeType === 'money' ? '💰' : cubeType === 'science' ? '🔬' : cubeType === 'material' ? '🔨' : '★';
+
+                  if (isAllied) {
+                    return (
+                      <div
+                        key={other.id}
+                        className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/90 border border-slate-900 text-slate-500 text-[10.5px] transition-colors"
+                        title={`Allied with ${other.name} (${other.faction.name}) • +1 VP`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0 opacity-40 shadow-sm"
+                            style={{ backgroundColor: other.color }}
+                          />
+                          <span className="font-medium text-slate-400 truncate">{other.name}</span>
+                          <span className="text-[9px] text-slate-600 truncate">({other.faction.name})</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="font-mono text-[9.5px] text-slate-500 flex items-center gap-1 shrink-0">
+                            <Handshake className="w-3 h-3 text-slate-600" /> Allied {cubeIcon} (+1★)
+                          </span>
+                          {isActive && onBetrayAlliance && (
+                            <button
+                              type="button"
+                              onClick={() => onBetrayAlliance(other.id)}
+                              className="px-1.5 py-0.5 rounded bg-rose-950/70 hover:bg-rose-900 border border-rose-700/60 text-rose-300 hover:text-white text-[9px] font-bold transition cursor-pointer"
+                              title={`Betray alliance with ${other.name} and take Traitor Tile (-2 VP)`}
+                            >
+                              Betray
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  if (isEligible) {
+                    return (
+                      <button
+                        key={other.id}
+                        type="button"
+                        onClick={() => onInitiateDiplomacy?.(other.id)}
+                        className="w-full flex items-center justify-between px-2 py-1 rounded bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/70 text-indigo-200 hover:text-white text-[10.5px] font-medium transition cursor-pointer shadow-sm shadow-indigo-950/50 group"
+                        title={`Click to exchange Ambassadors with ${other.name} (${other.faction.name}) • +1 VP each`}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                            style={{ backgroundColor: other.color }}
+                          />
+                          <span className="font-bold text-slate-100 truncate">{other.name}</span>
+                          <span className="text-[9px] text-indigo-300/80 truncate">({other.faction.name})</span>
+                        </div>
+                        <span className="px-1.5 py-0.5 rounded bg-indigo-600 group-hover:bg-indigo-500 text-white font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 shrink-0 transition-colors">
+                          <Handshake className="w-2.5 h-2.5" /> Exchange
+                        </span>
+                      </button>
+                    );
+                  }
+
                   return (
                     <div
                       key={other.id}
-                      className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/90 border border-slate-900 text-slate-500 text-[10.5px] transition-colors"
-                      title={`Allied with ${other.name} (${other.faction.name}) • +1 VP`}
+                      className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/40 border border-slate-900/60 text-slate-600 text-[10.5px] cursor-not-allowed opacity-60"
+                      title={check.reason || 'Not eligible for diplomacy'}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0 opacity-40 shadow-sm"
+                          className="w-2.5 h-2.5 rounded-full shrink-0 opacity-30"
                           style={{ backgroundColor: other.color }}
                         />
-                        <span className="font-medium text-slate-400 truncate">{other.name}</span>
-                        <span className="text-[9px] text-slate-600 truncate">({other.faction.name})</span>
+                        <span className="truncate">{other.name}</span>
+                        <span className="text-[9px] text-slate-700 truncate">({other.faction.name})</span>
                       </div>
-                      <div className="flex items-center gap-1.5 shrink-0">
-                        <span className="font-mono text-[9.5px] text-slate-500 flex items-center gap-1 shrink-0">
-                          <Handshake className="w-3 h-3 text-slate-600" /> Allied {cubeIcon} (+1★)
-                        </span>
-                        {isActive && onBetrayAlliance && (
-                          <button
-                            type="button"
-                            onClick={() => onBetrayAlliance(other.id)}
-                            className="px-1.5 py-0.5 rounded bg-rose-950/70 hover:bg-rose-900 border border-rose-700/60 text-rose-300 hover:text-white text-[9px] font-bold transition cursor-pointer"
-                            title={`Betray alliance with ${other.name} and take Traitor Tile (-2 VP)`}
-                          >
-                            Betray
-                          </button>
-                        )}
-                      </div>
-                    </div>
-                  );
-                }
-
-                if (isEligible) {
-                  return (
-                    <button
-                      key={other.id}
-                      type="button"
-                      onClick={() => onInitiateDiplomacy?.(other.id)}
-                      className="w-full flex items-center justify-between px-2 py-1 rounded bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/70 text-indigo-200 hover:text-white text-[10.5px] font-medium transition cursor-pointer shadow-sm shadow-indigo-950/50 group"
-                      title={`Click to exchange Ambassadors with ${other.name} (${other.faction.name}) • +1 VP each`}
-                    >
-                      <div className="flex items-center gap-1.5 min-w-0">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
-                          style={{ backgroundColor: other.color }}
-                        />
-                        <span className="font-bold text-slate-100 truncate">{other.name}</span>
-                        <span className="text-[9px] text-indigo-300/80 truncate">({other.faction.name})</span>
-                      </div>
-                      <span className="px-1.5 py-0.5 rounded bg-indigo-600 group-hover:bg-indigo-500 text-white font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 shrink-0 transition-colors">
-                        <Handshake className="w-2.5 h-2.5" /> Exchange
+                      <span className="text-[9px] text-slate-600 truncate max-w-[130px] font-mono">
+                        {check.reason ? (check.reason.length > 22 ? `${check.reason.slice(0, 20)}…` : check.reason) : 'Ineligible'}
                       </span>
-                    </button>
-                  );
-                }
-
-                return (
-                  <div
-                    key={other.id}
-                    className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/40 border border-slate-900/60 text-slate-600 text-[10.5px] cursor-not-allowed opacity-60"
-                    title={check.reason || 'Not eligible for diplomacy'}
-                  >
-                    <div className="flex items-center gap-1.5 min-w-0">
-                      <span
-                        className="w-2.5 h-2.5 rounded-full shrink-0 opacity-30"
-                        style={{ backgroundColor: other.color }}
-                      />
-                      <span className="truncate">{other.name}</span>
-                      <span className="text-[9px] text-slate-700 truncate">({other.faction.name})</span>
                     </div>
-                    <span className="text-[9px] text-slate-600 truncate max-w-[130px] font-mono">
-                      {check.reason ? (check.reason.length > 22 ? `${check.reason.slice(0, 20)}…` : check.reason) : 'Ineligible'}
-                    </span>
-                  </div>
-                );
-              })}
+                  );
+                })}
+
+            {/* 3. Minor Species Expansion Contacts Button / Status */}
+            {hasMinorSpeciesExpansion && (
+              <div className="pt-1.5 border-t border-slate-800/80 mt-1 flex items-center justify-between text-[10px]">
+                <div className="flex items-center gap-1 text-slate-400">
+                  <span className="text-xs">🌿</span>
+                  <span>Minor Species:</span>
+                  <span className="text-emerald-300 font-bold font-mono">
+                    {minorSpeciesSupply?.length ?? 0} in Galaxy
+                  </span>
+                </div>
+                {onOpenMinorSpecies && (
+                  <button
+                    type="button"
+                    onClick={onOpenMinorSpecies}
+                    className="px-2 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/60 text-emerald-300 hover:text-white text-[9.5px] font-bold transition flex items-center gap-1 cursor-pointer"
+                    title="Open Minor Species window to view abilities or form diplomatic relations"
+                  >
+                    <span>View & Ally</span>
+                    <span className="text-[10px]">➔</span>
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

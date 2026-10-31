@@ -210,23 +210,6 @@ export const Header: React.FC<HeaderProps> = ({
             </button>
           )}
 
-          {/* Minor Species Embassy Button */}
-          {onOpenMinorSpecies && state.expansions?.includes('minor_species') && (
-            <button
-              onClick={onOpenMinorSpecies}
-              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900 border border-emerald-600/60 text-emerald-200 text-xs font-bold transition-all shadow cursor-pointer shrink-0"
-              title="Minor Species Embassy"
-            >
-              <Users className="w-3.5 h-3.5 text-emerald-400" />
-              <span className="hidden md:inline">Minor Species</span>
-              {state.minorSpeciesSupply && state.minorSpeciesSupply.length > 0 && (
-                <span className="px-1.5 py-0.2 rounded-full bg-emerald-900 text-[10px] font-mono text-emerald-300 border border-emerald-700">
-                  {state.minorSpeciesSupply.length}
-                </span>
-              )}
-            </button>
-          )}
-
           {/* Combat Simulator Button */}
           {onOpenCombatSimulator && (
             <button

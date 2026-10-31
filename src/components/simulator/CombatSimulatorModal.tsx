@@ -43,6 +43,11 @@ import {
   Ship,
   HelpCircle,
   Navigation,
+  Plus,
+  Trash2,
+  ArrowUp,
+  ArrowDown,
+  ArrowUpDown,
 } from 'lucide-react';
 
 interface CombatSimulatorModalProps {
@@ -144,20 +149,21 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
     })
   );
 
-  // Defender configuration
-  const [defender, setDefender] = useState<SimulatorSideConfig>(() =>
+  // Defenders configuration (Wave sequence for multi-faction battles)
+  const [defenders, setDefenders] = useState<SimulatorSideConfig[]>([
     createDefaultSimulatorSide('ancient', {
       isNpc: true,
       shipCounts: { ancient: 2 },
-    })
-  );
+    }),
+  ]);
+  const [targetDefenderIndexForBp, setTargetDefenderIndexForBp] = useState<number>(0);
 
   // Simulation settings & results
   const [iterations, setIterations] = useState<number>(1000);
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [activeTabAttackerShip, setActiveTabAttackerShip] = useState<string>('cruiser');
-  const [activeTabDefenderShip, setActiveTabDefenderShip] = useState<string>('cruiser');
+  const [activeTabDefenderShips, setActiveTabDefenderShips] = useState<Record<number, string>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   // Auto-clear toast
@@ -174,15 +180,24 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
     return findSectorsWithPendingCombat(gameState);
   }, [gameState]);
 
-  // Handle Sector Import
-  const handleLoadSector = (sectorId: string) => {
+  // Handle Sector Import (supports Nebula subsectors)
+  const handleLoadSector = (val: string) => {
     if (!gameState) return;
-    const loaded = loadBattleFromSector(gameState, sectorId);
+    const [sectorId, subStr] = val.split('__sub_');
+    const subsector = subStr ? (Number(subStr) as 1 | 2 | 3) : undefined;
+    const loaded = loadBattleFromSector(gameState, sectorId!, subsector);
     if (loaded) {
       setAttacker(loaded.attacker);
-      setDefender(loaded.defender);
+      setDefenders(
+        loaded.defenders && loaded.defenders.length > 0 ? loaded.defenders : [loaded.defender]
+      );
       setSimulationResult(null);
-      setToastMessage(`Loaded battle from Sector #${gameState.sectors.find((s) => s.id === sectorId)?.sectorNumber || sectorId}!`);
+      const secTile = gameState.sectors.find((s) => s.id === sectorId);
+      const secNum = secTile?.sectorNumber || sectorId;
+      const subText = subsector ? ` (Nebula Subsector ${subsector})` : '';
+      setToastMessage(
+        `Loaded battle from Sector #${secNum}${subText} with ${loaded.defenders.length} defender${loaded.defenders.length > 1 ? 's' : ''}!`
+      );
     }
   };
 
@@ -208,8 +223,8 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
     setToastMessage(`Loaded current blueprints from ${p.faction.name} for Attacker!`);
   };
 
-  // Handle Player Blueprints Import for Defender
-  const handleLoadPlayerForDefender = (playerId: string) => {
+  // Handle Player Blueprints Import for Defender (specific wave index)
+  const handleLoadPlayerForDefender = (playerId: string, defIndex: number = targetDefenderIndexForBp) => {
     if (!gameState) return;
     const p = gameState.players.find((player) => player.id === playerId);
     if (!p) return;
@@ -219,23 +234,87 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       clonedBps[k] = { ...v, slots: [...v.slots] };
     }
 
-    setDefender((prev) => ({
-      ...prev,
-      factionId: p.faction.id,
-      name: p.faction.name,
-      isNpc: false,
-      blueprints: clonedBps,
-      hasAntimatterSplitter: p.techTrack.researched.some((t) => t.id === 'antimatter_splitter'),
-    }));
-    setToastMessage(`Loaded current blueprints from ${p.faction.name} for Defender!`);
+    setDefenders((prev) => {
+      const next = [...prev];
+      const idx = Math.min(Math.max(0, defIndex), next.length - 1);
+      next[idx] = {
+        ...next[idx]!,
+        factionId: p.faction.id,
+        name: p.faction.name,
+        isNpc: false,
+        blueprints: clonedBps,
+        hasAntimatterSplitter: p.techTrack.researched.some((t) => t.id === 'antimatter_splitter'),
+      };
+      return next;
+    });
+    setToastMessage(`Loaded current blueprints from ${p.faction.name} for Defender #${(defIndex ?? 0) + 1}!`);
   };
 
-  // Blueprint validation across attacker and defender sides
+  // Defender Management: Add Defender
+  const handleAddDefender = () => {
+    setDefenders((prev) => [
+      ...prev,
+      createDefaultSimulatorSide('ancient', {
+        isNpc: true,
+        shipCounts: { ancient: 2 },
+      }),
+    ]);
+    setToastMessage(`Added Defender #${defenders.length + 1} to wave sequence!`);
+  };
+
+  // Defender Management: Remove Defender
+  const handleRemoveDefender = (index: number) => {
+    if (defenders.length <= 1) return;
+    setDefenders((prev) => prev.filter((_, i) => i !== index));
+    setSimulationResult(null);
+    setToastMessage(`Removed Defender #${index + 1}!`);
+  };
+
+  // Defender Management: Reorder Defenders (Move Up / Down)
+  const handleMoveDefender = (index: number, direction: 'up' | 'down') => {
+    const targetIndex = direction === 'up' ? index - 1 : index + 1;
+    if (targetIndex < 0 || targetIndex >= defenders.length) return;
+    setDefenders((prev) => {
+      const next = [...prev];
+      const temp = next[index]!;
+      next[index] = next[targetIndex]!;
+      next[targetIndex] = temp;
+      return next;
+    });
+    setSimulationResult(null);
+    setToastMessage(
+      `Moved Defender #${index + 1} ${direction === 'up' ? 'earlier' : 'later'} in wave sequence!`
+    );
+  };
+
+  // Defender Management: Swap Defender with Attacker
+  const handleSwapWithAttacker = (defenderIndex: number) => {
+    const targetDefender = defenders[defenderIndex];
+    if (!targetDefender) return;
+    setAttacker((prevAttacker) => {
+      setDefenders((prevDefenders) => {
+        const nextDefenders = [...prevDefenders];
+        nextDefenders[defenderIndex] = prevAttacker;
+        return nextDefenders;
+      });
+      return targetDefender;
+    });
+    setSimulationResult(null);
+    setToastMessage(`Swapped Attacker with Defender #${defenderIndex + 1}!`);
+  };
+
+  // Blueprint validation across attacker and all defender waves
   const attackerValidation = useMemo(() => validateSimulatorSide(attacker, true), [attacker]);
-  const defenderValidation = useMemo(() => validateSimulatorSide(defender, true), [defender]);
+  const defenderValidations = useMemo(
+    () => defenders.map((d) => validateSimulatorSide(d, true)),
+    [defenders]
+  );
   const allValidationErrors = useMemo(
-    () => [...attackerValidation.errors, ...defenderValidation.errors],
-    [attackerValidation.errors, defenderValidation.errors]
+    () => [
+      ...attackerValidation.errors,
+      ...defenderValidations.flatMap((v) => v.errors),
+    ],
+    [attackerValidation.errors, defenderValidations]
   );
   const hasValidationErrors = allValidationErrors.length > 0;
 
@@ -246,33 +325,39 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       return;
     }
     setIsSimulating(true);
-    // Timeout allows rendering transition / snappy feel
     setTimeout(() => {
-      const res = runCombatSimulation(attacker, defender, iterations);
+      const res = runCombatSimulation(attacker, defenders, iterations);
       setSimulationResult(res);
       setIsSimulating(false);
     }, 10);
   };
 
   // Reset side to base blueprint
-  const handleResetSideBlueprints = (side: 'attacker' | 'defender') => {
-    if (side === 'attacker') {
-      const fresh = createDefaultSimulatorSide(attacker.factionId, {
-        isNpc: attacker.isNpc,
-        npcVariant: attacker.npcVariant,
-        shipCounts: attacker.shipCounts,
-        hasAntimatterSplitter: attacker.hasAntimatterSplitter,
-      });
-      setAttacker(fresh);
-    } else {
-      const fresh = createDefaultSimulatorSide(defender.factionId, {
-        isNpc: defender.isNpc,
-        npcVariant: defender.npcVariant,
-        shipCounts: defender.shipCounts,
-        hasAntimatterSplitter: defender.hasAntimatterSplitter,
-      });
-      setDefender(fresh);
-    }
+  const handleResetAttackerBlueprints = () => {
+    const fresh = createDefaultSimulatorSide(attacker.factionId, {
+      isNpc: attacker.isNpc,
+      npcVariant: attacker.npcVariant,
+      shipCounts: attacker.shipCounts,
+      hasAntimatterSplitter: attacker.hasAntimatterSplitter,
+    });
+    setAttacker(fresh);
+    setSimulationResult(null);
+  };
+
+  const handleResetDefenderBlueprints = (index: number) => {
+    const def = defenders[index];
+    if (!def) return;
+    const fresh = createDefaultSimulatorSide(def.factionId, {
+      isNpc: def.isNpc,
+      npcVariant: def.npcVariant,
+      shipCounts: def.shipCounts,
+      hasAntimatterSplitter: def.hasAntimatterSplitter,
+    });
+    setDefenders((prev) => {
+      const next = [...prev];
+      next[index] = fresh;
+      return next;
+    });
     setSimulationResult(null);
   };
 
@@ -341,7 +426,10 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                     Choose a sector to simulate...
                   </option>
                   {pendingCombatSectors.map((s) => (
-                    <option key={s.sector.id} value={s.sector.id}>
+                    <option
+                      key={`${s.sector.id}${s.subsector ? `_sub_${s.subsector}` : ''}`}
+                      value={`${s.sector.id}${s.subsector ? `__sub_${s.subsector}` : ''}`}
+                    >
                       {s.description}
                     </option>
                   ))}
@@ -375,11 +463,25 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
               {/* Defender Blueprint Quick Loader */}
               <div className="flex items-center gap-1.5">
                 <span className="text-cyan-400 font-bold">Defender BP:</span>
+                {defenders.length > 1 && (
+                  <select
+                    value={targetDefenderIndexForBp}
+                    onChange={(e) => setTargetDefenderIndexForBp(Number(e.target.value))}
+                    className="bg-slate-900 border border-cyan-800/80 rounded px-1.5 py-1 text-cyan-300 text-xs font-semibold focus:outline-none"
+                    title="Select which defender wave to import blueprints into"
+                  >
+                    {defenders.map((_, idx) => (
+                      <option key={idx} value={idx}>
+                        Def #{idx + 1}
+                      </option>
+                    ))}
+                  </select>
+                )}
                 <select
                   defaultValue=""
                   onChange={(e) => {
                     if (e.target.value) {
-                      handleLoadPlayerForDefender(e.target.value);
+                      handleLoadPlayerForDefender(e.target.value, targetDefenderIndexForBp);
                       e.target.value = '';
                     }
                   }}
@@ -408,7 +510,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
             </div>
             <button
               onClick={() => setToastMessage(null)}
-              className="text-emerald-400 hover:text-white"
+              className="text-emerald-400 hover:text-white cursor-pointer"
             >
               <X className="w-3.5 h-3.5" />
             </button>
@@ -417,8 +519,8 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
 
         {/* Main Body: Scrollable Arena */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-5 space-y-5">
-          {/* Top Arena Columns: Attacker vs Defender */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          {/* Top Arena Columns: Attacker vs Defender(s) */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 items-start">
             {/* ATTACKER COLUMN */}
             <SideConfigCard
               role="attacker"
@@ -427,19 +529,56 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
               onChangeSideConfig={setAttacker}
               activeShipTab={activeTabAttackerShip}
               onSelectShipTab={setActiveTabAttackerShip}
-              onResetBlueprints={() => handleResetSideBlueprints('attacker')}
+              onResetBlueprints={handleResetAttackerBlueprints}
+              onSwapWithAttacker={() => handleSwapWithAttacker(0)}
             />
 
-            {/* DEFENDER COLUMN */}
-            <SideConfigCard
-              role="defender"
-              sideConfig={defender}
-              sideValidation={defenderValidation}
-              onChangeSideConfig={setDefender}
-              activeShipTab={activeTabDefenderShip}
-              onSelectShipTab={setActiveTabDefenderShip}
-              onResetBlueprints={() => handleResetSideBlueprints('defender')}
-            />
+            {/* DEFENDERS COLUMN (Single or Multi-Wave) */}
+            <div className="space-y-4">
+              <div className="flex items-center justify-between pb-1 border-b border-slate-800">
+                <div className="flex items-center gap-2">
+                  <Shield className="w-4 h-4 text-cyan-400" />
+                  <span className="font-display font-black text-xs uppercase tracking-wider text-cyan-300">
+                    Defenders ({defenders.length} Wave{defenders.length > 1 ? 's' : ''})
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleAddDefender}
+                  className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-900/60 hover:bg-cyan-800 border border-cyan-700 text-cyan-200 text-xs font-bold transition shadow cursor-pointer"
+                >
+                  <Plus className="w-3.5 h-3.5 text-cyan-400" />
+                  <span>Add Defender</span>
+                </button>
+              </div>
+
+              {defenders.map((def, idx) => (
+                <SideConfigCard
+                  key={idx}
+                  role="defender"
+                  sideConfig={def}
+                  sideValidation={defenderValidations[idx]}
+                  onChangeSideConfig={(val) => {
+                    setDefenders((prev) => {
+                      const next = [...prev];
+                      next[idx] = typeof val === 'function' ? val(prev[idx]!) : val;
+                      return next;
+                    });
+                  }}
+                  activeShipTab={activeTabDefenderShips[idx] || 'cruiser'}
+                  onSelectShipTab={(st) =>
+                    setActiveTabDefenderShips((prev) => ({ ...prev, [idx]: st }))
+                  }
+                  onResetBlueprints={() => handleResetDefenderBlueprints(idx)}
+                  defenderIndex={idx}
+                  totalDefenders={defenders.length}
+                  onMoveUp={() => handleMoveDefender(idx, 'up')}
+                  onMoveDown={() => handleMoveDefender(idx, 'down')}
+                  onRemove={() => handleRemoveDefender(idx)}
+                  onSwapWithAttacker={() => handleSwapWithAttacker(idx)}
+                />
+              ))}
+            </div>
           </div>
 
           {/* SIMULATE CONTROLS & RESULTS */}
@@ -511,7 +650,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
               <SimulationResultsView
                 result={simulationResult}
                 attackerName={attacker.name}
-                defenderName={defender.name}
+                defenderNames={defenders.map((d) => d.name)}
               />
             )}
           </div>
@@ -528,10 +667,18 @@ interface SideConfigCardProps {
   role: 'attacker' | 'defender';
   sideConfig: SimulatorSideConfig;
   sideValidation?: SimulatorSideValidation;
-  onChangeSideConfig: React.Dispatch<React.SetStateAction<SimulatorSideConfig>>;
+  onChangeSideConfig: (
+    val: SimulatorSideConfig | ((prev: SimulatorSideConfig) => SimulatorSideConfig)
+  ) => void;
   activeShipTab: string;
   onSelectShipTab: (st: string) => void;
   onResetBlueprints: () => void;
+  defenderIndex?: number;
+  totalDefenders?: number;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  onRemove?: () => void;
+  onSwapWithAttacker?: () => void;
 }
 
 const SideConfigCard: React.FC<SideConfigCardProps> = ({
@@ -542,6 +689,12 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
   activeShipTab,
   onSelectShipTab,
   onResetBlueprints,
+  defenderIndex,
+  totalDefenders,
+  onMoveUp,
+  onMoveDown,
+  onRemove,
+  onSwapWithAttacker,
 }) => {
   const isAttacker = role === 'attacker';
   const roleColor = isAttacker ? 'red' : 'cyan';
@@ -630,7 +783,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
       <div className="space-y-4">
         {/* Card Header & Faction Selector */}
         <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800 pb-3">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <span
               className={`px-2 py-0.5 rounded text-[11px] font-black uppercase tracking-wider ${
                 isAttacker
@@ -638,13 +791,63 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                   : 'bg-cyan-900/80 text-cyan-200 border border-cyan-700'
               }`}
             >
-              {role}
+              {isAttacker
+                ? 'ATTACKER'
+                : `DEFENDER ${(totalDefenders && totalDefenders > 1) ? `#${(defenderIndex ?? 0) + 1} (Wave ${(defenderIndex ?? 0) + 1})` : ''}`}
             </span>
             {!isAttacker && (
               <span className="text-[10px] text-cyan-400 font-mono flex items-center gap-1">
                 <Shield className="w-3 h-3 text-cyan-400" />
-                Wins initiative ties
+                Wins ties
               </span>
+            )}
+
+            {/* Reorder and Swap Controls */}
+            {onSwapWithAttacker && (
+              <button
+                type="button"
+                onClick={onSwapWithAttacker}
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
+                title={
+                  isAttacker
+                    ? 'Swap Attacker with Defender #1'
+                    : `Swap Defender #${(defenderIndex ?? 0) + 1} with Attacker`
+                }
+              >
+                <ArrowUpDown className="w-3 h-3 text-amber-400" />
+                <span>{isAttacker ? 'Swap with Def #1' : 'Swap Attacker'}</span>
+              </button>
+            )}
+
+            {!isAttacker && totalDefenders && totalDefenders > 1 && (
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={onMoveUp}
+                  disabled={defenderIndex === 0}
+                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 border border-slate-700 transition cursor-pointer"
+                  title="Move Up (Fight earlier in wave sequence)"
+                >
+                  <ArrowUp className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onMoveDown}
+                  disabled={defenderIndex === totalDefenders - 1}
+                  className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 border border-slate-700 transition cursor-pointer"
+                  title="Move Down (Fight later in wave sequence)"
+                >
+                  <ArrowDown className="w-3 h-3" />
+                </button>
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  className="p-1 rounded bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800 transition cursor-pointer"
+                  title="Remove this defender"
+                >
+                  <Trash2 className="w-3 h-3 text-rose-400" />
+                </button>
+              </div>
             )}
           </div>
 
@@ -946,17 +1149,234 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
 interface SimulationResultsViewProps {
   result: SimulationResult;
   attackerName: string;
-  defenderName: string;
+  defenderNames?: string[];
+  defenderName?: string;
 }
+
+const PARTICIPANT_PALETTES = {
+  attacker: {
+    gradientClass: 'bg-gradient-to-r from-red-600 to-orange-500',
+    textColor: 'text-red-400',
+    dotColor: 'bg-red-500',
+    bgBadge: 'bg-red-950/60 border-red-800 text-red-300',
+  },
+  draw: {
+    gradientClass: 'bg-slate-600',
+    textColor: 'text-slate-400',
+    dotColor: 'bg-slate-400',
+    bgBadge: 'bg-slate-900 border-slate-700 text-slate-300',
+  },
+  defenders: [
+    {
+      gradientClass: 'bg-gradient-to-r from-teal-500 to-cyan-500',
+      textColor: 'text-cyan-400',
+      dotColor: 'bg-cyan-400',
+      bgBadge: 'bg-cyan-950/60 border-cyan-800 text-cyan-300',
+      borderCard: 'border-cyan-900/50',
+    },
+    {
+      gradientClass: 'bg-gradient-to-r from-violet-600 to-purple-500',
+      textColor: 'text-purple-400',
+      dotColor: 'bg-purple-400',
+      bgBadge: 'bg-purple-950/60 border-purple-800 text-purple-300',
+      borderCard: 'border-purple-900/50',
+    },
+    {
+      gradientClass: 'bg-gradient-to-r from-emerald-600 to-teal-500',
+      textColor: 'text-emerald-400',
+      dotColor: 'bg-emerald-400',
+      bgBadge: 'bg-emerald-950/60 border-emerald-800 text-emerald-300',
+      borderCard: 'border-emerald-900/50',
+    },
+    {
+      gradientClass: 'bg-gradient-to-r from-amber-600 to-yellow-500',
+      textColor: 'text-amber-400',
+      dotColor: 'bg-amber-400',
+      bgBadge: 'bg-amber-950/60 border-amber-800 text-amber-300',
+      borderCard: 'border-amber-900/50',
+    },
+    {
+      gradientClass: 'bg-gradient-to-r from-pink-600 to-rose-500',
+      textColor: 'text-pink-400',
+      dotColor: 'bg-pink-400',
+      bgBadge: 'bg-pink-950/60 border-pink-800 text-pink-300',
+      borderCard: 'border-pink-900/50',
+    },
+  ],
+};
 
 const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
   result,
   attackerName,
+  defenderNames,
   defenderName,
 }) => {
-  const [activeResultsTab, setActiveResultsTab] = useState<'attacker' | 'defender' | 'draws'>(
-    result.attackerWins >= result.defenderWins ? 'attacker' : 'defender'
-  );
+  const isMultiDefender = Boolean(defenderNames && defenderNames.length > 1);
+  const primaryDefenderName = defenderName || (defenderNames && defenderNames[0]) || 'Defender';
+  const defenderDisplayLabel = isMultiDefender
+    ? `Defenders (${defenderNames!.join(' + ')})`
+    : primaryDefenderName;
+
+  // Map participants with color palettes for the Win Rate Bar
+  const participants = useMemo(() => {
+    if (result.participants && result.participants.length > 0) {
+      let defIdx = 0;
+      return result.participants.map((p) => {
+        let palette;
+        if (p.role === 'attacker') {
+          palette = PARTICIPANT_PALETTES.attacker;
+        } else if (p.role === 'draw') {
+          palette = PARTICIPANT_PALETTES.draw;
+        } else {
+          palette =
+            PARTICIPANT_PALETTES.defenders[defIdx % PARTICIPANT_PALETTES.defenders.length]!;
+          defIdx++;
+        }
+        return {
+          ...p,
+          palette,
+        };
+      });
+    }
+
+    // Fallback if result.participants is missing
+    const fallback = [
+      {
+        id: 'attacker',
+        role: 'attacker' as const,
+        name: `Attacker (${attackerName})`,
+        winRate: result.attackerWinRate,
+        wins: result.attackerWins,
+        isAlliance: false,
+        palette: PARTICIPANT_PALETTES.attacker,
+      },
+    ];
+    if (result.draws > 0) {
+      fallback.push({
+        id: 'draw',
+        role: 'draw' as const,
+        name: 'Draw',
+        winRate: result.drawRate,
+        wins: result.draws,
+        isAlliance: false,
+        palette: PARTICIPANT_PALETTES.draw,
+      });
+    }
+    fallback.push({
+      id: 'defender',
+      role: 'defender' as const,
+      name: defenderDisplayLabel,
+      winRate: result.defenderWinRate,
+      wins: result.defenderWins,
+      isAlliance: false,
+      palette: PARTICIPANT_PALETTES.defenders[0]!,
+    });
+    return fallback;
+  }, [result, attackerName, defenderDisplayLabel]);
+
+  // Parties for the Surviving Fleets breakdown (Attacker, Defender 1, Defender 2, etc.)
+  const survivingParties = useMemo(() => {
+    const list: {
+      id: string;
+      label: string;
+      shortLabel: string;
+      wins: number;
+      dotColor: string;
+      activeBgClass: string;
+      activeBorderClass: string;
+      activeTextClass: string;
+      badgeClass: string;
+      survivingOutcomes: SimulationSurvivingFleet[];
+    }[] = [
+      {
+        id: 'attacker',
+        label: `Attacker (${attackerName})`,
+        shortLabel: attackerName,
+        wins: result.attackerWins,
+        dotColor: 'bg-red-500',
+        activeBgClass: 'bg-red-950',
+        activeBorderClass: 'border-red-700',
+        activeTextClass: 'text-red-200',
+        badgeClass: 'bg-red-950/80 text-red-300 border-red-800',
+        survivingOutcomes: result.attackerSurvivingOutcomes || [],
+      },
+    ];
+
+    if (result.defendersBreakdown && result.defendersBreakdown.length > 0) {
+      result.defendersBreakdown.forEach((d, i) => {
+        const palette = PARTICIPANT_PALETTES.defenders[i % PARTICIPANT_PALETTES.defenders.length]!;
+        const label =
+          result.defendersBreakdown!.length > 1
+            ? `Defender ${i + 1} (${d.name})`
+            : `Defender (${d.name})`;
+
+        // Clean outcomes without redundant bracket prefix
+        const outcomes =
+          d.survivingOutcomes && d.survivingOutcomes.length > 0
+            ? d.survivingOutcomes
+            : result.defendersBreakdown!.length > 1
+            ? (result.defenderSurvivingOutcomes || [])
+                .filter((item) => item.summary.startsWith(`[Defender ${i + 1}:`))
+                .map((item) => ({
+                  ...item,
+                  summary: item.summary.replace(/^\[Defender \d+: [^\]]+\]\s*/, ''),
+                }))
+            : result.defenderSurvivingOutcomes || [];
+
+        list.push({
+          id: `defender_${i}`,
+          label,
+          shortLabel: d.name,
+          wins: d.wins,
+          dotColor: palette.dotColor,
+          activeBgClass: 'bg-slate-900',
+          activeBorderClass: palette.bgBadge.split(' ')[1] || 'border-cyan-700',
+          activeTextClass: palette.textColor,
+          badgeClass: `${palette.bgBadge} font-mono font-bold border`,
+          survivingOutcomes: outcomes,
+        });
+      });
+    } else {
+      list.push({
+        id: 'defender_0',
+        label: defenderDisplayLabel,
+        shortLabel: primaryDefenderName,
+        wins: result.defenderWins,
+        dotColor: 'bg-cyan-400',
+        activeBgClass: 'bg-cyan-950',
+        activeBorderClass: 'border-cyan-700',
+        activeTextClass: 'text-cyan-200',
+        badgeClass: 'bg-cyan-950/80 text-cyan-300 font-mono font-bold border border-cyan-800',
+        survivingOutcomes: result.defenderSurvivingOutcomes || [],
+      });
+    }
+
+    return list;
+  }, [result, attackerName, defenderDisplayLabel, primaryDefenderName]);
+
+  const [activeResultsTab, setActiveResultsTab] = useState<string>(() => {
+    if (result.attackerWins >= result.defenderWins) {
+      return 'attacker';
+    }
+    return survivingParties[1]?.id || 'defender_0';
+  });
+
+  useEffect(() => {
+    if (activeResultsTab === 'draws' && result.draws > 0) return;
+    if (!survivingParties.some((p) => p.id === activeResultsTab)) {
+      if (result.attackerWins >= result.defenderWins) {
+        setActiveResultsTab('attacker');
+      } else {
+        const topDef = survivingParties
+          .slice(1)
+          .reduce(
+            (prev, curr) => (curr.wins > prev.wins ? curr : prev),
+            survivingParties[1] || survivingParties[0]!
+          );
+        setActiveResultsTab(topDef?.id || 'attacker');
+      }
+    }
+  }, [result, survivingParties]);
 
   if (result.validationErrors && result.validationErrors.length > 0) {
     return (
@@ -992,139 +1412,172 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
       </div>
 
       {/* High-Level Win Rates Bar */}
-      <div className="space-y-1.5">
-        <div className="flex items-center justify-between text-xs font-bold">
-          <span className="text-red-400">
-            Attacker ({attackerName}): {result.attackerWinRate}% ({result.attackerWins.toLocaleString()})
-          </span>
-          {result.draws > 0 && (
-            <span className="text-slate-400">
-              Draw: {result.drawRate}% ({result.draws.toLocaleString()})
-            </span>
-          )}
-          <span className="text-cyan-400">
-            Defender ({defenderName}): {result.defenderWinRate}% ({result.defenderWins.toLocaleString()})
-          </span>
+      <div className="space-y-2">
+        {/* Participant Win Rate Labels */}
+        <div className="flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 text-xs font-bold">
+          {participants.map((p) => (
+            <div key={p.id} className={`flex items-center gap-1.5 ${p.palette.textColor}`}>
+              <span className={`w-2 h-2 rounded-full ${p.palette.dotColor} shrink-0`} />
+              <span>
+                {p.name}: <span className="font-mono">{p.winRate}%</span>{' '}
+                <span className="font-normal text-[11px] opacity-80 font-mono">
+                  ({p.wins.toLocaleString()})
+                </span>
+              </span>
+            </div>
+          ))}
         </div>
 
-        {/* Visual Progress Split Bar */}
-        <div className="w-full h-4 bg-slate-900 rounded-full overflow-hidden flex shadow-inner">
-          <div
-            style={{ width: `${result.attackerWinRate}%` }}
-            className="bg-gradient-to-r from-red-600 to-orange-500 h-full transition-all duration-500"
-          />
-          {result.drawRate > 0 && (
+        {/* Visual Progress Split Bar (1 part per independent participant, with Draco & Ancients exception) */}
+        <div className="w-full h-5 bg-slate-900 rounded-full overflow-hidden flex shadow-inner border border-slate-800/80">
+          {participants.map((p) => (
             <div
-              style={{ width: `${result.drawRate}%` }}
-              className="bg-slate-600 h-full transition-all duration-500"
-            />
-          )}
-          <div
-            style={{ width: `${result.defenderWinRate}%` }}
-            className="bg-gradient-to-r from-teal-500 to-cyan-500 h-full transition-all duration-500"
-          />
+              key={p.id}
+              style={{ width: `${p.winRate}%` }}
+              title={`${p.name}: ${p.winRate}% (${p.wins.toLocaleString()} wins)`}
+              className={`${p.palette.gradientClass} h-full transition-all duration-500 flex items-center justify-center text-[10px] font-mono font-black text-white shadow-sm overflow-hidden select-none`}
+            >
+              {p.winRate >= 8 ? `${p.winRate}%` : ''}
+            </div>
+          ))}
         </div>
+
+        {/* Wave Breakdown for Multiple Defenders */}
+        {result.defendersBreakdown && result.defendersBreakdown.length > 1 && (
+          <div className="bg-slate-900/90 border border-slate-800 rounded-xl p-3 space-y-2 mt-2">
+            <div className="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Shield className="w-4 h-4 text-cyan-400" />
+                <span>Wave Combat Sequence Breakdown:</span>
+              </span>
+              <span className="text-[11px] font-mono text-slate-400">
+                Attacker must defeat all {result.defendersBreakdown.length} waves to win
+              </span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+              {result.defendersBreakdown.map((d, i) => {
+                const matchingParticipant = participants.find(
+                  (p) => p.defenderIndices && p.defenderIndices.includes(d.index)
+                );
+                const borderClass =
+                  matchingParticipant?.palette.borderCard || 'border-cyan-900/50';
+                const textClass =
+                  matchingParticipant?.palette.textColor || 'text-cyan-400';
+
+                return (
+                  <div
+                    key={i}
+                    className={`p-2.5 rounded-lg bg-slate-950/80 border ${borderClass} flex flex-col justify-between`}
+                  >
+                    <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
+                      <span className={`font-bold ${textClass}`}>
+                        Wave {i + 1}: {d.name}
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">
+                        #{i + 1}
+                      </span>
+                    </div>
+                    <div className="mt-1.5 flex items-baseline justify-between">
+                      <span className={`font-mono text-sm font-black ${textClass}`}>
+                        {d.winRate}%
+                      </span>
+                      <span className="text-[11px] font-mono text-slate-400">
+                        {d.wins.toLocaleString()} victories
+                      </span>
+                    </div>
+                    {matchingParticipant?.isAlliance && (
+                      <div className="mt-1 text-[10px] text-teal-400 font-medium flex items-center gap-1">
+                        <span>🕊️ Peaceful Allies (Defends with Draco / Ancients)</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Surviving Fleets Distribution Details */}
+      {/* Surviving Fleets Distribution Details (Split by Participant Parties) */}
       <div className="space-y-3 pt-2">
-        <div className="flex items-center gap-2 border-b border-slate-800 pb-2">
-          <button
-            type="button"
-            onClick={() => setActiveResultsTab('attacker')}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
-              activeResultsTab === 'attacker'
-                ? 'bg-red-950 border border-red-700 text-red-200 shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Attacker Surviving Fleets ({result.attackerWins})
-          </button>
-          <button
-            type="button"
-            onClick={() => setActiveResultsTab('defender')}
-            className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
-              activeResultsTab === 'defender'
-                ? 'bg-cyan-950 border border-cyan-700 text-cyan-200 shadow'
-                : 'text-slate-400 hover:text-white'
-            }`}
-          >
-            Defender Surviving Fleets ({result.defenderWins})
-          </button>
+        <div className="flex flex-wrap items-center gap-2 border-b border-slate-800 pb-2">
+          {survivingParties.map((party) => {
+            const isActive = activeResultsTab === party.id;
+            return (
+              <button
+                key={party.id}
+                type="button"
+                onClick={() => setActiveResultsTab(party.id)}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
+                  isActive
+                    ? `${party.activeBgClass} border ${party.activeBorderClass} ${party.activeTextClass} shadow`
+                    : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
+                }`}
+              >
+                <span className={`w-2 h-2 rounded-full ${party.dotColor} shrink-0`} />
+                <span>
+                  {party.label} Fleets{' '}
+                  <span className="font-mono text-[11px] opacity-80">({party.wins.toLocaleString()})</span>
+                </span>
+              </button>
+            );
+          })}
+
           {result.draws > 0 && (
             <button
               type="button"
               onClick={() => setActiveResultsTab('draws')}
-              className={`px-3 py-1 rounded-lg text-xs font-bold transition ${
+              className={`px-3 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-1.5 ${
                 activeResultsTab === 'draws'
                   ? 'bg-slate-800 border border-slate-700 text-white shadow'
-                  : 'text-slate-400 hover:text-white'
+                  : 'text-slate-400 hover:text-white hover:bg-slate-900 border border-transparent'
               }`}
             >
-              Draws ({result.draws})
+              <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
+              <span>
+                Draws{' '}
+                <span className="font-mono text-[11px] opacity-80">({result.draws.toLocaleString()})</span>
+              </span>
             </button>
           )}
         </div>
 
-        {/* Breakdown List */}
+        {/* Breakdown List for Selected Party */}
         <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
-          {activeResultsTab === 'attacker' && (
-            result.attackerSurvivingOutcomes.length > 0 ? (
-              result.attackerSurvivingOutcomes.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-xs"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 font-mono text-[11px] text-slate-500">#{idx + 1}</span>
-                    <span className="font-bold text-white">{item.summary}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-slate-400">{item.count.toLocaleString()} times</span>
-                    <span className="px-2 py-0.5 rounded bg-red-950/80 text-red-300 font-mono font-bold border border-red-800">
-                      {item.percentage}% of all
-                    </span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-slate-500 italic p-3 text-center">
-                Attacker did not achieve any victories in this simulation.
-              </div>
-            )
-          )}
-
-          {activeResultsTab === 'defender' && (
-            result.defenderSurvivingOutcomes.length > 0 ? (
-              result.defenderSurvivingOutcomes.map((item, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-xs"
-                >
-                  <div className="flex items-center gap-2">
-                    <span className="w-5 font-mono text-[11px] text-slate-500">#{idx + 1}</span>
-                    <span className="font-bold text-white">{item.summary}</span>
-                  </div>
-                  <div className="flex items-center gap-3">
-                    <span className="font-mono text-slate-400">{item.count.toLocaleString()} times</span>
-                    <span className="px-2 py-0.5 rounded bg-cyan-950/80 text-cyan-300 font-mono font-bold border border-cyan-800">
-                      {item.percentage}% of all
-                    </span>
-                  </div>
-                </div>
-              ))
-            ) : (
-              <div className="text-xs text-slate-500 italic p-3 text-center">
-                Defender did not achieve any victories in this simulation.
-              </div>
-            )
-          )}
-
-          {activeResultsTab === 'draws' && (
+          {activeResultsTab === 'draws' ? (
             <div className="p-3 text-xs text-slate-300 bg-slate-900/80 rounded-lg border border-slate-800">
-              Mutual destruction: Both fleets completely wiped out simultaneously in {result.draws} battles ({result.drawRate}%).
+              Mutual destruction: Both fleets completely wiped out simultaneously in {result.draws.toLocaleString()} battles ({result.drawRate}%).
             </div>
-          )}
+          ) : (() => {
+            const currentParty =
+              survivingParties.find((p) => p.id === activeResultsTab) || survivingParties[0]!;
+
+            if (currentParty.survivingOutcomes.length === 0) {
+              return (
+                <div className="text-xs text-slate-500 italic p-3 text-center">
+                  {currentParty.label} did not achieve any victories in this simulation.
+                </div>
+              );
+            }
+
+            return currentParty.survivingOutcomes.map((item, idx) => (
+              <div
+                key={idx}
+                className="flex items-center justify-between p-2 rounded-lg bg-slate-900/80 border border-slate-800 text-xs"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="w-5 font-mono text-[11px] text-slate-500">#{idx + 1}</span>
+                  <span className="font-bold text-white">{item.summary}</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="font-mono text-slate-400">{item.count.toLocaleString()} times</span>
+                  <span className={`px-2 py-0.5 rounded ${currentParty.badgeClass}`}>
+                    {item.percentage}% of all
+                  </span>
+                </div>
+              </div>
+            ));
+          })()}
         </div>
       </div>
     </div>

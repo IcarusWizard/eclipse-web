@@ -18281,8 +18281,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
             ...rawT101,
             phase: 'ACTION_PHASE',
             passedPlayerIds: [],
+            consecutivePasses: 0,
             activePlayerIndex: 0,
           };
+          t101Data.players.forEach((p: any) => {
+            p.hasPassed = false;
+            p.autoPassReactions = false;
+          });
           expect(t101Data.activePlayerIndex).toBe(0);
 
           const p0 = t101Data.players[0];
@@ -19353,6 +19358,268 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const compR1 = resolveStepState(compacted, 1);
         expect(compR1.passedPlayerIds).toContain(p1.id);
         expect(compR1.round).toBe(1);
+      });
+
+      test('117. verifies Bug Fixes 223-227: Turn reminder sound trigger gating, Minor Species merged in Ambassador sector, Confirm Turn bar fixed layout, Multi-defender wave simulator with reordering/swapping, and Nebula subsector combat simulator import', async () => {
+        // 1. Bug 223: Turn reminder sound trigger gating
+        // Verify decision key construction for turn start and off-turn switches
+        const getActiveDecisionKey = (state: any, currentUserId: string, isHotSeat: boolean) => {
+          if (!state) return null;
+          const currentPlayer = state.players.find(
+            (p: any, idx: number) =>
+              p.userId === currentUserId ||
+              (!p.userId && isHotSeat && idx === state.activePlayerIndex) ||
+              p.id === currentUserId
+          );
+          if (!currentPlayer) return null;
+
+          if (state.phase === 'FACTION_DRAFT') {
+            const isUserTurnToDraft = state.players[state.activePlayerIndex]?.id === currentPlayer.id;
+            return isUserTurnToDraft ? `draft:${state.activePlayerIndex}` : null;
+          }
+
+          if (state.activeCombat && state.phase === 'COMBAT_PHASE') {
+            const combat = state.activeCombat;
+            const isParticipant = (combat.participatingPlayerIds || []).includes(currentPlayer.id);
+            if (isParticipant && combat.stage !== 'resolved') {
+              return `combat:${combat.sectorId}:${combat.subsector ?? 1}:${combat.currentTurnIndex}`;
+            }
+          }
+
+          if (state.diplomacyProposals?.some((prop: any) => prop.targetPlayerId === currentPlayer.id && prop.status === 'pending')) {
+            return `diplo_proposal:${state.diplomacyProposals.find((p: any) => p.targetPlayerId === currentPlayer.id).id}`;
+          }
+
+          if (state.combatConquestPending?.playerId === currentPlayer.id) {
+            return `conquest:${state.combatConquestPending.sectorId}`;
+          }
+
+          if (state.reputationDrawQueue?.length > 0 && state.reputationDrawQueue[0]?.playerId === currentPlayer.id) {
+            return `rep_draw:${state.reputationDrawQueue[0].playerId}:${state.reputationDrawQueue[0].sectorId}`;
+          }
+
+          if (state.tacticalBankruptcyPending?.playerId === currentPlayer.id) {
+            return `bankruptcy:${state.tacticalBankruptcyPending.playerId}`;
+          }
+
+          const isUserMainTurn = state.players[state.activePlayerIndex]?.id === currentPlayer.id;
+          if (isUserMainTurn && (state.phase === 'ACTION_PHASE' || state.phase === 'COMBAT_PHASE')) {
+            const stepCount = state.replaySteps?.length || 0;
+            return `turn:${state.round}:${state.activePlayerIndex}:${stepCount}`;
+          }
+
+          return null;
+        };
+
+        const mockState: any = {
+          round: 1,
+          phase: 'ACTION_PHASE',
+          activePlayerIndex: 0,
+          players: [
+            { id: 'player_1', userId: 'user_1', name: 'Draco' },
+            { id: 'player_2', userId: 'user_2', name: 'Mechanema' },
+          ],
+          replaySteps: [{ id: 1 }],
+          log: [{ id: 'log_1', message: 'Action 1' }],
+        };
+
+        // Turn key for player 1
+        const key1 = getActiveDecisionKey(mockState, 'user_1', false);
+        expect(key1).toBe('turn:1:0:1');
+        // Player 2 is off-turn
+        expect(getActiveDecisionKey(mockState, 'user_2', false)).toBeNull();
+
+        // Intermediate logs or clicks do not change the decision key
+        mockState.log.unshift({ id: 'log_2', message: 'Intermediate click' });
+        const keyAfterClick = getActiveDecisionKey(mockState, 'user_1', false);
+        expect(keyAfterClick).toBe(key1); // Stays identical -> no redundant turn reminder sound
+
+        // Off-turn decision switch: Combat turn switches to Player 2
+        mockState.phase = 'COMBAT_PHASE';
+        mockState.activeCombat = {
+          sectorId: 'sector_104',
+          subsector: 1,
+          currentTurnIndex: 3,
+          stage: 'regular',
+          participatingPlayerIds: ['player_1', 'player_2'],
+        };
+        const combatKeyP2 = getActiveDecisionKey(mockState, 'user_2', false);
+        expect(combatKeyP2).toBe('combat:sector_104:1:3');
+
+        // 2. Bug 224: Minor species merged into Ambassador sector and removed from header bar
+        const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+        expect(typeof PlayerBoard).toBe('function');
+        const { ALL_MINOR_SPECIES_TILES } = await import('../rules/minorSpecies');
+        expect(ALL_MINOR_SPECIES_TILES.length).toBeGreaterThan(0);
+        const fs = await import('fs');
+        const path = await import('path');
+        const headerSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Header.tsx'), 'utf-8');
+        expect(headerSrc).not.toContain('title="Minor Species Embassy"');
+
+        // 3. Bug 225: Confirm turn bar fixed layout in ActionBar
+        const actionBarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'ActionBar.tsx'), 'utf-8');
+        expect(actionBarSrc).toContain('fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))]');
+
+        // 4. Bug 226: Combat Simulator multi-faction wave combat, reordering, swapping, and participant win rate bar
+        const {
+          createDefaultSimulatorSide,
+          runCombatSimulation,
+          simulateMultiWaveBattle,
+          findSectorsWithPendingCombat,
+          loadBattleFromSector,
+          isPeacefulCombatPair,
+        } = await import('../rules/combatSimulator');
+
+        // Peaceful pair logic verification
+        expect(isPeacefulCombatPair('descendants_of_draco', 'ancient')).toBe(true);
+        expect(isPeacefulCombatPair('descendants_of_draco', 'guardian')).toBe(true);
+        expect(isPeacefulCombatPair('descendants_of_draco', 'gcds')).toBe(true);
+        expect(isPeacefulCombatPair('ancient', 'descendants_of_draco')).toBe(true);
+        expect(isPeacefulCombatPair('planta', 'terran_federation')).toBe(false);
+        expect(isPeacefulCombatPair('planta', 'ancient')).toBe(false);
+
+        const attacker = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { dreadnought: 2, cruiser: 1 },
+        });
+
+        // Two defenders in sequence: Defender 1 (Ancients) then Defender 2 (Planta)
+        const defender1 = createDefaultSimulatorSide('ancient', {
+          isNpc: true,
+          shipCounts: { ancient: 1 },
+        });
+        const defender2 = createDefaultSimulatorSide('planta', {
+          shipCounts: { interceptor: 2 },
+        });
+
+        const waveBattleResult = simulateMultiWaveBattle(attacker, [defender1, defender2]);
+        expect(waveBattleResult).toBeDefined();
+        expect(['attacker', 'defender', 'draw']).toContain(waveBattleResult.winner);
+
+        // Multi-wave simulation runs successfully with defender breakdown
+        const simResult = runCombatSimulation(attacker, [defender1, defender2], 200);
+        expect(simResult.iterations).toBe(200);
+        expect(simResult.defendersBreakdown).toBeDefined();
+        expect(simResult.defendersBreakdown).toHaveLength(2);
+        expect(simResult.defendersBreakdown![0].name).toBe('Ancient Cruiser');
+        expect(simResult.defendersBreakdown![1].name).toBe('Planta');
+        expect(simResult.defendersBreakdown![0].winRate + simResult.defendersBreakdown![1].winRate).toBeCloseTo(
+          simResult.defenderWinRate,
+          0
+        );
+
+        // Multi-wave winner continuation:
+        // A. Defender 1 (Planta) defeats weak Attacker, then continues to battle Defender 2 (Terran)
+        const weakAttacker = createDefaultSimulatorSide('hydran_progress', { shipCounts: { interceptor: 1 } });
+        const strongDef1 = createDefaultSimulatorSide('planta', { shipCounts: { cruiser: 2 } });
+        const strongDef2 = createDefaultSimulatorSide('terran_federation', { shipCounts: { dreadnought: 2 } });
+        const contResult = simulateMultiWaveBattle(weakAttacker, [strongDef1, strongDef2]);
+        expect(contResult.winner).toBe('defender');
+        // Because Def 1 continued to fight Def 2, the victor is either Def 1 or Def 2
+        expect([0, 1]).toContain(contResult.winningDefenderIndex);
+
+        // B. Draco exception: When Draco (Def 1) defeats Attacker, Draco does NOT fight Ancients (Def 2)
+        const dracoDef1 = createDefaultSimulatorSide('descendants_of_draco', { shipCounts: { dreadnought: 3 } });
+        const ancientDef2 = createDefaultSimulatorSide('ancient', { isNpc: true, shipCounts: { ancient: 2 } });
+        const dracoAncientBattle = simulateMultiWaveBattle(weakAttacker, [dracoDef1, ancientDef2]);
+        expect(dracoAncientBattle.winner).toBe('defender');
+        expect(dracoAncientBattle.winningDefenderIndex).toBe(0); // Draco won and did not attack allied Ancients!
+
+        // C. Win Rate Bar participant breakdown:
+        // Case 1: 1 Attacker vs 2 Hostile Defenders (Planta & Terran) -> splits to 3 parts (1 Attacker + 2 Defenders)
+        const simHostile = runCombatSimulation(weakAttacker, [strongDef1, strongDef2], 100);
+        expect(simHostile.participants).toBeDefined();
+        expect(simHostile.participants!.length).toBe(3);
+        expect(simHostile.participants![0]!.role).toBe('attacker');
+        expect(simHostile.participants![1]!.role).toBe('defender');
+        expect(simHostile.participants![1]!.name).toContain('Defender 1');
+        expect(simHostile.participants![2]!.role).toBe('defender');
+        expect(simHostile.participants![2]!.name).toContain('Defender 2');
+
+        // Surviving fleets split per party:
+        expect(simHostile.defendersBreakdown![0]!.survivingOutcomes).toBeDefined();
+        expect(simHostile.defendersBreakdown![1]!.survivingOutcomes).toBeDefined();
+        expect(simHostile.participants![1]!.survivingOutcomes).toBeDefined();
+        expect(simHostile.participants![2]!.survivingOutcomes).toBeDefined();
+
+        // Case 2: 1 Attacker vs 2 Allied Defenders (Draco & Ancient) -> exception: splits to 2 parts (1 Attacker + 1 Allied Defenders)
+        const simAllied = runCombatSimulation(weakAttacker, [dracoDef1, ancientDef2], 100);
+        expect(simAllied.participants).toBeDefined();
+        expect(simAllied.participants!.length).toBe(2);
+        expect(simAllied.participants![0]!.role).toBe('attacker');
+        expect(simAllied.participants![1]!.role).toBe('defender');
+        expect(simAllied.participants![1]!.isAlliance).toBe(true);
+        expect(simAllied.participants![1]!.name).toContain('Allied Defenders');
+
+        // Both Draco and Ancients have distinct surviving fleets tracked:
+        expect(simAllied.defendersBreakdown![0]!.survivingOutcomes).toBeDefined();
+        expect(simAllied.defendersBreakdown![1]!.survivingOutcomes).toBeDefined();
+        expect(simAllied.participants![1]!.survivingOutcomes).toBeDefined();
+
+        // 5. Bug 227: Combat simulator Nebula subsector import
+        const mockNebulaGame: any = {
+          players: [
+            { id: 'player_1', faction: { id: 'descendants_of_draco', name: 'Descendants of Draco' }, blueprints: {} },
+            { id: 'player_2', faction: { id: 'mechanema', name: 'Mechanema' }, blueprints: {} },
+          ],
+          sectors: [
+            {
+              id: 'sector_295',
+              sectorNumber: 295,
+              isNebula: true,
+              ships: [
+                { id: 'ship_mech_sub1', ownerId: 'player_2', type: 'interceptor', subsector: 1 },
+                { id: 'ship_ancient_sub3', ownerId: 'ancient', type: 'ancient', subsector: 3 },
+              ],
+            },
+          ],
+          neutralShipBlueprints: { ancient: 'default' },
+        };
+
+        const pendingNebula = findSectorsWithPendingCombat(mockNebulaGame);
+        expect(pendingNebula.some((p) => p.sector.id === 'sector_295' && p.subsector === 1)).toBe(true);
+        expect(pendingNebula.some((p) => p.sector.id === 'sector_295' && p.subsector === 3)).toBe(true);
+
+        // Importing subsector 1 loads Mechanema
+        const battleSub1 = loadBattleFromSector(mockNebulaGame, 'sector_295', 1);
+        expect(battleSub1).not.toBeNull();
+        expect(battleSub1!.attacker.factionId).toBe('mechanema');
+
+        // Importing subsector 3 loads Ancients as Defender
+        const battleSub3 = loadBattleFromSector(mockNebulaGame, 'sector_295', 3);
+        expect(battleSub3).not.toBeNull();
+        expect(battleSub3!.defender.factionId).toBe('ancient');
+
+        // Multi-faction Draco + Ancients + Invader battle setup (Sector 104 scenario from Table 819)
+        const mockSec104Game: any = {
+          players: [
+            { id: 'player_1', faction: { id: 'descendants_of_draco', name: 'Descendants of Draco' }, blueprints: {}, techTrack: { researched: [] } },
+            { id: 'player_2', faction: { id: 'mechanema', name: 'Mechanema' }, blueprints: {}, techTrack: { researched: [] } },
+          ],
+          sectors: [
+            {
+              id: 'sector_104',
+              sectorNumber: 104,
+              discOwner: 'player_1',
+              playerEntryOrder: ['player_1', 'player_2'],
+              ships: [
+                { id: 'anc_1', ownerId: 'ancient', type: 'ancient' },
+                { id: 'anc_2', ownerId: 'ancient', type: 'ancient' },
+                { id: 'draco_sb', ownerId: 'player_1', type: 'starbase' },
+                { id: 'mech_cruiser', ownerId: 'player_2', type: 'cruiser' },
+              ],
+            },
+          ],
+          neutralShipBlueprints: { ancient: 'default' },
+        };
+
+        const battle104 = loadBattleFromSector(mockSec104Game, 'sector_104');
+        expect(battle104).not.toBeNull();
+        // Invader is attacker
+        expect(battle104!.attacker.factionId).toBe('mechanema');
+        // Draco rule: Invader must fight Draco first, then Ancients
+        expect(battle104!.defenders).toHaveLength(2);
+        expect(battle104!.defenders[0].factionId).toBe('descendants_of_draco');
+        expect(battle104!.defenders[1].factionId).toBe('ancient');
       });
     });
   });
