@@ -220,3 +220,8 @@
 - [x] the volum of the turn sound should be higher (Round 4, ACTION_PHASE, Player: Terran Directorate, Table #102)
 - [x] In view my game section of the lobby, each game should show every seat with seat number, player faction (or still drafting), player name (Lobby, Player: Alice)
 - [x] in join table view, the game should list all the expansions it enabled for the other players to decide (Lobby, Player: Alice)
+- [ ] currently, there are so many things trigger the turn reminder sound, it should only be triggerred in beginning of the turn, or in the other's turn by switch to their decision (Round 1, ACTION_PHASE, Player: Descendants of Draco, Table #819)
+- [ ] The minor species should be merged to the ambassador sector on the top left window (Round 1, ACTION_PHASE, Player: Descendants of Draco, Table #819)
+- [ ] If I use desktop view on my phone, I can see the action bar, report bus and chronicle on the bottom, but I cannot see the confirm turn bar (Round 2, ACTION_PHASE, Player: Descendants of Draco, Table #819)
+- [ ] the combat simulator currently don't support multi-faction attack especially when import from a sector, I think in general, there should be a function to add a defender, and also change the order of defenders and attackers (Round 5, ACTION_PHASE, Player: Mechanema, Table #819)
+- [ ] for nebula, the combat simulator should import from subsector other than the whole sector (Round 5, ACTION_PHASE, Player: Mechanema, Table #819)
