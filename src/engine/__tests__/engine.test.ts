@@ -17013,7 +17013,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Give Player 2 science to research
         stateAfterPass1.players[1]!.resources.science = 20;
         const availableTech = stateAfterPass1.techSupply.find(
-          (t) => t.id !== 'artifact_key' && t.id !== 'ancient_labs' && !stateAfterPass1.players[1]!.techTrack.researched.some((r) => r.id === t.id)
+          (t) => t.category !== 'rare' && !stateAfterPass1.players[1]!.techTrack.researched.some((r) => r.id === t.id)
         )!;
         expect(availableTech).toBeDefined();
 
@@ -17070,7 +17070,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Player 2 takes an action (e.g. Research)
         p1InvState.players[1]!.resources.science = 20;
         const p2Tech = p1InvState.techSupply.find(
-          (t) => t.id !== 'artifact_key' && t.id !== 'ancient_labs' && !p1InvState.players[1]!.techTrack.researched.some((r) => r.id === t.id)
+          (t) => t.category !== 'rare' && !p1InvState.players[1]!.techTrack.researched.some((r) => r.id === t.id)
         )!;
         const p2ActionUnderInvasion = executeAction(p1InvState, {
           type: 'RESEARCH',
@@ -19680,6 +19680,21 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         checkAndTriggerCombat(wipedGame);
         // Attacker who conquered the sector gets it
         expect(wipedGame.pendingDiscovery?.playerId).toBe(wp1.id);
+      });
+
+      test('119. verifies TableSessionModal imports and persistence fetch integration without reference errors', async () => {
+        const { TableSessionModal } = await import('../../components/layout/TableSessionModal');
+        expect(TableSessionModal).toBeDefined();
+
+        const persistence = await import('../rules/persistence');
+        expect(typeof persistence.fetchSavedTablesFromServer).toBe('function');
+        expect(typeof persistence.fetchTableFromServer).toBe('function');
+
+        const fs = await import('fs');
+        const path = await import('path');
+        const modalSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'TableSessionModal.tsx'), 'utf-8');
+        expect(modalSource).toContain('fetchSavedTablesFromServer');
+        expect(modalSource).toContain("from '../../engine/rules/persistence'");
       });
     });
   });

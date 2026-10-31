@@ -7,6 +7,7 @@ import {
   deleteSavedTable,
   SavedTableSummary,
   fetchTableFromServer,
+  fetchSavedTablesFromServer,
   saveGameState,
   filterTablesForUser,
   isPlayerTurnAtTable,
