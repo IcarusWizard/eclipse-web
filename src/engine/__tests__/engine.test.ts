@@ -17013,7 +17013,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Give Player 2 science to research
         stateAfterPass1.players[1]!.resources.science = 20;
         const availableTech = stateAfterPass1.techSupply.find(
-          (t) => !stateAfterPass1.players[1]!.techTrack.researched.some((r) => r.id === t.id)
+          (t) => t.id !== 'artifact_key' && t.id !== 'ancient_labs' && !stateAfterPass1.players[1]!.techTrack.researched.some((r) => r.id === t.id)
         )!;
         expect(availableTech).toBeDefined();
 
@@ -17070,7 +17070,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Player 2 takes an action (e.g. Research)
         p1InvState.players[1]!.resources.science = 20;
         const p2Tech = p1InvState.techSupply.find(
-          (t) => !p1InvState.players[1]!.techTrack.researched.some((r) => r.id === t.id)
+          (t) => t.id !== 'artifact_key' && t.id !== 'ancient_labs' && !p1InvState.players[1]!.techTrack.researched.some((r) => r.id === t.id)
         )!;
         const p2ActionUnderInvasion = executeAction(p1InvState, {
           type: 'RESEARCH',
@@ -19620,6 +19620,66 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(battle104!.defenders).toHaveLength(2);
         expect(battle104!.defenders[0].factionId).toBe('descendants_of_draco');
         expect(battle104!.defenders[1].factionId).toBe('ancient');
+      });
+
+      test('118. verifies Descendants of Draco FAQ: when attacker destroys Ancients in Draco-controlled sector but Draco population survives, Draco receives the Discovery Tile', async () => {
+        const game = createInitialGame(2, ['terran_federation', 'descendants_of_draco']);
+        const p1 = game.players[0]!; // Attacker (Terran)
+        const p2 = game.players[1]!; // Defender (Draco)
+
+        // Draco controlled sector (e.g. Draco's home sector or an explored sector with Ancients)
+        const testSector = game.sectors.find((s) => s.discOwner === p2.id)!;
+        testSector.discoveryTile = {
+          id: 'disc_ancient_monolith',
+          name: 'Ancient Monolith',
+          category: 'ship_part',
+        };
+        testSector.discoveryClaimed = false;
+
+        // Draco has 1 population cube on a planet
+        const planet = testSector.planets[0]!;
+        planet.colonizedBy = p2.id;
+
+        // Attacker has surviving ships in the sector
+        testSector.ships = [
+          { id: 'ship_att_1', ownerId: p1.id, type: 'dreadnought', damage: 0 },
+        ];
+
+        // Ancients have been destroyed (no hostile ships remain)
+        game.phase = 'COMBAT_PHASE';
+        game.activeCombat = null;
+        game.pendingCombatConquest = null;
+        game.pendingDiscovery = null;
+        game.resolvedCombatSectorIds = [testSector.id];
+
+        const { checkAndTriggerCombat } = await import('../rules/gameReducer');
+        checkAndTriggerCombat(game);
+
+        // Draco must be awarded the Discovery Tile per official Eclipse FAQ
+        expect(game.pendingDiscovery).toBeDefined();
+        expect(game.pendingDiscovery?.sectorId).toBe(testSector.id);
+        expect(game.pendingDiscovery?.playerId).toBe(p2.id); // Awarded to Draco!
+        expect(game.pendingDiscovery?.playerId).not.toBe(p1.id); // NOT the attacker!
+        expect(game.pendingDiscovery?.discovery.id).toBe('disc_ancient_monolith');
+
+        // Conversely, if Draco population had been completely wiped out (overthrown disc)
+        const wipedGame = createInitialGame(2, ['terran_federation', 'descendants_of_draco']);
+        const wp1 = wipedGame.players[0]!;
+        const wp2 = wipedGame.players[1]!;
+        const wipedSec = wipedGame.sectors.find((s) => s.discOwner === wp2.id)!;
+        wipedSec.discOwner = undefined; // Overthrown
+        wipedSec.discoveryTile = { id: 'disc_ion_turret', name: 'Ion Turret', category: 'ship_part' };
+        wipedSec.discoveryClaimed = false;
+        wipedSec.ships = [
+          { id: 'ship_att_2', ownerId: wp1.id, type: 'dreadnought', damage: 0 },
+        ];
+        wipedGame.phase = 'COMBAT_PHASE';
+        wipedGame.activeCombat = null;
+        wipedGame.resolvedCombatSectorIds = [wipedSec.id];
+
+        checkAndTriggerCombat(wipedGame);
+        // Attacker who conquered the sector gets it
+        expect(wipedGame.pendingDiscovery?.playerId).toBe(wp1.id);
       });
     });
   });

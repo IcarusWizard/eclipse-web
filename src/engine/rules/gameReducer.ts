@@ -5610,6 +5610,31 @@ export function checkAndTriggerCombat(state: GameState): void {
         (id) => id.startsWith('player_')
       );
       const hasHostiles = sec.ships.some((s) => !s.ownerId.startsWith('player_'));
+
+      // Descendants of Draco FAQ Special Case:
+      // If a sector is controlled by Descendants of Draco, and Draco retained control
+      // (their population survived the attack), but the Ancients guarding the discovery tile were destroyed,
+      // the Discovery Tile goes to Draco because Draco controls the hex!
+      const controller = sec.discOwner ? state.players.find((p) => p.id === sec.discOwner) : undefined;
+      const isDracoControlled = controller && controller.faction.id === 'descendants_of_draco';
+
+      if (isDracoControlled && !hasHostiles) {
+        state.pendingDiscovery = {
+          sectorId: sec.id,
+          discovery: sec.discoveryTile,
+          playerId: sec.discOwner!,
+        };
+        state.log.unshift({
+          id: `log_${Date.now()}_claim_draco_${sec.sectorNumber}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: 'COMBAT_PHASE',
+          message: `✨ Descendants of Draco (${controller.name}) retained control of Sector ${sec.sectorNumber} and claimed Discovery Tile "${sec.discoveryTile.name}" now that the guarding Ancients have been destroyed!`,
+          type: 'system',
+        });
+        return;
+      }
+
       if (shipOwners.length === 1 && !hasHostiles) {
         state.pendingDiscovery = {
           sectorId: sec.id,
