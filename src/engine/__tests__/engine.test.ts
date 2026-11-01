@@ -77,6 +77,7 @@ import {
   getStateFingerprint,
   sanitizeLoadedGameState,
   registerTableMember,
+  adminReassignTableSeat,
   filterTablesForUser,
   isSeatTaken,
   getTableOccupiedSeats,
@@ -19984,6 +19985,225 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Format is Faction (Alice):, NOT Faction (Orion Hegemony):
         expect(chatHtml).toContain('(Alice):');
         expect(chatHtml).not.toContain('(Orion Hegemony):');
+      });
+
+      // =========================================================================
+      // Test 123: Admin Manage Seats Feature (Takeover, Reassignment & No Vacancy)
+      // =========================================================================
+      it('Test 123: verifies admin takeover, seat reassignment to registered users, and active match integrity', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { AdminManageSeatsModal } = await import('../../components/admin/AdminManageSeatsModal');
+        const { Header } = await import('../../components/layout/Header');
+
+        const testTableId = 'table-admin-manage-seats-123';
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        game.id = testTableId;
+        (game as any).tableNumber = 123;
+
+        const aliceUser = {
+          id: 'user-alice-1',
+          username: 'AlicePlayer',
+          name: 'Alice Cooper',
+          role: 'user',
+        };
+        const bobUser = {
+          id: 'user-bob-2',
+          username: 'BobPlayer',
+          name: 'Bob Marley',
+          role: 'user',
+        };
+        const adminUser = {
+          id: 'admin-super-99',
+          username: 'SuperAdmin',
+          name: 'Admin Chief',
+          role: 'admin',
+        };
+        const targetCharlie = {
+          id: 'user-charlie-3',
+          username: 'CharlieCommander',
+          name: 'Charlie Chaplin',
+          role: 'user' as const,
+        };
+
+        // Initialize table state with Alice in Seat 0 and Bob in Seat 1
+        saveGameState(game, true);
+        const aliceJoin = await registerTableMember(testTableId, {
+          userId: aliceUser.id,
+          username: aliceUser.username,
+          name: aliceUser.name,
+          role: aliceUser.role as any,
+          seat: 0,
+          joinedAt: Date.now(),
+        }, true);
+        expect(aliceJoin.success).toBe(true);
+
+        const bobJoin = await registerTableMember(testTableId, {
+          userId: bobUser.id,
+          username: bobUser.username,
+          name: bobUser.name,
+          role: bobUser.role as any,
+          seat: 1,
+          joinedAt: Date.now(),
+        }, true);
+        expect(bobJoin.success).toBe(true);
+
+        // 1. Verify standard user CANNOT take an occupied seat
+        const charlieAttempt = await registerTableMember(testTableId, {
+          userId: targetCharlie.id,
+          username: targetCharlie.username,
+          name: targetCharlie.name,
+          role: targetCharlie.role as any,
+          seat: 0,
+          joinedAt: Date.now(),
+        }, true);
+        expect(charlieAttempt.success).toBe(false);
+        expect(charlieAttempt.error).toContain('Seat 1 is already occupied by AlicePlayer');
+
+        // 2. Verify Admin CAN takeover an occupied seat directly
+        const adminTakeover = await registerTableMember(testTableId, {
+          userId: adminUser.id,
+          username: adminUser.username,
+          name: adminUser.name,
+          role: adminUser.role as any,
+          seat: 0,
+          joinedAt: Date.now(),
+        }, true);
+        expect(adminTakeover.success).toBe(true);
+        expect(adminTakeover.members).toBeDefined();
+        // Alice is no longer occupying Seat 0; Admin is now occupying Seat 0
+        const seat0OccupantAfterTakeover = adminTakeover.members?.find((m) => m.seat === 0);
+        expect(seat0OccupantAfterTakeover?.userId).toBe(adminUser.id);
+        const aliceStillInSeat = adminTakeover.members?.find((m) => m.userId === aliceUser.id);
+        expect(aliceStillInSeat).toBeUndefined();
+
+        // 3. Verify Admin Reassign Seat to a Registered User (Charlie)
+        const reassignRes = await adminReassignTableSeat(
+          testTableId,
+          0,
+          targetCharlie,
+          adminUser,
+          true
+        );
+        expect(reassignRes.success).toBe(true);
+        expect(reassignRes.members).toBeDefined();
+        const seat0AfterReassign = reassignRes.members?.find((m) => m.seat === 0);
+        expect(seat0AfterReassign?.userId).toBe(targetCharlie.id);
+        expect(seat0AfterReassign?.username).toBe('CharlieCommander');
+
+        // Verify loaded game state reflects the reassigned player name
+        const loaded = loadTable(testTableId);
+        expect(loaded).not.toBeNull();
+        expect(loaded?.players[0]?.name).toBe('CharlieCommander');
+        // Seat was never left vacant
+        expect(loaded?.members?.some((m) => m.seat === 0)).toBe(true);
+        expect(loaded?.members?.some((m) => m.seat === 1)).toBe(true);
+
+        // 4. Verify AdminManageSeatsModal UI Rendering
+        const modalHtml = renderToString(
+          React.createElement(AdminManageSeatsModal, {
+            isOpen: true,
+            onClose: () => {},
+            state: {
+              ...game,
+              tableNumber: 123,
+              members: [
+                {
+                  userId: adminUser.id,
+                  username: adminUser.username,
+                  name: adminUser.name,
+                  role: 'admin',
+                  seat: 0,
+                  joinedAt: Date.now(),
+                },
+                {
+                  userId: bobUser.id,
+                  username: bobUser.username,
+                  name: bobUser.name,
+                  role: 'user',
+                  seat: 1,
+                  joinedAt: Date.now(),
+                },
+              ],
+            } as any,
+            currentUser: {
+              id: adminUser.id,
+              username: adminUser.username,
+              name: adminUser.name,
+              role: 'admin',
+            },
+            currentSeat: 0,
+            onTakeSeat: () => {},
+            onReassignSeat: async () => ({ success: true }),
+          })
+        );
+
+        // Header & Admin Only badge
+        expect(modalHtml).toContain('Manage Table Seats');
+        expect(modalHtml).toContain('Admin Only');
+        expect(modalHtml).toContain('Table #');
+        expect(modalHtml).toContain('123');
+
+        // Integrity warning: No vacant seats allowed
+        expect(modalHtml).toContain('Active Match Integrity');
+        expect(modalHtml).toContain('In-progress games cannot have empty or vacated seats');
+
+        // Seat cards rendered
+        expect(modalHtml).toContain('data-testid="admin-seat-card-1"');
+        expect(modalHtml).toContain('data-testid="admin-seat-card-2"');
+
+        // Seat 1 occupied by Admin (Current User) -> shows YOU (ADMIN) badge, no Take Seat button
+        expect(modalHtml).toContain('YOU (ADMIN)');
+
+        // Seat 2 occupied by BobPlayer -> shows Commander BobPlayer, Take Seat button, Reassign button
+        expect(modalHtml).toContain('BobPlayer');
+        expect(modalHtml).toContain('Take Seat');
+        expect(modalHtml).toContain('Reassign');
+
+        // 5. Verify Header integration with Admin Manage Seats button & Takeover seat dropdown
+        const headerAdminHtml = renderToString(
+          React.createElement(Header, {
+            state: {
+              ...game,
+              members: [
+                {
+                  userId: aliceUser.id,
+                  username: aliceUser.username,
+                  name: aliceUser.name,
+                  role: 'user',
+                  seat: 0,
+                  joinedAt: Date.now(),
+                },
+                {
+                  userId: bobUser.id,
+                  username: bobUser.username,
+                  name: bobUser.name,
+                  role: 'user',
+                  seat: 1,
+                  joinedAt: Date.now(),
+                },
+              ],
+            } as any,
+            currentUser: {
+              id: adminUser.id,
+              username: adminUser.username,
+              name: adminUser.name,
+              role: 'admin',
+            },
+            currentSeat: 'spectator',
+            onChangeSeat: () => {},
+            onOpenManageSeats: () => {},
+            initialDrawerOpen: true,
+          })
+        );
+
+        // Header renders Manage Seats (Admin) action button
+        expect(headerAdminHtml).toContain('data-testid="header-manage-seats-button"');
+        expect(headerAdminHtml).toContain('Manage Seats (Admin)');
+
+        // Admin dropdown allows takeover of occupied seats
+        expect(headerAdminHtml).toContain('[Takeover: AlicePlayer]');
+        expect(headerAdminHtml).toContain('[Takeover: BobPlayer]');
       });
     });
   });

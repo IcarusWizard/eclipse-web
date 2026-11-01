@@ -1223,12 +1223,16 @@ export async function registerTableMember(
     // Check if the requested seat is already taken by another user
     if (typeof member.seat === 'number') {
       const seatCheck = isSeatTaken(curMembers, member.seat, member.userId);
-      if (seatCheck.isTaken && seatCheck.occupant) {
+      if (seatCheck.isTaken && seatCheck.occupant && member.role !== 'admin') {
         const occName = seatCheck.occupant.username || seatCheck.occupant.name || 'another player';
         return {
           success: false,
           error: `Seat ${member.seat + 1} is already occupied by ${occName}.`,
         };
+      }
+      if (seatCheck.isTaken && member.role === 'admin') {
+        // Admin takeover: detach previous occupant of this seat
+        curMembers = curMembers.filter((m) => m && m.seat !== member.seat);
       }
     }
 
@@ -1319,6 +1323,104 @@ export async function registerTableMember(
   } catch (err: any) {
     console.error('Failed to register table member:', err);
     return { success: false, error: err?.message || 'Failed to register table member' };
+  }
+}
+
+/**
+ * Administrator Reassign Seat: Directly assigns a registered user to a seat.
+ * Replaces any previous occupant of that seat, updating state.members, state.players[seat].name,
+ * and persisting across localStorage and server API.
+ */
+export async function adminReassignTableSeat(
+  tableId: string,
+  seatIndex: number,
+  targetUser: { id: string; username: string; name?: string; role?: string; email?: string; emailNotifications?: boolean },
+  adminUser: { id: string; role: string },
+  isLocal?: boolean
+): Promise<{ success: boolean; members?: TableMember[]; error?: string }> {
+  try {
+    const storage = getStorage();
+    const raw = storage.getItem(SAVED_TABLES_KEY);
+    const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
+    const table = tables[tableId];
+
+    let curMembers: TableMember[] = (table?.members ? [...table.members] : []).filter(
+      (m) => m && m.seat !== seatIndex && m.userId !== targetUser.id && m.seat !== 'spectator'
+    );
+
+    const newMember: TableMember = {
+      userId: targetUser.id,
+      username: targetUser.username,
+      name: targetUser.name || targetUser.username,
+      role: (targetUser.role as any) || 'user',
+      email: targetUser.email,
+      emailNotifications: targetUser.emailNotifications !== false,
+      seat: seatIndex,
+      joinedAt: Date.now(),
+    };
+    curMembers.push(newMember);
+
+    if (table) {
+      table.members = curMembers;
+      if (table.stateJson) {
+        try {
+          const parsed = JSON.parse(table.stateJson);
+          parsed.members = curMembers;
+          if (parsed.players && parsed.players[seatIndex]) {
+            parsed.players[seatIndex].name = targetUser.username || targetUser.name;
+          }
+          table.stateJson = JSON.stringify(parsed);
+          saveGameState(parsed, true);
+        } catch {}
+      }
+      storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+      const activeRaw = storage.getItem(ACTIVE_GAME_KEY);
+      if (activeRaw) {
+        try {
+          const active = JSON.parse(activeRaw);
+          if (active && (active.id === tableId || active.id === `galaxy-${tableId}`)) {
+            active.members = curMembers;
+            if (active.players && active.players[seatIndex]) {
+              active.players[seatIndex].name = targetUser.username || targetUser.name;
+            }
+            storage.setItem(ACTIVE_GAME_KEY, JSON.stringify(active));
+          }
+        } catch {}
+      }
+    }
+
+    if (!isLocal && typeof fetch !== 'undefined') {
+      const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/admin/reassign-seat`), {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          adminUserId: adminUser.id,
+          seat: seatIndex,
+          targetUser,
+        }),
+      }).catch(() => null);
+
+      if (res && res.ok) {
+        const data = await res.json().catch(() => ({}));
+        if (data && data.members) {
+          curMembers = data.members.filter((m: any) => m && m.seat !== 'spectator');
+        }
+      }
+    }
+
+    const channel = getSyncChannel();
+    if (channel) {
+      channel.postMessage({
+        type: 'ECLIPSE_GAME_SYNC',
+        tableId,
+        timestamp: Date.now(),
+      });
+    }
+
+    return { success: true, members: curMembers };
+  } catch (err: any) {
+    console.error('Failed to admin reassign seat:', err);
+    return { success: false, error: err?.message || 'Failed to reassign seat' };
   }
 }
 

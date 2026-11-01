@@ -59,6 +59,8 @@ interface HeaderProps {
   onOpenReplay?: () => void;
   onOpenCombatSimulator?: () => void;
   onSwitchTable?: (tableId: string, seat: number | 'all' | 'spectator') => void;
+  onOpenManageSeats?: () => void;
+  currentUser?: UserSession;
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
   initialDrawerOpen?: boolean;
@@ -81,19 +83,31 @@ export const Header: React.FC<HeaderProps> = ({
   onOpenReplay,
   onOpenCombatSimulator,
   onSwitchTable,
+  onOpenManageSeats,
+  currentUser: propCurrentUser,
   currentSeat = 'all',
   onChangeSeat,
   initialDrawerOpen = false,
 }) => {
   const [isDrawerOpen, setIsDrawerOpen] = useState(initialDrawerOpen);
   const [copiedSeat, setCopiedSeat] = useState(false);
-  const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
+  const [currentUser, setCurrentUser] = useState<UserSession>(() => propCurrentUser || getCurrentUser());
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
   const [waitingTables, setWaitingTables] = useState<SavedTableSummary[]>([]);
 
   useEffect(() => {
-    return subscribeToUserSession((u) => setCurrentUser(u));
-  }, []);
+    if (propCurrentUser) {
+      setCurrentUser(propCurrentUser);
+    }
+  }, [propCurrentUser]);
+
+  useEffect(() => {
+    return subscribeToUserSession((u) => {
+      if (!propCurrentUser) {
+        setCurrentUser(u);
+      }
+    });
+  }, [propCurrentUser]);
 
   const tableNum = getTableNumber(state);
 
@@ -470,11 +484,14 @@ export const Header: React.FC<HeaderProps> = ({
                                 const seatCheck = isSeatTaken(state.members, idx, currentUser.id);
                                 const isTaken = seatCheck.isTaken && !!seatCheck.occupant;
                                 const isGuestBlocked = !state.isLocalGame && currentUser.role === 'guest';
+                                const isDisabled = isGuestBlocked || (isTaken && currentUser.role !== 'admin');
                                 return (
-                                  <option key={p.id} value={idx.toString()} disabled={isTaken || isGuestBlocked}>
+                                  <option key={p.id} value={idx.toString()} disabled={isDisabled}>
                                     Seat {idx + 1} ({getPlayerDisplayName(p, { short: true })})
                                     {isTaken
-                                      ? ` [Taken: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
+                                      ? currentUser.role === 'admin'
+                                        ? ` [Takeover: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
+                                        : ` [Taken: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
                                       : isGuestBlocked
                                       ? ' (Spectator Only)'
                                       : ''}
@@ -526,6 +543,23 @@ export const Header: React.FC<HeaderProps> = ({
                         </>
                       )}
                     </button>
+
+                    {/* Manage Seats (Admin Only) */}
+                    {currentUser.role === 'admin' && onOpenManageSeats && (
+                      <button
+                        type="button"
+                        data-testid="header-manage-seats-button"
+                        onClick={() => {
+                          setIsDrawerOpen(false);
+                          onOpenManageSeats();
+                        }}
+                        className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-rose-950 to-rose-900 hover:from-rose-900 hover:to-rose-800 border border-rose-500/60 text-rose-200 text-xs font-bold transition shadow cursor-pointer"
+                        title="Manage and reassign player seats"
+                      >
+                        <Shield className="w-3.5 h-3.5 text-rose-400" />
+                        <span>Manage Seats (Admin)</span>
+                      </button>
+                    )}
 
                     {/* Table Sessions Manager Button */}
                     {onOpenTableSession && (

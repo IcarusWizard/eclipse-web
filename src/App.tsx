@@ -63,6 +63,7 @@ import { DiplomacyModal, PopulationResourceType } from './components/diplomacy/D
 import { TurnOrderTrackModal } from './components/turnOrder/TurnOrderTrackModal';
 import { MinorSpeciesModal } from './components/minorSpecies/MinorSpeciesModal';
 import { MinorSpeciesId } from './engine/rules/minorSpecies';
+import { AdminManageSeatsModal } from './components/admin/AdminManageSeatsModal';
 import {
   loadActiveGameState,
   saveGameState,
@@ -73,6 +74,7 @@ import {
   fetchTableFromServer,
   getStateFingerprint,
   registerTableMember,
+  adminReassignTableSeat,
   isSeatTaken,
   canUserUseHotseat,
   deleteSavedTable,
@@ -80,7 +82,7 @@ import {
   leaveTable,
 } from './engine/rules/persistence';
 import { getCurrentUser, subscribeToUserSession } from './engine/rules/userSession';
-import { UserSession } from './engine/types/user';
+import { UserSession, RegisteredUserProfile } from './engine/types/user';
 
 export const App: React.FC = () => {
   const [state, setState] = useState<GameState>(() => {
@@ -139,6 +141,7 @@ export const App: React.FC = () => {
   const [isPhysicalBoardOpen, setIsPhysicalBoardOpen] = useState<boolean>(false);
   const [isScoreboardOpen, setIsScoreboardOpen] = useState<boolean>(false);
   const [isTableSessionOpen, setIsTableSessionOpen] = useState<boolean>(false);
+  const [isManageSeatsOpen, setIsManageSeatsOpen] = useState<boolean>(false);
   const [isBuildOpen, setIsBuildOpen] = useState<boolean>(false);
   const [isMoveOpen, setIsMoveOpen] = useState<boolean>(false);
   const [isInfluenceOpen, setIsInfluenceOpen] = useState<boolean>(false);
@@ -869,7 +872,7 @@ export const App: React.FC = () => {
     }
     if (typeof seat === 'number') {
       const seatCheck = isSeatTaken(state.members, seat, currentUser.id);
-      if (seatCheck.isTaken && seatCheck.occupant) {
+      if (seatCheck.isTaken && seatCheck.occupant && !isAdmin) {
         showToast(
           `Seat ${seat + 1} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}.`
         );
@@ -884,7 +887,10 @@ export const App: React.FC = () => {
     }
     if (currentUser) {
       const updatedMembers = (state.members || []).filter(
-        (m: any) => m.userId !== currentUser.id && m.seat !== 'spectator'
+        (m: any) =>
+          m.userId !== currentUser.id &&
+          m.seat !== 'spectator' &&
+          (isAdmin && typeof seat === 'number' ? m.seat !== seat : true)
       );
       if (seat !== 'spectator') {
         updatedMembers.push({
@@ -898,7 +904,22 @@ export const App: React.FC = () => {
           joinedAt: Date.now(),
         });
       }
-      setState((prev) => ({ ...prev, members: updatedMembers }));
+
+      const updatedPlayers = typeof seat === 'number' && state.players[seat]
+        ? state.players.map((p, idx) => (idx === seat ? { ...p, name: currentUser.username || currentUser.name } : p))
+        : state.players;
+
+      const nextState = {
+        ...state,
+        members: updatedMembers,
+        players: updatedPlayers,
+      };
+      saveGameState(nextState);
+      setState(nextState);
+
+      if (isAdmin && typeof seat === 'number') {
+        showToast(`Seat ${seat + 1} taken over by Administrator (${currentUser.username}).`);
+      }
 
       if (inGame && state.id) {
         registerTableMember(
@@ -931,6 +952,37 @@ export const App: React.FC = () => {
         seat === 'all' ? '' : seat === 'spectator' ? '&seat=spectator' : `&seat=${seat}`;
       window.history.replaceState({}, '', `?table=${tableParam}${seatParam}`);
     }
+  };
+
+  const handleAdminReassignSeat = async (
+    seatIndex: number,
+    targetUser: RegisteredUserProfile
+  ): Promise<{ success: boolean; error?: string }> => {
+    if (currentUser.role !== 'admin') {
+      return { success: false, error: 'Administrator role required to reassign seats.' };
+    }
+    const res = await adminReassignTableSeat(
+      state.id,
+      seatIndex,
+      targetUser,
+      currentUser,
+      state.isLocalGame
+    );
+    if (res.success && res.members) {
+      const updatedPlayers = state.players.map((p, idx) =>
+        idx === seatIndex ? { ...p, name: targetUser.username || targetUser.name } : p
+      );
+      const nextState = {
+        ...state,
+        members: res.members,
+        players: updatedPlayers,
+      };
+      saveGameState(nextState);
+      setState(nextState);
+      showToast(`Seat ${seatIndex + 1} reassigned to ${targetUser.username}.`);
+      return { success: true };
+    }
+    return { success: false, error: res.error || 'Failed to reassign seat.' };
   };
 
   const handleAllocateArtifactReward = (resources: { money: number; science: number; materials: number }) => {
@@ -2768,7 +2820,9 @@ export const App: React.FC = () => {
         onReturnToLobby={handleReturnToLobby}
         onSwitchTable={(tableId, seat) => handleJoinTableFromLobby(tableId, seat)}
         currentSeat={currentSeat}
+        currentUser={currentUser}
         onChangeSeat={handleChangeSeat}
+        onOpenManageSeats={() => setIsManageSeatsOpen(true)}
       />
 
       {/* Planta 2nd Activation Banner */}
@@ -3358,6 +3412,20 @@ export const App: React.FC = () => {
           }}
           onNewTable={() => setIsNewGameOpen(true)}
           onClose={() => setIsTableSessionOpen(false)}
+        />
+      )}
+
+      {isManageSeatsOpen && (
+        <AdminManageSeatsModal
+          isOpen={isManageSeatsOpen}
+          onClose={() => setIsManageSeatsOpen(false)}
+          state={state}
+          currentUser={currentUser}
+          currentSeat={currentSeat}
+          onTakeSeat={(sIdx) => {
+            handleChangeSeat(sIdx);
+          }}
+          onReassignSeat={handleAdminReassignSeat}
         />
       )}
 

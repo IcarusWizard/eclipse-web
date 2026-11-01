@@ -827,6 +827,110 @@ function tableStoragePlugin(): Plugin {
       const parts = urlPath.split('/').filter(Boolean); // ['api', 'tables', optionalId, optionalAction]
       const targetParam = parts[2] ? decodeURIComponent(parts[2]) : null;
 
+      // 0a. POST /api/tables/:id/admin/reassign-seat -> administrator reassigns seat to a registered user
+      if (req.method === 'POST' && targetParam && parts[3] === 'admin' && parts[4] === 'reassign-seat') {
+        let body = '';
+        req.on('data', (chunk: any) => {
+          body += chunk;
+        });
+        req.on('end', () => {
+          try {
+            const { adminUserId, seat, targetUser } = JSON.parse(body || '{}');
+            if (typeof seat !== 'number' || !targetUser || !targetUser.id || !targetUser.username) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Missing required reassign parameters.' }));
+              return;
+            }
+
+            // Verify admin permissions
+            ensureUsersDir();
+            const adminFiles = fs.readdirSync(USERS_DIR).filter((f) => f.endsWith('.json'));
+            let isAdmin = false;
+            for (const f of adminFiles) {
+              try {
+                const u = JSON.parse(fs.readFileSync(path.join(USERS_DIR, f), 'utf-8'));
+                if (u.id === adminUserId && u.role === 'admin') {
+                  isAdmin = true;
+                  break;
+                }
+              } catch {}
+            }
+            if (!isAdmin) {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Only administrators can reassign player seats.' }));
+              return;
+            }
+
+            const filePath = path.join(TABLES_DIR, `${targetParam}.json`);
+            let tableData: any = null;
+            if (fs.existsSync(filePath)) {
+              tableData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+            }
+            if (!tableData) {
+              const num = parseInt(targetParam, 10);
+              const files = fs.readdirSync(TABLES_DIR).filter((f) => f.endsWith('.json'));
+              for (const f of files) {
+                const c = JSON.parse(fs.readFileSync(path.join(TABLES_DIR, f), 'utf-8'));
+                if (c.id === targetParam || (!isNaN(num) && c.tableNumber === num)) {
+                  tableData = c;
+                  break;
+                }
+              }
+            }
+            if (!tableData) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Table not found.' }));
+              return;
+            }
+
+            if (!tableData.players || seat < 0 || seat >= tableData.players.length) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: `Invalid seat index ${seat}.` }));
+              return;
+            }
+
+            // Remove any member previously occupying this seat, and detach targetUser if already seated elsewhere
+            tableData.members = (tableData.members || []).filter(
+              (m: any) => m && m.seat !== seat && m.userId !== targetUser.id && m.seat !== 'spectator'
+            );
+
+            // Add the target user to the seat
+            tableData.members.push({
+              userId: targetUser.id,
+              username: targetUser.username,
+              name: targetUser.name || targetUser.username,
+              role: targetUser.role || 'user',
+              email: targetUser.email,
+              emailNotifications: targetUser.emailNotifications !== false,
+              seat,
+              joinedAt: Date.now(),
+            });
+
+            // Update in-game player display name
+            if (tableData.players[seat]) {
+              tableData.players[seat].name = targetUser.username || targetUser.name;
+            }
+
+            tableData.savedAt = Date.now();
+            const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
+            fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: true, members: tableData.members, players: tableData.players }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: err?.message || 'Server error' }));
+          }
+        });
+        return;
+      }
+
       // 0. POST /api/tables/:id/join -> register user as table member
       if (req.method === 'POST' && targetParam && parts[3] === 'join') {
         let body = '';
@@ -920,7 +1024,7 @@ function tableStoragePlugin(): Plugin {
               const seatOccupant = tableData.members.find(
                 (m: any) => m.seat === member.seat && m.userId !== member.userId
               );
-              if (seatOccupant) {
+              if (seatOccupant && member.role !== 'admin') {
                 res.statusCode = 409;
                 res.setHeader('Content-Type', 'application/json');
                 const occName = seatOccupant.username || seatOccupant.name || 'another player';
@@ -931,6 +1035,15 @@ function tableStoragePlugin(): Plugin {
                   })
                 );
                 return;
+              }
+              if (seatOccupant && member.role === 'admin') {
+                // Administrator takeover: detach previous occupant from this seat
+                tableData.members = tableData.members.filter(
+                  (m: any) => m && m.seat !== member.seat
+                );
+                if (tableData.players?.[member.seat]) {
+                  tableData.players[member.seat].name = member.username || member.name;
+                }
               }
             }
             const existingIdx = tableData.members.findIndex((m: any) => m.userId === member.userId);
