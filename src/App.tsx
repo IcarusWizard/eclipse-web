@@ -9,6 +9,8 @@ import {
   computePinningState,
   playerHasWormholeGenerator,
   isPlayerInvaded,
+  getPlayerHumanName,
+  getFactionDisplayColor,
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
@@ -24,6 +26,7 @@ import { HexGalaxyMap } from './components/map/HexGalaxyMap';
 import { PlayerBoard } from './components/dashboard/PlayerBoard';
 import { ActionBar } from './components/layout/ActionBar';
 import { GameLogDrawer } from './components/layout/GameLogDrawer';
+import { GameChatDrawer } from './components/layout/GameChatDrawer';
 import { ShipBlueprintEditor } from './components/blueprints/ShipBlueprintEditor';
 import { TechMarketModal } from './components/tech/TechMarketModal';
 import { ExploreModal } from './components/actions/ExploreModal';
@@ -1957,6 +1960,83 @@ export const App: React.FC = () => {
     }
   };
 
+  const handleSendChatMessage = (text: string) => {
+    if (!text.trim()) return;
+    let senderName = currentUser?.username || currentUser?.name || 'Commander';
+    let senderFactionName = 'Commander';
+    let senderFactionColor = '#38bdf8';
+    let senderPlayerId: string | undefined;
+
+    if (currentSeat === 'spectator') {
+      senderName = currentUser?.username || currentUser?.name || 'Spectator';
+      senderFactionName = 'Spectator';
+      senderFactionColor = '#94a3b8';
+    } else if (typeof currentSeat === 'number' && state.players[currentSeat]) {
+      const p = state.players[currentSeat];
+      senderPlayerId = p.id;
+      senderName = getPlayerHumanName(p, currentSeat, state.members, currentUser);
+      senderFactionName = p.faction?.name || `Player ${currentSeat + 1}`;
+      senderFactionColor = getFactionDisplayColor(p.color, senderFactionName);
+    } else if (myControlledPlayer) {
+      const pIdx = state.players.indexOf(myControlledPlayer);
+      senderPlayerId = myControlledPlayer.id;
+      senderName = getPlayerHumanName(myControlledPlayer, pIdx >= 0 ? pIdx : undefined, state.members, currentUser);
+      senderFactionName = myControlledPlayer.faction?.name || 'Commander';
+      senderFactionColor = getFactionDisplayColor(myControlledPlayer.color, senderFactionName);
+    } else if (activePlayer) {
+      const pIdx = state.players.indexOf(activePlayer);
+      senderPlayerId = activePlayer.id;
+      senderName = getPlayerHumanName(activePlayer, pIdx >= 0 ? pIdx : undefined, state.members, currentUser);
+      senderFactionName = activePlayer.faction?.name || 'Commander';
+      senderFactionColor = getFactionDisplayColor(activePlayer.color, senderFactionName);
+    }
+
+    const res = executeAction(state, {
+      type: 'SEND_CHAT',
+      playerId: senderPlayerId || state.players[0]?.id || 'player_1',
+      message: text.trim(),
+      senderName,
+      senderFactionName,
+      senderFactionColor,
+    });
+
+    if (res.success) {
+      saveGameState(res.newState);
+      setState(res.newState);
+    }
+  };
+
+  const currentSenderInfo = useMemo(() => {
+    if (currentSeat === 'spectator') {
+      const name = currentUser?.username || currentUser?.name || 'Spectator';
+      return {
+        label: `Spectator (${name})`,
+        factionName: 'Spectator',
+        color: '#94a3b8',
+        id: undefined,
+      };
+    }
+    const seatedPlayer = typeof currentSeat === 'number' ? state.players[currentSeat] : myControlledPlayer || activePlayer;
+    if (seatedPlayer) {
+      const seatIdx = state.players.indexOf(seatedPlayer);
+      const humanName = getPlayerHumanName(seatedPlayer, seatIdx >= 0 ? seatIdx : undefined, state.members, currentUser);
+      const factionName = seatedPlayer.faction?.name || 'Commander';
+      return {
+        label: `${factionName} (${humanName})`,
+        factionName,
+        color: getFactionDisplayColor(seatedPlayer.color, factionName),
+        id: seatedPlayer.id,
+      };
+    }
+    const name = currentUser?.username || currentUser?.name || 'Commander';
+    return {
+      label: `Commander (${name})`,
+      factionName: 'Commander',
+      color: '#38bdf8',
+      id: undefined,
+    };
+  }, [currentSeat, currentUser, state.players, state.members, myControlledPlayer, activePlayer]);
+
   // Ambassador exchange
   const handleExchangeAmbassador = (targetPlayerId: string) => {
     if (!canActForPlayer(activePlayer.id)) {
@@ -2887,6 +2967,19 @@ export const App: React.FC = () => {
             canTogglePassInAdvance={Boolean(myControlledPlayer && canActForPlayer(myControlledPlayer.id))}
           />
         )}
+
+        {/* Table Text Chat Drawer (Bottom-Right, next to Chronicle) */}
+        <GameChatDrawer
+          messages={state.chatMessages || []}
+          onSendMessage={handleSendChatMessage}
+          currentSenderLabel={currentSenderInfo.label}
+          currentSenderFactionName={currentSenderInfo.factionName}
+          currentSenderFactionColor={currentSenderInfo.color}
+          currentSenderId={currentSenderInfo.id}
+          tableNumber={(state as any).tableNumber || getTableNumber(state)}
+          players={state.players}
+          members={state.members}
+        />
 
         {/* Game Event Log Drawer (Bottom-Right) */}
         <GameLogDrawer

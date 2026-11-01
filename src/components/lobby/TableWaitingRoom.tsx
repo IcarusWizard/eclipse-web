@@ -616,7 +616,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
                         <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                          className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm border border-slate-600/80"
                           style={{ backgroundColor: player?.faction?.defaultColor || '#38bdf8' }}
                         />
                         <span className="text-sm font-bold text-white truncate">
@@ -664,7 +664,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
                       <div className="space-y-1 py-0.5">
                         <div className="flex items-center gap-2">
                           <span
-                            className="w-2 h-2 rounded-full shrink-0"
+                            className="w-2 h-2 rounded-full shrink-0 border border-slate-600/80"
                             style={{ backgroundColor: player?.faction?.defaultColor || '#38bdf8' }}
                           />
                           <span className="text-xs font-bold text-slate-200">
@@ -1231,7 +1231,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
                           <div className="flex items-center justify-between">
                             <div className="flex items-center gap-2">
                               <span
-                                className="w-3 h-3 rounded-full shrink-0 shadow-sm"
+                                className="w-3 h-3 rounded-full shrink-0 shadow-sm border border-slate-600/80"
                                 style={{ backgroundColor: faction.defaultColor }}
                               />
                               <span className="font-bold text-sm text-white">{faction.name}</span>

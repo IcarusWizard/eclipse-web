@@ -1251,6 +1251,7 @@ export function createInitialGame(
         type: 'system',
       },
     ],
+    chatMessages: [],
   };
 
   commitReplayStep(

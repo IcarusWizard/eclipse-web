@@ -19751,6 +19751,240 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(playerBoardSrc).toContain('title="Combat Simulator"');
         expect(playerBoardSrc).toContain('onOpenCombatSimulator');
       });
+
+      test('121. verifies In-Game Table Text Chat Feature: SEND_CHAT action, BGG message format, table persistence isolation, unread badges, and bottom-right placement', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction, validateAction } = await import('../rules/gameReducer');
+        const { saveGameState, loadTable, getStateFingerprint, deleteSavedTable } = await import('../rules/persistence');
+        const { GameChatDrawer } = await import('../../components/layout/GameChatDrawer');
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+
+        // 1. Initialize Game State and verify chatMessages container
+        const game = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+        expect(Array.isArray(game.chatMessages)).toBe(true);
+        expect(game.chatMessages!.length).toBe(0);
+
+        // 2. Action Validation: rejects empty messages
+        const emptyVal = validateAction(game, {
+          type: 'SEND_CHAT',
+          playerId: game.players[0]!.id,
+          message: '   ',
+        });
+        expect(emptyVal.valid).toBe(false);
+        expect(emptyVal.error).toContain('empty');
+
+        // 3. Execution: adds message with BGG format metadata
+        const sendRes1 = executeAction(game, {
+          type: 'SEND_CHAT',
+          playerId: game.players[0]!.id,
+          message: 'Good luck commanders!',
+          senderName: 'Alice',
+          senderFactionName: 'Descendants of Draco',
+          senderFactionColor: '#22c55e',
+        });
+        expect(sendRes1.success).toBe(true);
+        expect(sendRes1.newState.chatMessages!.length).toBe(1);
+        const msg1 = sendRes1.newState.chatMessages![0]!;
+        expect(msg1.text).toBe('Good luck commanders!');
+        expect(msg1.senderName).toBe('Alice');
+        expect(msg1.senderFactionName).toBe('Descendants of Draco');
+        expect(msg1.senderFactionColor).toBe('#22c55e');
+        expect(typeof msg1.timestamp).toBe('number');
+
+        // 4. Chat can be sent in any phase, including GAME_OVER
+        const gameOverState: typeof game = JSON.parse(JSON.stringify(sendRes1.newState));
+        gameOverState.phase = 'GAME_OVER';
+        const sendRes2 = executeAction(gameOverState, {
+          type: 'SEND_CHAT',
+          playerId: game.players[1]!.id,
+          message: 'GG everyone!',
+          senderName: 'Bob',
+          senderFactionName: 'Terran Federation',
+          senderFactionColor: '#3b82f6',
+        });
+        expect(sendRes2.success).toBe(true);
+        expect(sendRes2.newState.chatMessages!.length).toBe(2);
+
+        // 5. Chat alters state fingerprint for sync
+        const fp1 = getStateFingerprint(sendRes1.newState);
+        const fp2 = getStateFingerprint(sendRes2.newState);
+        expect(fp1).not.toBe(fp2);
+
+        // 6. Persistence: Chat is stored together with the table data
+        const testTableId = 'galaxy-chat-test-101';
+        sendRes2.newState.id = testTableId;
+        (sendRes2.newState as any).tableNumber = 101;
+        saveGameState(sendRes2.newState);
+
+        const loadedTable = loadTable(testTableId);
+        expect(loadedTable).toBeDefined();
+        expect(loadedTable!.chatMessages!.length).toBe(2);
+        expect(loadedTable!.chatMessages![0]!.text).toBe('Good luck commanders!');
+        expect(loadedTable!.chatMessages![1]!.text).toBe('GG everyone!');
+        deleteSavedTable(testTableId);
+
+        // 7. UI Rendering: GameChatDrawer renders BGG format "Faction (player name): <message>"
+        const chatHtml = renderToString(
+          React.createElement(GameChatDrawer, {
+            messages: sendRes2.newState.chatMessages,
+            onSendMessage: () => {},
+            currentSenderLabel: 'Descendants of Draco (Alice)',
+            currentSenderFactionColor: '#22c55e',
+            currentSenderId: game.players[0]!.id,
+            tableNumber: 101,
+            initialOpen: true,
+          })
+        );
+
+        // Check BGG format elements
+        expect(chatHtml).toContain('Descendants of Draco');
+        expect(chatHtml).toContain('(Alice):');
+        expect(chatHtml).toContain('Good luck commanders!');
+        expect(chatHtml).toContain('Terran Federation');
+        expect(chatHtml).toContain('(Bob):');
+        expect(chatHtml).toContain('GG everyone!');
+        expect(chatHtml).toContain('Chat (2)');
+        expect(chatHtml).toContain('bottom-24');
+        expect(chatHtml).toContain('md:bottom-4');
+
+        // Check closed drawer unread badge
+        const closedChatHtml = renderToString(
+          React.createElement(GameChatDrawer, {
+            messages: sendRes2.newState.chatMessages,
+            onSendMessage: () => {},
+            currentSenderLabel: 'Descendants of Draco (Alice)',
+            currentSenderId: game.players[0]!.id, // Viewer is Alice, Bob's message is unread
+            initialOpen: false,
+          })
+        );
+        expect(closedChatHtml).toContain('data-testid="chat-unread-badge"');
+        expect(closedChatHtml).toContain('<span>1</span>');
+      });
+
+      test('122. verifies Table Chat Bug Fixes: Prevents duplicate Faction (Faction) names & makes Orion Hegemony black color visible', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const {
+          executeAction,
+          getPlayerHumanName,
+          isBlackFaction,
+          getFactionDisplayColor,
+        } = await import('../rules/gameReducer');
+        const { GameChatDrawer } = await import('../../components/layout/GameChatDrawer');
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+
+        // 1. Verify getPlayerHumanName prevents duplicate faction names
+        const orionPlayer = {
+          id: 'player_1',
+          name: 'Orion Hegemony', // Raw name equals faction name
+          faction: { id: 'orion_hegemony', name: 'Orion Hegemony' },
+          color: '#18181b',
+        };
+
+        const members = [
+          { userId: 'u_alice', username: 'Alice', name: 'Alice', seat: 0 },
+        ];
+
+        // Resolves from members when available
+        expect(getPlayerHumanName(orionPlayer, 0, members, null)).toBe('Alice');
+
+        // Resolves from currentUser when members empty
+        expect(getPlayerHumanName(orionPlayer, 0, [], { username: 'Bob' })).toBe('Bob');
+
+        // Preserves explicit custom names
+        const customNamedPlayer = {
+          id: 'player_2',
+          name: 'Charlie',
+          faction: { id: 'hydran_progress', name: 'Hydran Progress' },
+        };
+        expect(getPlayerHumanName(customNamedPlayer, 1, [], null)).toBe('Charlie');
+
+        // Defaults to Player X instead of faction name
+        expect(getPlayerHumanName(orionPlayer, 0, [], null)).toBe('Player 1');
+
+        // 2. Verify isBlackFaction detection
+        expect(isBlackFaction('Orion Hegemony', '#18181b')).toBe(true);
+        expect(isBlackFaction('Orion', '#000000')).toBe(true);
+        expect(isBlackFaction('Terran Alliance', '#18181b')).toBe(true);
+        expect(isBlackFaction(undefined, '#18181b')).toBe(true);
+        expect(isBlackFaction('Hydran Progress', '#0284c7')).toBe(false);
+
+        // 3. Verify getFactionDisplayColor
+        expect(getFactionDisplayColor('#18181b', 'Orion Hegemony')).toBe('#cbd5e1'); // High contrast silver/slate-300
+        expect(getFactionDisplayColor('#0284c7', 'Hydran Progress')).toBe('#0284c7'); // Preserved blue
+
+        // 4. Verify Reducer Action handles Orion and prevents Faction (Faction)
+        const game = createInitialGame(2, ['orion_hegemony', 'descendants_of_draco']);
+        (game as any).members = members;
+
+        // Dispatch with mistakenly duplicated faction name and dark color
+        const res = executeAction(game, {
+          type: 'SEND_CHAT',
+          playerId: game.players[0]!.id,
+          message: 'Target acquired!',
+          senderName: 'Orion Hegemony', // Erroneously faction name
+          senderFactionName: 'Orion Hegemony',
+          senderFactionColor: '#18181b',
+        });
+
+        expect(res.success).toBe(true);
+        const msg = res.newState.chatMessages![0]!;
+        // Reducer resolved senderName to actual player human name ('Alice')
+        expect(msg.senderName).toBe('Alice');
+        expect(msg.senderName).not.toBe('Orion Hegemony');
+        // Reducer resolved senderFactionColor to high-contrast color
+        expect(msg.senderFactionColor).toBe('#cbd5e1');
+
+        // 5. Verify UI Rendering: Orion high-visibility badge & no Faction (Faction)
+        const chatHtml = renderToString(
+          React.createElement(GameChatDrawer, {
+            messages: [
+              {
+                id: 'm1',
+                senderPlayerId: game.players[0]!.id,
+                senderName: 'Alice',
+                senderFactionName: 'Orion Hegemony',
+                senderFactionColor: '#18181b',
+                text: 'Greetings from Orion!',
+                timestamp: Date.now(),
+              },
+              // An old message that had duplicated faction name
+              {
+                id: 'm2',
+                senderPlayerId: game.players[0]!.id,
+                senderName: 'Orion Hegemony',
+                senderFactionName: 'Orion Hegemony',
+                senderFactionColor: '#18181b',
+                text: 'Second transmission',
+                timestamp: Date.now(),
+              },
+            ],
+            onSendMessage: () => {},
+            currentSenderLabel: 'Orion Hegemony (Alice)',
+            currentSenderFactionName: 'Orion Hegemony',
+            currentSenderFactionColor: '#18181b',
+            currentSenderId: game.players[0]!.id,
+            players: game.players,
+            members,
+            initialOpen: true,
+          })
+        );
+
+        // Orion Hegemony has the high-visibility obsidian badge
+        expect(chatHtml).toContain('data-testid="chat-black-faction-badge"');
+        expect(chatHtml).toContain('bg-zinc-900');
+        expect(chatHtml).toContain('border-zinc-500');
+        expect(chatHtml).toContain('text-zinc-100');
+
+        // Footer has the high-visibility obsidian badge for Chatting as
+        expect(chatHtml).toContain('data-testid="chat-black-sender-hint"');
+        expect(chatHtml).toContain('Orion Hegemony (Alice)');
+
+        // Format is Faction (Alice):, NOT Faction (Orion Hegemony):
+        expect(chatHtml).toContain('(Alice):');
+        expect(chatHtml).not.toContain('(Orion Hegemony):');
+      });
     });
   });
 });

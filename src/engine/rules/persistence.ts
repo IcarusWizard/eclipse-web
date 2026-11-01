@@ -434,6 +434,9 @@ export function loadActiveGameState(): GameState | null {
  */
 export function sanitizeLoadedGameState(state: GameState): GameState {
   if (!state || !state.players) return state;
+  if (!Array.isArray(state.chatMessages)) {
+    state.chatMessages = [];
+  }
   // Spectator is a temporary seat; who has been the spectator should not be stored.
   if (Array.isArray(state.members)) {
     state.members = state.members.filter((m) => m && m.seat !== 'spectator');

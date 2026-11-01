@@ -33,7 +33,8 @@ export type ActionType =
   | 'REROLL_COMBAT_DIE'
   | 'ACTIVATE_PULSAR'
   | 'RETURN_BLACK_HOLE_SHIP'
-  | 'DRAFT_FACTION';
+  | 'DRAFT_FACTION'
+  | 'SEND_CHAT';
 
 export interface BaseAction {
   playerId: string;
@@ -291,6 +292,14 @@ export interface SetPassInAdvanceAction extends BaseAction {
   enabled: boolean;
 }
 
+export interface SendChatAction extends BaseAction {
+  type: 'SEND_CHAT';
+  message: string;
+  senderName?: string;
+  senderFactionName?: string;
+  senderFactionColor?: string;
+}
+
 export type GameAction =
   | ExploreAction
   | FinishExploreAction
@@ -323,4 +332,5 @@ export type GameAction =
   | DraftFactionAction
   | BetrayAllianceAction
   | SetAutoPassAction
-  | SetPassInAdvanceAction;
+  | SetPassInAdvanceAction
+  | SendChatAction;

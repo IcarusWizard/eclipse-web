@@ -2,7 +2,7 @@
  * Game State Reducer and Action Validation Engine for Eclipse: Second Dawn
  */
 
-import { GameState, GamePhase, GameLogEntry, CombatState } from '../types/state';
+import { GameState, GamePhase, GameLogEntry, CombatState, ChatMessage } from '../types/state';
 import {
   GameAction,
   BuildAction,
@@ -19,6 +19,7 @@ import {
   PassAction,
   SetAutoPassAction,
   SetPassInAdvanceAction,
+  SendChatAction,
 } from '../types/actions';
 import {
   rollYellowDie,
@@ -133,6 +134,93 @@ export function getPlayerShortName(playerOrName?: { name: string; faction?: { id
   if (name === 'Hydran Progress') return 'Hydran';
   if (name === 'Orion Hegemony') return 'Orion';
   return name.split(' ')[0] || name;
+}
+
+/**
+ * Detects whether a faction or color corresponds to the black color group
+ * (such as Orion Hegemony or Terran Alliance, or raw hex #18181b / #000000).
+ */
+export function isBlackFaction(factionName?: string | null, color?: string | null): boolean {
+  if (color) {
+    const c = color.toLowerCase().trim();
+    if (c === '#18181b' || c === '#000000' || c === 'black' || c === '#111827' || c === '#0f172a' || c === '#27272a') {
+      return true;
+    }
+  }
+  if (factionName) {
+    const f = factionName.toLowerCase().trim();
+    if (
+      f === 'orion hegemony' ||
+      f === 'orion' ||
+      f === 'terran alliance' ||
+      f.includes('orion') ||
+      f === 'alliance'
+    ) {
+      return true;
+    }
+  }
+  return false;
+}
+
+/**
+ * Returns a high-contrast, visible text/accent color for dark backgrounds.
+ * Maps dark/black factions (Orion Hegemony / #18181b) to a crisp slate/silver (#cbd5e1),
+ * while preserving standard vibrant faction colors.
+ */
+export function getFactionDisplayColor(color?: string | null, factionName?: string | null): string {
+  if (isBlackFaction(factionName, color)) {
+    return '#cbd5e1'; // Crisp silver/slate-300 with high contrast against dark backgrounds
+  }
+  return color || '#38bdf8';
+}
+
+/**
+ * Resolves the actual human/player name (e.g. "Alice", "Bob", "Player 1")
+ * instead of duplicating the faction's name (which would result in "Faction (Faction)").
+ */
+export function getPlayerHumanName(
+  player?: { name?: string; faction?: { id?: string; name?: string } } | null,
+  seatIndex?: number,
+  members?: Array<{ userId?: string; username?: string; name?: string; seat?: number | string }> | null,
+  currentUser?: { username?: string; name?: string } | null
+): string {
+  // 1. Check if there is a seated member in members list matching this seat
+  if (typeof seatIndex === 'number' && members && members.length > 0) {
+    const member = members.find((m) => m && m.seat === seatIndex);
+    const mName = member?.username?.trim() || member?.name?.trim();
+    if (mName) return mName;
+  }
+
+  const currentUserName = currentUser?.username?.trim() || currentUser?.name?.trim();
+
+  // 2. Check if player has an explicit human name that is NOT their faction name
+  const rawPlayerName = player?.name?.trim();
+  const factionName = player?.faction?.name?.trim();
+  const shortFaction = factionName ? getFactionShortName(factionName).trim() : '';
+
+  const isRawNameFaction = Boolean(
+    rawPlayerName &&
+    ((factionName && rawPlayerName.toLowerCase() === factionName.toLowerCase()) ||
+     (shortFaction && rawPlayerName.toLowerCase() === shortFaction.toLowerCase()) ||
+     rawPlayerName.toLowerCase() === 'commander')
+  );
+
+  if (rawPlayerName && !isRawNameFaction) {
+    return rawPlayerName;
+  }
+
+  // 3. If current user is logged in
+  if (currentUserName && currentUserName !== 'guest' && !currentUserName.startsWith('Guest-')) {
+    return currentUserName;
+  }
+
+  // 4. If we have a seat index, default to "Player X"
+  if (typeof seatIndex === 'number' && seatIndex >= 0) {
+    return `Player ${seatIndex + 1}`;
+  }
+
+  // 5. Final fallback
+  return currentUserName || 'Player';
 }
 
 export function playerHasWormholeGenerator(player: PlayerState): boolean {
@@ -539,6 +627,14 @@ export function advanceTurnOrAutoPass(state: GameState): void {
 }
 
 export function validateAction(state: GameState, action: GameAction): { valid: boolean; error?: string } {
+  if (action.type === 'SEND_CHAT') {
+    const chatAct = action as SendChatAction;
+    if (!chatAct.message || !chatAct.message.trim()) {
+      return { valid: false, error: 'Cannot send an empty chat message.' };
+    }
+    return { valid: true };
+  }
+
   if (state.phase === 'GAME_OVER') {
     return { valid: false, error: 'The game has ended.' };
   }
@@ -4797,6 +4893,40 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       }
       return { success: true, newState };
     }
+
+    case 'SEND_CHAT': {
+      const chatAct = action as SendChatAction;
+      const text = chatAct.message.trim();
+      const pIdx = newState.players.findIndex((p) => p.id === (player?.id || action.playerId));
+      const senderPlayer = pIdx >= 0 ? newState.players[pIdx] : player;
+      const factionName = chatAct.senderFactionName || senderPlayer?.faction?.name;
+      const resolvedHumanName =
+        chatAct.senderName &&
+        chatAct.senderName.toLowerCase() !== (factionName || '').toLowerCase() &&
+        chatAct.senderName.toLowerCase() !== getFactionShortName(factionName || '').toLowerCase()
+          ? chatAct.senderName
+          : getPlayerHumanName(senderPlayer, pIdx >= 0 ? pIdx : undefined, newState.members, null);
+
+      const resolvedFactionColor = getFactionDisplayColor(
+        chatAct.senderFactionColor || senderPlayer?.color,
+        factionName
+      );
+
+      const chatMsg: ChatMessage = {
+        id: `chat_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        senderPlayerId: senderPlayer?.id,
+        senderName: resolvedHumanName,
+        senderFactionName: factionName,
+        senderFactionColor: resolvedFactionColor,
+        text,
+        timestamp: Date.now(),
+      };
+      if (!Array.isArray(newState.chatMessages)) {
+        newState.chatMessages = [];
+      }
+      newState.chatMessages.push(chatMsg);
+      return { success: true, newState };
+    }
   }
 
   // Turn management during ACTION_PHASE
@@ -4916,8 +5046,8 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     return result;
   }
 
-  // Pure client UI setting toggles (like auto-pass preference) do not modify galactic state
-  if (action.type === 'SET_AUTO_PASS' || action.type === 'SET_PASS_IN_ADVANCE') {
+  // Pure client UI setting toggles (like auto-pass preference) and chat messages do not modify galactic state
+  if (action.type === 'SET_AUTO_PASS' || action.type === 'SET_PASS_IN_ADVANCE' || action.type === 'SEND_CHAT') {
     return result;
   }
 

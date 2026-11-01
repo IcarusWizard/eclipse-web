@@ -172,6 +172,16 @@ export interface PendingActionConfirmation {
   influenceRefreshesRemaining?: number; // Remaining colony ship refreshes from Influence action that can be applied upon colonizing
 }
 
+export interface ChatMessage {
+  id: string;
+  senderPlayerId?: string;
+  senderName: string;
+  senderFactionName?: string;
+  senderFactionColor?: string;
+  text: string;
+  timestamp: number;
+}
+
 export interface ReplayStep {
   stepIndex: number;
   timestamp: number;
@@ -244,6 +254,7 @@ export interface GameState {
   }>;
   traitorPlayerId?: string;
   log: GameLogEntry[];
+  chatMessages?: ChatMessage[];
   winnerId?: string;
   replaySteps?: ReplayStep[];
   finalScores?: Record<string, {

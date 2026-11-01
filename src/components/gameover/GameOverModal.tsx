@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { GameState } from '../../engine/types/state';
+import { getFactionDisplayColor } from '../../engine/rules/gameReducer';
 import { Trophy, RefreshCw, Award, Star, Home, Eye, Minimize2, Maximize2, History } from 'lucide-react';
 
 interface GameOverModalProps {
@@ -64,7 +65,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, 
             <div className="text-xs text-amber-400 font-bold uppercase tracking-widest mb-1">
               Galactic Hegemon
             </div>
-            <div className="text-xl font-bold font-display text-white" style={{ color: winner.color }}>
+            <div className="text-xl font-bold font-display text-white" style={{ color: getFactionDisplayColor(winner.color, winner.faction?.name) }}>
               {winner.name}
             </div>
             <div className="text-xs text-slate-400 mt-0.5">

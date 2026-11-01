@@ -8,6 +8,7 @@ import {
   getAvailableAmbassadorSlotsCount,
   playerHasMinorSpecies,
 } from '../../engine/rules/minorSpecies';
+import { getFactionDisplayColor, isBlackFaction } from '../../engine/rules/gameReducer';
 import {
   Users,
   Coins,
@@ -139,7 +140,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
         <div className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 mb-3 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
             <span className="text-slate-400">Commander:</span>
-            <span className="font-bold text-white" style={{ color: activePlayer.color }}>
+            <span className="font-bold text-white" style={{ color: getFactionDisplayColor(activePlayer.color, activePlayer.faction?.name) }}>
               {activePlayer.name}
             </span>
           </div>
@@ -304,9 +305,9 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                         <span
                           className="text-[10px] font-bold px-1.5 py-0.5 rounded border"
                           style={{
-                            borderColor: p.color,
-                            color: p.color,
-                            backgroundColor: `${p.color}15`,
+                            borderColor: isBlackFaction(p.faction?.name, p.color) ? '#52525b' : p.color,
+                            color: getFactionDisplayColor(p.color, p.faction?.name),
+                            backgroundColor: isBlackFaction(p.faction?.name, p.color) ? '#18181b' : `${p.color}15`,
                           }}
                         >
                           {p.name}
