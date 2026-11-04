@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { GameState, CombatState, CombatDamageAssignment, CombatRoll } from '../../engine/types/state';
-import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X, Navigation, ArrowRight, Minimize2, Maximize2, RotateCcw } from 'lucide-react';
+import { GameState, CombatState, CombatDamageAssignment, CombatRoll, PlayerState } from '../../engine/types/state';
+import { SectorTile } from '../../engine/types/galaxy';
+import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X, Navigation, ArrowRight, Minimize2, Maximize2, RotateCcw, Swords } from 'lucide-react';
 import {
   buildCombatUnitsForSector,
   sortUnitsByInitiative,
@@ -9,7 +10,146 @@ import {
   CombatUnit,
 } from '../../engine/rules/combatEngine';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
-import { playerHasWormholeGenerator, getPlayerShortName, getPlayerDisplayName } from '../../engine/rules/gameReducer';
+import { playerHasWormholeGenerator, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor } from '../../engine/rules/gameReducer';
+
+export interface CombatUnitDisplayGroup {
+  key: string;
+  ownerId: string;
+  type: string;
+  count: number;
+  shipIds: string[];
+  maxHull: number;
+  currentDamage: number;
+  currentHp: number;
+  initiative: number;
+  weapons: { count: number; damage: number; color: string; isMissile?: boolean }[];
+  isAttacking: boolean;
+  isRetreating: boolean;
+  isDestroyed: boolean;
+  retreatDestinationSectorNumber?: number;
+}
+
+/**
+ * Groups identical combat units of the same owner, type, and damage status together.
+ * If one unit takes damage or differs in status, it is displayed as a separate group.
+ */
+export function groupCombatUnits(
+  sideUnits: CombatUnit[],
+  activeGroup: { shipIds: string[] } | null,
+  pendingSalvo: { attackerShipIds: string[] } | null,
+  retreatDeclared: Record<string, string> | undefined,
+  sectors: SectorTile[]
+): CombatUnitDisplayGroup[] {
+  const map = new Map<string, CombatUnitDisplayGroup>();
+
+  for (const unit of sideUnits) {
+    const isDestroyed = unit.currentDamage >= unit.maxHull;
+    const isAttacking = !isDestroyed && (
+      pendingSalvo
+        ? pendingSalvo.attackerShipIds.includes(unit.id)
+        : activeGroup
+        ? activeGroup.shipIds.includes(unit.id)
+        : false
+    );
+    const isRetreating = !isDestroyed && !!retreatDeclared?.[unit.id];
+    const destSecId = isRetreating ? retreatDeclared?.[unit.id] : undefined;
+    const destSec = destSecId ? sectors.find((s) => s.id === destSecId) : undefined;
+    const currentHp = Math.max(0, unit.maxHull - unit.currentDamage);
+
+    // Grouping key: identical owner, ship type, max hull, current damage, and active state
+    const key = [
+      unit.ownerId,
+      unit.type,
+      unit.maxHull,
+      unit.currentDamage,
+      isDestroyed ? 'dead' : 'alive',
+      isAttacking ? 'atk' : 'idle',
+      isRetreating ? `ret_${destSecId}` : 'no_ret',
+    ].join('_');
+
+    const existing = map.get(key);
+    if (existing) {
+      existing.count += 1;
+      existing.shipIds.push(unit.id);
+    } else {
+      map.set(key, {
+        key,
+        ownerId: unit.ownerId,
+        type: unit.type,
+        count: 1,
+        shipIds: [unit.id],
+        maxHull: unit.maxHull,
+        currentDamage: unit.currentDamage,
+        currentHp,
+        initiative: unit.initiative,
+        weapons: unit.weapons,
+        isAttacking,
+        isRetreating,
+        isDestroyed,
+        retreatDestinationSectorNumber: destSec?.sectorNumber,
+      });
+    }
+  }
+
+  return Array.from(map.values()).sort((a, b) => {
+    // 1. Living ships before destroyed ships
+    if (a.isDestroyed !== b.isDestroyed) {
+      return a.isDestroyed ? 1 : -1;
+    }
+    // 2. Higher initiative first
+    if (b.initiative !== a.initiative) {
+      return b.initiative - a.initiative;
+    }
+    // 3. Healthier ships before damaged ships (higher currentHp first)
+    if (b.currentHp !== a.currentHp) {
+      return b.currentHp - a.currentHp;
+    }
+    return a.type.localeCompare(b.type);
+  });
+}
+
+function getSideInfo(
+  ownerIds: string[],
+  role: 'attacker' | 'defender',
+  players: PlayerState[]
+) {
+  if (ownerIds.length === 0) {
+    return {
+      name: role === 'attacker' ? 'Attacker' : 'Defender',
+      factionName: undefined,
+      color: role === 'attacker' ? '#ef4444' : '#0ea5e9',
+      isNpc: false,
+    };
+  }
+  const primaryId = ownerIds[0]!;
+  if (primaryId.startsWith('player_')) {
+    const p = players.find((pl) => pl.id === primaryId);
+    if (p) {
+      const displayColor = getFactionDisplayColor(p.color, p.faction?.name);
+      return {
+        name: getPlayerDisplayName(p, { short: true }),
+        factionName: p.faction?.name,
+        color: displayColor,
+        isNpc: false,
+      };
+    }
+  }
+  if (primaryId === 'ancient') {
+    return { name: 'Ancients', factionName: 'Ancient Guardians', color: '#f43f5e', isNpc: true };
+  }
+  if (primaryId === 'guardian') {
+    return { name: 'Guardian', factionName: 'Galactic Guardian', color: '#f59e0b', isNpc: true };
+  }
+  if (primaryId === 'gcds') {
+    return { name: 'GCDS', factionName: 'Galactic Center Defense System', color: '#a855f7', isNpc: true };
+  }
+  return {
+    name: primaryId.toUpperCase(),
+    factionName: undefined,
+    color: role === 'attacker' ? '#ef4444' : '#0ea5e9',
+    isNpc: false,
+  };
+}
 
 interface CombatModalProps {
   state: GameState;
@@ -54,6 +194,15 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
   const isResolved = combat.stage === 'resolved';
   const isMissileStage = combat.stage === 'missile';
+
+  const attackerUnits = units.filter((u) => u.ownerId !== defenderOwnerId);
+  const defenderUnits = units.filter((u) => u.ownerId === defenderOwnerId);
+
+  const attackerOwnerIds = Array.from(new Set(attackerUnits.map((u) => u.ownerId)));
+  const defenderOwnerIds = Array.from(new Set(defenderUnits.map((u) => u.ownerId)));
+
+  const attackerSide = getSideInfo(attackerOwnerIds, 'attacker', state.players);
+  const defenderSide = getSideInfo(defenderOwnerIds, 'defender', state.players);
 
   const groups = getCombatShipTypeGroups(aliveUnits, defenderOwnerId);
   const pendingMissileGroups = isMissileStage
@@ -247,8 +396,159 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     );
   }
 
+  const attackerGroups = groupCombatUnits(
+    attackerUnits,
+    activeGroup,
+    pendingSalvo,
+    combat.retreatDeclared,
+    state.sectors
+  );
+  const defenderGroups = groupCombatUnits(
+    defenderUnits,
+    activeGroup,
+    pendingSalvo,
+    combat.retreatDeclared,
+    state.sectors
+  );
+
+  const attackerActiveCount = attackerUnits.filter((u) => u.currentDamage < u.maxHull).length;
+  const defenderActiveCount = defenderUnits.filter((u) => u.currentDamage < u.maxHull).length;
+
+  const renderShipCard = (group: CombatUnitDisplayGroup, defaultColor: string) => {
+    const owner = state.players.find((p) => p.id === group.ownerId);
+    const color = owner ? getFactionDisplayColor(owner.color, owner.faction?.name) : defaultColor;
+
+    return (
+      <div
+        key={group.key}
+        data-testid={`combat-group-${group.type}-${group.currentHp}-${group.maxHull}`}
+        className={`p-3 rounded-lg border transition-all relative ${
+          group.isDestroyed
+            ? 'bg-slate-950/40 border-slate-900 opacity-40'
+            : group.isAttacking
+            ? 'bg-slate-900 border-rose-500 shadow-lg shadow-rose-950/50 ring-1 ring-rose-500/60'
+            : group.isRetreating
+            ? 'bg-amber-950/20 border-amber-500/60 shadow'
+            : 'bg-slate-950 border-slate-800 shadow'
+        }`}
+      >
+        {group.isAttacking && (
+          <span
+            className={`absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider rounded text-white shadow ${
+              isMissileStage ? 'bg-amber-500 text-slate-950 ring-1 ring-amber-300 animate-pulse' : 'bg-rose-600'
+            }`}
+          >
+            {isMissileStage ? 'Firing Missiles' : 'Attacking'}
+          </span>
+        )}
+        {group.isRetreating && !group.isAttacking && (
+          <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider rounded bg-amber-500 text-slate-950 shadow">
+            Retreating (Sec {group.retreatDestinationSectorNumber || '?'})
+          </span>
+        )}
+        {group.isDestroyed && (
+          <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider rounded bg-slate-800 text-slate-400 border border-slate-700 shadow">
+            Destroyed {group.count > 1 ? `x ${group.count}` : ''}
+          </span>
+        )}
+
+        <div className="flex justify-between items-start gap-1">
+          <div className="flex items-center gap-1.5 flex-wrap min-w-0">
+            <div
+              className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+              style={{ backgroundColor: color }}
+            />
+            <span className="font-bold text-xs uppercase text-slate-200 font-display">
+              {group.type}
+            </span>
+            <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
+              {group.currentHp}/{group.maxHull} HP
+            </span>
+            {group.count > 1 && (
+              <span className="font-mono font-black text-xs px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 shadow-sm">
+                x {group.count}
+              </span>
+            )}
+            {group.isRetreating && group.isAttacking && (
+              <span className="text-[9px] font-bold text-amber-400 font-mono">
+                [Retreat Ready]
+              </span>
+            )}
+          </div>
+          <span className="text-[10px] text-indigo-400 font-bold font-mono shrink-0">
+            Init {group.initiative >= 0 ? `+${group.initiative}` : group.initiative}
+          </span>
+        </div>
+
+        {/* Health Bar */}
+        <div className="mt-2">
+          <div className="flex justify-between text-[10px] text-slate-400 mb-1">
+            <span>Hull / HP</span>
+            <span className="font-mono font-bold text-slate-200">
+              {group.currentHp} / {group.maxHull} HP
+              {group.count > 1 && (
+                <span className="text-slate-400 font-normal ml-1">
+                  ({group.count} ships)
+                </span>
+              )}
+            </span>
+          </div>
+          <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all ${
+                group.isDestroyed
+                  ? 'bg-slate-600'
+                  : group.currentDamage > 0
+                  ? 'bg-amber-500'
+                  : 'bg-emerald-500'
+              }`}
+              style={{
+                width: `${Math.max(
+                  0,
+                  (group.currentHp / group.maxHull) * 100
+                )}%`,
+              }}
+            />
+          </div>
+        </div>
+
+        {/* Weapons list */}
+        <div className="mt-2 flex flex-wrap gap-1">
+          {group.weapons.map((w, idx) => (
+            <span
+              key={idx}
+              className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 ${
+                w.isMissile
+                  ? isMissileStage && group.isAttacking
+                    ? 'bg-amber-400 text-slate-950 font-black shadow ring-1 ring-amber-300'
+                    : 'bg-purple-950 text-purple-300 border border-purple-800/80'
+                  : !isMissileStage && group.isAttacking
+                  ? 'ring-1 ring-rose-500 font-black ' +
+                    (w.color === 'yellow'
+                      ? 'bg-amber-950 text-amber-300'
+                      : w.color === 'orange'
+                      ? 'bg-orange-950 text-orange-300'
+                      : 'bg-rose-950 text-rose-300')
+                  : w.color === 'yellow'
+                  ? 'bg-amber-950 text-amber-300'
+                  : w.color === 'orange'
+                  ? 'bg-orange-950 text-orange-300'
+                  : 'bg-rose-950 text-rose-300'
+              }`}
+            >
+              {w.isMissile ? '🚀 ' : ''}
+              {w.count}x {w.damage} Dmg {w.color}
+              {w.isMissile ? ' (Missile)' : ''}
+              {group.count > 1 ? ' (each)' : ''}
+            </span>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
   return (
-    <div className="fixed top-18 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] sm:w-130 max-w-2xl pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
+    <div className="fixed top-18 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] sm:w-[620px] md:w-[700px] lg:w-[780px] max-w-4xl pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
       <div className="bg-slate-900/95 border-2 border-rose-600/80 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden text-slate-100 flex flex-col max-h-[calc(100vh-90px)]">
         {/* Combat Header */}
         <div className="flex items-center justify-between p-4 border-b border-rose-950 bg-slate-950">
@@ -304,136 +604,103 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
         {/* Combat Field */}
         <div className="p-6 space-y-6 overflow-y-auto">
-          {/* Opposing Forces Fleet Roster */}
-          <div>
-            <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-              Fleet Units in Sector
-            </h3>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {units.map((unit) => {
-                const owner = state.players.find((p) => p.id === unit.ownerId);
-                const isDestroyed = unit.currentDamage >= unit.maxHull;
-                const isAttacking = !isDestroyed && (
-                  pendingSalvo
-                    ? pendingSalvo.attackerShipIds.includes(unit.id)
-                    : activeGroup
-                    ? activeGroup.shipIds.includes(unit.id)
-                    : false
-                );
-                const isRetreating = !!combat.retreatDeclared?.[unit.id];
-                const destSec = isRetreating
-                  ? state.sectors.find((s) => s.id === combat.retreatDeclared[unit.id])
-                  : null;
+          {/* Opposing Forces Fleet Roster: Attacker (Left) vs Defender (Right) */}
+          <div className="space-y-3">
+            <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+              <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
+                <span>Opposing Fleet Forces</span>
+                <span className="text-[10px] font-mono text-slate-500 font-normal">
+                  ({aliveUnits.length} active vessels)
+                </span>
+              </h3>
+            </div>
 
-                return (
-                  <div
-                    key={unit.id}
-                    className={`p-3 rounded-lg border transition-all relative ${
-                      isDestroyed
-                        ? 'bg-slate-950/40 border-slate-900 opacity-40'
-                        : isAttacking
-                        ? 'bg-slate-900 border-rose-500 shadow-lg shadow-rose-950/50 ring-1 ring-rose-500/60'
-                        : isRetreating
-                        ? 'bg-amber-950/20 border-amber-500/60 shadow'
-                        : 'bg-slate-950 border-slate-800 shadow'
-                    }`}
-                  >
-                    {isAttacking && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {/* Left Column: Attacker Forces */}
+              <div
+                data-testid="combat-attacker-column"
+                className="bg-slate-950/40 rounded-xl p-3 border border-rose-900/40 flex flex-col gap-3"
+              >
+                {/* Attacker Header */}
+                <div className="flex items-center justify-between pb-2.5 border-b border-rose-900/50">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm shrink-0">
+                      Attacker
+                    </span>
+                    <div className="flex items-center gap-1.5 truncate">
                       <span
-                        className={`absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-black uppercase tracking-wider rounded text-white shadow ${
-                          isMissileStage ? 'bg-amber-500 text-slate-950 ring-1 ring-amber-300 animate-pulse' : 'bg-rose-600'
-                        }`}
-                      >
-                        {isMissileStage ? 'Firing Missiles' : 'Attacking'}
+                        className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                        style={{ backgroundColor: attackerSide.color }}
+                      />
+                      <span className="font-bold text-xs text-slate-200 truncate">
+                        {attackerSide.name}
                       </span>
-                    )}
-                    {isRetreating && !isAttacking && (
-                      <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider rounded bg-amber-500 text-slate-950 shadow">
-                        Retreating (Sec {destSec?.sectorNumber || '?'})
-                      </span>
-                    )}
-                    <div className="flex justify-between items-start">
-                      <div className="flex items-center gap-2">
-                        <div
-                          className="w-2.5 h-2.5 rounded-full"
-                          style={{
-                            backgroundColor: owner?.color || (unit.ownerId === 'gcds' ? '#a855f7' : '#f43f5e'),
-                          }}
-                        />
-                        <span className="font-bold text-xs uppercase text-slate-200 font-display">
-                          {unit.type}
+                      {attackerSide.factionName && attackerSide.factionName !== attackerSide.name && (
+                        <span className="text-[10px] text-slate-400 truncate">
+                          ({attackerSide.factionName})
                         </span>
-                        {isRetreating && isAttacking && (
-                          <span className="text-[9px] font-bold text-amber-400 font-mono">
-                            [Retreat Ready]
-                          </span>
-                        )}
-                      </div>
-                      <span className="text-[10px] text-indigo-400 font-bold">
-                        Init {unit.initiative >= 0 ? `+${unit.initiative}` : unit.initiative}
-                      </span>
-                    </div>
-
-                    {/* Health Bar */}
-                    <div className="mt-2">
-                      <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-                        <span>Hull / HP</span>
-                        <span>
-                          {Math.max(0, unit.maxHull - unit.currentDamage)} / {unit.maxHull} HP
-                        </span>
-                      </div>
-                      <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
-                        <div
-                          className={`h-full rounded-full transition-all ${
-                            isDestroyed
-                              ? 'bg-slate-600'
-                              : unit.currentDamage > 0
-                              ? 'bg-amber-500'
-                              : 'bg-emerald-500'
-                          }`}
-                          style={{
-                            width: `${Math.max(
-                              0,
-                              ((unit.maxHull - unit.currentDamage) / unit.maxHull) * 100
-                            )}%`,
-                          }}
-                        />
-                      </div>
-                    </div>
-
-                    {/* Weapons list */}
-                    <div className="mt-2 flex flex-wrap gap-1">
-                      {unit.weapons.map((w, idx) => (
-                        <span
-                          key={idx}
-                          className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase flex items-center gap-1 ${
-                            w.isMissile
-                              ? isMissileStage && isAttacking
-                                ? 'bg-amber-400 text-slate-950 font-black shadow ring-1 ring-amber-300'
-                                : 'bg-purple-950 text-purple-300 border border-purple-800/80'
-                              : !isMissileStage && isAttacking
-                              ? 'ring-1 ring-rose-500 font-black ' +
-                                (w.color === 'yellow'
-                                  ? 'bg-amber-950 text-amber-300'
-                                  : w.color === 'orange'
-                                  ? 'bg-orange-950 text-orange-300'
-                                  : 'bg-rose-950 text-rose-300')
-                              : w.color === 'yellow'
-                              ? 'bg-amber-950 text-amber-300'
-                              : w.color === 'orange'
-                              ? 'bg-orange-950 text-orange-300'
-                              : 'bg-rose-950 text-rose-300'
-                          }`}
-                        >
-                          {w.isMissile ? '🚀 ' : ''}
-                          {w.count}x {w.damage} Dmg {w.color}
-                          {w.isMissile ? ' (Missile)' : ''}
-                        </span>
-                      ))}
+                      )}
                     </div>
                   </div>
-                );
-              })}
+                  <span className="text-[10px] font-mono text-rose-300 font-bold bg-rose-950/60 border border-rose-800/80 px-1.5 py-0.5 rounded shrink-0">
+                    {attackerActiveCount} active
+                  </span>
+                </div>
+
+                {/* Attacker Ship Groups */}
+                <div className="space-y-2.5">
+                  {attackerGroups.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-500 italic border border-dashed border-slate-800 rounded-lg">
+                      No attacking vessels
+                    </div>
+                  ) : (
+                    attackerGroups.map((g) => renderShipCard(g, attackerSide.color))
+                  )}
+                </div>
+              </div>
+
+              {/* Right Column: Defender Forces */}
+              <div
+                data-testid="combat-defender-column"
+                className="bg-slate-950/40 rounded-xl p-3 border border-sky-900/40 flex flex-col gap-3"
+              >
+                {/* Defender Header */}
+                <div className="flex items-center justify-between pb-2.5 border-b border-sky-900/50">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-sky-600 text-white shadow-sm shrink-0">
+                      Defender
+                    </span>
+                    <div className="flex items-center gap-1.5 truncate">
+                      <span
+                        className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                        style={{ backgroundColor: defenderSide.color }}
+                      />
+                      <span className="font-bold text-xs text-slate-200 truncate">
+                        {defenderSide.name}
+                      </span>
+                      {defenderSide.factionName && defenderSide.factionName !== defenderSide.name && (
+                        <span className="text-[10px] text-slate-400 truncate">
+                          ({defenderSide.factionName})
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono text-sky-300 font-bold bg-sky-950/60 border border-sky-800/80 px-1.5 py-0.5 rounded shrink-0">
+                    {defenderActiveCount} active
+                  </span>
+                </div>
+
+                {/* Defender Ship Groups */}
+                <div className="space-y-2.5">
+                  {defenderGroups.length === 0 ? (
+                    <div className="p-4 text-center text-xs text-slate-500 italic border border-dashed border-slate-800 rounded-lg">
+                      No defending vessels
+                    </div>
+                  ) : (
+                    defenderGroups.map((g) => renderShipCard(g, defenderSide.color))
+                  )}
+                </div>
+              </div>
             </div>
           </div>
 
@@ -581,9 +848,15 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                             const pOwner = state.players.find((p) => p.id === eu.ownerId);
                             const ownerName = pOwner ? getPlayerDisplayName(pOwner, { short: true }) : eu.ownerId.toUpperCase();
                             const remHp = Math.max(0, eu.maxHull - eu.currentDamage);
+                            const sameTypeShips = eligibleEnemyTargets.filter(
+                              (t) => t.ownerId === eu.ownerId && t.type === eu.type
+                            );
+                            const shipNum = sameTypeShips.length > 1
+                              ? ` #${sameTypeShips.findIndex((t) => t.id === eu.id) + 1}`
+                              : '';
                             return (
                               <option key={eu.id} value={eu.id}>
-                                {ownerName} {eu.type.toUpperCase()} (HP: {remHp}/{eu.maxHull}, Shield: -{eu.shieldBonus})
+                                {ownerName} {eu.type.toUpperCase()}{shipNum} (HP: {remHp}/{eu.maxHull}, Shield: -{eu.shieldBonus})
                               </option>
                             );
                           })}

@@ -20256,6 +20256,112 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(galleryTechHtml).toContain('Warp Portal');
         expect(galleryTechHtml).not.toContain('Warped Universe Expansion');
       });
+
+      // =========================================================================
+      // Test 125: In-Game Combat Display: Attacker/Defender Columns & Dynamic Ship Grouping
+      // =========================================================================
+      it('Test 125: verifies combat display splits attacker/defender into separate columns and dynamically groups identical ships by health', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { CombatModal, groupCombatUnits } = await import('../../components/combat/CombatModal');
+        const { createInitialGame } = await import('../rules/setup');
+        const { CombatUnit } = await import('../rules/combatEngine');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const p1 = game.players[0]!; // Terran
+        const p2 = game.players[1]!; // Eridani
+        const sector = game.sectors[0]!;
+
+        // 1. Verify groupCombatUnits logic with 3 Cruisers (3 HP each)
+        const mockWeapons = [{ count: 2, damage: 1, color: 'yellow' }];
+        const cruisers3Full: (typeof CombatUnit)[] = [
+          { id: 'c1', ownerId: p1.id, type: 'cruiser', initiative: 2, maxHull: 3, currentDamage: 0, computerBonus: 1, shieldBonus: 0, weapons: mockWeapons },
+          { id: 'c2', ownerId: p1.id, type: 'cruiser', initiative: 2, maxHull: 3, currentDamage: 0, computerBonus: 1, shieldBonus: 0, weapons: mockWeapons },
+          { id: 'c3', ownerId: p1.id, type: 'cruiser', initiative: 2, maxHull: 3, currentDamage: 0, computerBonus: 1, shieldBonus: 0, weapons: mockWeapons },
+        ] as any;
+
+        // All 3 cruisers have 3/3 HP -> grouped into a single card with count = 3
+        const groupsInitial = groupCombatUnits(cruisers3Full as any, null, null, undefined, game.sectors);
+        expect(groupsInitial).toHaveLength(1);
+        expect(groupsInitial[0]!.type).toBe('cruiser');
+        expect(groupsInitial[0]!.count).toBe(3);
+        expect(groupsInitial[0]!.currentHp).toBe(3);
+        expect(groupsInitial[0]!.maxHull).toBe(3);
+
+        // One cruiser takes 1 damage (c1 has 2/3 HP, c2 & c3 have 3/3 HP)
+        const cruisersOneDamaged: (typeof CombatUnit)[] = [
+          { id: 'c1', ownerId: p1.id, type: 'cruiser', initiative: 2, maxHull: 3, currentDamage: 1, computerBonus: 1, shieldBonus: 0, weapons: mockWeapons },
+          { id: 'c2', ownerId: p1.id, type: 'cruiser', initiative: 2, maxHull: 3, currentDamage: 0, computerBonus: 1, shieldBonus: 0, weapons: mockWeapons },
+          { id: 'c3', ownerId: p1.id, type: 'cruiser', initiative: 2, maxHull: 3, currentDamage: 0, computerBonus: 1, shieldBonus: 0, weapons: mockWeapons },
+        ] as any;
+
+        // Must split into 2 separate groups: 3/3 HP x 2 and 2/3 HP x 1
+        const groupsDamaged = groupCombatUnits(cruisersOneDamaged as any, null, null, undefined, game.sectors);
+        expect(groupsDamaged).toHaveLength(2);
+        // Healthy group (3/3 HP) comes first
+        expect(groupsDamaged[0]!.count).toBe(2);
+        expect(groupsDamaged[0]!.currentHp).toBe(3);
+        expect(groupsDamaged[0]!.maxHull).toBe(3);
+        // Damaged group (2/3 HP) comes second
+        expect(groupsDamaged[1]!.count).toBe(1);
+        expect(groupsDamaged[1]!.currentHp).toBe(2);
+        expect(groupsDamaged[1]!.maxHull).toBe(3);
+
+        // 2. Verify CombatModal rendering with Attacker on Left and Defender on Right
+        sector.ships = [
+          { id: 'c1', ownerId: p1.id, type: 'cruiser', damage: 1 },
+          { id: 'c2', ownerId: p1.id, type: 'cruiser', damage: 0 },
+          { id: 'c3', ownerId: p1.id, type: 'cruiser', damage: 0 },
+          { id: 'd1', ownerId: p2.id, type: 'dreadnought', damage: 0 },
+          { id: 'd2', ownerId: p2.id, type: 'dreadnought', damage: 0 },
+        ];
+        sector.discOwner = p2.id; // Defender is p2
+
+        const combatState: import('../types/state').CombatState = {
+          sectorId: sector.id,
+          roundNumber: 1,
+          stage: 'regular',
+          defenderOwnerId: p2.id,
+          attackerOwnerId: p1.id,
+          participatingPlayerIds: [p1.id, p2.id],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          retreatDeclared: {},
+        };
+
+        const combatHtml = renderToString(
+          React.createElement(CombatModal, {
+            state: game,
+            combat: combatState,
+            onStepCombat: () => {},
+          })
+        );
+
+        // Verify Attacker and Defender column containers exist
+        expect(combatHtml).toContain('data-testid="combat-attacker-column"');
+        expect(combatHtml).toContain('data-testid="combat-defender-column"');
+        expect(combatHtml).toContain('Attacker');
+        expect(combatHtml).toContain('Defender');
+
+        // Attacker side has Terran Federation (p1)
+        expect(combatHtml).toContain('Terran Federation');
+        // Defender side has Eridani Empire (p2)
+        expect(combatHtml).toContain('Eridani Empire');
+
+        // Dynamic grouping in Attacker column:
+        // Terran default Cruiser has 2 maxHull, so:
+        // 2 Cruisers with 2/2 HP (grouped x 2) and 1 Cruiser with 1/2 HP (separate)
+        expect(combatHtml).toContain('data-testid="combat-group-cruiser-2-2"');
+        expect(combatHtml).toContain('data-testid="combat-group-cruiser-1-2"');
+        expect(combatHtml).toContain('x <!-- -->2');
+        expect(combatHtml).toContain('2<!-- -->/<!-- -->2<!-- --> HP');
+        expect(combatHtml).toContain('1<!-- -->/<!-- -->2<!-- --> HP');
+
+        // Dynamic grouping in Defender column:
+        // 2 Eridani Dreadnoughts with 3/3 HP (grouped x 2)
+        expect(combatHtml).toContain('data-testid="combat-group-dreadnought-3-3"');
+        expect(combatHtml).toContain('3<!-- -->/<!-- -->3<!-- --> HP');
+      });
     });
   });
 });
