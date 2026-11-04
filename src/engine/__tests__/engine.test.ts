@@ -20362,6 +20362,71 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(combatHtml).toContain('data-testid="combat-group-dreadnought-3-3"');
         expect(combatHtml).toContain('3<!-- -->/<!-- -->3<!-- --> HP');
       });
+
+      test('Test 126: verifies Sector 1 (Galactic Center) correctly paints with player color when controlled', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { createInitialGame } = await import('../rules/setup');
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const centerSector = game.sectors.find((s) => s.sectorNumber === 1)!;
+        expect(centerSector).toBeDefined();
+
+        const p1 = game.players[0]!;
+        const p2 = game.players[1]!;
+
+        // 1. Initial State: Uncontrolled Sector 1
+        centerSector.discOwner = undefined;
+        centerSector.hasGCDS = true;
+
+        const uncontrolledHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        );
+
+        // When uncontrolled, Sector 1 has the dark center fill 'rgba(15, 23, 42, 0.98)' and silver border '#cbd5e1'
+        expect(uncontrolledHtml).toContain('fill="rgba(15, 23, 42, 0.98)"');
+        expect(uncontrolledHtml).toContain('stroke="#cbd5e1"');
+
+        // 2. Player 1 controls Sector 1 (e.g. Terran Federation with red/color)
+        centerSector.discOwner = p1.id;
+        centerSector.hasGCDS = false;
+
+        const controlledHtmlP1 = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        );
+
+        // Sector 1 must now be painted with player 1's color tint and stroke
+        const expectedP1Fill = `${p1.color}15`;
+        expect(controlledHtmlP1).toContain(`fill="${expectedP1Fill}"`);
+        expect(controlledHtmlP1).toContain(`stroke="${p1.color}"`);
+        // Influence Disc indicator is rendered for the owner
+        expect(controlledHtmlP1).toContain(`r="8" fill="${p1.color}"`);
+
+        // 3. Orion Hegemony (black faction #18181b) controls Sector 1
+        p2.color = '#18181b';
+        centerSector.discOwner = p2.id;
+
+        const controlledHtmlOrion = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        );
+
+        // Orion Hegemony uses subtle light fill and silver/zinc stroke for high contrast
+        expect(controlledHtmlOrion).toContain('fill="rgba(255, 255, 255, 0.04)"');
+        expect(controlledHtmlOrion).toContain('stroke="#71717a"');
+        expect(controlledHtmlOrion).toContain('r="8" fill="#18181b"');
+      });
     });
   });
 });

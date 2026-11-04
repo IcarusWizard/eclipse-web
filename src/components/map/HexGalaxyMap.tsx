@@ -1017,10 +1017,10 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? 'rgba(234, 179, 8, 0.20)'
               : isStagedAbandon
               ? 'rgba(244, 63, 94, 0.22)'
-              : isCenter
-              ? 'rgba(15, 23, 42, 0.98)'
               : owner
               ? (owner.color === '#18181b' || owner.color === '#000000' ? 'rgba(255, 255, 255, 0.04)' : `${owner.color}15`)
+              : isCenter
+              ? 'rgba(15, 23, 42, 0.98)'
               : 'rgba(15, 23, 42, 0.95)';
 
             let hexStroke = isCombatSector
