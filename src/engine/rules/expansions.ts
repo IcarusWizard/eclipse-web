@@ -197,7 +197,18 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
   if (norm.startsWith('minor_species') || norm.includes('minor species')) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'minor_species') || null;
   }
-  if (norm.startsWith('warped_universe') || norm.includes('warped') || norm.startsWith('warp_') || norm.includes('warp sector')) {
+  // Warped Universe expansion introduces modular Large Warp Sectors and conduits.
+  // Note: Warp Portal (tech, tile, and discovery) is an authentic base game component, NOT part of Warped Universe.
+  if (
+    !norm.includes('portal') &&
+    (norm.startsWith('warped_universe') ||
+      norm.includes('warped universe') ||
+      norm === 'warped' ||
+      norm.startsWith('warp_sector') ||
+      norm.includes('warp sector') ||
+      norm.startsWith('warp_conduit') ||
+      norm.includes('warp conduit'))
+  ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'warped_universe') || null;
   }
   if (

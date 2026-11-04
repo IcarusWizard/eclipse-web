@@ -17023,7 +17023,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Give Player 2 science to research
         stateAfterPass1.players[1]!.resources.science = 20;
         const availableTech = stateAfterPass1.techSupply.find(
-          (t) => t.category !== 'rare' && !stateAfterPass1.players[1]!.techTrack.researched.some((r) => r.id === t.id)
+          (t) => t.category !== 'rare' && t.id !== 'artifact_key' && !stateAfterPass1.players[1]!.techTrack.researched.some((r) => r.id === t.id)
         )!;
         expect(availableTech).toBeDefined();
 
@@ -20204,6 +20204,57 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Admin dropdown allows takeover of occupied seats
         expect(headerAdminHtml).toContain('[Takeover: AlicePlayer]');
         expect(headerAdminHtml).toContain('[Takeover: BobPlayer]');
+      });
+
+      // =========================================================================
+      // Test 124: Warp Portal is Base Game Rare Tech, NOT Warped Universe Expansion
+      // =========================================================================
+      it('Test 124: verifies Warp Portal rare tech and discovery tile are base game components, not expansions', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+
+        // 1. Verify getExpansionForItem returns null for Warp Portal and Ancient Warp Portal
+        expect(getExpansionForItem('warp_portal')).toBeNull();
+        expect(getExpansionForItem('Warp Portal')).toBeNull();
+        expect(getExpansionForItem('ancient_warp_portal')).toBeNull();
+        expect(getExpansionForItem('Ancient Warp Portal')).toBeNull();
+        expect(getExpansionForItem('disc_ancient_warp_portal_1')).toBeNull();
+
+        // 2. Verify Warped Universe expansion only matches actual warp sectors and conduits
+        expect(getExpansionForItem('warped_universe')?.id).toBe('warped_universe');
+        expect(getExpansionForItem('warped universe')?.id).toBe('warped_universe');
+        expect(getExpansionForItem('warp_sector')?.id).toBe('warped_universe');
+        expect(getExpansionForItem('warp sector')?.id).toBe('warped_universe');
+        expect(getExpansionForItem('warp_conduit_1')?.id).toBe('warped_universe');
+
+        // 3. Verify Rift Cannon remains the single expansion rare tech
+        expect(getExpansionForItem('rift_cannon')?.id).toBe('rift_cannon');
+        expect(getExpansionForItem('Rift Cannon')?.id).toBe('rift_cannon');
+
+        // Verify across entire technology catalog that ONLY rift_cannon has an expansion
+        const { ALL_TECH_CATALOG } = await import('../rules/techData');
+        const expansionTechs = ALL_TECH_CATALOG.filter((t) => Boolean(getExpansionForItem(t.id)));
+        expect(expansionTechs).toHaveLength(1);
+        expect(expansionTechs[0]?.id).toBe('rift_cannon');
+        expect(getExpansionForItem('warp_portal')).toBeNull();
+
+        // 4. Verify GalacticGalleryModal rendering
+        const galleryTechHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'techs',
+          })
+        );
+
+        // Expansions tech chip should show count 1 (Rift Cannon), NOT 2
+        expect(galleryTechHtml).toContain('Expansions');
+        expect(galleryTechHtml).toContain('(<!-- -->1<!-- -->)');
+
+        // Warp Portal should be rendered with standard Rare badge and NOT with Warped Universe Expansion badge
+        expect(galleryTechHtml).toContain('Warp Portal');
+        expect(galleryTechHtml).not.toContain('Warped Universe Expansion');
       });
     });
   });
