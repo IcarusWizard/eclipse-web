@@ -10813,14 +10813,14 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // 3. Ambassador Slot Availability
         const p0 = minorGame.players[0]!;
-        // Terran Federation: 5 slots (3 'both', 2 'rep_only')
-        expect(getAvailableAmbassadorSlotsCount(p0)).toBe(3);
+        // Terran Federation: 5 slots (1 'amb_only', 4 'both') -> 5 ambassador-eligible slots
+        expect(getAvailableAmbassadorSlotsCount(p0)).toBe(5);
 
-        // Place 2 reputation tiles -> still 3 available ('rep_only' filled first)
+        // Place 2 reputation tiles into 'both' slots -> 3 available (1 'amb_only' + 2 'both')
         p0.reputationTiles = [3, 2];
         expect(getAvailableAmbassadorSlotsCount(p0)).toBe(3);
 
-        // Place 3rd reputation tile -> spills into 'both' -> 2 available
+        // Place 3rd reputation tile into 'both' slot -> 2 available (1 'amb_only' + 1 'both')
         p0.reputationTiles = [3, 2, 4];
         expect(getAvailableAmbassadorSlotsCount(p0)).toBe(2);
 
@@ -20426,6 +20426,78 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(controlledHtmlOrion).toContain('fill="rgba(255, 255, 255, 0.04)"');
         expect(controlledHtmlOrion).toContain('stroke="#71717a"');
         expect(controlledHtmlOrion).toContain('r="8" fill="#18181b"');
+      });
+
+      test('Test 127: verifies Terran reputation slots (1 amb only, 4 amb/rep), Battle Simulator initial zero ships, faction count preservation, +supply/-cost power display, and Warped Universe hidden T1-T3 markers', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const {
+          HUMAN_FACTIONS,
+          getFactionReputationSlotTypes,
+          getPlayerReputationTrackSlots,
+          createInitialGame,
+        } = await import('../rules/setup');
+        const {
+          createDefaultSimulatorSide,
+        } = await import('../rules/combatSimulator');
+        const { CombatSimulatorModal } = await import('../../components/simulator/CombatSimulatorModal');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+
+        // 1. Terran Reputation Slots: 5 slots in total, 1 amb only, 4 amb/rep
+        for (const faction of HUMAN_FACTIONS) {
+          expect(faction.reputationSlots).toBe(5);
+          expect(faction.ambassadorSlots).toBe(5);
+          expect(faction.reputationSlotTypes).toEqual(['amb_only', 'both', 'both', 'both', 'both']);
+          expect(getFactionReputationSlotTypes(faction)).toEqual(['amb_only', 'both', 'both', 'both', 'both']);
+        }
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const terranPlayer = game.players[0]!;
+        const slotsInitial = getPlayerReputationTrackSlots(terranPlayer, game.players);
+        expect(slotsInitial).toHaveLength(5);
+        expect(slotsInitial[0]!.slotType).toBe('amb_only');
+        expect(slotsInitial[1]!.slotType).toBe('both');
+        expect(slotsInitial[2]!.slotType).toBe('both');
+        expect(slotsInitial[3]!.slotType).toBe('both');
+        expect(slotsInitial[4]!.slotType).toBe('both');
+
+        // 2. Battle Simulator Default Ships: all zero initially
+        const defaultAttacker = createDefaultSimulatorSide('terran_federation');
+        expect(defaultAttacker.shipCounts.interceptor).toBe(0);
+        expect(defaultAttacker.shipCounts.cruiser).toBe(0);
+        expect(defaultAttacker.shipCounts.dreadnought).toBe(0);
+        expect(defaultAttacker.shipCounts.starbase).toBe(0);
+
+        const defaultDefenderNpc = createDefaultSimulatorSide('ancient', { isNpc: true });
+        expect(defaultDefenderNpc.shipCounts.ancient).toBe(0);
+
+        // 3. Battle Simulator UI Rendering: Initial zero ships and +supply/-cost power display
+        const simHtml = renderToString(
+          React.createElement(CombatSimulatorModal, {
+            isOpen: true,
+            onClose: () => {},
+            gameState: game,
+          })
+        );
+        // Verify power is formatted as +supply/-cost (e.g. "+6/-4" or "+3/-0") and not "6/4"
+        expect(simHtml).toMatch(/⚡ \+\d+\/-\d+/);
+        expect(simHtml).not.toMatch(/⚡ \d+\/\d+/);
+
+        // 4. Warped Universe: Large Warp Sector does not display confusing cardboard puzzle markers "T1", "T2", "T3"
+        const warpedGame = createInitialGame(5, undefined, ['warped_universe']);
+        expect(warpedGame.warpedUniverse?.active).toBe(true);
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: warpedGame,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        );
+        expect(mapHtml).toContain('WARP SECTOR');
+        // Must NOT contain T1, T2, T3 ... tile markers
+        expect(mapHtml).not.toContain('>T1<');
+        expect(mapHtml).not.toContain('>T2<');
+        expect(mapHtml).not.toContain('>T3<');
       });
     });
   });

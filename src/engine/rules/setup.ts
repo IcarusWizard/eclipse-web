@@ -119,8 +119,8 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
+    ambassadorSlots: 5,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
   },
   {
     id: 'terran_directorate',
@@ -141,8 +141,8 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
+    ambassadorSlots: 5,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
   },
   {
     id: 'terran_republic',
@@ -163,8 +163,8 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
+    ambassadorSlots: 5,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
   },
   {
     id: 'terran_conglomerate',
@@ -185,8 +185,8 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
+    ambassadorSlots: 5,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
   },
   {
     id: 'terran_union',
@@ -207,8 +207,8 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
+    ambassadorSlots: 5,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
   },
   {
     id: 'terran_alliance',
@@ -229,8 +229,8 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     moveActivations: 3,
     influenceActivations: 2,
     reputationSlots: 5,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
+    ambassadorSlots: 5,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
   },
 ];
 
@@ -524,6 +524,9 @@ export function getAvailableFactions(expansions: string[] = []): FactionInfo[] {
 export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationSlotType[] {
   if (faction.reputationSlotTypes && faction.reputationSlotTypes.length > 0) {
     return faction.reputationSlotTypes;
+  }
+  if (faction.isHuman || faction.id?.startsWith('terran_')) {
+    return ['amb_only', 'both', 'both', 'both', 'both'];
   }
   if (faction.id === 'hydran_progress') {
     return ['amb_only', 'both', 'both', 'both'];
@@ -1044,7 +1047,7 @@ export function createInitialGame(
           startingDiscs: 16,
           startingColonyShips: 3,
           defaultColor: defaultColors[i % defaultColors.length]!,
-          reputationSlotTypes: ['both', 'both', 'both', 'rep_only', 'rep_only'],
+          reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
         },
         resources: { money: 0, science: 0, materials: 0 },
         blueprints: createFactionBlueprints('terran_directorate'),

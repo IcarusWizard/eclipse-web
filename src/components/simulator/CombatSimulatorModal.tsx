@@ -144,16 +144,13 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
 }) => {
   // Attacker configuration
   const [attacker, setAttacker] = useState<SimulatorSideConfig>(() =>
-    createDefaultSimulatorSide('terran_federation', {
-      shipCounts: { dreadnought: 1, cruiser: 1, interceptor: 0, starbase: 0 },
-    })
+    createDefaultSimulatorSide('terran_federation')
   );
 
   // Defenders configuration (Wave sequence for multi-faction battles)
   const [defenders, setDefenders] = useState<SimulatorSideConfig[]>([
     createDefaultSimulatorSide('ancient', {
       isNpc: true,
-      shipCounts: { ancient: 2 },
     }),
   ]);
   const [targetDefenderIndexForBp, setTargetDefenderIndexForBp] = useState<number>(0);
@@ -256,7 +253,6 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       ...prev,
       createDefaultSimulatorSide('ancient', {
         isNpc: true,
-        shipCounts: { ancient: 2 },
       }),
     ]);
     setToastMessage(`Added Defender #${defenders.length + 1} to wave sequence!`);
@@ -702,7 +698,16 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
   // Handle faction or NPC selection change
   const handleFactionChange = (val: string) => {
     const isNpc = ['ancient', 'guardian', 'gcds'].includes(val);
-    const fresh = createDefaultSimulatorSide(val, { isNpc });
+    let shipCounts: Record<string, number> = {};
+    if (!isNpc && !sideConfig.isNpc) {
+      shipCounts = { ...sideConfig.shipCounts };
+    } else if (isNpc && sideConfig.isNpc) {
+      const prevCount = sideConfig.shipCounts[sideConfig.factionId] ?? 0;
+      shipCounts = { [val]: prevCount };
+    } else {
+      shipCounts = isNpc ? { [val]: 0 } : { interceptor: 0, cruiser: 0, dreadnought: 0, starbase: 0 };
+    }
+    const fresh = createDefaultSimulatorSide(val, { isNpc, shipCounts });
     onChangeSideConfig(fresh);
   };
 
@@ -1085,7 +1090,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                   }`}
                   title="Power Produced vs Consumed"
                 >
-                  ⚡ {activeStats.totalPowerProduced}/{activeStats.totalPowerConsumed}
+                  {`⚡ +${activeStats.totalPowerProduced}/-${activeStats.totalPowerConsumed}`}
                 </span>
               </div>
             )}

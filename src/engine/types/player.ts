@@ -48,7 +48,7 @@ export interface FactionInfo {
   readonly influenceActivations?: number; // Base influence activations per Influence action disc (standard 2)
   readonly influenceColonyShipRefreshes?: number; // Colony ships flipped face-up during Influence action (standard 2, Magellan 1)
   readonly reputationSlots?: number; // Capacity of reputation track (4 for Eridani, Planta, Mechanema, Hydran, Draco; 5 for Orion and Terrans)
-  readonly ambassadorSlots?: number; // Number of ambassador-eligible slots on reputation track (3 for Terrans/Planta/Draco/Mechanema, 4 for Orion/Hydran, 2 for Eridani)
+  readonly ambassadorSlots?: number; // Number of ambassador-eligible slots on reputation track (5 for Terrans, 4 for Orion/Hydran, 3 for Planta/Draco/Mechanema, 2 for Eridani)
   readonly reputationSlotTypes?: ReputationSlotType[];
 }
 

@@ -920,30 +920,6 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         strokeWidth="1"
                         strokeDasharray="4 3"
                       />
-                      {/* Position Diagram & Tile Marker on 'a' hexes */}
-                      {h.hasMarker && (
-                        <g>
-                          <circle
-                            cx={x}
-                            cy={y}
-                            r="11"
-                            fill="rgba(22, 20, 26, 0.95)"
-                            stroke="#475569"
-                            strokeWidth="1"
-                          />
-                          <text
-                            x={x}
-                            y={y + 3.5}
-                            textAnchor="middle"
-                            fill="#94a3b8"
-                            fontSize="8.5"
-                            fontWeight="bold"
-                            fontFamily="monospace"
-                          >
-                            {`T${h.tileIndex}`}
-                          </text>
-                        </g>
-                      )}
                     </g>
                   );
                 })}

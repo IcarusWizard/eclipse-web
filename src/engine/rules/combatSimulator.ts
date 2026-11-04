@@ -160,11 +160,7 @@ export function createDefaultSimulatorSide(
   if (isNpc) {
     const npcType = factionId as NeutralShipType;
     const bp = getNeutralShipBlueprint(npcType, npcVariant);
-    const shipCounts = options?.shipCounts || (
-      factionId === 'ancient' ? { ancient: 2 } :
-      factionId === 'guardian' ? { guardian: 1 } :
-      { gcds: 1 }
-    );
+    const shipCounts = options?.shipCounts || { [factionId]: 0 };
 
     return {
       factionId,
@@ -192,9 +188,9 @@ export function createDefaultSimulatorSide(
   }
 
   const shipCounts = options?.shipCounts || {
-    interceptor: 1,
-    cruiser: 1,
-    dreadnought: 1,
+    interceptor: 0,
+    cruiser: 0,
+    dreadnought: 0,
     starbase: 0,
     ...(factionId === 'the_exiles' ? { orbital: 0 } : {}),
   };
