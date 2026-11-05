@@ -17,7 +17,7 @@ import {
   getEdgeBetween,
 } from '../../engine/rules/hexMath';
 import { playerHasWormholeGenerator, getPlayerShortName } from '../../engine/rules/gameReducer';
-import { getWarpConduitForSectorEdge } from '../../engine/rules/warpedUniverse';
+import { getWarpConduitForSectorEdge, getWarpConduitSpline } from '../../engine/rules/warpedUniverse';
 import { getNebulaSubsectorForOuterEdge, getSubsectorCenterPixel } from '../../engine/rules/galacticEvents';
 import {
   Rocket,
@@ -2121,29 +2121,13 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
           {/* Warped Universe: Wormhole Conduit Flow Lines */}
           {state.warpedUniverse?.active &&
             state.warpedUniverse.conduits.map((c) => {
-              const centerA = hexToPixel(c.coordA, HEX_RADIUS);
-              const ptA = getHexEdgeCenter(centerA.x, centerA.y, HEX_RADIUS - 2, c.edgeA);
-              const centerB = hexToPixel(c.coordB, HEX_RADIUS);
-              const ptB = getHexEdgeCenter(centerB.x, centerB.y, HEX_RADIUS - 2, c.edgeB);
+              const { ptA, ptB, pathD, midX: curveMidX, midY: curveMidY } = getWarpConduitSpline(c, HEX_RADIUS);
 
               const secA = state.sectors.find((s) => areCoordsEqual(s.coord, c.coordA));
               const secB = state.sectors.find((s) => areCoordsEqual(s.coord, c.coordB));
               const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
               const isConnected =
                 secA && secB ? areSectorsConnected(secA, secB, hasWormholeGen, state.warpedUniverse?.conduits) : false;
-
-              const midX = (ptA.x + ptB.x) / 2;
-              const midY = (ptA.y + ptB.y) / 2;
-              const rArc = Math.hypot(ptA.x, ptA.y);
-              const dist = Math.hypot(midX, midY);
-              const factor = dist > 0 ? (rArc * 1.18) / dist : 1;
-              const cpX = midX * factor;
-              const cpY = midY * factor;
-              const pathD = `M ${ptA.x} ${ptA.y} Q ${cpX} ${cpY} ${ptB.x} ${ptB.y}`;
-
-              // Midpoint of quadratic Bezier (t = 0.5)
-              const curveMidX = 0.25 * ptA.x + 0.5 * cpX + 0.25 * ptB.x;
-              const curveMidY = 0.25 * ptA.y + 0.5 * cpY + 0.25 * ptB.y;
 
               return (
                 <g key={`flow_conduit_${c.id}`} data-conduit-id={c.id} className="pointer-events-none">

@@ -20499,6 +20499,261 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(mapHtml).not.toContain('>T2<');
         expect(mapHtml).not.toContain('>T3<');
       });
+
+      test('Test 128: verifies Warped Universe conduit lines are smooth cubic splines with both ends strictly perpendicular to the edges, stay inside the warp sector, and never cross', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { createInitialGame } = await import('../rules/setup');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { hexToPixel } = await import('../rules/hexMath');
+        const {
+          getWarpConduitSpline,
+          createLargeWarpSectorPlacement,
+        } = await import('../rules/warpedUniverse');
+
+        const HEX_RADIUS = 76;
+        const APOTHEM = HEX_RADIUS * Math.cos(Math.PI / 6);
+
+        function isPointInHex(px: number, py: number, cx: number, cy: number): boolean {
+          for (let k = 0; k < 6; k++) {
+            const angle = (k * 60 * Math.PI) / 180;
+            const dist = (px - cx) * Math.cos(angle) + (py - cy) * Math.sin(angle);
+            if (dist > APOTHEM + 0.5) return false;
+          }
+          return true;
+        }
+
+        function evalBezier(p0: number, p1: number, p2: number, p3: number, t: number): number {
+          const u = 1 - t;
+          return u * u * u * p0 + 3 * u * u * t * p1 + 3 * u * t * t * p2 + t * t * t * p3;
+        }
+
+        function sampleSpline(spline: any, stepsPerSegment = 50) {
+          const pts: { x: number; y: number }[] = [];
+          if (spline.segments && spline.segments.length > 0) {
+            for (const seg of spline.segments) {
+              for (let i = 0; i <= stepsPerSegment; i++) {
+                const t = i / stepsPerSegment;
+                pts.push({
+                  x: evalBezier(seg.p0.x, seg.p1.x, seg.p2.x, seg.p3.x, t),
+                  y: evalBezier(seg.p0.y, seg.p1.y, seg.p2.y, seg.p3.y, t),
+                });
+              }
+            }
+          } else {
+            for (let i = 0; i <= 100; i++) {
+              const t = i / 100;
+              pts.push({
+                x: evalBezier(spline.ptA.x, spline.cp1.x, spline.cp2.x, spline.ptB.x, t),
+                y: evalBezier(spline.ptA.y, spline.cp1.y, spline.cp2.y, spline.ptB.y, t),
+              });
+            }
+          }
+          return pts;
+        }
+
+        function calcSegmentMinRadius(p0: any, p1: any, p2: any, p3: any): number {
+          let minR = Infinity;
+          for (let i = 0; i <= 100; i++) {
+            const t = i / 100;
+            const u = 1 - t;
+            const dx = 3 * u**2 * (p1.x - p0.x) + 6 * u * t * (p2.x - p1.x) + 3 * t**2 * (p3.x - p2.x);
+            const dy = 3 * u**2 * (p1.y - p0.y) + 6 * u * t * (p2.y - p1.y) + 3 * t**2 * (p3.y - p2.y);
+            const ddx = 6 * u * (p2.x - 2 * p1.x + p0.x) + 6 * t * (p3.x - 2 * p2.x + p1.x);
+            const ddy = 6 * u * (p2.y - 2 * p1.y + p0.y) + 6 * t * (p3.y - 2 * p2.y + p1.y);
+            const speed = Math.hypot(dx, dy);
+            if (speed < 1e-6) continue;
+            const cross = Math.abs(dx * ddy - dy * ddx);
+            const kappa = cross / (speed**3);
+            if (kappa > 1e-6) {
+              const R = 1 / kappa;
+              if (R < minR) minR = R;
+            }
+          }
+          return minR;
+        }
+
+        function ccw(ax: number, ay: number, bx: number, by: number, cx: number, cy: number): number {
+          return (cy - ay) * (bx - ax) - (by - ay) * (cx - ax);
+        }
+
+        function segmentsIntersect(
+          p1x: number, p1y: number, p2x: number, p2y: number,
+          p3x: number, p3y: number, p4x: number, p4y: number
+        ): boolean {
+          const d1 = ccw(p1x, p1y, p2x, p2y, p3x, p3y);
+          const d2 = ccw(p1x, p1y, p2x, p2y, p4x, p4y);
+          const d3 = ccw(p3x, p3y, p4x, p4y, p1x, p1y);
+          const d4 = ccw(p3x, p3y, p4x, p4y, p2x, p2y);
+
+          return ((d1 > 0 && d2 < 0) || (d1 < 0 && d2 > 0)) &&
+                 ((d3 > 0 && d4 < 0) || (d3 < 0 && d4 > 0));
+        }
+
+        // Verify across all 6 rotated slice placements (all 72 conduit lines)
+        for (let slice = 0; slice < 6; slice++) {
+          const placement = createLargeWarpSectorPlacement(slice);
+          expect(placement.conduits).toHaveLength(12);
+          const hexCenters = placement.hexes.map((h) => hexToPixel(h, HEX_RADIUS));
+
+          const splines = placement.conduits.map((conduit) => {
+            const spline = getWarpConduitSpline(conduit, HEX_RADIUS);
+
+            // 1. Path format: Cubic Bezier spline with M ... C ...
+            expect(spline.pathD).toMatch(/^M\s+-?\d+(\.\d+)?\s+-?\d+(\.\d+)?\s+C\s+/);
+
+            // 2. Tangent vector at start: cp1 - ptA
+            const tanAx = spline.cp1.x - spline.ptA.x;
+            const tanAy = spline.cp1.y - spline.ptA.y;
+
+            // Unit tangent along Edge A (perpendicular to normal nA)
+            const radA = (spline.ptA.angle * Math.PI) / 180;
+            const edgeTangentAx = -Math.sin(radA);
+            const edgeTangentAy = Math.cos(radA);
+
+            // Dot product between conduit tangent at ptA and the edge itself must be 0 (perpendicular)
+            const dotEdgeA = Math.abs(tanAx * edgeTangentAx + tanAy * edgeTangentAy);
+            expect(dotEdgeA).toBeLessThan(1e-10);
+
+            // 3. Tangent vector at end: ptB - cp2
+            const tanBx = spline.ptB.x - spline.cp2.x;
+            const tanBy = spline.ptB.y - spline.cp2.y;
+
+            // Unit tangent along Edge B (perpendicular to normal nB)
+            const radB = (spline.ptB.angle * Math.PI) / 180;
+            const edgeTangentBx = -Math.sin(radB);
+            const edgeTangentBy = Math.cos(radB);
+
+            // Dot product between conduit tangent at ptB and the edge itself must be 0 (perpendicular)
+            const dotEdgeB = Math.abs(tanBx * edgeTangentBx + tanBy * edgeTangentBy);
+            expect(dotEdgeB).toBeLessThan(1e-10);
+
+            // 4. Direction check: tanA points along normal nA (outward into Warp Sector)
+            const normalAx = Math.cos(radA);
+            const normalAy = Math.sin(radA);
+            const dotNormalA = tanAx * normalAx + tanAy * normalAy;
+            expect(dotNormalA).toBeGreaterThan(0);
+
+            // tanB points into Hex B (along -normalB)
+            const normalBx = Math.cos(radB);
+            const normalBy = Math.sin(radB);
+            const dotNormalB = tanBx * (-normalBx) + tanBy * (-normalBy);
+            expect(dotNormalB).toBeGreaterThan(0);
+
+            // 5. Midpoint is computed
+            expect(spline.midX).toBeDefined();
+            expect(spline.midY).toBeDefined();
+            expect(Number.isFinite(spline.midX)).toBe(true);
+            expect(Number.isFinite(spline.midY)).toBe(true);
+
+            // 6. Generous turning radius (avoiding sharp kinks or hooks, >= 18px matching Conduit 2)
+            if (spline.segments && spline.segments.length > 0) {
+              const segRadii = spline.segments.map((s: any) => calcSegmentMinRadius(s.p0, s.p1, s.p2, s.p3));
+              const minRadius = Math.min(...segRadii);
+              expect(minRadius).toBeGreaterThanOrEqual(18.0);
+            }
+
+            // 7. Minimal sign switches in curving direction (CW vs CCW):
+            // Conduit 1 must have 0 sign switches (pure convex arc).
+            // All conduits must have at most 1 sign switch (<= 2, most/all <= 1).
+            const curvs: number[] = [];
+            for (let i = 1; i < 50; i++) {
+              const t = i / 50;
+              const u = 1 - t;
+              const dx = 3 * u**2 * (spline.cp1.x - spline.ptA.x) + 6 * u * t * (spline.cp2.x - spline.cp1.x) + 3 * t**2 * (spline.ptB.x - spline.cp2.x);
+              const dy = 3 * u**2 * (spline.cp1.y - spline.ptA.y) + 6 * u * t * (spline.cp2.y - spline.cp1.y) + 3 * t**2 * (spline.ptB.y - spline.cp2.y);
+              const ddx = 6 * u * (spline.cp2.x - 2 * spline.cp1.x + spline.ptA.x) + 6 * t * (spline.ptB.x - 2 * spline.cp2.x + spline.cp1.x);
+              const ddy = 6 * u * (spline.cp2.y - 2 * spline.cp1.y + spline.ptA.y) + 6 * t * (spline.ptB.y - 2 * spline.cp2.y + spline.cp1.y);
+              const cross = dx * ddy - dy * ddx;
+              const speed = Math.hypot(dx, dy);
+              if (speed > 1e-6) curvs.push(cross / (speed**3));
+            }
+            let switches = 0;
+            let prevSign = 0;
+            for (const k of curvs) {
+              if (Math.abs(k) > 1e-4) {
+                const s = k > 0 ? 1 : -1;
+                if (prevSign !== 0 && s !== prevSign) switches++;
+                prevSign = s;
+              }
+            }
+            if (conduit.conduitIndex === 1) {
+              expect(switches).toBe(0);
+            } else {
+              expect(switches).toBeLessThanOrEqual(1);
+            }
+
+            return {
+              conduit,
+              spline,
+              poly: sampleSpline(spline, 50),
+            };
+          });
+
+          // 7. Verify zero intersections between any pair of conduit lines in the slice
+          for (let i = 0; i < splines.length; i++) {
+            for (let j = i + 1; j < splines.length; j++) {
+              const poly1 = splines[i].poly;
+              const poly2 = splines[j].poly;
+              let crosses = false;
+              for (let s1 = 0; s1 < poly1.length - 1; s1++) {
+                for (let s2 = 0; s2 < poly2.length - 1; s2++) {
+                  if (segmentsIntersect(
+                    poly1[s1].x, poly1[s1].y, poly1[s1 + 1].x, poly1[s1 + 1].y,
+                    poly2[s2].x, poly2[s2].y, poly2[s2 + 1].x, poly2[s2 + 1].y
+                  )) {
+                    crosses = true;
+                    break;
+                  }
+                }
+                if (crosses) break;
+              }
+              expect(crosses).toBe(false);
+            }
+          }
+
+          // 8. Verify healthy visual separation gaps between adjacent pairs (specifically 3-4, 7-8, 11-12)
+          for (let i = 0; i < splines.length - 1; i++) {
+            const idxA = splines[i].conduit.conduitIndex;
+            const idxB = splines[i+1].conduit.conduitIndex;
+            const ptsA = splines[i].poly.slice(5, -5);
+            const ptsB = splines[i+1].poly.slice(5, -5);
+            let minDist = Infinity;
+            for (const pA of ptsA) {
+              for (const pB of ptsB) {
+                const d = Math.hypot(pA.x - pB.x, pA.y - pB.y);
+                if (d < minDist) minDist = d;
+              }
+            }
+            if ((idxA === 3 && idxB === 4) || (idxA === 7 && idxB === 8) || (idxA === 11 && idxB === 12)) {
+              expect(minDist).toBeGreaterThanOrEqual(15.0);
+            }
+          }
+
+          // 9. Verify all conduit lines stay strictly inside the Warp Sector region (the 18 placement hexes)
+          for (const s of splines) {
+            for (let step = 3; step <= s.poly.length - 4; step++) {
+              const pt = s.poly[step];
+              const inside = hexCenters.some((c) => isPointInHex(pt.x, pt.y, c.x, c.y));
+              expect(inside).toBe(true);
+            }
+          }
+        }
+
+        // 6. Verify HexGalaxyMap renders the smooth cubic splines
+        const warpedGame = createInitialGame(5, undefined, ['warped_universe']);
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: warpedGame,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        );
+
+        // Path contains 'C' command for cubic Bezier spline
+        expect(mapHtml).toContain('data-conduit-id="warp_conduit_s0_line_1"');
+        expect(mapHtml).toMatch(/d="M\s+-?[\d.]+\s+-?[\d.]+\s+C\s+/);
+      });
     });
   });
 });
