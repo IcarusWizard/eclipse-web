@@ -184,7 +184,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     return 'nano';
   };
 
-  const renderCompartment = (tech: Technology, trackCategory?: 'military' | 'grid' | 'nano') => {
+  const renderCompartment = (tech: Technology, trackCategory?: 'military' | 'grid' | 'nano', itemIndex?: number) => {
     const stock = supplyCountMap.get(tech.id) || 0;
     const isOwned = commander.techTrack.researched.some((t) => t.id === tech.id);
     const otherPlayersWithTech = (players || []).filter(
@@ -253,11 +253,51 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
       }
     };
 
+    const isTopRow =
+      viewMode !== 'all' ||
+      trackCategory === 'military' ||
+      tech.category === 'military';
+
+    let horizontalPlacement = 'left-1/2 -translate-x-1/2';
+    if (tech.tier) {
+      if (tech.tier <= 2) {
+        horizontalPlacement = 'left-0';
+      } else if (tech.tier === 3) {
+        horizontalPlacement = 'left-0 md:left-1/2 md:-translate-x-1/2 lg:left-0';
+      } else if (tech.tier === 4) {
+        horizontalPlacement = 'right-0 lg:left-1/2 lg:-translate-x-1/2';
+      } else if (tech.tier === 5) {
+        horizontalPlacement = 'left-0 lg:left-1/2 lg:-translate-x-1/2';
+      } else if (tech.tier === 6) {
+        horizontalPlacement = 'right-0 md:left-1/2 md:-translate-x-1/2 lg:right-0';
+      } else if (tech.tier >= 7) {
+        horizontalPlacement = 'right-0';
+      }
+    } else if (itemIndex !== undefined) {
+      const col4 = itemIndex % 4;
+      if (col4 === 0) horizontalPlacement = 'left-0';
+      else if (col4 === 3) horizontalPlacement = 'right-0';
+      else horizontalPlacement = 'left-1/2 -translate-x-1/2';
+    }
+
+    let verticalPlacement = 'bottom-[calc(100%+8px)]';
+    if (viewMode === 'all') {
+      verticalPlacement =
+        trackCategory === 'military' || tech.category === 'military'
+          ? 'top-[calc(100%+8px)]'
+          : 'bottom-[calc(100%+8px)]';
+    } else {
+      // In single tech tray view (e.g. MILITARY TRACK RED):
+      // All cards (T1-T8) open downward cleanly into the spacious tray area below the cards,
+      // floating above the bottom bar with a full-height yellow box covering all text.
+      verticalPlacement = 'top-[calc(100%+8px)]';
+    }
+
     return (
       <div
         key={tech.id}
         title={`${tech.name}: ${tech.description}`}
-        className={`group relative rounded-xl border flex flex-col justify-between p-3 transition-all ${
+        className={`group relative hover:z-50 rounded-xl border flex flex-col justify-between p-3 transition-all ${
           isSelected
             ? 'ring-2 ring-cyan-400 bg-cyan-950/40 border-cyan-500 shadow-lg shadow-cyan-950/60'
             : categoryTheme.border + ' ' + categoryTheme.bg
@@ -267,8 +307,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             : 'opacity-60 bg-slate-950/40 border-slate-900'
         } ${isOwned ? 'ring-1 ring-emerald-500/40' : ''}`}
       >
-        {/* Detailed Description Hover Tooltip (Bug 214) */}
-        <div className="hidden group-hover:block absolute left-1/2 -translate-x-1/2 bottom-[calc(100%+8px)] z-50 w-72 p-3 bg-slate-950/98 border border-amber-500/80 rounded-xl shadow-2xl text-xs text-slate-100 pointer-events-none backdrop-blur-md animate-in fade-in zoom-in-95 duration-150">
+        {/* Detailed Description Hover Tooltip (Bug 214, Bug 237, Bug 243) */}
+        <div
+          style={{ backgroundColor: '#020617' }}
+          className={`hidden group-hover:block absolute ${horizontalPlacement} ${verticalPlacement} z-50 w-72 max-w-[calc(100vw-2rem)] p-3 bg-slate-950 border-2 border-amber-500/90 rounded-xl shadow-2xl shadow-black text-xs text-slate-100 pointer-events-none animate-in fade-in zoom-in-95 duration-150`}
+        >
           <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 mb-1.5">
             <span className="font-bold text-amber-300 text-sm font-display">{tech.name}</span>
             <span className="text-[10px] text-cyan-300 font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700">
@@ -329,7 +372,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           </div>
 
           {/* Description / Effect */}
-          <p className="text-[11px] text-slate-300 leading-snug mb-2 line-clamp-3 group-hover:line-clamp-none transition-all cursor-help" title={tech.description}>
+          <p className="text-[11px] text-slate-300 leading-snug mb-2 line-clamp-3 cursor-help" title={tech.description}>
             {tech.description}
           </p>
 
@@ -513,7 +556,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
-      <div className="bg-slate-950 border border-slate-800 rounded-2xl w-full max-w-7xl shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-slate-100">
+      <div className="bg-slate-950 border border-slate-800 rounded-2xl w-full max-w-7xl shadow-2xl flex flex-col min-h-[480px] sm:min-h-[580px] max-h-[92vh] overflow-hidden text-slate-100">
         {/* Tray Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border-b border-slate-800 bg-slate-900/80 gap-3 shrink-0">
           <div className="flex items-center gap-3">
@@ -629,7 +672,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         </div>
 
         {/* View Mode Tabs */}
-        <div className="flex border-b border-slate-800 bg-slate-950 px-4 pt-2 gap-2 text-xs font-bold overflow-x-auto shrink-0 sticky top-0 z-10">
+        <div className="flex border-b border-slate-800 bg-slate-950 px-4 pt-2 gap-2 text-xs font-bold overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden shrink-0 sticky top-0 z-10">
           {[
             { id: 'all', label: 'FULL TECH TRAY (ALL TRACKS)' },
             { id: 'military', label: 'MILITARY TRACK (RED)' },
@@ -640,7 +683,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             <button
               key={tab.id}
               onClick={() => setViewMode(tab.id as TrayViewMode)}
-              className={`px-3.5 py-2 rounded-t-xl transition-all border-t border-x whitespace-nowrap ${
+              className={`px-3.5 py-2 rounded-t-xl transition-all border-t border-x whitespace-nowrap cursor-pointer ${
                 viewMode === tab.id
                   ? 'bg-slate-900 border-pink-500/60 text-pink-300 shadow'
                   : 'border-transparent text-slate-400 hover:text-slate-200'
@@ -652,10 +695,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         </div>
 
         {/* Tray Rows Body */}
-        <div className="p-4 sm:p-6 overflow-y-auto space-y-6 flex-1 min-h-0 bg-slate-950/90">
+        <div className={`p-4 sm:p-6 ${viewMode === 'all' ? 'overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]' : 'overflow-visible min-h-[420px] pb-44'} space-y-6 flex-1 min-h-0 bg-slate-950/90 relative z-20`}>
           {/* 1. MILITARY TRACK ROW */}
           {(viewMode === 'all' || viewMode === 'military') && (
-            <div className="bg-slate-900/50 rounded-2xl p-4 border border-rose-950/60 shadow-inner">
+            <div className="relative hover:z-40 focus-within:z-40 bg-slate-900/50 rounded-2xl p-4 border border-rose-950/60 shadow-inner transition-[z-index]">
               <div className="flex items-center justify-between mb-3 border-b border-rose-900/40 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm bg-rose-500" />
@@ -668,14 +711,14 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
-                {MILITARY_TECHS.map((tech) => renderCompartment(tech, 'military'))}
+                {MILITARY_TECHS.map((tech, idx) => renderCompartment(tech, 'military', idx))}
               </div>
             </div>
           )}
 
           {/* 2. GRID TRACK ROW */}
           {(viewMode === 'all' || viewMode === 'grid') && (
-            <div className="bg-slate-900/50 rounded-2xl p-4 border border-emerald-950/60 shadow-inner">
+            <div className="relative hover:z-40 focus-within:z-40 bg-slate-900/50 rounded-2xl p-4 border border-emerald-950/60 shadow-inner transition-[z-index]">
               <div className="flex items-center justify-between mb-3 border-b border-emerald-900/40 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm bg-emerald-500" />
@@ -688,14 +731,14 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
-                {GRID_TECHS.map((tech) => renderCompartment(tech, 'grid'))}
+                {GRID_TECHS.map((tech, idx) => renderCompartment(tech, 'grid', idx))}
               </div>
             </div>
           )}
 
           {/* 3. NANO TRACK ROW */}
           {(viewMode === 'all' || viewMode === 'nano') && (
-            <div className="bg-slate-900/50 rounded-2xl p-4 border border-sky-950/60 shadow-inner">
+            <div className="relative hover:z-40 focus-within:z-40 bg-slate-900/50 rounded-2xl p-4 border border-sky-950/60 shadow-inner transition-[z-index]">
               <div className="flex items-center justify-between mb-3 border-b border-sky-900/40 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm bg-sky-500" />
@@ -708,14 +751,14 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
-                {NANO_TECHS.map((tech) => renderCompartment(tech, 'nano'))}
+                {NANO_TECHS.map((tech, idx) => renderCompartment(tech, 'nano', idx))}
               </div>
             </div>
           )}
 
           {/* 4. RARE TECHNOLOGIES ROW */}
           {(viewMode === 'all' || viewMode === 'rare') && (
-            <div className="bg-slate-900/50 rounded-2xl p-4 border border-purple-950/60 shadow-inner">
+            <div className="relative hover:z-40 focus-within:z-40 bg-slate-900/50 rounded-2xl p-4 border border-purple-950/60 shadow-inner transition-[z-index]">
               <div className="flex items-center justify-between mb-3 border-b border-purple-900/40 pb-2">
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm bg-purple-500" />
@@ -734,7 +777,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {rareTechsInSupply.map((tech) => renderCompartment(tech))}
+                  {rareTechsInSupply.map((tech, idx) => renderCompartment(tech, undefined, idx))}
                 </div>
               )}
             </div>
@@ -743,7 +786,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
         {/* Enlightened of Lyra Shrine Placement Panel */}
         {commander.faction.id === 'enlightened_of_lyra' && commander.shrineBoard && isCommanderTurn && (
-          <div className="px-5 py-3.5 bg-orange-950/20 border-t border-orange-500/40 shrink-0">
+          <div className="px-5 py-3.5 bg-orange-950/20 border-t border-orange-500/40 shrink-0 relative z-10">
             <div className="flex flex-wrap items-center justify-between gap-3 mb-2.5">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-orange-400" />
@@ -883,7 +926,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
         {/* Hydran Double Research Staging Panel */}
         {maxResearch > 1 && (
-          <div className="px-5 py-3 bg-slate-900/95 border-t border-cyan-500/40 flex flex-wrap items-center justify-between gap-4 shrink-0">
+          <div className="px-5 py-3 bg-slate-900/95 border-t border-cyan-500/40 flex flex-wrap items-center justify-between gap-4 shrink-0 relative z-10">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 font-bold text-base">
                 🔬
@@ -961,7 +1004,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         )}
 
         {/* Tray Footer */}
-        <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shrink-0">
+        <div className="p-4 border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shrink-0 relative z-10">
           <div className="text-slate-400 flex items-center gap-2">
             <HelpCircle className="w-4 h-4 text-cyan-400" />
             <span>

@@ -335,7 +335,7 @@ export function canExchangeAmbassadors(
   if (p1AmbSlots <= 0) {
     return { canExchange: false, reason: `${p1.name} cannot exchange ambassadors (${p1.faction.name} has 0 ambassador slots).` };
   }
-  if ((p1.ambassadorTiles?.length || 0) >= p1AmbSlots || getAvailableAmbassadorSlotsCount(p1) <= 0) {
+  if (getAvailableAmbassadorSlotsCount(p1) <= 0) {
     return { canExchange: false, reason: `${p1.name} has no available ambassador slots.` };
   }
   if (p1PlayerAmbCount >= 3) {
@@ -351,7 +351,7 @@ export function canExchangeAmbassadors(
   if (p2AmbSlots <= 0) {
     return { canExchange: false, reason: `${p2.name} cannot exchange ambassadors (${p2.faction.name} has 0 ambassador slots).` };
   }
-  if ((p2.ambassadorTiles?.length || 0) >= p2AmbSlots || getAvailableAmbassadorSlotsCount(p2) <= 0) {
+  if (getAvailableAmbassadorSlotsCount(p2) <= 0) {
     return { canExchange: false, reason: `${p2.name} has no available ambassador slots.` };
   }
   if (p2PlayerAmbCount >= 3) {

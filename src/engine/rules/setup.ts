@@ -289,8 +289,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
-    ambassadorSlots: 2,
-    reputationSlotTypes: ['both', 'both', 'rep_only', 'rep_only'],
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
   {
     id: 'hydran_progress',
@@ -333,8 +333,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both'],
   },
   {
     id: 'descendants_of_draco',
@@ -355,8 +355,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
   {
     id: 'mechanema',
@@ -377,8 +377,8 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     moveActivations: 2,
     influenceActivations: 2,
     reputationSlots: 4,
-    ambassadorSlots: 3,
-    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
   {
     id: 'orion_hegemony',
@@ -528,23 +528,26 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   if (faction.isHuman || faction.id?.startsWith('terran_')) {
     return ['amb_only', 'both', 'both', 'both', 'both'];
   }
-  if (faction.id === 'hydran_progress') {
+  if (faction.id === 'hydran_progress' || faction.id === 'planta') {
     return ['amb_only', 'both', 'both', 'both'];
   }
   if (faction.id === 'orion_hegemony') {
     return ['both', 'both', 'both', 'both', 'rep_only'];
   }
-  if (faction.id === 'eridani_empire') {
-    return ['both', 'both', 'rep_only', 'rep_only'];
+  if (
+    faction.id === 'eridani_empire' ||
+    faction.id === 'mechanema' ||
+    faction.id === 'descendants_of_draco' ||
+    faction.id === 'wardens_of_magellan' ||
+    faction.id === 'enlightened_of_lyra'
+  ) {
+    return ['both', 'both', 'both', 'both'];
   }
   if (faction.id === 'the_exiles') {
     return ['both', 'both', 'both', 'rep_only'];
   }
   if (faction.id === 'rho_indi_syndicate') {
     return ['both', 'both', 'rep_only', 'rep_only', 'rep_only'];
-  }
-  if (faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
-    return ['both', 'both', 'both', 'both'];
   }
   const total = faction.reputationSlots ?? (faction.isHuman ? 5 : 4);
   const amb = faction.ambassadorSlots ?? 3;

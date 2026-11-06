@@ -108,7 +108,8 @@ export interface SimulatorSideValidation {
  */
 export function validateSimulatorSide(
   sideConfig: SimulatorSideConfig,
-  checkOnlyParticipatingShips: boolean = true
+  checkOnlyParticipatingShips: boolean = true,
+  activeExpansions?: string[]
 ): SimulatorSideValidation {
   if (sideConfig.isNpc) {
     return { isValid: true, errors: [], shipErrors: {} };
@@ -121,7 +122,8 @@ export function validateSimulatorSide(
     for (const [shipType, bp] of Object.entries(sideConfig.blueprints)) {
       if (!bp) continue;
       const count = sideConfig.shipCounts?.[shipType] ?? 0;
-      const stats = calculateBlueprintStats(bp, bp.activeExpansions);
+      const exps = activeExpansions || bp.activeExpansions;
+      const stats = calculateBlueprintStats(bp, exps);
       if (!stats.isValid) {
         shipErrors[shipType] = stats.errors;
         if (!checkOnlyParticipatingShips || count > 0) {
@@ -210,7 +212,8 @@ export function createDefaultSimulatorSide(
  */
 export function buildSimulatorUnits(
   sideConfig: SimulatorSideConfig,
-  ownerId: 'attacker' | 'defender'
+  ownerId: 'attacker' | 'defender',
+  activeExpansions?: string[]
 ): CombatUnit[] {
   const units: CombatUnit[] = [];
 
@@ -242,7 +245,8 @@ export function buildSimulatorUnits(
     const bp = sideConfig.blueprints[shipType];
     if (!bp) continue;
 
-    const stats = calculateBlueprintStats(bp, bp.activeExpansions);
+    const exps = activeExpansions || bp.activeExpansions;
+    const stats = calculateBlueprintStats(bp, exps);
     const allParts = [...(bp.slots || []), ...(bp.externalParts || [])];
     const weapons: CombatUnit['weapons'] = [];
     for (const part of allParts) {
@@ -631,14 +635,15 @@ export function simulateEngagement(
  */
 export function simulateSingleBattle(
   attackerConfig: SimulatorSideConfig,
-  defenderConfig: SimulatorSideConfig
+  defenderConfig: SimulatorSideConfig,
+  activeExpansions?: string[]
 ): {
   winner: 'attacker' | 'defender' | 'draw';
   rounds: number;
   survivingUnits: CombatUnit[];
 } {
-  const attackerUnits = buildSimulatorUnits(attackerConfig, 'attacker');
-  const defenderUnits = buildSimulatorUnits(defenderConfig, 'defender');
+  const attackerUnits = buildSimulatorUnits(attackerConfig, 'attacker', activeExpansions);
+  const defenderUnits = buildSimulatorUnits(defenderConfig, 'defender', activeExpansions);
   return simulateEngagement(
     attackerUnits,
     defenderUnits,
@@ -673,7 +678,8 @@ export function isPeacefulCombatPair(factionA?: string, factionB?: string): bool
  */
 export function simulateMultiWaveBattle(
   attackerConfig: SimulatorSideConfig,
-  defenderConfigs: SimulatorSideConfig[]
+  defenderConfigs: SimulatorSideConfig[],
+  activeExpansions?: string[]
 ): {
   winner: 'attacker' | 'defender' | 'draw';
   winningDefenderIndex?: number;
@@ -681,7 +687,7 @@ export function simulateMultiWaveBattle(
   survivingUnits: CombatUnit[];
 } {
   if (defenderConfigs.length === 0) {
-    const units = buildSimulatorUnits(attackerConfig, 'attacker');
+    const units = buildSimulatorUnits(attackerConfig, 'attacker', activeExpansions);
     return { winner: 'attacker', rounds: 0, survivingUnits: units };
   }
 
@@ -689,7 +695,7 @@ export function simulateMultiWaveBattle(
     role: 'attacker' as 'attacker' | 'defender',
     defenderIndex: undefined as number | undefined,
     config: attackerConfig,
-    units: buildSimulatorUnits(attackerConfig, 'attacker'),
+    units: buildSimulatorUnits(attackerConfig, 'attacker', activeExpansions),
     hasSplitter: attackerConfig.hasAntimatterSplitter,
   };
 
@@ -729,7 +735,7 @@ export function simulateMultiWaveBattle(
         winner: 'defender',
         winningDefenderIndex: defIdx,
         rounds: totalRounds,
-        survivingUnits: buildSimulatorUnits(curDefender, 'defender'),
+        survivingUnits: buildSimulatorUnits(curDefender, 'defender', activeExpansions),
       };
     }
 
@@ -739,7 +745,7 @@ export function simulateMultiWaveBattle(
       ownerId: 'attacker' as const,
       weapons: u.weapons.map((w) => ({ ...w })),
     }));
-    const defenderUnits = buildSimulatorUnits(curDefender, 'defender');
+    const defenderUnits = buildSimulatorUnits(curDefender, 'defender', activeExpansions);
 
     const res = simulateEngagement(
       normalizedActiveUnits,
@@ -776,7 +782,7 @@ export function simulateMultiWaveBattle(
           role: 'defender',
           defenderIndex: nextDefIdx,
           config: nextDef,
-          units: buildSimulatorUnits(nextDef, 'attacker'),
+          units: buildSimulatorUnits(nextDef, 'attacker', activeExpansions),
           hasSplitter: nextDef.hasAntimatterSplitter,
         };
         defIdx = nextDefIdx + 1;
@@ -851,14 +857,15 @@ export function runCombatSimulation(
   attackerConfig: SimulatorSideConfig,
   defenderConfig: SimulatorSideConfig | SimulatorSideConfig[],
   iterations: number = 1000,
-  options?: { allowIllegalBlueprints?: boolean }
+  options?: { allowIllegalBlueprints?: boolean; activeExpansions?: string[] }
 ): SimulationResult {
   const defenders = Array.isArray(defenderConfig) ? defenderConfig : [defenderConfig];
   const effectiveIterations = Math.max(1, iterations);
+  const activeExpansions = options?.activeExpansions;
 
   // Validate modified blueprints for participating ships across attacker and all defenders
-  const attValidation = validateSimulatorSide(attackerConfig, true);
-  const defValidations = defenders.map((d) => validateSimulatorSide(d, true));
+  const attValidation = validateSimulatorSide(attackerConfig, true, activeExpansions);
+  const defValidations = defenders.map((d) => validateSimulatorSide(d, true, activeExpansions));
   const validationErrors = [
     ...attValidation.errors,
     ...defValidations.flatMap((v) => v.errors),
@@ -908,7 +915,7 @@ export function runCombatSimulation(
   >[] = defenders.map(() => new Map());
 
   for (let i = 0; i < effectiveIterations; i++) {
-    const res = simulateMultiWaveBattle(attackerConfig, defenders);
+    const res = simulateMultiWaveBattle(attackerConfig, defenders, activeExpansions);
     totalRounds += res.rounds;
 
     if (res.winner === 'attacker') {

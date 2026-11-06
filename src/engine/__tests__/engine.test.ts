@@ -8065,16 +8065,16 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const eridaniPlayer = eridaniState.players[0]!;
         const terranPlayer = eridaniState.players[1]!;
 
-        // Eridani has 4 reputation slots: ['both', 'both', 'rep_only', 'rep_only']
+        // Eridani has 4 reputation slots: all are amb/rep (Bug 238)
         expect(eridaniPlayer.faction.reputationSlots).toBe(4);
-        expect(eridaniPlayer.faction.reputationSlotTypes).toEqual(['both', 'both', 'rep_only', 'rep_only']);
+        expect(eridaniPlayer.faction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both']);
 
         // Give Eridani an ambassador from Terran Federation
         eridaniPlayer.ambassadorTiles = [terranPlayer.id];
         // Give Eridani a 2 VP reputation tile
         eridaniPlayer.reputationTiles = [2];
 
-        // getPlayerReputationTrackSlots places ambassador into Slot 0 ('both') and reputation tile into Slot 2 ('rep_only' first, Bug 118)
+        // getPlayerReputationTrackSlots places ambassador into Slot 0 ('both') and reputation tile into Slot 1 (next empty 'both' slot)
         const trackSlots = getPlayerReputationTrackSlots(eridaniPlayer, eridaniState.players);
         expect(trackSlots.length).toBe(4);
         expect(trackSlots[0]!.tile?.type).toBe('ambassador');
@@ -8083,11 +8083,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           expect(trackSlots[0]!.tile.allyName).toBe(terranPlayer.name);
           expect(trackSlots[0]!.tile.vp).toBe(1);
         }
-        expect(trackSlots[1]!.tile).toBeUndefined(); // Slot 1 ('both') remains open for another ambassador!
-        expect(trackSlots[2]!.tile?.type).toBe('reputation');
-        if (trackSlots[2]!.tile?.type === 'reputation') {
-          expect(trackSlots[2]!.tile.vp).toBe(2);
+        expect(trackSlots[1]!.tile?.type).toBe('reputation');
+        if (trackSlots[1]!.tile?.type === 'reputation') {
+          expect(trackSlots[1]!.tile.vp).toBe(2);
         }
+        expect(trackSlots[2]!.tile).toBeUndefined();
         expect(trackSlots[3]!.tile).toBeUndefined();
 
         // Render PlayerBoard (the upper-left floating window)
@@ -8112,8 +8112,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(playerBoardHtml).toContain('🤝');
         expect(playerBoardHtml).toContain(`Ambassador (${terranPlayer.name})`);
         expect(playerBoardHtml).toContain('Reputation Slot #1');
-        expect(playerBoardHtml).toContain('Empty Slot #2');
-        expect(playerBoardHtml).toContain('Reputation Tile: +2 VP (Slot #3)');
+        expect(playerBoardHtml).toContain('Reputation Tile: +2 VP (Slot #2)');
+        expect(playerBoardHtml).toContain('Empty Slot #3');
         // Reputation total score & slot count
         expect(playerBoardHtml).toContain('2 VP');
         expect(playerBoardHtml).toContain('Rep');
@@ -20753,6 +20753,214 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Path contains 'C' command for cubic Bezier spline
         expect(mapHtml).toContain('data-conduit-id="warp_conduit_s0_line_1"');
         expect(mapHtml).toMatch(/d="M\s+-?[\d.]+\s+-?[\d.]+\s+C\s+/);
+      });
+
+      it('Test 129: verifies Bug Fixes 236-242: Combat simulator community balance, tech tray tooltip placement & stable card height, faction reputation slot types (Eridani, Planta, Mechanema, Draco), and 3-ambassador limit vs minor species', async () => {
+        // -------------------------------------------------------------
+        // Bug 236: Combat simulator supports community balance expansion
+        // -------------------------------------------------------------
+        const { createDefaultSimulatorSide, buildSimulatorUnits, runCombatSimulation } = await import('../rules/combatSimulator');
+        const terranSide = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { cruiser: 1 },
+        });
+        // Equip cruiser with Improved Hull and Phase Shield
+        const cruiserBp = terranSide.blueprints.cruiser!;
+        cruiserBp.slots = [
+          SHIP_PARTS.improved_hull,
+          SHIP_PARTS.phase_shield,
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_drive,
+          SHIP_PARTS.ion_cannon,
+          null as any,
+        ];
+
+        // Standard simulation (community balance NOT active)
+        const standardUnits = buildSimulatorUnits(terranSide, 'attacker');
+        const standardCruiser = standardUnits.find((u) => u.type === 'cruiser')!;
+        expect(standardCruiser.initiative).toBe(2);
+
+        // Community Balance simulation (improved_hull -1 init, phase_shield +1 init)
+        cruiserBp.slots[5] = SHIP_PARTS.improved_hull;
+        const standard2Hull = buildSimulatorUnits(terranSide, 'attacker')[0]!;
+        const cb2Hull = buildSimulatorUnits(terranSide, 'attacker', ['community_balance'])[0]!;
+        expect(standard2Hull.initiative).toBe(2);
+        expect(cb2Hull.initiative).toBe(1); // 2 - 1 = 1 due to the second improved hull
+
+        // runCombatSimulation respects activeExpansions option
+        const ancientSide = createDefaultSimulatorSide('ancient', {
+          isNpc: true,
+          shipCounts: { ancient: 1 },
+        });
+        const simRes = runCombatSimulation(terranSide, ancientSide, 50, {
+          activeExpansions: ['community_balance'],
+        });
+        expect(simRes.iterations).toBe(50);
+        expect(simRes.validationErrors).toBeUndefined();
+
+        // -------------------------------------------------------------
+        // Bug 237: Tech tray modal stable card height & top-row tooltip placement
+        // -------------------------------------------------------------
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+        const gameForTech = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const terranCmd = gameForTech.players[0]!;
+        const techModalHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: terranCmd,
+            activePlayer: terranCmd,
+            players: gameForTech.players,
+            sectors: gameForTech.sectors,
+            techSupply: gameForTech.techSupply,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        );
+        // Top-row tooltip (Military / Track 1) uses top-[calc(100%+8px)] so it is not covered by top bar
+        expect(techModalHtml).toContain('top-[calc(100%+8px)]');
+        // Card description does NOT contain group-hover:line-clamp-none
+        expect(techModalHtml).not.toContain('group-hover:line-clamp-none');
+
+        // -------------------------------------------------------------
+        // Bugs 238-241: Faction reputation and ambassador slots
+        // -------------------------------------------------------------
+        const { ALL_FACTIONS, getFactionReputationSlotTypes } = await import('../rules/setup');
+        
+        // Bug 238: Eridani Empire - all 4 slots are amb/rep
+        const eridaniFaction = ALL_FACTIONS.find((f) => f.id === 'eridani_empire')!;
+        expect(eridaniFaction.reputationSlots).toBe(4);
+        expect(eridaniFaction.ambassadorSlots).toBe(4);
+        expect(eridaniFaction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both']);
+        expect(getFactionReputationSlotTypes(eridaniFaction)).toEqual(['both', 'both', 'both', 'both']);
+
+        // Bug 239: Planta - 1 amb only and 3 amb/rep
+        const plantaFaction = ALL_FACTIONS.find((f) => f.id === 'planta')!;
+        expect(plantaFaction.reputationSlots).toBe(4);
+        expect(plantaFaction.ambassadorSlots).toBe(4);
+        expect(plantaFaction.reputationSlotTypes).toEqual(['amb_only', 'both', 'both', 'both']);
+        expect(getFactionReputationSlotTypes(plantaFaction)).toEqual(['amb_only', 'both', 'both', 'both']);
+
+        // Bug 240: Mechanema - all 4 slots are amb/rep
+        const mechFaction = ALL_FACTIONS.find((f) => f.id === 'mechanema')!;
+        expect(mechFaction.reputationSlots).toBe(4);
+        expect(mechFaction.ambassadorSlots).toBe(4);
+        expect(mechFaction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both']);
+        expect(getFactionReputationSlotTypes(mechFaction)).toEqual(['both', 'both', 'both', 'both']);
+
+        // Bug 241: Descendants of Draco - all 4 slots are amb/rep
+        const dracoFaction = ALL_FACTIONS.find((f) => f.id === 'descendants_of_draco')!;
+        expect(dracoFaction.reputationSlots).toBe(4);
+        expect(dracoFaction.ambassadorSlots).toBe(4);
+        expect(dracoFaction.reputationSlotTypes).toEqual(['both', 'both', 'both', 'both']);
+        expect(getFactionReputationSlotTypes(dracoFaction)).toEqual(['both', 'both', 'both', 'both']);
+
+        // -------------------------------------------------------------
+        // Bug 242: Exchanging ambassadors limited to 3 physical tiles,
+        // but does NOT restrict claiming Minor Species tiles!
+        // -------------------------------------------------------------
+        const { getAvailableAmbassadorSlotsCount } = await import('../rules/minorSpecies');
+        const game4p = createInitialGame(4, ['planta', 'mechanema', 'descendants_of_draco', 'eridani_empire'], ['minor_species']);
+        const [pPlanta, pMech, pDraco, pEridani] = game4p.players;
+
+        // Planta has 4 ambassador-eligible slots
+        expect(pPlanta!.faction.ambassadorSlots).toBe(4);
+        expect(getAvailableAmbassadorSlotsCount(pPlanta!)).toBe(4);
+
+        // Planta exchanges ambassadors with Mechanema, Draco, and Eridani (all 3 physical tiles used)
+        pPlanta!.ambassadorTiles = [pMech!.id, pDraco!.id, pEridani!.id];
+        expect(pPlanta!.ambassadorTiles.length).toBe(3);
+
+        // Planta has 1 slot physically empty and available for Minor Species!
+        expect(getAvailableAmbassadorSlotsCount(pPlanta!)).toBe(1);
+
+        // Attempting to exchange with a 4th player would fail because all 3 physical tiles were exchanged
+        const check4th = canExchangeAmbassadors(game4p, pPlanta!.id, pMech!.id);
+        expect(check4th.canExchange).toBe(false);
+
+        // BUT Planta CAN claim a Minor Species tile because they have an available slot!
+        pPlanta!.resources.money = 15;
+        const msTile = game4p.minorSpeciesSupply![0]!;
+        const claimResult = executeAction(game4p, {
+          type: 'CLAIM_MINOR_SPECIES',
+          playerId: pPlanta!.id,
+          speciesId: msTile.id,
+          populationTrack: 'money',
+        });
+        expect(claimResult.success).toBe(true);
+        expect(claimResult.newState.players[0]!.ambassadorTiles).toContain(msTile.id);
+        expect(claimResult.newState.players[0]!.ambassadorTiles.length).toBe(4);
+        // Now all 4 slots are filled
+        expect(getAvailableAmbassadorSlotsCount(claimResult.newState.players[0]!)).toBe(0);
+      });
+
+      test('130. verifies Tech Tray single view horizontal glitch fixes and solid opaque details window design', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+        const { createInitialGame } = await import('../rules/setup');
+        const fs = await import('fs');
+        const path = await import('path');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const terranCmd = game.players[0]!;
+
+        // 1. Inspect source code of TechMarketModal.tsx
+        const techModalSrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'tech', 'TechMarketModal.tsx'),
+          'utf-8'
+        );
+
+        // Verification of solid opaque background design (NO transparency, NO backdrop-blur)
+        expect(techModalSrc).not.toContain('bg-slate-950/98');
+        expect(techModalSrc).not.toContain('pointer-events-none backdrop-blur-md');
+        expect(techModalSrc).toContain('style={{ backgroundColor: \'#020617\' }}');
+        expect(techModalSrc).toContain('bg-slate-950 border-2 border-amber-500/90 rounded-xl shadow-2xl shadow-black');
+
+        // Verification of row-level stacking context so Starbase completely covers Grid track header
+        expect(techModalSrc).toContain('relative hover:z-40 focus-within:z-40 bg-slate-900/50 rounded-2xl');
+        expect(techModalSrc).toContain('group relative hover:z-50 rounded-xl border');
+
+        // Verification of horizontal glitch prevention (overflow-x-hidden, scrollbar-gutter: stable, tabs scrollbar-none)
+        expect(techModalSrc).toContain('overflow-y-auto overflow-x-hidden [scrollbar-gutter:stable]');
+        expect(techModalSrc).toContain('overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden');
+        expect(techModalSrc).toContain('overflow-visible min-h-[420px] pb-44');
+        expect(techModalSrc).toContain('min-h-[480px] sm:min-h-[580px] max-h-[92vh]');
+
+        // Verification of floating above bottom bar (Tray Rows Body z-20 > Bottom bar z-10)
+        expect(techModalSrc).toContain('bg-slate-950/90 relative z-20');
+        expect(techModalSrc).toContain('border-t border-slate-800 bg-slate-900/90 flex flex-col sm:flex-row items-center justify-between gap-3 text-xs shrink-0 relative z-10');
+        expect(techModalSrc).toContain('border-t border-cyan-500/40 flex flex-wrap items-center justify-between gap-4 shrink-0 relative z-10');
+
+        // Verification of responsive horizontal & vertical positioning
+        expect(techModalSrc).toContain("horizontalPlacement = 'left-0'");
+        expect(techModalSrc).toContain("horizontalPlacement = 'right-0'");
+        expect(techModalSrc).toContain("verticalPlacement = 'top-[calc(100%+8px)]'");
+        expect(techModalSrc).toContain('max-w-[calc(100vw-2rem)]');
+
+        // 2. Render TechMarketModal to HTML in All Tracks view
+        const allTracksHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: terranCmd,
+            activePlayer: terranCmd,
+            players: game.players,
+            sectors: game.sectors,
+            techSupply: game.techSupply,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        );
+
+        expect(allTracksHtml).toContain('Military Technologies (Track 1)');
+        expect(allTracksHtml).toContain('Grid Technologies (Track 2)');
+        expect(allTracksHtml).toContain('overflow-x-hidden');
+        expect(allTracksHtml).toContain('background-color:#020617');
+        expect(allTracksHtml).toContain('border-amber-500/90');
+        expect(allTracksHtml).toContain('shadow-2xl shadow-black');
+
+        // 3. Render TechMarketModal to HTML in Single View (Military Track)
+        // Verify it renders unclipped with body z-20 over footer z-10
+        expect(allTracksHtml).toContain('relative z-20');
+        expect(allTracksHtml).toContain('relative z-10');
       });
     });
   });

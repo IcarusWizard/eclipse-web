@@ -56,7 +56,7 @@ interface CombatSimulatorModalProps {
   gameState?: GameState | null;
 }
 
-const PART_GROUPS = [
+const getPartGroups = (communityBalance: boolean) => [
   {
     category: 'Cannons',
     parts: [
@@ -96,7 +96,12 @@ const PART_GROUPS = [
     category: 'Shields',
     parts: [
       { id: 'gauss_shield', name: 'Gauss Shield (-1🛡️)' },
-      { id: 'phase_shield', name: 'Phase Shield (-2🛡️, 1⚡)' },
+      {
+        id: 'phase_shield',
+        name: communityBalance
+          ? 'Phase Shield (-2🛡️, +1 Init, 1⚡)'
+          : 'Phase Shield (-2🛡️, 1⚡)',
+      },
       { id: 'flux_shield', name: 'Flux Shield (-3🛡️, +1 Init, 2⚡)' },
       { id: 'inversion_shield', name: 'Inversion Shield (-2🛡️, +2🔋)' },
       { id: 'absorption_shield', name: 'Absorption Shield (-1🛡️, +4🔋)' },
@@ -107,7 +112,12 @@ const PART_GROUPS = [
     category: 'Hulls',
     parts: [
       { id: 'hull', name: 'Hull (+1❤️)' },
-      { id: 'improved_hull', name: 'Improved Hull (+2❤️)' },
+      {
+        id: 'improved_hull',
+        name: communityBalance
+          ? 'Improved Hull (+2❤️, -1 Init)'
+          : 'Improved Hull (+2❤️)',
+      },
       { id: 'shard_hull', name: 'Shard Hull (+3❤️)' },
       { id: 'conifold_field', name: 'Conifold Field (+3❤️, 2⚡)' },
     ],
@@ -157,11 +167,21 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
 
   // Simulation settings & results
   const [iterations, setIterations] = useState<number>(1000);
+  const [includeCommunityBalance, setIncludeCommunityBalance] = useState<boolean>(() =>
+    Boolean(gameState?.expansions?.includes('community_balance'))
+  );
   const [simulationResult, setSimulationResult] = useState<SimulationResult | null>(null);
   const [isSimulating, setIsSimulating] = useState<boolean>(false);
   const [activeTabAttackerShip, setActiveTabAttackerShip] = useState<string>('cruiser');
   const [activeTabDefenderShips, setActiveTabDefenderShips] = useState<Record<number, string>>({});
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Sync Community Balance toggle when gameState expansions update
+  useEffect(() => {
+    if (gameState?.expansions) {
+      setIncludeCommunityBalance(gameState.expansions.includes('community_balance'));
+    }
+  }, [gameState?.expansions]);
 
   // Auto-clear toast
   useEffect(() => {
@@ -299,11 +319,19 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
     setToastMessage(`Swapped Attacker with Defender #${defenderIndex + 1}!`);
   };
 
+  const activeExpansions = useMemo(
+    () => (includeCommunityBalance ? ['community_balance'] : []),
+    [includeCommunityBalance]
+  );
+
   // Blueprint validation across attacker and all defender waves
-  const attackerValidation = useMemo(() => validateSimulatorSide(attacker, true), [attacker]);
+  const attackerValidation = useMemo(
+    () => validateSimulatorSide(attacker, true, activeExpansions),
+    [attacker, activeExpansions]
+  );
   const defenderValidations = useMemo(
-    () => defenders.map((d) => validateSimulatorSide(d, true)),
-    [defenders]
+    () => defenders.map((d) => validateSimulatorSide(d, true, activeExpansions)),
+    [defenders, activeExpansions]
   );
   const allValidationErrors = useMemo(
     () => [
@@ -322,7 +350,9 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
     }
     setIsSimulating(true);
     setTimeout(() => {
-      const res = runCombatSimulation(attacker, defenders, iterations);
+      const res = runCombatSimulation(attacker, defenders, iterations, {
+        activeExpansions,
+      });
       setSimulationResult(res);
       setIsSimulating(false);
     }, 10);
@@ -527,6 +557,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
               onSelectShipTab={setActiveTabAttackerShip}
               onResetBlueprints={handleResetAttackerBlueprints}
               onSwapWithAttacker={() => handleSwapWithAttacker(0)}
+              activeExpansions={activeExpansions}
             />
 
             {/* DEFENDERS COLUMN (Single or Multi-Wave) */}
@@ -572,6 +603,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                   onMoveDown={() => handleMoveDefender(idx, 'down')}
                   onRemove={() => handleRemoveDefender(idx)}
                   onSwapWithAttacker={() => handleSwapWithAttacker(idx)}
+                  activeExpansions={activeExpansions}
                 />
               ))}
             </div>
@@ -595,34 +627,65 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
             )}
 
             <div className="flex flex-wrap items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <span className="text-xs uppercase tracking-wider font-bold text-slate-400">
-                  Simulation Iterations:
-                </span>
-                <div className="flex items-center bg-slate-950 rounded-xl p-1 border border-slate-800">
-                  <button
-                    type="button"
-                    onClick={() => setIterations(1000)}
-                    className={`px-3.5 py-1 rounded-lg text-xs font-bold transition ${
-                      iterations === 1000
-                        ? 'bg-amber-500 text-slate-950 shadow'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    1,000 Times
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setIterations(10000)}
-                    className={`px-3.5 py-1 rounded-lg text-xs font-bold transition ${
-                      iterations === 10000
-                        ? 'bg-amber-500 text-slate-950 shadow'
-                        : 'text-slate-400 hover:text-white'
-                    }`}
-                  >
-                    10,000 Times (High Precision)
-                  </button>
+              <div className="flex flex-wrap items-center gap-4">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs uppercase tracking-wider font-bold text-slate-400">
+                    Simulation Iterations:
+                  </span>
+                  <div className="flex items-center bg-slate-950 rounded-xl p-1 border border-slate-800">
+                    <button
+                      type="button"
+                      onClick={() => setIterations(1000)}
+                      className={`px-3.5 py-1 rounded-lg text-xs font-bold transition ${
+                        iterations === 1000
+                          ? 'bg-amber-500 text-slate-950 shadow'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      1,000 Times
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setIterations(10000)}
+                      className={`px-3.5 py-1 rounded-lg text-xs font-bold transition ${
+                        iterations === 10000
+                          ? 'bg-amber-500 text-slate-950 shadow'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                    >
+                      10,000 Times (High Precision)
+                    </button>
+                  </div>
                 </div>
+
+                {/* Community Balance Expansion Toggle (Bug 236) */}
+                <label
+                  className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition cursor-pointer select-none ${
+                    includeCommunityBalance
+                      ? 'bg-amber-950/40 border-amber-500/60 text-amber-200 shadow-sm'
+                      : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                  }`}
+                  title="Community Balance Expansion: Modifies Phase Shield (+1 Initiative) and Improved Hull (-1 Initiative)"
+                >
+                  <input
+                    type="checkbox"
+                    checked={includeCommunityBalance}
+                    onChange={(e) => {
+                      setIncludeCommunityBalance(e.target.checked);
+                      setSimulationResult(null);
+                    }}
+                    className="w-4 h-4 rounded text-amber-500 bg-slate-900 border-slate-700 focus:ring-amber-500/30 cursor-pointer"
+                  />
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className={`w-3.5 h-3.5 ${includeCommunityBalance ? 'text-amber-400' : 'text-slate-500'}`} />
+                    <span className="text-xs font-bold">
+                      Community Expansion
+                    </span>
+                    <span className="text-[10px] text-amber-400/80 font-mono hidden sm:inline">
+                      (Phase Shield +1 Init, Improved Hull -1 Init)
+                    </span>
+                  </div>
+                </label>
               </div>
 
               <button
@@ -675,6 +738,7 @@ interface SideConfigCardProps {
   onMoveDown?: () => void;
   onRemove?: () => void;
   onSwapWithAttacker?: () => void;
+  activeExpansions?: string[];
 }
 
 const SideConfigCard: React.FC<SideConfigCardProps> = ({
@@ -691,9 +755,12 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
   onMoveDown,
   onRemove,
   onSwapWithAttacker,
+  activeExpansions,
 }) => {
   const isAttacker = role === 'attacker';
   const roleColor = isAttacker ? 'red' : 'cyan';
+  const isCommunityBalance = Boolean(activeExpansions?.includes('community_balance'));
+  const partGroups = useMemo(() => getPartGroups(isCommunityBalance), [isCommunityBalance]);
 
   // Handle faction or NPC selection change
   const handleFactionChange = (val: string) => {
@@ -774,8 +841,8 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
   const activeBp = sideConfig.blueprints[activeShipTab] || sideConfig.blueprints.cruiser || sideConfig.blueprints.interceptor;
   const activeStats = useMemo(() => {
     if (!activeBp) return null;
-    return calculateBlueprintStats(activeBp, activeBp.activeExpansions);
-  }, [activeBp]);
+    return calculateBlueprintStats(activeBp, activeExpansions || activeBp.activeExpansions);
+  }, [activeBp, activeExpansions]);
 
   return (
     <div
@@ -1128,7 +1195,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                     className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none"
                   >
                     <option value="">(Empty Slot)</option>
-                    {PART_GROUPS.map((g) => (
+                    {partGroups.map((g) => (
                       <optgroup key={g.category} label={g.category}>
                         {g.parts.map((p) => (
                           <option key={p.id} value={p.id}>
