@@ -241,5 +241,5 @@
 - [x] all 4 slots for draco should also be amb/rep (Round 1, ACTION_PHASE, Player: Hydran Progress, Table #298)
 - [x] people can hold only exchange the amb 3 times since they are only have 3 amb tiles to exchange, after they used up, they cannot exchange anymore, but it doesn't apply for minor species, since you don't exchange amb tile with it. For example, it is totally fine if one player hold 3 amb from other players then still take minor species tile, as long as they have the slot for it. (Round 1, ACTION_PHASE, Player: Hydran Progress, Table #298)
 - [x] the nutron bomb absorber is not correctly activate (Round 8, COMBAT_PHASE, Player: Terran Federation, Table #289)
-- [ ] the ancient tech discovery tile still shows microscope instead of beaker (Round 7, COMBAT_PHASE, Player: Orion Hegemony, Table #506)
-- [ ] the status bar in blueprint design should better align into 2 rows (Round 8, ACTION_PHASE, Player: Orion Hegemony, Table #506)
+- [x] the ancient tech discovery tile still shows microscope instead of beaker (Round 7, COMBAT_PHASE, Player: Orion Hegemony, Table #506)
+- [x] the status bar in blueprint design should better align into 2 rows (Round 8, ACTION_PHASE, Player: Orion Hegemony, Table #506)

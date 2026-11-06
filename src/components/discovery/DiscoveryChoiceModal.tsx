@@ -1,5 +1,5 @@
 import React from 'react';
-import { Rocket, Wrench, Archive, Trophy, Zap, Cpu, AlertTriangle, Minimize2, Maximize2, CircleDot, Check, X } from 'lucide-react';
+import { Rocket, Wrench, Archive, Trophy, Zap, Cpu, AlertTriangle, Minimize2, Maximize2, CircleDot, Check, X, FlaskConical } from 'lucide-react';
 import { SectorTile, DiscoveryTile, ShipType } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
 import { Technology } from '../../engine/types/tech';
@@ -238,7 +238,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               )}
               {discovery.immediateReward.science && (
                 <span className="px-2.5 py-1 bg-pink-500/20 border border-pink-500/40 text-pink-300 rounded-md text-xs font-bold flex items-center gap-1.5">
-                  <span className="w-2 h-2 rounded-full bg-pink-400 inline-block" />
+                  <FlaskConical className="w-3.5 h-3.5 text-pink-400 shrink-0" />
                   +{discovery.immediateReward.science} Science
                 </span>
               )}
@@ -257,8 +257,11 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               {discovery.immediateReward.ancientTech && (
                 <div className="w-full mt-2 p-2.5 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-left">
                   <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5 mb-1.5">
-                    <Cpu className="w-4 h-4 text-cyan-400" />
-                    +1 Free Regular Technology (Lowest Printed Cost: {minTechCost}🔬)
+                    <Cpu className="w-4 h-4 text-cyan-400 shrink-0" />
+                    <span className="flex items-center gap-1">
+                      +1 Free Regular Technology (Lowest Printed Cost: {minTechCost}
+                      <FlaskConical className="w-3.5 h-3.5 text-pink-400 inline shrink-0" />)
+                    </span>
                   </div>
                   {tiedTechs.length === 0 ? (
                     <div className="text-xs text-slate-400 italic">No eligible technologies in supply</div>
@@ -266,12 +269,17 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                     <div className="text-xs text-emerald-300 font-semibold flex items-center gap-1">
                       <span>Awarded:</span>
                       <strong className="text-cyan-200">{tiedTechs[0].name}</strong>
-                      <span className="text-[10px] text-slate-400">({tiedTechs[0].category.toUpperCase()} • Cost {tiedTechs[0].baseCost}🔬)</span>
+                      <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
+                        ({tiedTechs[0].category.toUpperCase()} • Cost {tiedTechs[0].baseCost}
+                        <FlaskConical className="w-2.5 h-2.5 text-pink-400 inline shrink-0" />)
+                      </span>
                     </div>
                   ) : (
                     <div className="space-y-1.5">
-                      <div className="text-[11px] text-slate-300 font-medium">
-                        Multiple lowest-cost technologies available ({minTechCost}🔬). Choose which to receive:
+                      <div className="text-[11px] text-slate-300 font-medium flex items-center gap-1">
+                        <span>Multiple lowest-cost technologies available ({minTechCost}</span>
+                        <FlaskConical className="w-3 h-3 text-pink-400 inline shrink-0" />
+                        <span>). Choose which to receive:</span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                         {tiedTechs.map((t) => (
@@ -286,8 +294,11 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                             }`}
                           >
                             <span className="truncate">{t.name}</span>
-                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-950 text-cyan-400 border border-slate-800">
-                              {t.category[0].toUpperCase()}
+                            <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-950 text-cyan-400 border border-slate-800 flex items-center gap-1">
+                              <span>{t.category[0].toUpperCase()}</span>
+                              <span>•</span>
+                              <span>{t.baseCost}</span>
+                              <FlaskConical className="w-2.5 h-2.5 text-pink-400 shrink-0" />
                             </span>
                           </button>
                         ))}
@@ -354,7 +365,8 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                         } disabled:opacity-40 disabled:cursor-not-allowed`}
                       >
                         <span className="w-2 h-2 rounded-full bg-pink-400 inline-block" />
-                        Colonize with Science (🔬)
+                        <span>Colonize with Science</span>
+                        <FlaskConical className="w-3 h-3 text-pink-400 shrink-0" />
                       </button>
                     </div>
                   ) : (
@@ -417,7 +429,10 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                       }`}
                     >
                       <span className="w-2 h-2 rounded-full bg-pink-400 inline-block" />
-                      +3 Science (🔬 3 Money + 3 Science)
+                      <span className="flex items-center gap-1">
+                        +3 Science (3 Money + 3
+                        <FlaskConical className="w-3 h-3 text-pink-400 shrink-0 inline" /> Science)
+                      </span>
                     </button>
                     <button
                       type="button"

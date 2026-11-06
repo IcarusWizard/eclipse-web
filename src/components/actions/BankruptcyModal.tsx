@@ -17,6 +17,7 @@ import {
   CheckCircle2,
   Check,
   Undo2,
+  FlaskConical,
 } from 'lucide-react';
 
 interface BankruptcyModalProps {
@@ -573,7 +574,8 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                                         : 'bg-slate-800 text-slate-400 hover:text-slate-200'
                                     }`}
                                   >
-                                    🔬 Science
+                                    <FlaskConical className="w-3 h-3 text-pink-400 inline mr-1" />
+                                    Science
                                   </button>
                                 </div>
                               </div>

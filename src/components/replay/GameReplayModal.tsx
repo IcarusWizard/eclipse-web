@@ -521,7 +521,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
                   </span>
                   <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400">
                     <span title="Credits (Money)" className="text-amber-400">💰{p.resources?.money ?? 0}</span>
-                    <span title="Science" className="text-cyan-400">🔬{p.resources?.science ?? 0}</span>
+                    <span title="Science" className="text-cyan-400">🧪{p.resources?.science ?? 0}</span>
                     <span title="Materials" className="text-rose-400">🔨{p.resources?.materials ?? 0}</span>
                   </div>
                   {hasPassed && (

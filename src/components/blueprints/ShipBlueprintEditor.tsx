@@ -429,74 +429,101 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
           {/* Left 2 Cols: Ship Blueprint Grid & Live Stats */}
           <div className="md:col-span-2 space-y-6">
             {/* Live Stats HUD */}
-            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 bg-slate-950/80 p-3.5 rounded-lg border border-slate-800 text-xs">
-              <div className="flex flex-col">
+            <div className="grid grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 text-xs">
+              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
                 <span className="text-slate-400 flex items-center gap-1 font-semibold">
                   <Zap className="w-3.5 h-3.5 text-amber-400" /> POWER BALANCE
                 </span>
-                <span
-                  className={`text-base font-bold mt-1 ${
-                    stats.totalPowerProduced >= stats.totalPowerConsumed
-                      ? 'text-emerald-400'
-                      : 'text-rose-400 animate-pulse'
-                  }`}
-                >
-                  +{stats.totalPowerProduced} / -{stats.totalPowerConsumed} PWR
-                </span>
+                <div className="mt-1">
+                  <span
+                    className={`text-base font-bold block ${
+                      stats.totalPowerProduced >= stats.totalPowerConsumed
+                        ? 'text-emerald-400'
+                        : 'text-rose-400 animate-pulse'
+                    }`}
+                  >
+                    +{stats.totalPowerProduced} / -{stats.totalPowerConsumed} PWR
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                    {stats.totalPowerProduced >= stats.totalPowerConsumed ? `+${stats.totalPowerProduced - stats.totalPowerConsumed} Surplus` : `${stats.totalPowerProduced - stats.totalPowerConsumed} Deficit`}
+                  </span>
+                </div>
               </div>
 
-              <div className="flex flex-col">
+              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
                 <span className="text-slate-400 flex items-center gap-1 font-semibold">
                   <Heart className="w-3.5 h-3.5 text-rose-400" /> HULL / HP
                 </span>
-                <span className="text-base font-bold text-slate-200 mt-1">
-                  {stats.totalHull} HP
-                </span>
+                <div className="mt-1">
+                  <span className="text-base font-bold text-slate-200 block">
+                    {stats.totalHull} HP
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                    Damage Capacity
+                  </span>
+                </div>
               </div>
 
-              <div className="flex flex-col">
+              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
                 <span className="text-slate-400 flex items-center gap-1 font-semibold">
                   <Navigation className="w-3.5 h-3.5 text-cyan-400" /> DRIVE SPEED
                 </span>
-                <span
-                  className={`text-base font-bold mt-1 ${
-                    activeShipType === 'starbase' || activeShipType === 'orbital' || stats.totalDriveSpeed > 0
-                      ? 'text-cyan-400'
-                      : 'text-rose-400'
-                  }`}
-                >
-                  {stats.totalDriveSpeed} Speed
-                </span>
+                <div className="mt-1">
+                  <span
+                    className={`text-base font-bold block ${
+                      activeShipType === 'starbase' || activeShipType === 'orbital' || stats.totalDriveSpeed > 0
+                        ? 'text-cyan-400'
+                        : 'text-rose-400'
+                    }`}
+                  >
+                    {stats.totalDriveSpeed} Speed
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                    {activeShipType === 'starbase' || activeShipType === 'orbital' ? 'Stationary Structure' : 'Movement Range'}
+                  </span>
+                </div>
               </div>
 
-              <div className="flex flex-col">
+              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
                 <span className="text-slate-400 flex items-center gap-1 font-semibold">
                   <Crosshair className="w-3.5 h-3.5 text-indigo-400" /> INITIATIVE
                 </span>
-                <span className="text-base font-bold text-indigo-300 mt-1">
-                  {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative} Init
-                </span>
-                <span className="text-[10px] text-slate-400 font-mono">
-                  Base {player.blueprints[activeShipType].baseInitiative >= 0 ? `+${player.blueprints[activeShipType].baseInitiative}` : player.blueprints[activeShipType].baseInitiative} | Parts {stats.totalInitiative - player.blueprints[activeShipType].baseInitiative >= 0 ? `+${stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}` : stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}
-                </span>
+                <div className="mt-1">
+                  <span className="text-base font-bold text-indigo-300 block">
+                    {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative} Init
+                  </span>
+                  <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
+                    Base {player.blueprints[activeShipType].baseInitiative >= 0 ? `+${player.blueprints[activeShipType].baseInitiative}` : player.blueprints[activeShipType].baseInitiative} | Parts {stats.totalInitiative - player.blueprints[activeShipType].baseInitiative >= 0 ? `+${stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}` : stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}
+                  </span>
+                </div>
               </div>
 
-              <div className="flex flex-col">
+              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
                 <span className="text-slate-400 flex items-center gap-1 font-semibold">
                   <Crosshair className="w-3.5 h-3.5 text-sky-400" /> COMP
                 </span>
-                <span className="text-base font-bold text-sky-300 mt-1">
-                  {`+${stats.computerBonus} COMP`}
-                </span>
+                <div className="mt-1">
+                  <span className="text-base font-bold text-sky-300 block">
+                    {`+${stats.computerBonus} COMP`}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                    Cannon Hit Bonus
+                  </span>
+                </div>
               </div>
 
-              <div className="flex flex-col">
+              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
                 <span className="text-slate-400 flex items-center gap-1 font-semibold">
                   <Shield className="w-3.5 h-3.5 text-teal-400" /> SHIELD
                 </span>
-                <span className="text-base font-bold text-teal-300 mt-1">
-                  {`-${stats.shieldBonus} Shield`}
-                </span>
+                <div className="mt-1">
+                  <span className="text-base font-bold text-teal-300 block">
+                    {`-${stats.shieldBonus} Shield`}
+                  </span>
+                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
+                    Opponent Aim Penalty
+                  </span>
+                </div>
               </div>
             </div>
 

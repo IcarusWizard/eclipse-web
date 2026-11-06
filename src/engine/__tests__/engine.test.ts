@@ -21474,6 +21474,75 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(modalHtmlNoAbs).toContain('All defender population cubes were eliminated automatically without rolling dice');
         expect(modalHtmlNoAbs).not.toContain('Neutron Absorber Active');
       });
+
+      it('Test 136: verifies Ancient Tech discovery tile uses beaker icon instead of microscope and ShipBlueprintEditor status bar aligns into 2 rows', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const fs = await import('fs');
+        const path = await import('path');
+        const { createInitialGame } = await import('../rules/setup');
+        const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+        const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+
+        const game = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orionPlayer = game.players[0]!;
+
+        // 1. Verify Ancient Tech discovery tile in DiscoveryChoiceModal renders beaker and no microscope
+        const ancientTechTile = {
+          id: 'disc_ancient_tech_1',
+          name: 'Ancient Tech',
+          description: 'Take the regular Tech Tile with the lowest printed cost for free, or keep for 2 VP.',
+          immediateReward: { ancientTech: true, victoryPoints: 2 },
+        };
+
+        const discoveryModalHtml = renderToString(
+          React.createElement(DiscoveryChoiceModal, {
+            discovery: ancientTechTile,
+            player: orionPlayer,
+            techSupply: game.techSupply,
+            onChoice: () => {},
+          })
+        );
+
+        // Verification: Does NOT contain microscope emoji 🔬
+        expect(discoveryModalHtml).not.toContain('🔬');
+        // Contains beaker / Lowest Printed Cost text
+        expect(discoveryModalHtml).toContain('Lowest Printed Cost:');
+        expect(discoveryModalHtml).toContain('+1 Free Regular Technology');
+
+        // Check source code of DiscoveryChoiceModal to ensure no 🔬 remains
+        const discoverySrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'discovery', 'DiscoveryChoiceModal.tsx'),
+          'utf-8'
+        );
+        expect(discoverySrc).not.toContain('🔬');
+        expect(discoverySrc).toContain('FlaskConical');
+
+        // 2. Verify ShipBlueprintEditor status bar aligns into exactly 2 rows (grid-cols-3)
+        const editorSrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'),
+          'utf-8'
+        );
+        // Ensure old 1-row responsive classes (grid-cols-2 sm:grid-cols-3 lg:grid-cols-6) are replaced
+        expect(editorSrc).not.toContain('lg:grid-cols-6');
+        expect(editorSrc).toContain('grid grid-cols-3 gap-3');
+
+        const editorHtml = renderToString(
+          React.createElement(ShipBlueprintEditor, {
+            player: orionPlayer,
+            onSaveBlueprints: () => {},
+            onClose: () => {},
+          })
+        );
+
+        expect(editorHtml).toContain('grid-cols-3');
+        expect(editorHtml).toContain('POWER BALANCE');
+        expect(editorHtml).toContain('HULL / HP');
+        expect(editorHtml).toContain('DRIVE SPEED');
+        expect(editorHtml).toContain('INITIATIVE');
+        expect(editorHtml).toContain('COMP');
+        expect(editorHtml).toContain('SHIELD');
+      });
     });
   });
 });
