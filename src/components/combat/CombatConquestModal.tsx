@@ -4,7 +4,7 @@ import { canColonizePlanetSlot } from '../../engine/rules/gameReducer';
 import {
   Trophy,
   CircleDot,
-  Ship,
+  Rocket,
   Coins,
   FlaskConical,
   Hammer,
@@ -376,7 +376,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
               <div className="bg-slate-950/70 rounded-xl border border-slate-800/90 p-3.5 space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
-                    <Ship className="w-4 h-4 text-indigo-400" />
+                    <Rocket className="w-4 h-4 text-indigo-400" />
                     <span>2. Planetary Colonization (Optional)</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400">

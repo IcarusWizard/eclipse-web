@@ -27,7 +27,7 @@ import {
   Coins,
   FlaskConical,
   Hammer,
-  Ship,
+  Rocket,
   CircleDot,
   Cpu,
   Layers,
@@ -272,7 +272,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
 
                 {/* Colony Ships Status */}
                 <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5">
-                  <Ship className="w-4 h-4 text-indigo-400" />
+                  <Rocket className="w-4 h-4 text-indigo-400" />
                   <span className="text-xs text-slate-300 font-semibold">Colony Ships:</span>
                   <div className="flex items-center gap-1">
                     {Array.from({ length: player.colonyShips.total }).map((_, cIdx) => {
@@ -1289,7 +1289,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg space-y-4">
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
                 <div className="flex items-center gap-2">
-                  <Ship className="w-5 h-5 text-cyan-400" />
+                  <Rocket className="w-5 h-5 text-cyan-400" />
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
                       FLEET SHIP BLUEPRINTS
@@ -1323,7 +1323,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       {/* Ship Header */}
                       <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                         <div className="flex items-center gap-2">
-                          <Ship className="w-4 h-4 text-cyan-400" />
+                          <Rocket className="w-4 h-4 text-cyan-400" />
                           <h3 className="text-sm font-bold text-slate-100 font-display uppercase tracking-wide">
                             {sc.name}
                           </h3>

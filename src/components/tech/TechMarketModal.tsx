@@ -322,8 +322,14 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             {tech.description}
           </p>
           <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 font-mono">
-            <span>Base Cost: {tech.baseCost}🔬</span>
-            <span>Min Cost: {tech.minCost}🔬</span>
+            <span className="flex items-center gap-1">
+              Base Cost: {tech.baseCost}
+              <FlaskConical className="w-3 h-3 text-pink-400 inline" />
+            </span>
+            <span className="flex items-center gap-1">
+              Min Cost: {tech.minCost}
+              <FlaskConical className="w-3 h-3 text-pink-400 inline" />
+            </span>
             {tech.victoryPoints ? (
               <span className="text-amber-400 font-bold">+{tech.victoryPoints} VP</span>
             ) : null}
@@ -340,19 +346,25 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
         {/* Slot Header */}
         <div>
-          <div className="flex items-center justify-between gap-1 mb-1.5 text-[10px] font-mono">
-            <span className="text-slate-400 font-bold uppercase tracking-wider">
-              {tech.tier ? `Slot ${tech.tier}` : 'Rare'} • Base {tech.baseCost}🔬 • Min {tech.minCost}🔬
+          <div className="flex items-center justify-between gap-1 mb-1.5 text-[10px] font-mono whitespace-nowrap">
+            <span className="text-slate-400 font-bold uppercase tracking-wider shrink-0">
+              {tech.tier ? `Slot ${tech.tier}` : 'Rare Tech'}
             </span>
 
-            {/* Stock in Tray badge */}
+            {/* Stock count badge */}
             {stock > 0 ? (
-              <span className="px-1.5 py-0.5 rounded font-bold bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] flex items-center gap-1">
+              <span
+                className="px-1.5 py-0.5 rounded font-bold bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] flex items-center gap-1 shrink-0 whitespace-nowrap"
+                title={`${stock} available in Tech Tray`}
+              >
                 <Package className="w-3 h-3 text-amber-400" />
-                x{stock} in Tray
+                <span>{`x${stock}`}</span>
               </span>
             ) : (
-              <span className="px-1.5 py-0.5 rounded font-bold bg-slate-900/80 text-slate-500 border border-slate-800 text-[9px]">
+              <span
+                className="px-1.5 py-0.5 rounded font-bold bg-slate-900/80 text-slate-500 border border-slate-800 text-[9px] shrink-0 whitespace-nowrap"
+                title="Out of stock in Tech Tray"
+              >
                 EMPTY
               </span>
             )}
@@ -384,7 +396,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 Artifacts Held:
               </span>
               <span className="font-bold text-sky-100 bg-sky-900/60 px-1.5 py-0.5 rounded border border-sky-600">
-                {controlledArtifactsCount} (Yields {controlledArtifactsCount * 5} Res)
+                {controlledArtifactsCount}
               </span>
             </div>
           )}
@@ -442,7 +454,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                       }`}
                     >
                       <div className="uppercase text-[9px]">{tr[0]} {isTrFull ? '(Full)' : `(${trCount}/7)`}</div>
-                      <div className="text-[10px]">{costOnTr}🔬</div>
+                      <div className="text-[10px] flex items-center justify-center gap-0.5">
+                        <span>{costOnTr}</span>
+                        <FlaskConical className="w-2.5 h-2.5 text-pink-400 inline" />
+                      </div>
                     </button>
                   );
                 })}
@@ -476,75 +491,80 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           )}
         </div>
 
-        {/* Footer: Price & Action */}
-        <div className="pt-2 border-t border-slate-800/80 flex items-center justify-between gap-1">
-          <div className="flex flex-col">
-            <div className="flex items-center gap-1 text-[9px] text-slate-400 font-semibold uppercase">
-              <span>Cost</span>
-              <span className="text-slate-500 font-mono font-normal">(Min {tech.minCost}🔬)</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-extrabold text-sm text-pink-400 font-mono">
-                {discountedCost}🔬
-              </span>
+        {/* Footer: Price (Row 1) & Action (Row 2) */}
+        <div className="pt-2 border-t border-slate-800/80 flex flex-col gap-1.5">
+          {/* Row 1: Cost: <base> (MIN <min>) <beaker> */}
+          <div className="flex items-center justify-between text-[10px] font-mono whitespace-nowrap">
+            <div className="flex items-center gap-1">
+              <span className="text-slate-400 font-semibold uppercase">Cost:</span>
+              <span className="font-extrabold text-pink-400 font-mono text-[11px]">{discountedCost}</span>
               {tech.baseCost > discountedCost && (
-                <span className="text-[10px] text-slate-500 line-through font-mono">
+                <span className="text-[9px] text-slate-500 line-through font-mono">
                   {tech.baseCost}
                 </span>
               )}
+              <span className="text-slate-500 font-normal text-[9.5px]">
+                (MIN {tech.minCost})
+              </span>
             </div>
+            <FlaskConical className="w-3.5 h-3.5 text-pink-400 shrink-0" />
           </div>
 
-          <div>
+          {/* Row 2: Action or Status */}
+          <div className="w-full">
             {isOwned ? (
-              <span className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 flex items-center gap-1">
+              <span className="w-full py-1 rounded-lg text-[10.5px] font-bold bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 flex items-center justify-center gap-1">
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
                 Researched
               </span>
             ) : stock === 0 ? (
-              <span className="text-[11px] text-slate-500 italic font-semibold">
+              <span className="w-full py-1 rounded text-[10.5px] text-slate-500 italic font-semibold flex items-center justify-center bg-slate-950/40 border border-slate-900">
                 Empty Slot
               </span>
             ) : isSelected ? (
               <button
+                type="button"
                 onClick={toggleSelect}
-                className="px-2.5 py-1.5 rounded-lg text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md transition-all font-sans flex items-center gap-1"
+                className="w-full py-1 rounded-lg text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md transition-all font-sans flex items-center justify-center gap-1 cursor-pointer"
               >
                 <X className="w-3 h-3" /> Deselect
               </button>
             ) : canResearch ? (
               maxResearch > 1 ? (
                 <button
+                  type="button"
                   onClick={toggleSelect}
                   disabled={selectedForResearch.length >= maxResearch}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600/70 text-cyan-300 disabled:opacity-30 disabled:cursor-not-allowed shadow transition-all font-sans"
+                  className="w-full py-1 rounded-lg text-xs font-bold bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600/70 text-cyan-300 disabled:opacity-30 disabled:cursor-not-allowed shadow transition-all font-sans cursor-pointer flex items-center justify-center"
                 >
                   Select
                 </button>
               ) : (
                 <button
+                  type="button"
                   onClick={() => onResearchTech(tech.id, chosenTrack, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined, shrinePlacement)}
                   disabled={isShrinePartiallySelected}
-                  className="px-3 py-1.5 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-lg shadow-pink-950/50 transition-all font-sans disabled:opacity-40"
+                  className="w-full py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-md shadow-pink-950/50 transition-all font-sans disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1"
                   title={isShrinePartiallySelected ? "Select target planet for Shrine or deselect Shrine" : "Research technology"}
                 >
                   Research
                 </button>
               )
             ) : isTrackFull ? (
-              <span className="text-[10px] text-amber-400 font-bold px-2 py-1 bg-amber-950/40 rounded border border-amber-900/60">
+              <span className="w-full py-1 rounded bg-amber-950/40 border border-amber-900/60 text-amber-400 font-bold text-[10px] flex items-center justify-center">
                 Track Full (7/7)
               </span>
             ) : !canAfford ? (
-              <span className="text-[10px] text-rose-400 font-bold px-2 py-1 bg-rose-950/40 rounded border border-rose-900/60">
-                Need {discountedCost - commander.resources.science}🔬
-              </span>
+              <div className="w-full py-0.5 rounded bg-rose-950/50 border border-rose-900/70 text-rose-300 font-bold text-[10px] flex items-center justify-center gap-1">
+                <span>Need {discountedCost - commander.resources.science}</span>
+                <FlaskConical className="w-3 h-3 text-pink-400 inline shrink-0" />
+              </div>
             ) : !hasActionDiscs ? (
-              <span className="text-[10px] text-slate-400 font-semibold px-2 py-1 bg-slate-900 rounded border border-slate-800">
+              <span className="w-full py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 font-semibold text-[10px] flex items-center justify-center">
                 No Discs
               </span>
             ) : (
-              <span className="text-[10px] text-slate-400 font-semibold px-2 py-1 bg-slate-900 rounded border border-slate-800">
+              <span className="w-full py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 font-semibold text-[10px] flex items-center justify-center">
                 {currentSeat === 'spectator' ? 'Spectator Mode' : 'Not Your Turn'}
               </span>
             )}
@@ -929,7 +949,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           <div className="px-5 py-3 bg-slate-900/95 border-t border-cyan-500/40 flex flex-wrap items-center justify-between gap-4 shrink-0 relative z-10">
             <div className="flex items-center gap-3">
               <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 font-bold text-base">
-                🔬
+                <FlaskConical className="w-5 h-5 text-cyan-400" />
               </div>
               <div>
                 <div className="text-xs font-bold text-cyan-300 uppercase tracking-wide flex items-center gap-2">
@@ -949,7 +969,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                           className="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-slate-200 text-[11px] flex items-center gap-1"
                         >
                           <strong className="text-cyan-400">#{idx + 1}</strong> {item.tech?.name}
-                          <span className="text-pink-400 font-mono font-bold">({item.cost}🔬)</span>
+                          <span className="text-pink-400 font-mono font-bold flex items-center gap-0.5">
+                            ({item.cost}
+                            <FlaskConical className="w-2.5 h-2.5 text-pink-400 inline" />)
+                          </span>
                         </span>
                       ))}
                     </div>
@@ -961,19 +984,22 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             <div className="flex items-center gap-3">
               {selectedForResearch.length > 0 && (
                 <button
+                  type="button"
                   onClick={() => setSelectedForResearch([])}
-                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition-colors"
+                  className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition-colors cursor-pointer"
                 >
                   Clear Selection
                 </button>
               )}
               <div className="text-right">
                 <div className="text-[10px] text-slate-400 uppercase font-semibold">Combined Cost</div>
-                <div className="text-sm font-mono font-black text-pink-400">
-                  {stagedResearches.totalScience} 🔬
+                <div className="text-sm font-mono font-black text-pink-400 flex items-center justify-end gap-1">
+                  <span>{stagedResearches.totalScience}</span>
+                  <FlaskConical className="w-4 h-4 text-pink-400" />
                 </div>
               </div>
               <button
+                type="button"
                 disabled={
                   !isActionPhase ||
                   selectedForResearch.length === 0 ||
@@ -988,16 +1014,24 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   const targetSecId = hasWarp ? (warpPortalSectorId || (sectors || []).find((s) => s.discOwner === commander.id)?.id) : undefined;
                   onResearchTech(selectedForResearch, undefined, targetSecId, shrinePlacement);
                 }}
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg shadow-cyan-950/50 transition-all flex items-center gap-1.5 font-sans"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg shadow-cyan-950/50 transition-all flex items-center gap-1.5 font-sans cursor-pointer"
               >
                 <Check className="w-4 h-4 stroke-[3]" />
-                {isActionPhase
-                  ? isCommanderTurn
-                    ? `Research Selected (${stagedResearches.totalScience} 🔬, 1 Disc)`
-                    : currentSeat === 'spectator'
-                    ? `Spectator Mode (Observing ${activePlayer?.name || 'Commander'})`
-                    : `Waiting for ${activePlayer?.name || 'Commander'}...`
-                  : `Research Unavailable (${phase.replace('_', ' ')})`}
+                {isActionPhase ? (
+                  isCommanderTurn ? (
+                    <span className="flex items-center gap-1">
+                      <span>Research Selected ({stagedResearches.totalScience}</span>
+                      <FlaskConical className="w-3.5 h-3.5 inline text-slate-950" />
+                      <span>, 1 Disc)</span>
+                    </span>
+                  ) : currentSeat === 'spectator' ? (
+                    `Spectator Mode (Observing ${activePlayer?.name || 'Commander'})`
+                  ) : (
+                    `Waiting for ${activePlayer?.name || 'Commander'}...`
+                  )
+                ) : (
+                  `Research Unavailable (${phase.replace('_', ' ')})`
+                )}
               </button>
             </div>
           </div>

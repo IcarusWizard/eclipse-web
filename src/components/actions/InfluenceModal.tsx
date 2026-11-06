@@ -9,7 +9,7 @@ import {
 } from '../../engine/rules/gameReducer';
 import {
   CircleDot,
-  Ship,
+  Rocket,
   X,
   CheckCircle2,
   AlertCircle,
@@ -151,7 +151,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
           <div className="bg-indigo-950/30 border border-indigo-500/40 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400 flex items-center justify-center text-indigo-300">
-                <Ship className="w-4 h-4" />
+                <Rocket className="w-4 h-4" />
               </div>
               <div>
                 <div className="text-xs font-bold text-indigo-300 uppercase tracking-wide">

@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { BlackHoleDelayedShip } from '../../engine/rules/galacticEvents';
 import { SectorTile } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
-import { Radio, Sparkles, X, ArrowRight, ShieldCheck, Ship, MapPin } from 'lucide-react';
+import { Radio, Sparkles, X, ArrowRight, ShieldCheck, Rocket, MapPin } from 'lucide-react';
 
 interface BlackHoleReturnModalProps {
   player: PlayerState;
@@ -100,7 +100,7 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
         <div className="bg-indigo-950/40 border border-indigo-500/40 rounded-xl p-2.5 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-indigo-500/20 border border-indigo-400 flex items-center justify-center text-indigo-300">
-              <Ship className="w-4 h-4" />
+              <Rocket className="w-4 h-4" />
             </div>
             <div>
               <div className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">

@@ -40,7 +40,6 @@ import {
   BarChart3,
   Flame,
   Check,
-  Ship,
   HelpCircle,
   Navigation,
   Plus,

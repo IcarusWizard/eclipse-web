@@ -20961,6 +20961,198 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Verify it renders unclipped with body z-20 over footer z-10
         expect(allTracksHtml).toContain('relative z-20');
         expect(allTracksHtml).toContain('relative z-10');
+
+        // 4. Verification of 2-row card footer and chemical beaker icon across all science displays
+        expect(techModalSrc).not.toContain('🔬');
+        expect(techModalSrc).toContain('Cost:');
+        expect(techModalSrc).toContain('(MIN ');
+        expect(allTracksHtml).not.toContain('🔬');
+        expect(allTracksHtml).toContain('Cost:');
+        expect(allTracksHtml).toContain('(MIN ');
+      });
+
+      test('131. verifies Spaceship Rocket symbols replace nautical Ship icons and advanced population slots use resource border with top-right star', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const fs = await import('fs');
+        const path = await import('path');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { createInitialGame } = await import('../rules/setup');
+        const { SectorTile } = await import('../types/galaxy');
+
+        // Part 1: Verify all ship icons across UI components use Rocket (spaceship), not nautical Ship
+        const mapSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'map', 'HexGalaxyMap.tsx'), 'utf-8');
+        const playerBoardSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'dashboard', 'PlayerBoard.tsx'), 'utf-8');
+        const phyBoardSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'dashboard', 'PhysicalPlayerBoardModal.tsx'), 'utf-8');
+        const influenceModalSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'actions', 'InfluenceModal.tsx'), 'utf-8');
+        const combatConquestSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'combat', 'CombatConquestModal.tsx'), 'utf-8');
+        const blackHoleReturnSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'actions', 'BlackHoleReturnModal.tsx'), 'utf-8');
+        const combatSimSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'simulator', 'CombatSimulatorModal.tsx'), 'utf-8');
+
+        // No lucide-react Ship imports in any of these components
+        expect(playerBoardSrc).not.toMatch(/from\s+['"]lucide-react['"].*\bShip\b/);
+        expect(phyBoardSrc).not.toMatch(/from\s+['"]lucide-react['"].*\bShip\b/);
+        expect(influenceModalSrc).not.toMatch(/from\s+['"]lucide-react['"].*\bShip\b/);
+        expect(combatConquestSrc).not.toMatch(/from\s+['"]lucide-react['"].*\bShip\b/);
+        expect(blackHoleReturnSrc).not.toMatch(/from\s+['"]lucide-react['"].*\bShip\b/);
+        expect(combatSimSrc).not.toMatch(/from\s+['"]lucide-react['"].*\bShip\b/);
+
+        // Rocket icon is used for colony ships and fleet
+        expect(playerBoardSrc).toContain('<Rocket className="w-3 h-3 text-indigo-400" />');
+        expect(playerBoardSrc).toContain('<Rocket className="w-3.5 h-3.5 text-purple-400" />');
+        expect(playerBoardSrc).toContain('<Rocket className="w-3 h-3" /> Fleet In Service');
+
+        expect(phyBoardSrc).toContain('<Rocket className="w-4 h-4 text-indigo-400" />');
+        expect(phyBoardSrc).toContain('<Rocket className="w-5 h-5 text-cyan-400" />');
+        expect(phyBoardSrc).toContain('<Rocket className="w-4 h-4 text-cyan-400" />');
+
+        expect(influenceModalSrc).toContain('<Rocket className="w-4 h-4" />');
+        expect(combatConquestSrc).toContain('<Rocket className="w-4 h-4 text-indigo-400" />');
+        expect(blackHoleReturnSrc).toContain('<Rocket className="w-4 h-4" />');
+
+        // Part 2: Verify Advanced Population Slot on HexGalaxyMap
+        // 1. Source code check: slots use standard 13x13 size (same as normal slots), with thin white contour for advanced
+        expect(mapSrc).not.toContain("x={planet.isAdvanced ? '-7.5' : '-6.5'}");
+        expect(mapSrc).not.toContain("width={planet.isAdvanced ? '15' : '13'}");
+        expect(mapSrc).toContain('stroke="#ffffff"');
+        expect(mapSrc).toContain('strokeWidth="4"');
+        expect(mapSrc).toContain("stroke={planetColor}");
+        expect(mapSrc).toContain('strokeWidth="1.6"');
+        // 2. Star is placed slightly more top-right at x="6" y="-6" with smaller size 7
+        expect(mapSrc).toContain('x="6"');
+        expect(mapSrc).toContain('y="-6"');
+        expect(mapSrc).toContain('fontSize="7"');
+        expect(mapSrc).toContain('paintOrder="stroke fill"');
+
+        // Part 3: Render HexGalaxyMap with advanced slots (both uncolonized and colonized)
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const customTile: SectorTile = {
+          id: 'sec_adv_test',
+          sectorNumber: 999,
+          ring: 2,
+          coord: { q: 1, r: -1 },
+          rotation: 0,
+          wormholes: [0, 1, 2, 3, 4, 5],
+          planets: [
+            { id: 'p_money_adv', resource: 'money', isAdvanced: true },
+            { id: 'p_sci_adv', resource: 'science', isAdvanced: true, colonizedBy: game.players[0]!.id },
+            { id: 'p_mat_adv', resource: 'material', isAdvanced: true },
+          ],
+          ships: [],
+          discs: [],
+          hasAncient: false,
+          hasDiscoveryTile: false,
+        };
+        const testGameState = {
+          ...game,
+          sectors: [...game.sectors, customTile],
+        };
+
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: testGameState,
+            onSelectSector: () => {},
+            onColonizePlanet: () => {},
+          })
+        );
+
+        // Advanced slots have thick white contour: stroke="#ffffff" stroke-width="4"
+        expect(mapHtml).toContain('stroke="#ffffff" stroke-width="4"');
+        // Colored boxes remain 13x13 with stroke-width 1.6:
+        expect(mapHtml).toContain('stroke="#facc15" stroke-width="1.6"');
+        expect(mapHtml).toContain('stroke="#ec4899" stroke-width="1.6"');
+        expect(mapHtml).toContain('stroke="#854d0e" stroke-width="1.6"');
+
+        // Verify white stars with top-right corner coordinates x="6" y="-6" and font-size="7"
+        expect(mapHtml).toContain('x="6" y="-6" font-size="7" font-weight="black" fill="#ffffff"');
+        expect(mapHtml).toContain('★</text>');
+      });
+
+      test('132. verifies uniform w-3.5 h-3.5 reputation track slots squeezed without slide bars in PlayerBoard and simplified Artifact Key tech hint', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const fs = await import('fs');
+        const path = await import('path');
+        const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+        const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+        const { createInitialGame } = await import('../rules/setup');
+
+        // Part 1: Verify PlayerBoard uniform reputation track for 4-slot and 5-slot factions
+        const playerBoardSrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'dashboard', 'PlayerBoard.tsx'),
+          'utf-8'
+        );
+
+        // Verification: no overflow-x-auto on reputation slots, uses overflow-hidden, px-1 py-1.5, and squeezed gap-0.5
+        expect(playerBoardSrc).not.toContain('gap-1 mt-0.5 overflow-x-auto');
+        expect(playerBoardSrc).toContain('px-1 py-1.5 flex flex-col justify-between');
+        expect(playerBoardSrc).toContain('flex items-center gap-0.5 mt-0.5 overflow-hidden');
+        // Slots use uniform w-3.5 h-3.5 text-[8px] across all factions
+        expect(playerBoardSrc).toContain('className="w-3.5 h-3.5 rounded-sm border text-[8px] font-bold');
+
+        // Render Terran (5 slots) in PlayerBoard
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const terranPlayer = game.players[0]!;
+        expect(terranPlayer.faction.id).toBe('terran_federation');
+
+        const boardHtml = renderToString(
+          React.createElement(PlayerBoard, {
+            player: terranPlayer,
+            isActive: true,
+            sectors: game.sectors,
+            allPlayers: game.players,
+          })
+        );
+
+        // All 5 slots render with uniform w-3.5 h-3.5 dimensions and overflow-hidden
+        expect(boardHtml).toContain('overflow-hidden');
+        expect(boardHtml).not.toContain('overflow-x-auto');
+        expect(boardHtml).toContain('w-3.5 h-3.5');
+        expect(boardHtml).toContain('text-[8px]');
+
+        // Part 2: Verify Artifact Key tech hint simplification in TechMarketModal
+        const techModalSrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'tech', 'TechMarketModal.tsx'),
+          'utf-8'
+        );
+
+        // Verification: complex "Yields ... Res" removed, only simple count shown
+        expect(techModalSrc).not.toContain('Yields');
+        expect(techModalSrc).not.toContain('Res)');
+        expect(techModalSrc).toContain('Artifacts Held:');
+        expect(techModalSrc).toContain('{controlledArtifactsCount}');
+
+        // Render TechMarketModal with Artifact Key in supply
+        const nanoTechs = (await import('../rules/techData')).NANO_TECHS;
+        const artifactKeyTech = nanoTechs.find((t) => t.id === 'artifact_key')!;
+        const gameWithArtifactKey = {
+          ...game,
+          techSupply: [artifactKeyTech],
+        };
+
+        const techHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: terranPlayer,
+            activePlayer: terranPlayer,
+            players: game.players,
+            sectors: game.sectors,
+            techSupply: gameWithArtifactKey.techSupply,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        );
+
+        // Verification of simple hint output
+        expect(techHtml).toContain('Artifacts Held:');
+        expect(techHtml).not.toContain('Yields');
+        expect(techHtml).not.toContain('Res)');
+
+        // Part 3: Verify first row of tech cards shows <Package /> x{stock} without "in Tray" to guarantee single-row display
+        expect(techModalSrc).not.toContain('in Tray');
+        expect(techModalSrc).toContain('whitespace-nowrap');
+        expect(techModalSrc).toContain('x${stock}');
+        expect(techHtml).toContain('x1');
+        expect(techHtml).not.toContain('in Tray');
       });
     });
   });

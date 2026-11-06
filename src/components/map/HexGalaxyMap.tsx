@@ -1769,15 +1769,27 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                           </g>
                         ) : (
                           <>
+                            {planet.isAdvanced && (
+                              <rect
+                                x="-6.5"
+                                y="-6.5"
+                                width="13"
+                                height="13"
+                                rx="2"
+                                fill="none"
+                                stroke="#ffffff"
+                                strokeWidth="4"
+                              />
+                            )}
                             <rect
-                              x={planet.isAdvanced ? '-7.5' : '-6.5'}
-                              y={planet.isAdvanced ? '-7.5' : '-6.5'}
-                              width={planet.isAdvanced ? '15' : '13'}
-                              height={planet.isAdvanced ? '15' : '13'}
+                              x="-6.5"
+                              y="-6.5"
+                              width="13"
+                              height="13"
                               rx="2"
                               fill="rgba(15, 23, 42, 0.95)"
-                              stroke={planet.isAdvanced ? '#ffffff' : planetColor}
-                              strokeWidth={planet.isAdvanced ? '2' : '1.6'}
+                              stroke={planetColor}
+                              strokeWidth="1.6"
                             />
                             {planet.colonizedBy ? (
                               <rect
@@ -1802,12 +1814,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                             )}
                             {planet.isAdvanced && (
                               <text
-                                x="4"
-                                y="-4"
-                                fontSize="6.5"
+                                x="6"
+                                y="-6"
+                                fontSize="7"
                                 fontWeight="black"
                                 fill="#ffffff"
+                                stroke="#0a0f1d"
+                                strokeWidth="0.8"
+                                paintOrder="stroke fill"
                                 textAnchor="middle"
+                                dominantBaseline="central"
                                 className="pointer-events-none select-none font-bold"
                               >
                                 ★
@@ -2730,15 +2746,27 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
                     return (
                       <g key={planet.id || pIdx} transform={`translate(${offsetX}, ${offsetY})`}>
+                        {planet.isAdvanced && (
+                          <rect
+                            x="-6.5"
+                            y="-6.5"
+                            width="13"
+                            height="13"
+                            rx="2"
+                            fill="none"
+                            stroke="#ffffff"
+                            strokeWidth="4"
+                          />
+                        )}
                         <rect
-                          x={planet.isAdvanced ? '-7.5' : '-6.5'}
-                          y={planet.isAdvanced ? '-7.5' : '-6.5'}
-                          width={planet.isAdvanced ? '15' : '13'}
-                          height={planet.isAdvanced ? '15' : '13'}
+                          x="-6.5"
+                          y="-6.5"
+                          width="13"
+                          height="13"
                           rx="2"
                           fill="rgba(15, 23, 42, 0.95)"
-                          stroke={planet.isAdvanced ? '#ffffff' : planetColor}
-                          strokeWidth={planet.isAdvanced ? '2' : '1.6'}
+                          stroke={planetColor}
+                          strokeWidth="1.6"
                         />
                         <rect
                           x="-3"
@@ -2750,12 +2778,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         />
                         {planet.isAdvanced && (
                           <text
-                            x="4"
-                            y="-4"
-                            fontSize="6.5"
+                            x="6"
+                            y="-6"
+                            fontSize="7"
                             fontWeight="black"
                             fill="#ffffff"
+                            stroke="#0a0f1d"
+                            strokeWidth="0.8"
+                            paintOrder="stroke fill"
                             textAnchor="middle"
+                            dominantBaseline="central"
                             className="pointer-events-none select-none font-bold"
                           >
                             ★

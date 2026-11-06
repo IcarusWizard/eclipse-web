@@ -9,7 +9,7 @@ import {
   FlaskConical,
   Hammer,
   CircleDot,
-  Ship,
+  Rocket,
   Layers,
   Cpu,
   Shield,
@@ -226,7 +226,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-indigo-300"
             title={`Colony Ships: ${player.colonyShips.ready} Ready / ${player.colonyShips.total}`}
           >
-            <Ship className="w-3 h-3 text-indigo-400" />
+            <Rocket className="w-3 h-3 text-indigo-400" />
             <span>{player.colonyShips.ready}</span>
           </div>
 
@@ -467,7 +467,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         {/* Colony Ships */}
         <div className="bg-slate-950/70 rounded-lg border border-slate-800/90 p-1.5 flex flex-col justify-between">
           <div className="flex items-center gap-1 text-[10px] text-slate-400">
-            <Ship className="w-3 h-3 text-indigo-400" />
+            <Rocket className="w-3 h-3 text-indigo-400" />
             <span>Colony Ships</span>
           </div>
           <span className="font-bold text-slate-200 font-mono text-xs mt-0.5">
@@ -476,7 +476,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         </div>
 
         {/* Reputation Tiles */}
-        <div className="bg-slate-950/70 rounded-lg border border-amber-800/40 p-1.5 flex flex-col justify-between">
+        <div className="bg-slate-950/70 rounded-lg border border-amber-800/40 px-1 py-1.5 flex flex-col justify-between">
           <div className="flex items-center justify-between text-[10px] text-amber-400">
             <span className="flex items-center gap-1">
               <Trophy className="w-3 h-3 text-amber-400" /> Rep
@@ -485,7 +485,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               {hideOpponentReputation ? '? VP' : `${reputationVP} VP`}
             </span>
           </div>
-          <div className="flex items-center gap-1 mt-0.5 overflow-x-auto">
+          <div className="flex items-center gap-0.5 mt-0.5 overflow-hidden">
             {trackSlots.map((slot) => {
               const isAmbassador = slot.tile?.type === 'ambassador';
               const isRep = slot.tile?.type === 'reputation';
@@ -545,7 +545,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           className="bg-purple-950/30 rounded-lg border border-purple-800/50 p-2 mb-2 flex items-center justify-between text-xs"
         >
           <div className="flex items-center gap-1 text-[11px] text-purple-300 font-bold">
-            <Ship className="w-3.5 h-3.5 text-purple-400" />
+            <Rocket className="w-3.5 h-3.5 text-purple-400" />
             <span>Convert Colony Ship:</span>
           </div>
           <div className="flex items-center gap-1">
@@ -779,7 +779,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             className="w-full px-2 py-1.5 flex items-center justify-between text-[10px] font-semibold text-slate-400 hover:text-slate-200 transition-colors"
           >
             <span className="flex items-center gap-1 text-cyan-400">
-              <Ship className="w-3 h-3" /> Fleet In Service ({totalShipsDeployed})
+              <Rocket className="w-3 h-3" /> Fleet In Service ({totalShipsDeployed})
             </span>
             <span className="flex items-center gap-1 font-mono text-[9px] text-slate-500">
               {showFleet ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
