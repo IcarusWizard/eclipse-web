@@ -154,7 +154,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
               </span>
             </div>
             <div className="text-[10px] text-slate-400">
-              {isCenter ? 'Galactic Center' : `Ring ${sector.ring} Orbit`} • {sector.victoryPoints + (sector.structures?.monolith ? 3 : 0)} Victory Points{sector.structures?.monolith ? ` (${sector.victoryPoints} Base + 3 Monolith)` : ''}
+              {`${isCenter ? 'Galactic Center' : `Ring ${sector.ring} Orbit`} • Coord: (${sector.coord.q}, ${sector.coord.r}) • ${sector.victoryPoints + (sector.structures?.monolith ? 3 : 0)} Victory Points${sector.structures?.monolith ? ` (${sector.victoryPoints} Base + 3 Monolith)` : ''}`}
             </div>
           </div>
         </div>
@@ -486,7 +486,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                                   <span>Hull: {stats.totalHull}</span>
                                   <span>• Speed: {stats.totalDriveSpeed}</span>
                                   <span>• Init: {stats.totalInitiative}</span>
-                                  {stats.computerBonus > 0 && <span>• +{stats.computerBonus} Hit</span>}
+                                  {stats.computerBonus > 0 && <span>• +{stats.computerBonus} COMP</span>}
                                   {stats.shieldBonus > 0 && <span>• -{stats.shieldBonus} Shield</span>}
                                 </div>
                               ) : isNpc && (type === 'ancient' || type === 'guardian' || type === 'gcds') ? (

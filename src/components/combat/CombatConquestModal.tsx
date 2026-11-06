@@ -199,6 +199,18 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 </div>
               </div>
 
+              {conquest.bombardmentSummary.neutronAbsorberActive && (
+                <div className="p-3 rounded-lg bg-teal-950/40 border border-teal-600/60 flex items-start gap-2.5">
+                  <Shield className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
+                  <div>
+                    <span className="text-xs font-bold text-teal-300">Neutron Absorber Active</span>
+                    <p className="text-[11px] text-slate-300 mt-0.5">
+                      {conquest.bombardmentSummary.defenderName}&apos;s Neutron Absorber completely nullified enemy Neutron Bombs! Attacker was forced to bombard with conventional non-missile cannons.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {conquest.bombardmentSummary.hasNeutronBombs ? (
                 <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-700/40 flex items-start gap-2.5">
                   <Flame className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />

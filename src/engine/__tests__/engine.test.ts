@@ -5551,6 +5551,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const remainingCubes = popSector.planets.filter((p) => p.colonizedBy === defAbsP2.id).length;
         // Normal cannon attack resolves against remaining cubes
         expect(remainingCubes).toBeLessThanOrEqual(2);
+        expect(bombGame.pendingCombatConquest).toBeDefined();
+        expect(bombGame.pendingCombatConquest?.bombardmentSummary).toBeDefined();
+        expect(bombGame.pendingCombatConquest?.bombardmentSummary?.neutronAbsorberActive).toBe(true);
+        expect(bombGame.pendingCombatConquest?.bombardmentSummary?.hasNeutronBombs).toBe(false);
+        expect(bombGame.pendingCombatConquest?.bombardmentSummary?.totalDamage).not.toBe(99);
+        expect(bombGame.log.some((l) => l.message.includes('Neutron Absorber shielded population'))).toBe(true);
 
         // --- Bug 60: 7-Tech row limit per track ---
         const techCapGame = createInitialGame(2);
@@ -21153,6 +21159,320 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(techModalSrc).toContain('x${stock}');
         expect(techHtml).toContain('x1');
         expect(techHtml).not.toContain('in Tray');
+      });
+
+      test('133. verifies coordinates are listed in grid view on HexGalaxyMap, in SectorInspector, and in ExploreModal', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const fs = await import('fs');
+        const path = await import('path');
+        const { createInitialGame } = await import('../rules/setup');
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const terranPlayer = game.players[0]!;
+
+        // Part 1: Verify HexGalaxyMap with grid view enabled (initialShowGrid: true)
+        const mapWithGridHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            activePlayerId: terranPlayer.id,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            initialShowGrid: true,
+          })
+        );
+
+        // Explored Galactic Center (coord 0, 0) displays (0, 0) in grid view
+        expect(mapWithGridHtml).toContain('(0, 0)');
+        expect(mapWithGridHtml).toContain('GCDS 1');
+
+        // Explored Terran Home Sector (e.g. coord 0, -2 or similar) displays its coordinate in grid view
+        const terranHome = game.sectors.find((s) => s.discOwner === terranPlayer.id)!;
+        expect(mapWithGridHtml).toContain(`(${terranHome.coord.q}, ${terranHome.coord.r})`);
+
+        // Unoccupied hexes in grid view display coordinates alongside ring (e.g. R1, R2, R3)
+        expect(mapWithGridHtml).toContain('R1');
+        expect(mapWithGridHtml).toContain('R2');
+        expect(mapWithGridHtml).toContain('R3');
+
+        // Part 2: Verify HexGalaxyMap with grid view disabled (initialShowGrid: false)
+        const mapWithoutGridHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            activePlayerId: terranPlayer.id,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            initialShowGrid: false,
+          })
+        );
+
+        // When grid is off, unoccupied coordinates and explored sector grid text are not rendered
+        expect(mapWithoutGridHtml).not.toContain('>(0, 0)</text>');
+        expect(mapWithoutGridHtml).not.toContain(`>(${terranHome.coord.q}, ${terranHome.coord.r})</text>`);
+        expect(mapWithoutGridHtml).not.toContain('>R1</text>');
+        expect(mapWithoutGridHtml).not.toContain('>R2</text>');
+        expect(mapWithoutGridHtml).toContain('GCDS 1');
+
+        // Part 3: Verify SectorInspector displays coordinate in metadata line
+        const inspectorHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: terranHome,
+            activePlayer: terranPlayer,
+            players: game.players,
+            neutralShipBlueprints: game.neutralShipBlueprints || [],
+            onClose: () => {},
+          })
+        );
+        expect(inspectorHtml).toContain(`Coord: (${terranHome.coord.q}, ${terranHome.coord.r})`);
+
+        // Part 4: Verify ExploreModal displays target hex coordinates
+        const centerSector = game.sectors.find((s) => s.sectorNumber === 1)!;
+        const exploreHtml = renderToString(
+          React.createElement(ExploreModal, {
+            player: terranPlayer,
+            fromCoord: centerSector.coord,
+            targetCoord: { q: 1, r: -1 },
+            candidateTile: terranHome,
+            sourceSector: centerSector,
+            sectors: game.sectors,
+            onRotate: () => {},
+            onConfirm: () => {},
+            onDiscard: () => {},
+            onCancel: () => {},
+          })
+        );
+        expect(exploreHtml).toContain('(1, -1)');
+        expect(exploreHtml).toContain('EXPLORING RING 1');
+      });
+
+      test('134. verifies ship blueprint alignment across row pairs and status summary inclusion of total + computer and total - shield', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const fs = await import('fs');
+        const path = await import('path');
+        const { createInitialGame } = await import('../rules/setup');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+        const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const terranPlayer = game.players[0]!;
+
+        const modalSrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'dashboard', 'PhysicalPlayerBoardModal.tsx'),
+          'utf-8'
+        );
+
+        // Verification 1: justify-between removed from blueprint cards to prevent vertical shifting
+        expect(modalSrc).not.toContain('flex flex-col justify-between shadow-md space-y-3');
+        expect(modalSrc).toContain('flex flex-col justify-start shadow-md space-y-3 h-full');
+
+        // Verification 2: Always 4 components per row (grid-cols-4) with uniform same-height rows (auto-rows-[50px] content-start)
+        expect(modalSrc).not.toContain("sc.maxSlots <= 4 ? 'grid-cols-2' : 'grid-cols-2 sm:grid-cols-4'");
+        expect(modalSrc).toContain('grid grid-cols-4 gap-1.5 content-start auto-rows-[50px] min-h-[106px]');
+        expect(modalSrc).toContain('h-[50px] min-h-[50px]');
+
+        // Verification 3: Status Summary bar contains 6 columns and unified COMP terminology
+        expect(modalSrc).toContain('grid grid-cols-6');
+        expect(modalSrc).toContain('COMP');
+        expect(modalSrc).toContain('{`+${stats.computerBonus}`}');
+        expect(modalSrc).toContain('Shield');
+        expect(modalSrc).toContain('{`-${stats.shieldBonus}`}');
+        expect(modalSrc).toContain('{part.computerBonus > 0 && ` | +${part.computerBonus} COMP`}');
+        expect(modalSrc).not.toContain('{part.computerBonus > 0 && ` | +${part.computerBonus} Aim`}');
+
+        // Render PhysicalPlayerBoardModal with blueprints tab
+        const modalHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: terranPlayer,
+            players: game.players,
+            sectors: game.sectors,
+            activeExpansions: [],
+            onClose: () => {},
+            onOpenBlueprintEditor: () => {},
+          })
+        );
+
+        // Default Terran Interceptor has Electron Computer (+1 COMP) and 0 Shield
+        expect(modalHtml).toContain('grid-cols-6');
+        expect(modalHtml).toContain('COMP');
+        expect(modalHtml).toContain('Shield');
+        expect(modalHtml).toContain('+1');
+        expect(modalHtml).toContain('-0');
+        expect(modalHtml).toContain('+1 COMP');
+
+        // Verification 4: ShipBlueprintEditor uses unified COMP terminology in Live Stats HUD and slots
+        const editorSrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'),
+          'utf-8'
+        );
+        expect(editorSrc).toContain('COMP');
+        expect(editorSrc).toContain('{`+${stats.computerBonus} COMP`}');
+        expect(editorSrc).not.toContain('{`+${stats.computerBonus} Aim`}');
+        expect(editorSrc).toContain('+{effectivePart.computerBonus} COMP');
+        expect(editorSrc).toContain('+{part.computerBonus} COMP');
+        expect(editorSrc).toContain('SHIELD');
+        expect(editorSrc).toContain('{`-${stats.shieldBonus} Shield`}');
+        expect(editorSrc).toContain('auto-rows-[78px]');
+        expect(editorSrc).toContain('h-[78px] min-h-[78px]');
+        expect(editorSrc).not.toContain('min-h-[100px]');
+
+        const editorHtml = renderToString(
+          React.createElement(ShipBlueprintEditor, {
+            player: terranPlayer,
+            onSaveBlueprints: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(editorHtml).toContain('COMP');
+        expect(editorHtml).toContain('+0 COMP');
+        expect(editorHtml).toContain('SHIELD');
+        expect(editorHtml).toContain('-0 Shield');
+
+        // Verification 5: Starbase blueprint designer also strictly uses the compact less height version
+        const starbaseHtml = renderToString(
+          React.createElement(ShipBlueprintEditor, {
+            player: terranPlayer,
+            initialShipType: 'starbase',
+            onSaveBlueprints: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(starbaseHtml).toContain('Starbase Power Core');
+        expect(starbaseHtml).toContain('h-[78px] min-h-[78px]');
+        expect(starbaseHtml).not.toContain('min-h-[100px]');
+      });
+
+      it('Test 135: verifies Neutron Absorber correctly activates against Neutron Bombs in combat conquest and UI banner', async () => {
+        // Setup a 2-player game: P1 (Attacker with Neutron Bombs), P2 (Defender with Neutron Absorber)
+        const game = createInitialGame(2);
+        const attacker = game.players[0]!;
+        const defender = game.players[1]!;
+
+        // Sector with 2 defender cubes
+        const targetSector = game.sectors[1]!;
+        targetSector.discOwner = defender.id;
+        targetSector.planets = [
+          { type: 'money', hasOrbital: false, colonizedBy: defender.id },
+          { type: 'material', hasOrbital: false, colonizedBy: defender.id },
+        ];
+        // Attacker has 1 cruiser with 1 ion cannon
+        targetSector.ships = [
+          { id: 'att_cruiser', ownerId: attacker.id, type: 'cruiser', damage: 0 },
+        ];
+        attacker.techTrack.researched.push({
+          id: 'neutron_bombs',
+          name: 'Neutron Bombs',
+          category: 'military',
+          cost: 2,
+          minCost: 1,
+        });
+        defender.techTrack.researched.push({
+          id: 'neutron_absorber',
+          name: 'Neutron Absorber',
+          category: 'rare',
+          cost: 5,
+          minCost: 5,
+        });
+
+        attacker.blueprints.cruiser.slots = [
+          SHIP_PARTS.ion_cannon,
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_drive,
+          null,
+          null,
+          null,
+        ];
+
+        // Resolve population attack
+        resolveAttackingPopulationAndConquest(game, targetSector, attacker.id);
+
+        const conquest = game.pendingCombatConquest;
+        expect(conquest).toBeDefined();
+        expect(conquest?.bombardmentSummary).toBeDefined();
+        const summary = conquest!.bombardmentSummary!;
+
+        // 1. Neutron Absorber was active and negated automatic bomb elimination
+        expect(summary.neutronAbsorberActive).toBe(true);
+        expect(summary.hasNeutronBombs).toBe(false);
+        // Total damage should reflect conventional cannon damage (not 99)
+        expect(summary.totalDamage).not.toBe(99);
+        expect(summary.rolls.length).toBeGreaterThan(0);
+        expect(summary.rolls[0].diceColor).toBe('yellow');
+
+        // 2. State log contains explicit Neutron Absorber shielding notification
+        const shieldLog = game.log.find((l) =>
+          l.message.includes('Neutron Absorber shielded population')
+        );
+        expect(shieldLog).toBeDefined();
+        expect(shieldLog?.message).toContain(defender.name);
+        expect(shieldLog?.message).toContain(attacker.name);
+
+        // 3. Render CombatConquestModal and verify UI
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+        const modalHtml = renderToString(
+          React.createElement(CombatConquestModal, {
+            state: game,
+            conquest: conquest!,
+            currentSeat: 'all',
+            onConfirm: () => {},
+          })
+        );
+
+        // Banner for Neutron Absorber Active is rendered
+        expect(modalHtml).toContain('Neutron Absorber Active');
+        expect(modalHtml).toContain('nullified enemy Neutron Bombs');
+        expect(modalHtml).toContain('forced to bombard with conventional non-missile cannons');
+        // Green instant wipe banner is NOT rendered
+        expect(modalHtml).not.toContain('All defender population cubes were eliminated automatically without rolling dice');
+        // Cannon rolls are displayed
+        expect(modalHtml).toContain('Bombardment Rolls (Non-missile weapons vs 0 Shield)');
+        expect(modalHtml).toContain('Total Damage:');
+
+        // 4. Test reverse case: Defender without Neutron Absorber is instantly wiped out
+        const gameNoAbsorber = createInitialGame(2);
+        const attNoAbs = gameNoAbsorber.players[0]!;
+        const defNoAbs = gameNoAbsorber.players[1]!;
+        const secNoAbs = gameNoAbsorber.sectors[1]!;
+        secNoAbs.discOwner = defNoAbs.id;
+        secNoAbs.planets = [
+          { type: 'money', hasOrbital: false, colonizedBy: defNoAbs.id },
+          { type: 'material', hasOrbital: false, colonizedBy: defNoAbs.id },
+        ];
+        secNoAbs.ships = [
+          { id: 'att_cruiser_2', ownerId: attNoAbs.id, type: 'cruiser', damage: 0 },
+        ];
+        attNoAbs.techTrack.researched.push({
+          id: 'neutron_bombs',
+          name: 'Neutron Bombs',
+          category: 'military',
+          cost: 2,
+          minCost: 1,
+        });
+
+        resolveAttackingPopulationAndConquest(gameNoAbsorber, secNoAbs, attNoAbs.id);
+        const conquestNoAbs = gameNoAbsorber.pendingCombatConquest;
+        expect(conquestNoAbs).toBeDefined();
+        expect(conquestNoAbs!.bombardmentSummary!.hasNeutronBombs).toBe(true);
+        expect(conquestNoAbs!.bombardmentSummary!.neutronAbsorberActive).toBeFalsy();
+        expect(conquestNoAbs!.bombardmentSummary!.totalDamage).toBe(99);
+        expect(conquestNoAbs!.bombardmentSummary!.cubesRemaining).toBe(0);
+
+        const modalHtmlNoAbs = renderToString(
+          React.createElement(CombatConquestModal, {
+            state: gameNoAbsorber,
+            conquest: conquestNoAbs!,
+            currentSeat: 'all',
+            onConfirm: () => {},
+          })
+        );
+        expect(modalHtmlNoAbs).toContain('Neutron Bombs Active');
+        expect(modalHtmlNoAbs).toContain('All defender population cubes were eliminated automatically without rolling dice');
+        expect(modalHtmlNoAbs).not.toContain('Neutron Absorber Active');
       });
     });
   });

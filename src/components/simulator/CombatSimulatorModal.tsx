@@ -1131,7 +1131,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 </span>
                 <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-yellow-300 font-mono font-bold flex items-center gap-1">
                   <Crosshair className="w-3 h-3 text-yellow-400" />
-                  +{activeStats.computerBonus} Hit
+                  +{activeStats.computerBonus} COMP
                 </span>
                 <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-cyan-300 font-mono font-bold flex items-center gap-1">
                   <Shield className="w-3 h-3 text-cyan-400" />

@@ -116,6 +116,7 @@ export interface BombardmentSummary {
   cubesDestroyed: { resource: string; planetIndex: number }[];
   cubesRemaining: number;
   hasNeutronBombs?: boolean;
+  neutronAbsorberActive?: boolean;
 }
 
 export interface PendingCombatConquest {

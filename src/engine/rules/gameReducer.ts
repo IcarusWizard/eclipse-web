@@ -5157,16 +5157,18 @@ export function resolveAttackingPopulationAndConquest(
     const rolls: import('../types/state').BombardmentRoll[] = [];
     const cubesDestroyed: { resource: string; planetIndex: number }[] = [];
     const firstDefPlayer = state.players.find((pl) => pl.id === opponentCubes[0]?.colonizedBy);
+    let neutronAbsorberActive = false;
 
     if (hasNeutronBombs) {
       // Neutron Bombs automatically annihilate all unshielded population cubes in the sector
       let destroyedCount = 0;
       sector.planets.forEach((p, pIdx) => {
-        if (p.colonizedBy && p.colonizedBy !== winnerId) {
+        if (p.colonizedBy && p.colonizedBy !== actualWinnerId) {
           const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
           const hasAbsorber = defPlayer?.techTrack.researched.some((t) => t.id === 'neutron_absorber');
           if (hasAbsorber) {
             // Absorber shields against neutron bombs
+            neutronAbsorberActive = true;
             return;
           }
           if (defPlayer) {
@@ -5185,6 +5187,20 @@ export function resolveAttackingPopulationAndConquest(
           destroyedCount++;
         }
       });
+      if (neutronAbsorberActive) {
+        const absorberPlayer = state.players.find((pl) =>
+          opponentCubes.some((c) => c.colonizedBy === pl.id && pl.techTrack.researched.some((t) => t.id === 'neutron_absorber'))
+        );
+        const absorberPlayerName = absorberPlayer?.name || firstDefPlayer?.name || 'Defender';
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          message: `🛡️ ${absorberPlayerName}'s Neutron Absorber shielded population in Sector ${sector.sectorNumber} from ${attackerPlayer.name}'s Neutron Bombs! Attacker must bombard with conventional cannons.`,
+          type: 'combat',
+        });
+      }
       if (destroyedCount > 0) {
         state.log.unshift({
           id: `log_${Date.now()}_${Math.random()}`,
@@ -5198,13 +5214,13 @@ export function resolveAttackingPopulationAndConquest(
     }
 
     const remainingOppCubesBeforeCannons = sector.planets.filter(
-      (p) => p.colonizedBy && p.colonizedBy !== winnerId
+      (p) => p.colonizedBy && p.colonizedBy !== actualWinnerId
     );
 
     // If opponent cubes remain (either no neutron bombs, or defender has neutron_absorber - Bug 59), resolve standard cannon bombardment
     if (remainingOppCubesBeforeCannons.length > 0) {
       let cannonDamage = 0;
-      const survivingAttackerShips = sector.ships.filter((s) => s.ownerId === winnerId);
+      const survivingAttackerShips = sector.ships.filter((s) => s.ownerId === actualWinnerId);
 
       for (const s of survivingAttackerShips) {
         const bp = attackerPlayer.blueprints[s.type];
@@ -5235,7 +5251,7 @@ export function resolveAttackingPopulationAndConquest(
                   if (pRes.selfDamage > 0) {
                     const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints, state.expansions);
                     const dummyCombat: any = { destroyedShips: [] };
-                    applyRiftSelfDamage(units, winnerId, pRes.selfDamage, dummyCombat);
+                    applyRiftSelfDamage(units, actualWinnerId, pRes.selfDamage, dummyCombat);
                     sector.ships = sector.ships.filter((sh) => !dummyCombat.destroyedShips.some((ds: any) => ds.shipId === sh.id));
                     for (const sh of sector.ships) {
                       const u = units.find((unit) => unit.id === sh.id);
@@ -5277,7 +5293,7 @@ export function resolveAttackingPopulationAndConquest(
       let damageRemaining = cannonDamage;
       const targetPlanetsWithIndices = sector.planets
         .map((p, idx) => ({ p, idx }))
-        .filter(({ p }) => p.colonizedBy && p.colonizedBy !== winnerId)
+        .filter(({ p }) => p.colonizedBy && p.colonizedBy !== actualWinnerId)
         .sort((a, b) => {
           const resA = a.p.colonizedResource || a.p.resource;
           const resB = b.p.colonizedResource || b.p.resource;
@@ -5310,7 +5326,7 @@ export function resolveAttackingPopulationAndConquest(
       }
 
       const remainingOppCubes = sector.planets.filter(
-        (p) => p.colonizedBy && p.colonizedBy !== winnerId
+        (p) => p.colonizedBy && p.colonizedBy !== actualWinnerId
       ).length;
 
       state.log.unshift({
@@ -5324,29 +5340,32 @@ export function resolveAttackingPopulationAndConquest(
     }
 
     const finalRemainingOppCubes = sector.planets.filter(
-      (p) => p.colonizedBy && p.colonizedBy !== winnerId
+      (p) => p.colonizedBy && p.colonizedBy !== actualWinnerId
     ).length;
+
+    const bombsEffective = hasNeutronBombs && !neutronAbsorberActive;
 
     bombardmentSummary = {
       attackerName: attackerPlayer.name,
       defenderName: firstDefPlayer?.name || 'Defender',
-      totalDamage: hasNeutronBombs ? 99 : rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0),
+      totalDamage: bombsEffective ? 99 : rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0),
       rolls,
       cubesDestroyed,
       cubesRemaining: finalRemainingOppCubes,
-      hasNeutronBombs,
+      hasNeutronBombs: bombsEffective,
+      neutronAbsorberActive,
     };
   }
 
   // --- INFLUENCE SECTOR OVERTHROW / CONQUEST ---
   // Rule: Only remove defender influence disc if sector has NO population cubes remaining!
   const remainingOpponentCubes = sector.planets.filter(
-    (p) => p.colonizedBy && p.colonizedBy !== winnerId
+    (p) => p.colonizedBy && p.colonizedBy !== actualWinnerId
   );
 
   if (remainingOpponentCubes.length === 0) {
     // If defender lost all population & ships, remove overthrown influence disc
-    if (sector.discOwner && sector.discOwner !== winnerId) {
+    if (sector.discOwner && sector.discOwner !== actualWinnerId) {
       const loserPlayer = state.players.find((p) => p.id === sector.discOwner);
       if (loserPlayer) {
         loserPlayer.influenceTrack.discsOnTrack = Math.min(
@@ -5366,8 +5385,8 @@ export function resolveAttackingPopulationAndConquest(
     }
 
     // If attacker has surviving ships and sector is uncontrolled by them, prompt conquest
-    const hasAttackerShips = sector.ships.some((s) => s.ownerId === winnerId);
-    if (hasAttackerShips && sector.discOwner !== winnerId) {
+    const hasAttackerShips = sector.ships.some((s) => s.ownerId === actualWinnerId);
+    if (hasAttackerShips && sector.discOwner !== actualWinnerId) {
       let discoveryToClaim = sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined;
       if (!discoveryToClaim && sector.hasDiscovery && !sector.discoveryClaimed && state.discoveryBag && state.discoveryBag.length > 0) {
         sector.discoveryTile = state.discoveryBag.pop();
@@ -5375,7 +5394,7 @@ export function resolveAttackingPopulationAndConquest(
       }
       state.pendingCombatConquest = {
         sectorId: sector.id,
-        winnerPlayerId: winnerId,
+        winnerPlayerId: actualWinnerId,
         discoveryToClaim,
         bombardmentSummary,
         canClaimInfluence: true,
@@ -5392,11 +5411,11 @@ export function resolveAttackingPopulationAndConquest(
       type: 'combat',
     });
 
-    const hasAttackerShips = sector.ships.some((s) => s.ownerId === winnerId);
+    const hasAttackerShips = sector.ships.some((s) => s.ownerId === actualWinnerId);
     if (hasAttackerShips && bombardmentSummary) {
       state.pendingCombatConquest = {
         sectorId: sector.id,
-        winnerPlayerId: winnerId,
+        winnerPlayerId: actualWinnerId,
         discoveryToClaim: undefined,
         bombardmentSummary,
         canClaimInfluence: false,

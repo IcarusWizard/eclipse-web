@@ -137,6 +137,7 @@ export const App: React.FC = () => {
   const [exploreRotation, setExploreRotation] = useState<number>(0);
   const [dracoSelectedTileIndex, setDracoSelectedTileIndex] = useState<number>(0);
   const [isBlueprintOpen, setIsBlueprintOpen] = useState<boolean>(false);
+  const [blueprintShipType, setBlueprintShipType] = useState<ShipType | undefined>(undefined);
   const [isTechMarketOpen, setIsTechMarketOpen] = useState<boolean>(false);
   const [isPhysicalBoardOpen, setIsPhysicalBoardOpen] = useState<boolean>(false);
   const [isScoreboardOpen, setIsScoreboardOpen] = useState<boolean>(false);
@@ -3080,11 +3081,13 @@ export const App: React.FC = () => {
         <ShipBlueprintEditor
           player={viewedPlayer}
           activeExpansions={state.expansions}
+          initialShipType={blueprintShipType}
           pulsarSectorId={activePulsarSectorId ?? undefined}
           readOnly={!canActForPlayer(viewedPlayer.id) || isTurnGated}
           onSaveBlueprint={handleSaveBlueprint}
           onClose={() => {
             setIsBlueprintOpen(false);
+            setBlueprintShipType(undefined);
             setActivePulsarSectorId(null);
           }}
         />
@@ -3365,6 +3368,7 @@ export const App: React.FC = () => {
           }}
           onOpenBlueprintEditor={(shipType) => {
             setIsPhysicalBoardOpen(false);
+            setBlueprintShipType(shipType);
             setIsBlueprintOpen(true);
           }}
           onOpenTechMarket={() => {

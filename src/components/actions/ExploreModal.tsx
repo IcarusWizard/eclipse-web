@@ -269,7 +269,10 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
               <Compass className="w-4 h-4" />
             </div>
             <span className="text-xs font-black tracking-wide text-slate-200">
-              EXPLORING RING {ring}
+              {`EXPLORING RING ${ring}`}
+            </span>
+            <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-bold" title="Target Hex Coordinates">
+              {`(${targetCoord.q}, ${targetCoord.r})`}
             </span>
             <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-bold">
               SEC {activeTile.sectorNumber}

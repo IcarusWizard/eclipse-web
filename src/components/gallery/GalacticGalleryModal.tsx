@@ -547,7 +547,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         )}
                         {part.computerBonus > 0 && (
                           <div className="text-indigo-400 flex items-center gap-1">
-                            <Crosshair className="w-3 h-3" /> +{part.computerBonus} Hit
+                            <Crosshair className="w-3 h-3" /> +{part.computerBonus} COMP
                           </div>
                         )}
                         {part.shieldBonus > 0 && (

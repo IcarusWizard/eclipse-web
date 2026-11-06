@@ -66,7 +66,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   player,
   players,
   activePlayerId,
-  sectors,
+  sectors = [],
   onClose,
   onSelectPlayer,
   onOpenBlueprintEditor,
@@ -1318,7 +1318,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   return (
                     <div
                       key={sc.type}
-                      className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-between shadow-md space-y-3"
+                      className="bg-slate-900/90 border border-slate-800 rounded-xl p-4 flex flex-col justify-start shadow-md space-y-3 h-full"
                     >
                       {/* Ship Header */}
                       <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
@@ -1350,7 +1350,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
 
                       {/* Ship Stats Bar */}
                       {stats && (
-                        <div className="grid grid-cols-4 gap-2 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-center font-mono">
+                        <div className="grid grid-cols-6 gap-1 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-center font-mono">
                           <div>
                             <div className="text-[9px] text-slate-500 uppercase font-sans">HP</div>
                             <div className="text-xs font-bold text-rose-300">{stats.totalHull} HP</div>
@@ -1371,6 +1371,18 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             </div>
                           </div>
                           <div>
+                            <div className="text-[9px] text-slate-500 uppercase font-sans">COMP</div>
+                            <div className="text-xs font-bold text-sky-300">
+                              {`+${stats.computerBonus}`}
+                            </div>
+                          </div>
+                          <div>
+                            <div className="text-[9px] text-slate-500 uppercase font-sans">Shield</div>
+                            <div className="text-xs font-bold text-teal-300">
+                              {`-${stats.shieldBonus}`}
+                            </div>
+                          </div>
+                          <div>
                             <div className="text-[9px] text-slate-500 uppercase font-sans">Power</div>
                             <div
                               className={`text-xs font-bold ${
@@ -1386,13 +1398,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       )}
 
                       {/* Component Slots Grid */}
-                      <div>
+                      <div className="flex-1 flex flex-col justify-start">
                         <div className="text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider flex items-center justify-between">
                           <span>Installed Component Slots</span>
                           <span className="font-mono text-slate-500">{bp ? bp.slots.length : 0} / {sc.maxSlots} Slots</span>
                         </div>
 
-                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5">
+                        <div className="grid grid-cols-4 gap-1.5 content-start auto-rows-[50px] min-h-[106px]">
                           {Array.from({ length: sc.maxSlots }).map((_, slotIdx) => {
                             const rawPart = bp?.slots[slotIdx] || null;
                             const part = rawPart ? getEffectiveShipPart(rawPart, activeExpansions) : null;
@@ -1400,7 +1412,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             return (
                               <div
                                 key={`slot_${sc.type}_${slotIdx}`}
-                                className={`min-h-[50px] rounded-lg border p-1.5 flex flex-col justify-between transition-all ${
+                                className={`h-[50px] min-h-[50px] rounded-lg border p-1.5 flex flex-col justify-between transition-all overflow-hidden ${
                                   part
                                     ? ANCIENT_PART_IDS.has(part.id) || part.id.startsWith('ancient_')
                                       ? 'bg-amber-950/40 border-amber-500/70 text-amber-200 shadow ring-1 ring-amber-500/30'
@@ -1428,11 +1440,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                 </div>
 
                                 {part ? (
-                                  <div>
-                                    <div className="text-[10.5px] font-bold leading-tight line-clamp-1">
+                                  <div className="overflow-hidden">
+                                    <div className="text-[10.5px] font-bold leading-tight truncate" title={part.name}>
                                       {part.name}
                                     </div>
-                                    <div className="text-[8px] text-slate-400 font-mono mt-0.5">
+                                    <div className="text-[8px] text-slate-400 font-mono mt-0.5 truncate">
                                       {part.powerProduced > 0
                                         ? `+${part.powerProduced} PWR`
                                         : part.powerConsumed > 0
@@ -1440,7 +1452,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                         : '0 PWR'}
                                       {part.hullBonus > 0 && ` | +${part.hullBonus} HP`}
                                       {part.initiativeBonus !== 0 && ` | ${part.initiativeBonus > 0 ? `+${part.initiativeBonus}` : part.initiativeBonus} Init`}
-                                      {part.computerBonus > 0 && ` | +${part.computerBonus} Aim`}
+                                      {part.computerBonus > 0 && ` | +${part.computerBonus} COMP`}
                                       {part.shieldBonus > 0 && ` | -${part.shieldBonus} Shld`}
                                     </div>
                                   </div>
@@ -1455,7 +1467,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
 
                           {/* Integrated / Preprinted Slot */}
                           {bp && (bp.preprintedPower || bp.preprintedComputer) && (
-                            <div className="min-h-[50px] rounded-lg border border-dashed border-emerald-600/70 bg-emerald-950/20 p-1.5 flex flex-col justify-between">
+                            <div className="h-[50px] min-h-[50px] rounded-lg border border-dashed border-emerald-600/70 bg-emerald-950/20 p-1.5 flex flex-col justify-between overflow-hidden">
                               <div className="text-[8.5px] font-mono font-bold text-emerald-400 flex items-center justify-between">
                                 <span className="flex items-center gap-1">
                                   <Lock className="w-2.5 h-2.5" />
@@ -1465,8 +1477,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                   CHASSIS
                                 </span>
                               </div>
-                              <div>
-                                <div className="text-[10px] font-bold text-emerald-300 leading-tight line-clamp-1">
+                              <div className="overflow-hidden">
+                                <div className="text-[10px] font-bold text-emerald-300 leading-tight truncate">
                                   {sc.type === 'starbase'
                                     ? player.faction.id === 'planta'
                                       ? 'Planta Defense Core'
@@ -1479,9 +1491,9 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                     ? 'Eridani Dynastic Power'
                                     : 'Integrated Power'}
                                 </div>
-                                <div className="text-[8px] text-slate-300 font-mono mt-0.5">
+                                <div className="text-[8px] text-slate-300 font-mono mt-0.5 truncate">
                                   {bp.preprintedPower && `+${bp.preprintedPower} PWR`}
-                                  {bp.preprintedComputer && ` | +${bp.preprintedComputer} Aim`}
+                                  {bp.preprintedComputer && ` | +${bp.preprintedComputer} COMP`}
                                 </div>
                               </div>
                             </div>
@@ -1491,7 +1503,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           {bp?.externalParts && bp.externalParts.map((extPart, extIdx) => (
                             <div
                               key={`ext_pb_${sc.type}_${extIdx}`}
-                              className="min-h-[50px] rounded-lg border border-amber-500/70 bg-amber-950/30 p-1.5 flex flex-col justify-between shadow ring-1 ring-amber-500/30"
+                              className="h-[50px] min-h-[50px] rounded-lg border border-amber-500/70 bg-amber-950/30 p-1.5 flex flex-col justify-between shadow ring-1 ring-amber-500/30 overflow-hidden"
                             >
                               <div className="text-[8.5px] font-mono font-bold text-amber-400 flex items-center justify-between">
                                 <span className="flex items-center gap-1">
@@ -1502,11 +1514,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                   EXTERNAL
                                 </span>
                               </div>
-                              <div>
-                                <div className="text-[10px] font-bold text-amber-300 leading-tight line-clamp-1">
+                              <div className="overflow-hidden">
+                                <div className="text-[10px] font-bold text-amber-300 leading-tight truncate">
                                   {extPart.name}
                                 </div>
-                                <div className="text-[8px] text-slate-300 font-mono mt-0.5">
+                                <div className="text-[8px] text-slate-300 font-mono mt-0.5 truncate">
                                   {extPart.powerProduced > 0 && `+${extPart.powerProduced} PWR`}
                                   {extPart.initiativeBonus !== 0 && ` | ${extPart.initiativeBonus > 0 ? `+${extPart.initiativeBonus}` : extPart.initiativeBonus} Init`}
                                 </div>

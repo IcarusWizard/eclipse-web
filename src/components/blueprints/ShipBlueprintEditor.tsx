@@ -25,6 +25,7 @@ import {
 interface ShipBlueprintEditorProps {
   player: PlayerState;
   activeExpansions?: string[];
+  initialShipType?: ShipType;
   pulsarSectorId?: string;
   onSaveBlueprint: (
     upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
@@ -37,6 +38,7 @@ interface ShipBlueprintEditorProps {
 export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   player,
   activeExpansions,
+  initialShipType,
   pulsarSectorId,
   onSaveBlueprint,
   readOnly = false,
@@ -46,7 +48,11 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     () => Object.keys(player.blueprints) as ShipType[],
     [player.blueprints]
   );
-  const [activeShipType, setActiveShipType] = useState<ShipType>(() => availableShipTypes[0] || 'interceptor');
+  const [activeShipType, setActiveShipType] = useState<ShipType>(() => (
+    initialShipType && availableShipTypes.includes(initialShipType)
+      ? initialShipType
+      : availableShipTypes[0] || 'interceptor'
+  ));
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -423,7 +429,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
           {/* Left 2 Cols: Ship Blueprint Grid & Live Stats */}
           <div className="md:col-span-2 space-y-6">
             {/* Live Stats HUD */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 bg-slate-950/80 p-3.5 rounded-lg border border-slate-800 text-xs">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 bg-slate-950/80 p-3.5 rounded-lg border border-slate-800 text-xs">
               <div className="flex flex-col">
                 <span className="text-slate-400 flex items-center gap-1 font-semibold">
                   <Zap className="w-3.5 h-3.5 text-amber-400" /> POWER BALANCE
@@ -474,6 +480,24 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   Base {player.blueprints[activeShipType].baseInitiative >= 0 ? `+${player.blueprints[activeShipType].baseInitiative}` : player.blueprints[activeShipType].baseInitiative} | Parts {stats.totalInitiative - player.blueprints[activeShipType].baseInitiative >= 0 ? `+${stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}` : stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}
                 </span>
               </div>
+
+              <div className="flex flex-col">
+                <span className="text-slate-400 flex items-center gap-1 font-semibold">
+                  <Crosshair className="w-3.5 h-3.5 text-sky-400" /> COMP
+                </span>
+                <span className="text-base font-bold text-sky-300 mt-1">
+                  {`+${stats.computerBonus} COMP`}
+                </span>
+              </div>
+
+              <div className="flex flex-col">
+                <span className="text-slate-400 flex items-center gap-1 font-semibold">
+                  <Shield className="w-3.5 h-3.5 text-teal-400" /> SHIELD
+                </span>
+                <span className="text-base font-bold text-teal-300 mt-1">
+                  {`-${stats.shieldBonus} Shield`}
+                </span>
+              </div>
             </div>
 
             {/* Error alerts */}
@@ -501,7 +525,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 auto-rows-[78px]">
                 {currentSlots.map((part, idx) => {
                   const isSelected = selectedSlotIndex === idx;
                   const isModified = modifiedSlots.some(
@@ -517,7 +541,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                           setSelectedSlotIndex(idx);
                         }
                       }}
-                      className={`relative min-h-[100px] rounded-lg border-2 p-2.5 flex flex-col justify-between transition-all ${
+                      className={`relative h-[78px] min-h-[78px] rounded-lg border-2 p-2 flex flex-col justify-between transition-all overflow-hidden ${
                         isSelected
                           ? 'border-cyan-400 bg-cyan-950/30 shadow-lg shadow-cyan-950 cursor-pointer'
                           : isModified
@@ -572,24 +596,24 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                       {part ? (() => {
                         const effectivePart = getEffectiveShipPart(part, activeExpansions);
                         return (
-                          <div className="mt-1">
-                            <div className="font-bold text-xs text-slate-200 leading-tight">
+                          <div className="mt-0.5 overflow-hidden">
+                            <div className="font-bold text-xs text-slate-200 leading-tight truncate" title={effectivePart.name}>
                               {effectivePart.name}
                             </div>
-                            <div className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-1">
+                            <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap gap-1 truncate">
                               {effectivePart.powerProduced > 0 && (
-                                <span className="text-emerald-400">+{effectivePart.powerProduced} Pwr</span>
+                                <span className="text-emerald-400 font-semibold">+{effectivePart.powerProduced} Pwr</span>
                               )}
                               {effectivePart.powerConsumed > 0 && (
-                                <span className="text-amber-400">-{effectivePart.powerConsumed} Pwr</span>
+                                <span className="text-amber-400 font-semibold">-{effectivePart.powerConsumed} Pwr</span>
                               )}
                               {effectivePart.dice && (
-                                <span className={effectivePart.dice.some((d) => d.color === 'purple') ? 'text-purple-400 font-semibold' : 'text-orange-400'}>
+                                <span className={effectivePart.dice.some((d) => d.color === 'purple') ? 'text-purple-400 font-semibold' : 'text-orange-400 font-semibold'}>
                                   {effectivePart.dice.map((d) => (d.color === 'purple' ? `${d.count} Purple (Rift)` : `${d.count} ${d.color}`)).join(', ')}
                                 </span>
                               )}
                               {effectivePart.driveSpeed && (
-                                <span className="text-cyan-400">Spd {effectivePart.driveSpeed}</span>
+                                <span className="text-cyan-400 font-semibold">Spd {effectivePart.driveSpeed}</span>
                               )}
                               {effectivePart.initiativeBonus !== 0 && (
                                 <span className="text-violet-400 font-bold">
@@ -597,20 +621,20 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                                 </span>
                               )}
                               {effectivePart.computerBonus > 0 && (
-                                <span className="text-indigo-400 font-medium">+{effectivePart.computerBonus} Hit</span>
+                                <span className="text-indigo-400 font-semibold">+{effectivePart.computerBonus} COMP</span>
                               )}
                               {effectivePart.shieldBonus > 0 && (
-                                <span className="text-teal-400 font-medium">-{effectivePart.shieldBonus} Shield</span>
+                                <span className="text-teal-400 font-semibold">-{effectivePart.shieldBonus} Shield</span>
                               )}
                               {effectivePart.hullBonus > 0 && (
-                                <span className="text-rose-400">+{effectivePart.hullBonus} HP</span>
+                                <span className="text-rose-400 font-semibold">+{effectivePart.hullBonus} HP</span>
                               )}
                             </div>
                           </div>
                         );
                       })() : (
-                        <div className="flex flex-col items-center justify-center py-3 text-slate-600">
-                          <Plus className="w-5 h-5 mb-1 opacity-60" />
+                        <div className="flex flex-col items-center justify-center my-auto py-1 text-slate-600">
+                          <Plus className="w-4 h-4 mb-0.5 opacity-60" />
                           <span className="text-[10px]">Empty Slot</span>
                         </div>
                       )}
@@ -621,8 +645,16 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 {/* Integrated / Non-replaceable Species Component Slot */}
                 {(baseBp.preprintedPower || baseBp.preprintedComputer || baseBp.preprintedShield || baseBp.preprintedHull) && (
                   <div
-                    className="relative min-h-[100px] rounded-lg border-2 border-dashed border-emerald-600/70 bg-emerald-950/20 p-2.5 flex flex-col justify-between select-none shadow-sm"
-                    title="Inherent species component pre-printed on the hull chassis. Cannot be removed or replaced."
+                    className="relative h-[78px] min-h-[78px] rounded-lg border-2 border-dashed border-emerald-600/70 bg-emerald-950/20 p-2 flex flex-col justify-between select-none shadow-sm overflow-hidden"
+                    title={
+                      activeShipType === 'orbital'
+                        ? 'Fixed outside module (2 Hull + 4 Power). Cannot be removed or replaced.'
+                        : player.faction.id === 'rho_indi_syndicate'
+                        ? 'Preprinted Gauss Shield on all ships. Cannot be removed or replaced.'
+                        : activeShipType === 'starbase'
+                        ? 'Fixed starbase chassis power. Cannot be removed or replaced.'
+                        : 'Inherent species chassis bonus. Cannot be removed or replaced.'
+                    }
                   >
                     <div className="flex justify-between items-start">
                       <span className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
@@ -634,8 +666,8 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                       </span>
                     </div>
 
-                    <div className="mt-1">
-                      <div className="font-bold text-xs text-emerald-300 leading-tight">
+                    <div className="mt-0.5 overflow-hidden">
+                      <div className="font-bold text-xs text-emerald-300 leading-tight truncate">
                         {activeShipType === 'starbase'
                           ? player.faction.id === 'planta'
                             ? 'Planta Defense Core'
@@ -652,12 +684,12 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                           ? 'Eridani Dynastic Power'
                           : 'Integrated Chassis System'}
                       </div>
-                      <div className="text-[10px] text-slate-300 mt-1 flex flex-wrap gap-1">
+                      <div className="text-[10px] text-slate-300 mt-0.5 flex flex-wrap gap-1 truncate">
                         {baseBp.preprintedPower !== undefined && baseBp.preprintedPower > 0 && (
                           <span className="text-emerald-400 font-semibold">+{baseBp.preprintedPower} Pwr</span>
                         )}
                         {baseBp.preprintedComputer !== undefined && baseBp.preprintedComputer > 0 && (
-                          <span className="text-indigo-400 font-semibold">+{baseBp.preprintedComputer} Hit</span>
+                          <span className="text-indigo-400 font-semibold">+{baseBp.preprintedComputer} COMP</span>
                         )}
                         {baseBp.preprintedShield !== undefined && baseBp.preprintedShield > 0 && (
                           <span className="text-cyan-400 font-semibold">-{baseBp.preprintedShield} Gauss Shield</span>
@@ -665,15 +697,6 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                         {baseBp.preprintedHull !== undefined && baseBp.preprintedHull > 0 && (
                           <span className="text-rose-400 font-semibold">+{baseBp.preprintedHull} Hull</span>
                         )}
-                      </div>
-                      <div className="text-[9px] text-slate-400 mt-1 italic">
-                        {activeShipType === 'orbital'
-                          ? 'Fixed outside module (2 Hull + 4 Power)'
-                          : player.faction.id === 'rho_indi_syndicate'
-                          ? 'Preprinted Gauss Shield on all ships'
-                          : activeShipType === 'starbase'
-                          ? 'Fixed starbase chassis power'
-                          : 'Inherent species chassis bonus'}
                       </div>
                     </div>
                   </div>
@@ -687,7 +710,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   return (
                     <div
                       key={`ext_${extIdx}`}
-                      className="relative min-h-[100px] rounded-lg border-2 border-amber-500/80 bg-amber-950/30 p-2.5 flex flex-col justify-between shadow-sm"
+                      className="relative h-[78px] min-h-[78px] rounded-lg border-2 border-amber-500/80 bg-amber-950/30 p-2 flex flex-col justify-between shadow-sm overflow-hidden"
                       title="External module placed outside the blueprint grid. Does not consume modular slots."
                     >
                       <div className="flex justify-between items-start">
@@ -722,20 +745,17 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                         </div>
                       </div>
 
-                      <div className="mt-1">
-                        <div className="font-bold text-xs text-amber-300 leading-tight">
+                      <div className="mt-0.5 overflow-hidden">
+                        <div className="font-bold text-xs text-amber-300 leading-tight truncate">
                           {extPart.name}
                         </div>
-                        <div className="text-[10px] text-slate-300 mt-1 flex flex-wrap gap-1">
+                        <div className="text-[10px] text-slate-300 mt-0.5 flex flex-wrap gap-1 truncate">
                           {extPart.powerProduced > 0 && (
                             <span className="text-emerald-400 font-semibold">+{extPart.powerProduced} Pwr</span>
                           )}
                           {extPart.initiativeBonus > 0 && (
                             <span className="text-amber-300 font-semibold">+{extPart.initiativeBonus} Init</span>
                           )}
-                        </div>
-                        <div className="text-[9px] text-amber-400/80 mt-1 italic">
-                          Outside blueprint grid
                         </div>
                       </div>
                     </div>
@@ -751,7 +771,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                         handleAttachExternalPart(muon);
                       }
                     }}
-                    className={`relative min-h-[100px] rounded-lg border-2 border-dashed p-2.5 flex flex-col justify-between transition-all ${
+                    className={`relative h-[78px] min-h-[78px] rounded-lg border-2 border-dashed p-2 flex flex-col justify-between transition-all overflow-hidden ${
                       remainingActivations > 0 || modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal)
                         ? 'border-amber-600/70 bg-amber-950/20 hover:border-amber-400 hover:bg-amber-950/40 cursor-pointer text-amber-300'
                         : 'border-slate-800 bg-slate-950/20 opacity-50 cursor-not-allowed text-slate-500'
@@ -768,10 +788,12 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                       </span>
                     </div>
 
-                    <div className="flex flex-col items-center justify-center my-auto py-1">
-                      <Plus className="w-4 h-4 text-amber-400 mb-0.5" />
-                      <span className="text-[10px] font-bold text-center">Attach Muon Source</span>
-                      <span className="text-[8.5px] text-slate-400 text-center">(+2 Pwr, +1 Init outside grid)</span>
+                    <div className="flex flex-col items-center justify-center my-auto py-0.5">
+                      <div className="flex items-center gap-1 text-[10px] font-bold">
+                        <Plus className="w-3.5 h-3.5 text-amber-400" />
+                        <span>Attach Muon Source</span>
+                      </div>
+                      <span className="text-[8px] text-slate-400">(+2 Pwr, +1 Init outside grid)</span>
                     </div>
                   </div>
                 )}
@@ -914,7 +936,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                           </span>
                         )}
                         {part.computerBonus > 0 && (
-                          <span className="text-indigo-400 font-mono">+{part.computerBonus} Hit</span>
+                          <span className="text-indigo-400 font-mono">+{part.computerBonus} COMP</span>
                         )}
                         {part.shieldBonus > 0 && (
                           <span className="text-blue-400 font-mono">-{part.shieldBonus} Shield</span>

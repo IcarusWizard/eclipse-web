@@ -91,6 +91,7 @@ interface HexGalaxyMapProps {
     selectedSectorId: string | null;
     onSelectSector?: (sectorId: string) => void;
   } | null;
+  initialShowGrid?: boolean;
 }
 
 const HEX_RADIUS = 78;
@@ -178,6 +179,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   moveMode = null,
   stagedAbandonedSectorIds = [],
   blackHoleReturnMode = null,
+  initialShowGrid = false,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -185,7 +187,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [isInteracting, setIsInteracting] = useState(false);
   const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
-  const [showGrid, setShowGrid] = useState(false);
+  const [showGrid, setShowGrid] = useState(initialShowGrid);
 
   const panRef = useRef(pan);
   panRef.current = pan;
@@ -842,14 +844,14 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   />
                   <text
                     x={x}
-                    y={y + 4}
+                    y={y - 3}
                     textAnchor="middle"
                     fill={
                       ring === 1
-                        ? 'rgba(251, 191, 36, 0.45)'
+                        ? 'rgba(251, 191, 36, 0.55)'
                         : ring === 2
-                        ? 'rgba(56, 189, 248, 0.45)'
-                        : 'rgba(129, 140, 248, 0.45)'
+                        ? 'rgba(56, 189, 248, 0.55)'
+                        : 'rgba(129, 140, 248, 0.55)'
                     }
                     fontSize="11"
                     fontFamily="monospace"
@@ -857,6 +859,24 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     letterSpacing="0.5"
                   >
                     R{ring}
+                  </text>
+                  <text
+                    x={x}
+                    y={y + 11}
+                    textAnchor="middle"
+                    fill={
+                      ring === 1
+                        ? 'rgba(251, 191, 36, 0.8)'
+                        : ring === 2
+                        ? 'rgba(56, 189, 248, 0.8)'
+                        : 'rgba(129, 140, 248, 0.8)'
+                    }
+                    fontSize="9.5"
+                    fontFamily="monospace"
+                    fontWeight="bold"
+                    letterSpacing="0.3"
+                  >
+                    {`(${coord.q}, ${coord.r})`}
                   </text>
                 </g>
               );
@@ -887,8 +907,11 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 />
                 <circle cx={x} cy={y} r="16" fill="rgba(15, 23, 42, 0.8)" stroke="#06b6d4" strokeWidth="1.5" />
                 <Compass className="text-cyan-400 group-hover:scale-125 transition-transform" x={x - 8} y={y - 8} width="16" height="16" />
-                <text x={x} y={y + 28} textAnchor="middle" fill="#06b6d4" fontSize="10" fontWeight="bold">
+                <text x={x} y={y + 26} textAnchor="middle" fill="#06b6d4" fontSize="10" fontWeight="bold">
                   Ring {target.ring}
+                </text>
+                <text x={x} y={y + 38} textAnchor="middle" fill="#67e8f9" fontSize="9" fontFamily="monospace" fontWeight="bold">
+                  {`(${target.target.q}, ${target.target.r})`}
                 </text>
               </g>
             );
@@ -1247,29 +1270,43 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 })}
 
                 {/* Sector Number High-Contrast Badge */}
-                <g transform={`translate(${x}, ${y - HEX_RADIUS + 15})`} className="pointer-events-none">
+                <g transform={`translate(${x}, ${y - HEX_RADIUS + (showGrid ? 16 : 15)})`} className="pointer-events-none">
                   <rect
-                    x={isCenter ? -28 : -24}
-                    y="-9"
-                    width={isCenter ? 56 : 48}
-                    height="18"
+                    x={isCenter ? -28 : -25}
+                    y={showGrid ? -12 : -9}
+                    width={isCenter ? 56 : 50}
+                    height={showGrid ? 24 : 18}
                     rx="4"
-                    fill="rgba(2, 6, 23, 0.92)"
+                    fill="rgba(2, 6, 23, 0.94)"
                     stroke={isCenter ? '#cbd5e1' : '#38bdf8'}
                     strokeWidth="1.3"
                   />
                   <text
                     x="0"
-                    y="3.5"
+                    y={showGrid ? -1 : 3.5}
                     textAnchor="middle"
                     fill={isCenter ? '#f8fafc' : '#f0f9ff'}
-                    fontSize="11"
+                    fontSize={showGrid ? '9.5' : '11'}
                     fontFamily="monospace"
                     fontWeight="900"
                     letterSpacing="0.5"
                   >
                     {isCenter ? 'GCDS 1' : `SEC ${sector.sectorNumber}`}
                   </text>
+                  {showGrid && (
+                    <text
+                      x="0"
+                      y="9"
+                      textAnchor="middle"
+                      fill={isCenter ? '#cbd5e1' : '#38bdf8'}
+                      fontSize="8.5"
+                      fontFamily="monospace"
+                      fontWeight="bold"
+                      letterSpacing="0.3"
+                    >
+                      {`(${sector.coord.q}, ${sector.coord.r})`}
+                    </text>
+                  )}
                 </g>
 
                 {/* Sector VP Badge */}
@@ -1286,7 +1323,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     : `★ ${baseVP} VP`;
                   const rectWidth = bonusParts.length > 0 ? (baseVP > 0 ? 56 : 40) : 36;
                   return (
-                    <g transform={`translate(${x}, ${y - HEX_RADIUS + 32})`} className="pointer-events-none">
+                    <g transform={`translate(${x}, ${y - HEX_RADIUS + (showGrid ? 37 : 32)})`} className="pointer-events-none">
                       <rect
                         x={-rectWidth / 2}
                         y="-7"
@@ -1314,7 +1351,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
                 {/* Active Combat Badge */}
                 {isCombatSector && (
-                  <g transform={`translate(${x}, ${y - HEX_RADIUS + 46})`} className="pointer-events-none">
+                  <g transform={`translate(${x}, ${y - HEX_RADIUS + (showGrid ? 51 : 46)})`} className="pointer-events-none">
                     <rect
                       x="-38"
                       y="-8"
@@ -2005,7 +2042,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
                 {/* Build Mode Interactive Overlay Badges */}
                 {buildMode && isBuildEligible && (
-                  <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.victoryPoints > 0 ? 48 : 34)})`} className="pointer-events-none">
+                  <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.victoryPoints > 0 ? (showGrid ? 53 : 48) : (showGrid ? 39 : 34))})`} className="pointer-events-none">
                     <rect
                       x="-38"
                       y="-8"
@@ -2592,7 +2629,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   fontWeight="bold"
                   letterSpacing="0.5"
                 >
-                  SEC {pendingExplore.candidateTile.sectorNumber} ({pendingExplore.candidateTile.victoryPoints} VP)
+                  SEC {pendingExplore.candidateTile.sectorNumber} ({pendingExplore.candidateTile.victoryPoints} VP) • ({pendingExplore.target.q}, {pendingExplore.target.r})
                 </text>
 
                 {/* Center / Ancient / Discovery / Artifact Badges */}
