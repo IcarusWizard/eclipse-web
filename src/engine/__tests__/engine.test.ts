@@ -21703,6 +21703,106 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(modalHtml).not.toContain('Discard Tile (0 Credits)');
         expect(modalHtml).toContain('Confirm Placement');
       });
+
+      test('139. verifies PhysicalPlayerBoardModal has a separate Rep & Discovery tab unmerged from Upkeep & Discs', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+        const { createInitialGame } = await import('../rules/setup');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const terranPlayer = game.players[0]!;
+
+        // 1. Render with Upkeep & Discs tab (tracks)
+        const tracksHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: terranPlayer,
+            players: game.players,
+            sectors: game.sectors,
+            activePlayerId: terranPlayer.id,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+            initialTab: 'tracks',
+          })
+        );
+
+        // Contains tab headers (HTML escaped &amp;)
+        expect(tracksHtml).toContain('Upkeep &amp; Discs');
+        expect(tracksHtml).toContain('Rep &amp; Discovery');
+
+        // Upkeep & Discs contains influence & population tracks, but NOT reputation or discovery
+        expect(tracksHtml).toContain('INFLUENCE DISC &amp; UPKEEP TRACK');
+        expect(tracksHtml).toContain('POPULATION &amp; RESOURCE PRODUCTION TRACKS');
+        expect(tracksHtml).not.toContain('REPUTATION TRACK (');
+        expect(tracksHtml).not.toContain('KEPT DISCOVERY TILES FOR VICTORY POINTS');
+
+        // 2. Render with Rep & Discovery tab (reputation)
+        const repHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: terranPlayer,
+            players: game.players,
+            sectors: game.sectors,
+            activePlayerId: terranPlayer.id,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+            initialTab: 'reputation',
+          })
+        );
+
+        // Rep & Discovery contains reputation track and discovery tiles, but NOT influence track
+        expect(repHtml).toContain('REPUTATION TRACK (');
+        expect(repHtml).toContain('KEPT DISCOVERY TILES FOR VICTORY POINTS');
+        expect(repHtml).not.toContain('INFLUENCE DISC &amp; UPKEEP TRACK');
+        expect(repHtml).not.toContain('POPULATION &amp; RESOURCE PRODUCTION TRACKS');
+
+        // 3. Render with Full Mat (all)
+        const allHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: terranPlayer,
+            players: game.players,
+            sectors: game.sectors,
+            activePlayerId: terranPlayer.id,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+            initialTab: 'all',
+          })
+        );
+
+        expect(allHtml).toContain('INFLUENCE DISC &amp; UPKEEP TRACK');
+        expect(allHtml).toContain('REPUTATION TRACK (');
+        expect(allHtml).toContain('KEPT DISCOVERY TILES FOR VICTORY POINTS');
+        expect(allHtml).toContain('POPULATION &amp; RESOURCE PRODUCTION TRACKS');
+      });
+
+      test('140. verifies LobbyView shows the compact Simulator shortcut next to Gallery and removes the big Combat Simulator banner', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { LobbyView } = await import('../../components/lobby/LobbyView');
+
+        const lobbyHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartGame: () => {},
+            onOpenGallery: () => {},
+            onOpenCombatSimulator: () => {},
+            mySavedTables: [],
+          })
+        );
+
+        // 1. Verify compact shortcut icon next to Gallery is present
+        expect(lobbyHtml).toContain('📚 Gallery');
+        expect(lobbyHtml).toContain('⚔️ Simulator');
+        expect(lobbyHtml).toContain('Open Monte Carlo Combat Simulator');
+
+        // 2. Verify big banner is removed
+        expect(lobbyHtml).not.toContain('Combat Simulator &amp; Fleet Battle Lab');
+        expect(lobbyHtml).not.toContain('Launch Simulator');
+      });
     });
   });
 });

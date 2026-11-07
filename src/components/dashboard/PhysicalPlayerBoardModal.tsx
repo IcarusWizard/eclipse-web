@@ -60,6 +60,7 @@ interface PhysicalPlayerBoardModalProps {
   onBetrayAlliance?: (targetPlayerId: string) => void;
   onConvertColonyShip?: (resource: 'money' | 'science' | 'materials') => void;
   activeExpansions?: string[];
+  initialTab?: 'all' | 'tracks' | 'reputation' | 'tech' | 'blueprints';
 }
 
 export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> = ({
@@ -77,8 +78,9 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   onBetrayAlliance,
   onConvertColonyShip,
   activeExpansions,
+  initialTab = 'all',
 }) => {
-  const [activeTab, setActiveTab] = useState<'all' | 'tracks' | 'tech' | 'blueprints'>('all');
+  const [activeTab, setActiveTab] = useState<'all' | 'tracks' | 'reputation' | 'tech' | 'blueprints'>(initialTab);
   const [selectedTech, setSelectedTech] = useState<Technology | null>(null);
 
   const summary = useMemo(() => calculatePlayerRoundSummary(player), [player]);
@@ -199,7 +201,23 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
               ))}
             </div>
 
-            {/* View Mode Tabs */}
+            {/* View Mode Tabs (Mobile dropdown) */}
+            <div className="md:hidden flex items-center">
+              <select
+                value={activeTab}
+                onChange={(e) => setActiveTab(e.target.value as any)}
+                aria-label="View Mode Tab"
+                className="bg-slate-900 border border-slate-800 text-slate-200 text-xs rounded-lg px-2 py-1.5 font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500"
+              >
+                <option value="all">Full Mat</option>
+                <option value="tracks">Upkeep & Discs</option>
+                <option value="reputation">Rep & Discovery</option>
+                <option value="tech">Tech Rows</option>
+                <option value="blueprints">Ship Blueprints</option>
+              </select>
+            </div>
+
+            {/* View Mode Tabs (Desktop) */}
             <div className="hidden md:flex items-center bg-slate-900 border border-slate-800 rounded-lg p-1 text-xs">
               <button
                 onClick={() => setActiveTab('all')}
@@ -216,6 +234,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 }`}
               >
                 Upkeep & Discs
+              </button>
+              <button
+                onClick={() => setActiveTab('reputation')}
+                className={`px-2.5 py-1 rounded font-bold transition-all ${
+                  activeTab === 'reputation' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
+                }`}
+              >
+                Rep & Discovery
               </button>
               <button
                 onClick={() => setActiveTab('tech')}
@@ -554,10 +580,10 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
           )}
 
           {/* ================================================================= */}
-          {/* SECTION 1.5: REPUTATION TRACK (5 SLOTS)                           */}
+          {/* SECTION 1.5: REPUTATION TRACK & DISCOVERY TILES                   */}
           {/* Authentic 5-slot track for Reputation & Ambassador Tiles          */}
           {/* ================================================================= */}
-          {(activeTab === 'all' || activeTab === 'tracks') && (
+          {(activeTab === 'all' || activeTab === 'reputation') && (
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg space-y-4">
               {/* Traitor Tile Warning Banner */}
               {traitorPlayerId === player.id && (
