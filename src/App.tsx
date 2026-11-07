@@ -14,7 +14,7 @@ import {
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
-import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
+import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups } from './engine/rules/combatEngine';
 import { getNebulaSubsectorForOuterEdge } from './engine/rules/galacticEvents';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
@@ -2865,9 +2865,38 @@ export const App: React.FC = () => {
                 }
               : null
           }
-          onRotateExplore={(delta) =>
-            setExploreRotation((r) => ((r + delta) % 6 + 6) % 6)
-          }
+          onRotateExplore={(delta) => {
+            if (!pendingExploreCoords || !activeCandidateTile || !sourceSector) {
+              setExploreRotation((r) => ((r + delta) % 6 + 6) % 6);
+              return;
+            }
+            const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
+            if (delta >= 0) {
+              const nextRot = findNextLegalExploreRotation(
+                sourceSector,
+                activeCandidateTile,
+                pendingExploreCoords.target,
+                exploreRotation,
+                hasWormholeGen,
+                state.sectors,
+                activePlayer?.id,
+                state.warpedUniverse?.conduits
+              );
+              setExploreRotation(nextRot);
+            } else {
+              const prevRot = findPreviousLegalExploreRotation(
+                sourceSector,
+                activeCandidateTile,
+                pendingExploreCoords.target,
+                exploreRotation,
+                hasWormholeGen,
+                state.sectors,
+                activePlayer?.id,
+                state.warpedUniverse?.conduits
+              );
+              setExploreRotation(prevRot);
+            }
+          }}
           buildMode={
             isBuildOpen
               ? {
@@ -3070,10 +3099,6 @@ export const App: React.FC = () => {
           onRotate={setExploreRotation}
           onConfirmPlacement={handleConfirmExplorePlacement}
           onDiscard={handleDiscardExploreTile}
-          onClose={() => {
-            setPendingExploreCoords(null);
-            setDracoSelectedTileIndex(0);
-          }}
         />
       )}
 

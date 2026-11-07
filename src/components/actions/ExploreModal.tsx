@@ -6,6 +6,8 @@ import {
   getRingFromCoord,
   findLegalExploreRotation,
   findNextLegalExploreRotation,
+  findPreviousLegalExploreRotation,
+  findLegalExploreRotations,
   isLegallyConnectedToPlayerSectors,
   hasWormholeOnEdge,
   getHexCornerPoints,
@@ -20,7 +22,6 @@ import {
   RotateCw,
   RotateCcw,
   Check,
-  X,
   ShieldAlert,
   Sparkles,
   Lock,
@@ -43,7 +44,7 @@ interface ExploreModalProps {
   onRotate: (newRotation: number | ((prev: number) => number)) => void;
   onConfirmPlacement: (rotation: number, claimInfluence: boolean, chosenTileIndex?: number) => void;
   onDiscard: (chosenTileIndex?: number) => void;
-  onClose: () => void;
+  onClose?: () => void;
   selectedDracoIndex?: number;
   onSelectDracoIndex?: (index: number) => void;
 }
@@ -96,6 +97,47 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     sourceSector,
     warpConduits
   );
+
+  const legalRotations = React.useMemo(() => {
+    return findLegalExploreRotations(
+      sourceSector,
+      activeTile,
+      targetCoord,
+      hasWormholeGen,
+      sectors,
+      player?.id || '',
+      warpConduits
+    );
+  }, [sourceSector, activeTile, targetCoord, hasWormholeGen, sectors, player?.id, warpConduits]);
+
+  const handleRotateNext = () => {
+    const nextRot = findNextLegalExploreRotation(
+      sourceSector,
+      activeTile,
+      targetCoord,
+      rotation,
+      hasWormholeGen,
+      sectors,
+      player?.id || '',
+      warpConduits
+    );
+    onRotate(nextRot);
+  };
+
+  const handleRotatePrev = () => {
+    const prevRot = findPreviousLegalExploreRotation(
+      sourceSector,
+      activeTile,
+      targetCoord,
+      rotation,
+      hasWormholeGen,
+      sectors,
+      player?.id || '',
+      warpConduits
+    );
+    onRotate(prevRot);
+  };
+
   const ring = getRingFromCoord(targetCoord);
 
   // Player researched advanced techs
@@ -202,30 +244,27 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
       if (e.key === 'r' || e.key === 'R') {
         e.preventDefault();
         if (e.shiftKey) {
-          onRotate((r) => ((r - 1 + 6) % 6));
+          handleRotatePrev();
         } else {
-          onRotate((r) => ((r + 1) % 6));
+          handleRotateNext();
         }
       } else if (e.key === 'ArrowRight' || e.key === 'ArrowUp') {
         e.preventDefault();
-        onRotate((r) => ((r + 1) % 6));
+        handleRotateNext();
       } else if (e.key === 'ArrowLeft' || e.key === 'ArrowDown') {
         e.preventDefault();
-        onRotate((r) => ((r - 1 + 6) % 6));
+        handleRotatePrev();
       } else if (e.key === 'Enter') {
         if (isConnected) {
           e.preventDefault();
           onConfirmPlacement(rotation, canClaimDisc);
         }
-      } else if (e.key === 'Escape') {
-        e.preventDefault();
-        onClose();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isConnected, rotation, canClaimDisc, onRotate, onConfirmPlacement, onClose]);
+  }, [isConnected, rotation, canClaimDisc, sourceSector, activeTile, targetCoord, hasWormholeGen, sectors, player?.id, warpConduits, onRotate, onConfirmPlacement]);
 
   return (
     <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4 pointer-events-none">
@@ -286,68 +325,46 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
             </span>
           </div>
 
-          {/* Connection Status & Rotation Controls */}
+          {/* Rotation Controls & Actions */}
           <div className="flex items-center gap-2.5">
-            <button
-              type="button"
-              onClick={() => {
-                if (!isConnected) {
-                  const nextLegal = findNextLegalExploreRotation(
-                    sourceSector,
-                    activeTile,
-                    targetCoord,
-                    rotation,
-                    hasWormholeGen,
-                    sectors,
-                    player.id
-                  );
-                  onRotate(nextLegal);
-                }
-              }}
-              className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold border flex items-center gap-1.5 transition-all ${
-                isConnected
-                  ? 'bg-emerald-950/60 border-emerald-700/80 text-emerald-300 cursor-default'
-                  : 'bg-rose-950/60 border-rose-700/80 text-rose-300 hover:bg-rose-900/80 cursor-pointer animate-pulse'
-              }`}
-              title={isConnected ? 'Wormholes Connected' : 'Click to snap to next legal rotation'}
-            >
-              <span
-                className={`w-1.5 h-1.5 rounded-full ${
-                  isConnected ? 'bg-emerald-400 animate-pulse' : 'bg-rose-400'
-                }`}
-              />
-              {isConnected ? 'Wormholes Connected' : 'Rotate to Connect'}
-            </button>
+            {legalRotations.length === 0 && (
+              <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border bg-rose-950/60 border-rose-800 text-rose-400">
+                No Legal Connections
+              </span>
+            )}
 
             {/* Rotation Buttons */}
             <div className="flex items-center gap-1 bg-slate-950/80 p-0.5 rounded-lg border border-slate-800">
               <button
-                onClick={() => onRotate((r) => ((r - 1 + 6) % 6))}
-                className="p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-400 transition-colors"
-                title="Rotate CCW (Shift+R / ←)"
+                type="button"
+                onClick={handleRotatePrev}
+                disabled={legalRotations.length <= 1}
+                className="p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-400 transition-colors disabled:opacity-30 disabled:hover:text-slate-300 disabled:cursor-not-allowed cursor-pointer"
+                title={legalRotations.length <= 1 ? 'Only 1 legal orientation' : 'Rotate CCW to previous legal orientation (Shift+R / ←)'}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
-              <span className="text-[10px] font-mono text-slate-400 px-1 font-bold">
-                {rotation * 60}°
-              </span>
+              <div
+                className="flex items-center gap-1 text-[10px] font-mono text-slate-300 px-1.5 font-bold select-none"
+                title={legalRotations.length > 0 ? `Legal orientation ${rotation * 60}° (${legalRotations.indexOf(rotation) + 1} of ${legalRotations.length})` : `${rotation * 60}°`}
+              >
+                <span>{rotation * 60}°</span>
+                {legalRotations.length > 1 && (
+                  <span className="text-[9px] text-cyan-400 font-mono">
+                    ({legalRotations.indexOf(rotation) + 1}/{legalRotations.length})
+                  </span>
+                )}
+              </div>
               <button
-                onClick={() => onRotate((r) => ((r + 1) % 6))}
-                className="p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-400 transition-colors"
-                title="Rotate CW (R / →)"
+                type="button"
+                onClick={handleRotateNext}
+                disabled={legalRotations.length <= 1}
+                className="p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-400 transition-colors disabled:opacity-30 disabled:hover:text-slate-300 disabled:cursor-not-allowed cursor-pointer"
+                title={legalRotations.length <= 1 ? 'Only 1 legal orientation' : 'Rotate CW to next legal orientation (R / →)'}
               >
                 <RotateCw className="w-3.5 h-3.5" />
               </button>
             </div>
-
-            {/* Cancel Button */}
-            <button
-              onClick={onClose}
-              className="p-1 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
-              title="Cancel Explore (Esc)"
-            >
-              <X className="w-4 h-4" />
-            </button>
           </div>
         </div>
 
@@ -453,9 +470,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                     Nebula (3 Subsectors) - Sub 1 & 2 (Disc ❓), Sub 3 (Ancient 👾)
                   </span>
                 )}
-                <span className="text-[8.5px] font-mono text-cyan-400 mt-0.5">
-                  {isConnected ? '✓ Connected' : 'Unconnected'}
-                </span>
+                {!isConnected && (
+                  <span className="text-[8.5px] font-mono text-rose-400 mt-0.5">
+                    Unconnected
+                  </span>
+                )}
               </div>
             </div>
 
@@ -671,7 +690,15 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
         <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
             <span className="font-mono text-slate-500 text-[10px]">Controls:</span>
-            <span>Click hex on map or press <kbd className="px-1.5 py-0.5 bg-slate-800 text-cyan-300 rounded font-mono text-[10px] border border-slate-700 font-bold">R</kbd> to rotate</span>
+            <span>
+              {legalRotations.length > 1 ? (
+                <>Click hex on map or press <kbd className="px-1.5 py-0.5 bg-slate-800 text-cyan-300 rounded font-mono text-[10px] border border-slate-700 font-bold">R</kbd> to cycle legal orientations ({legalRotations.length} available)</>
+              ) : legalRotations.length === 1 ? (
+                <>Oriented to the single legal connection ({rotation * 60}°)</>
+              ) : (
+                <span className="text-rose-400">No legal orientation connects this sector to your empire</span>
+              )}
+            </span>
           </div>
 
           <div className="flex items-center gap-2">
@@ -679,7 +706,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
               onClick={() => onDiscard(hasDracoChoice ? selectedDracoIndex : undefined)}
               className="px-3.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/50 hover:text-rose-300 text-slate-400 hover:border-rose-800 text-xs font-semibold border border-slate-700 transition-colors"
             >
-              Discard Tile (0 Credits)
+              Discard Tile
             </button>
             <button
               disabled={!isConnected}

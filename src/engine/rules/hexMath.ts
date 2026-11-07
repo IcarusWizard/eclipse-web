@@ -292,6 +292,80 @@ export function findNextLegalExploreRotation(
 }
 
 /**
+ * Finds the previous legal rotation before `currentRotation` (counter-clockwise).
+ * Returns `currentRotation` if no legal rotation exists.
+ */
+export function findPreviousLegalExploreRotation(
+  sourceSector: SectorTile,
+  candidateTile: SectorTile,
+  targetCoord: HexCoord,
+  currentRotation: number,
+  hasWormholeGenerator: boolean = false,
+  allSectors?: SectorTile[],
+  playerId?: string,
+  warpConduits?: WarpConduit[]
+): number {
+  for (let step = 1; step <= 6; step++) {
+    const rot = (currentRotation - step + 6) % 6;
+    const testTile: SectorTile = {
+      ...candidateTile,
+      coord: targetCoord,
+      rotation: rot,
+    };
+    if (
+      isLegallyConnectedToPlayerSectors(
+        allSectors || [],
+        targetCoord,
+        testTile,
+        playerId,
+        hasWormholeGenerator,
+        sourceSector,
+        warpConduits
+      )
+    ) {
+      return rot;
+    }
+  }
+  return currentRotation;
+}
+
+/**
+ * Returns all valid rotations [0..5] where the candidate tile legally connects to player sectors.
+ */
+export function findLegalExploreRotations(
+  sourceSector: SectorTile,
+  candidateTile: SectorTile,
+  targetCoord: HexCoord,
+  hasWormholeGenerator: boolean = false,
+  allSectors?: SectorTile[],
+  playerId?: string,
+  warpConduits?: WarpConduit[]
+): number[] {
+  const legal: number[] = [];
+  for (let rot = 0; rot < 6; rot++) {
+    const testTile: SectorTile = {
+      ...candidateTile,
+      coord: targetCoord,
+      rotation: rot,
+    };
+    if (
+      isLegallyConnectedToPlayerSectors(
+        allSectors || [],
+        targetCoord,
+        testTile,
+        playerId,
+        hasWormholeGenerator,
+        sourceSector,
+        warpConduits
+      )
+    ) {
+      legal.push(rot);
+    }
+  }
+  return legal;
+}
+
+/**
  * Converts axial hex coord to 2D pixel coordinates for SVG/Canvas rendering.
  * Pointy-topped hex formula:
  * x = size * (sqrt(3) * q + sqrt(3)/2 * r)

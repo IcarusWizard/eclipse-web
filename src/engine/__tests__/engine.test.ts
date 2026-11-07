@@ -21543,6 +21543,166 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(editorHtml).toContain('COMP');
         expect(editorHtml).toContain('SHIELD');
       });
+
+      it('Test 137: verifies explore tile rotation only rotates to legal orientations', async () => {
+        const {
+          findLegalExploreRotations,
+          findNextLegalExploreRotation,
+          findPreviousLegalExploreRotation,
+          areSectorsConnected,
+          hasWormholeOnEdge,
+          getNeighborCoord,
+          getOppositeEdge,
+        } = await import('../rules/hexMath');
+        const { createInitialGame } = await import('../rules/setup');
+        const { HexEdge } = await import('../types/galaxy');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const homeSector = game.sectors.find((s) => s.sectorNumber === 221)!;
+
+        // Find an edge of homeSector that has a wormhole
+        const edgeWithWh = ([0, 1, 2, 3, 4, 5] as HexEdge[]).find((e) =>
+          hasWormholeOnEdge(homeSector, e)
+        )!;
+        const targetCoord = getNeighborCoord(homeSector.coord, edgeWithWh);
+        const oppEdge = getOppositeEdge(edgeWithWh);
+
+        // Candidate tile with wormholes at oppEdge and (oppEdge + 2) % 6
+        const whArray = [false, false, false, false, false, false];
+        whArray[oppEdge] = true;
+        whArray[(oppEdge + 2) % 6] = true;
+
+        const testCandidateTile: any = {
+          id: 'test_tile_rot',
+          sectorNumber: 301,
+          ring: 2,
+          coord: targetCoord,
+          rotation: 0,
+          planets: [],
+          wormholes: whArray,
+          ships: [],
+        };
+
+        // 1. Check findLegalExploreRotations
+        const legalRots = findLegalExploreRotations(homeSector, testCandidateTile, targetCoord, false, game.sectors, game.players[0]!.id);
+        expect(legalRots.length).toBeGreaterThan(0);
+        expect(legalRots.length).toBeLessThan(6); // Must not be all angles
+
+        // Every rotation in legalRots must be legal
+        for (const rot of legalRots) {
+          const testTile = { ...testCandidateTile, rotation: rot };
+          expect(areSectorsConnected(homeSector, testTile, false)).toBe(true);
+        }
+
+        // 2. Check findNextLegalExploreRotation skips all illegal orientations
+        const firstLegal = legalRots[0];
+        let current = firstLegal;
+        for (let i = 0; i < legalRots.length * 2; i++) {
+          const next = findNextLegalExploreRotation(
+            homeSector,
+            testCandidateTile,
+            targetCoord,
+            current,
+            false,
+            game.sectors,
+            game.players[0]!.id
+          );
+          expect(legalRots).toContain(next);
+          current = next;
+        }
+
+        // 3. Check findPreviousLegalExploreRotation cycles backwards through only legal orientations
+        current = firstLegal;
+        for (let i = 0; i < legalRots.length * 2; i++) {
+          const prev = findPreviousLegalExploreRotation(
+            homeSector,
+            testCandidateTile,
+            targetCoord,
+            current,
+            false,
+            game.sectors,
+            game.players[0]!.id
+          );
+          expect(legalRots).toContain(prev);
+          current = prev;
+        }
+
+        // 4. Verify ExploreModal UI renders legal rotation controls and title
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+
+        const modalHtml = renderToString(
+          React.createElement(ExploreModal, {
+            player: game.players[0]!,
+            sectors: game.sectors,
+            fromCoord: homeSector.coord,
+            targetCoord,
+            candidateTile: testCandidateTile,
+            sourceSector: homeSector,
+            rotation: firstLegal,
+            onRotate: () => {},
+            onConfirmPlacement: () => {},
+            onDiscard: () => {},
+            onClose: () => {},
+          })
+        );
+
+        expect(modalHtml).not.toContain('Wormholes Connected');
+        expect(modalHtml).toContain(`${firstLegal * 60}°`);
+        if (legalRots.length > 1) {
+          expect(modalHtml).toContain(`1/${legalRots.length}`);
+          expect(modalHtml).toContain('cycle legal orientations');
+        } else {
+          expect(modalHtml).toContain('single legal connection');
+        }
+      });
+
+      test('138. verifies that once an explore tile is revealed, the player cannot cancel/exit via X or Esc, and must choose Confirm Placement or Discard Tile', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { ExploreModal } = await import('../../components/actions/ExploreModal');
+        const { createInitialGame } = await import('../rules/setup');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const homeSector = game.sectors.find((s) => s.sectorNumber === 221)!;
+        const targetCoord = { q: homeSector.coord.q + 1, r: homeSector.coord.r };
+
+        const testTile = {
+          id: 'test_sec_revealed',
+          sectorNumber: 301,
+          ring: 3 as const,
+          coord: targetCoord,
+          planets: [],
+          wormholes: [true, false, false, false, false, false] as [boolean, boolean, boolean, boolean, boolean, boolean],
+          victoryPoints: 2,
+        };
+
+        const modalHtml = renderToString(
+          React.createElement(ExploreModal, {
+            player: game.players[0]!,
+            sectors: game.sectors,
+            fromCoord: homeSector.coord,
+            targetCoord,
+            candidateTile: testTile,
+            sourceSector: homeSector,
+            rotation: 0,
+            onRotate: () => {},
+            onConfirmPlacement: () => {},
+            onDiscard: () => {},
+          })
+        );
+
+        // 1. Verify modal does not render any 'Cancel Explore' button or 'X' button
+        expect(modalHtml).not.toContain('Cancel Explore');
+        expect(modalHtml).not.toContain('title="Cancel Explore (Esc)"');
+        expect(modalHtml).not.toContain('lucide-x');
+
+        // 2. Verify modal renders the required choices: Discard Tile or Confirm Placement
+        expect(modalHtml).toContain('Discard Tile');
+        expect(modalHtml).not.toContain('Discard Tile (0 Credits)');
+        expect(modalHtml).toContain('Confirm Placement');
+      });
     });
   });
 });
