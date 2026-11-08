@@ -1452,15 +1452,24 @@ describe('Game Setup & Turn Engine Flow', () => {
       expect(res.newState.pendingArtifactReward!.totalResources).toBe(5);
       expect(res.newState.pendingArtifactReward!.artifactsCount).toBe(1);
 
-      // Player allocates 2 Money, 1 Science, 2 Materials
-      const allocRes = executeAction(res.newState, {
+      // Reject allocations that are not multiples of 5 (e.g. 2 Money, 1 Science, 2 Materials)
+      const invalidAllocRes = executeAction(res.newState, {
         type: 'ALLOCATE_ARTIFACT_REWARD',
         playerId: p1.id,
         resources: { money: 2, science: 1, materials: 2 },
       });
+      expect(invalidAllocRes.success).toBe(false);
+      expect(invalidAllocRes.error).toContain('multiples of 5');
+
+      // Player allocates 5 Materials (1 Artifact yields 5 Materials)
+      const allocRes = executeAction(res.newState, {
+        type: 'ALLOCATE_ARTIFACT_REWARD',
+        playerId: p1.id,
+        resources: { money: 0, science: 0, materials: 5 },
+      });
       expect(allocRes.success).toBe(true);
       const updatedP1 = allocRes.newState.players[0]!;
-      expect(updatedP1.resources.materials).toBe(4 + 2); // 4 initial + 2 chosen
+      expect(updatedP1.resources.materials).toBe(4 + 5); // 4 initial + 5 chosen
       expect(allocRes.newState.pendingArtifactReward).toBeNull();
     });
 
@@ -21518,14 +21527,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(discoverySrc).not.toContain('🔬');
         expect(discoverySrc).toContain('FlaskConical');
 
-        // 2. Verify ShipBlueprintEditor status bar aligns into exactly 2 rows (grid-cols-3)
+        // 2. Verify ShipBlueprintEditor status bar aligns in a single row matching Player Mat view (grid-cols-6)
         const editorSrc = fs.readFileSync(
           path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'),
           'utf-8'
         );
-        // Ensure old 1-row responsive classes (grid-cols-2 sm:grid-cols-3 lg:grid-cols-6) are replaced
-        expect(editorSrc).not.toContain('lg:grid-cols-6');
-        expect(editorSrc).toContain('grid grid-cols-3 gap-3');
+        expect(editorSrc).toContain('grid grid-cols-6');
 
         const editorHtml = renderToString(
           React.createElement(ShipBlueprintEditor, {
@@ -21535,13 +21542,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           })
         );
 
-        expect(editorHtml).toContain('grid-cols-3');
-        expect(editorHtml).toContain('POWER BALANCE');
-        expect(editorHtml).toContain('HULL / HP');
-        expect(editorHtml).toContain('DRIVE SPEED');
-        expect(editorHtml).toContain('INITIATIVE');
+        expect(editorHtml).toContain('grid-cols-6');
+        expect(editorHtml).toContain('HP');
+        expect(editorHtml).toContain('Speed');
+        expect(editorHtml).toContain('Init');
         expect(editorHtml).toContain('COMP');
         expect(editorHtml).toContain('SHIELD');
+        expect(editorHtml).toContain('Power');
       });
 
       it('Test 137: verifies explore tile rotation only rotates to legal orientations', async () => {
@@ -21802,6 +21809,357 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // 2. Verify big banner is removed
         expect(lobbyHtml).not.toContain('Combat Simulator &amp; Fleet Battle Lab');
         expect(lobbyHtml).not.toContain('Launch Simulator');
+      });
+
+      test('141. verifies Bug 246: PhysicalPlayerBoardModal exit icon in upper right corner and bought technology descriptions & details modal', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const fs = await import('fs');
+        const path = await import('path');
+        const { createInitialGame } = await import('../rules/setup');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+        const game = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orion = game.players[0]!;
+
+        // Give Orion researched tech
+        orion.techTrack.researched.push({
+          id: 'plasma_cannon',
+          name: 'Plasma Cannon',
+          category: 'military',
+          cost: 4,
+          minCost: 2,
+          description: 'High-damage orange plasma artillery module for heavy combat vessels.',
+        });
+        orion.techTrack.militaryCount = 1;
+
+        const boardHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: orion,
+            players: game.players,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+            initialTab: 'tech',
+          })
+        );
+
+        // 1. Verify exit button is positioned at top-right
+        const boardSrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'dashboard', 'PhysicalPlayerBoardModal.tsx'),
+          'utf-8'
+        );
+        expect(boardSrc).toContain('absolute top-3 right-3 sm:top-3.5 sm:right-4 z-30');
+
+        // 2. Verify bought technology displays its description on board
+        expect(boardHtml).toContain('Plasma Cannon');
+        expect(boardHtml).toContain('High-damage orange plasma artillery module for heavy combat vessels.');
+      });
+
+      test('142. verifies Bug 247: ShipBlueprintEditor uses player board format and sequence (HP, Speed, Init, COMP, SHIELD, Power)', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { createInitialGame } = await import('../rules/setup');
+        const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+
+        const game = createInitialGame(2, ['hydran_progress', 'terran_federation']);
+        const hydran = game.players[0]!;
+
+        const editorHtml = renderToString(
+          React.createElement(ShipBlueprintEditor, {
+            player: hydran,
+            onSaveBlueprints: () => {},
+            onClose: () => {},
+          })
+        );
+
+        // Verify status bar format in a single row without individual boxes (matching Player Mat view)
+        expect(editorHtml).toContain('grid-cols-6');
+        expect(editorHtml).not.toContain('bg-slate-900/60 p-2 rounded-lg border');
+        expect(editorHtml).toContain('HP');
+        expect(editorHtml).toContain('Speed');
+        expect(editorHtml).toContain('Init');
+        expect(editorHtml).toContain('COMP');
+        expect(editorHtml).toContain('SHIELD');
+        expect(editorHtml).toContain('Power');
+
+        // Check Initiative breakdown format (Base + Parts)
+        expect(editorHtml).toContain('Init');
+        expect(editorHtml.replace(/<!--.*?-->/g, '')).toMatch(/B\+?[0-9-]+ P\+?[0-9-]+/);
+      });
+
+      test('143. verifies Bug 248: ActionBar directly confirms action without redundant second confirmation modal', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const fs = await import('fs');
+        const path = await import('path');
+        const { createInitialGame } = await import('../rules/setup');
+        const { ActionBar } = await import('../../components/layout/ActionBar');
+
+        const game = createInitialGame(2, ['hydran_progress', 'terran_federation']);
+        const hydran = game.players[0]!;
+        expect(hydran.faction.researchActivations).toBe(2);
+
+        // Hydran took a RESEARCH action with only 1 tech researched (1 of 2 activations used)
+        let confirmed = false;
+        const pendingConf = {
+          actionType: 'RESEARCH',
+          playerId: hydran.id,
+          description: 'Researched Fusion Drive',
+          canRevert: true,
+          actionPayload: {
+            type: 'RESEARCH',
+            playerId: hydran.id,
+            researches: [{ techId: 'fusion_drive' }],
+          },
+        };
+
+        const actionBarHtml = renderToString(
+          React.createElement(ActionBar, {
+            activePlayer: hydran,
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+            pendingConfirmation: pendingConf,
+            onConfirmAction: () => { confirmed = true; },
+            onRevertAction: () => {},
+          })
+        );
+
+        // 1. Confirm button is rendered directly
+        expect(actionBarHtml).toContain('Confirm &amp; End Turn');
+
+        // 2. Redundant second confirmation modal is removed from ActionBar (only the in-modal warning is used)
+        const actionBarSrc = fs.readFileSync(
+          path.join(process.cwd(), 'src', 'components', 'layout', 'ActionBar.tsx'),
+          'utf-8'
+        );
+        expect(actionBarSrc).not.toContain('showUnusedActivationsModal');
+        expect(actionBarSrc).toContain('onClick={onConfirmAction}');
+      });
+
+      test('144. verifies Bug 249: pre-upkeep colonization window allows placing population cubes with ready colony ships before upkeep income', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction, transitionToUpkeep, getColonizablePlanetsForPlayer } = await import('../rules/gameReducer');
+
+        const game = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orion = game.players[0]!;
+        orion.colonyShips.ready = 2;
+
+        // Give Orion an extra controlled sector with an open standard money planet
+        const newSector = {
+          id: 'orion_colony_sector_test',
+          sectorNumber: 215,
+          ring: 2 as const,
+          coord: { q: 1, r: -2 },
+          discOwner: orion.id,
+          planets: [
+            { id: 'planet_215_0', resource: 'money' as const, isAdvanced: false, colonizedBy: undefined },
+          ],
+          wormholes: [true, true, true, true, true, true],
+          ships: [],
+          structures: {},
+        };
+        game.sectors.push(newSector);
+
+        // Orion has a colonizable planet
+        const colonizableBefore = getColonizablePlanetsForPlayer(game, orion.id);
+        expect(colonizableBefore.length).toBe(1);
+
+        // Transition to upkeep without immediate flag
+        transitionToUpkeep(game);
+        expect(game.phase).toBe('UPKEEP_PHASE');
+        expect(game.upkeepReadyPlayers).toBeDefined();
+        expect(game.upkeepReadyPlayers![orion.id]).toBeFalsy(); // Orion has open spot, so not pre-readied
+
+        // Orion colonizes the open planet in UPKEEP_PHASE
+        const colRes = executeAction(game, {
+          type: 'COLONIZE',
+          playerId: orion.id,
+          sectorId: newSector.id,
+          planetIndex: 0,
+        });
+        expect(colRes.success).toBe(true);
+        expect(colRes.newState.sectors.find((s) => s.id === newSector.id)!.planets[0].colonizedBy).toBe(orion.id);
+
+        // Now Orion has no more colonizable spots, so executeAction auto-readies Orion and finishes upkeep & cleanup into Round 2!
+        expect(colRes.newState.phase).toBe('ACTION_PHASE');
+        expect(colRes.newState.round).toBe(2);
+        expect(colRes.newState.upkeepReadyPlayers).toBeUndefined();
+        // In Upkeep phase, all colony ships are refreshed back to full total (3)
+        expect(colRes.newState.players[0]!.colonyShips.ready).toBe(3);
+      });
+
+      test('145. verifies Bug 250: ALLOCATE_ARTIFACT_REWARD strictly enforces multiples of 5 for every resource type', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction } = await import('../rules/gameReducer');
+
+        const game = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orion = game.players[0]!;
+
+        // 4 Artifacts owned -> 20 total resources
+        game.pendingArtifactReward = {
+          playerId: orion.id,
+          artifactsCount: 4,
+          totalResources: 20,
+        };
+
+        // 1. Invalid allocation: 3 science, 17 money (sum is 20, but not multiples of 5) -> REJECTED
+        const invalidRes = executeAction(game, {
+          type: 'ALLOCATE_ARTIFACT_REWARD',
+          playerId: orion.id,
+          resources: { money: 17, science: 3, materials: 0 },
+        });
+        expect(invalidRes.success).toBe(false);
+        expect(invalidRes.error).toContain('multiples of 5');
+
+        // 2. Valid allocation: 15 money, 5 science, 0 materials -> ACCEPTED
+        const initialMoney = orion.resources.money;
+        const initialSci = orion.resources.science;
+        const validRes = executeAction(game, {
+          type: 'ALLOCATE_ARTIFACT_REWARD',
+          playerId: orion.id,
+          resources: { money: 15, science: 5, materials: 0 },
+        });
+        expect(validRes.success).toBe(true);
+        expect(validRes.newState.players[0]!.resources.money).toBe(initialMoney + 15);
+        expect(validRes.newState.players[0]!.resources.science).toBe(initialSci + 5);
+        expect(validRes.newState.pendingArtifactReward).toBeNull();
+      });
+
+      test('146. verifies Rocket, CheckCircle2, and Check are imported in App.tsx for the pre-upkeep readiness bar without ReferenceError', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+
+        const appSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'App.tsx'), 'utf-8');
+
+        // Verify imports in App.tsx
+        expect(appSrc).toContain('Rocket');
+        expect(appSrc).toContain('CheckCircle2');
+        expect(appSrc).toContain('Check');
+
+        // Check the exact import statement from lucide-react in App.tsx
+        const lucideImportMatch = appSrc.match(/import\s*\{([^}]+)\}\s*from\s*['"]lucide-react['"]/);
+        expect(lucideImportMatch).toBeTruthy();
+        const importedSymbols = lucideImportMatch![1].split(',').map((s) => s.trim());
+        expect(importedSymbols).toContain('Rocket');
+        expect(importedSymbols).toContain('CheckCircle2');
+        expect(importedSymbols).toContain('Check');
+      });
+
+      test('147. verifies Bug 248: BuildModal, ShipBlueprintEditor, MoveModal, and TechMarketModal warn when action has unused activations remaining before confirming', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+
+        // 1. Verify BuildModal unused activation warning
+        const buildSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'actions', 'BuildModal.tsx'), 'utf-8');
+        expect(buildSrc).toContain('showUnusedWarning');
+        expect(buildSrc).toContain('handleTriggerBuild');
+        expect(buildSrc).toContain('Unused Build Activation');
+        expect(buildSrc).toContain('Keep Building (Add More)');
+        expect(buildSrc).toContain('Confirm & Construct');
+
+        // 2. Verify ShipBlueprintEditor unused activation warning
+        const editorSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'), 'utf-8');
+        expect(editorSrc).toContain('showUnusedWarning');
+        expect(editorSrc).toContain('Unused Upgrade Activation');
+        expect(editorSrc).toContain('Keep Upgrading (Add More)');
+        expect(editorSrc).toContain('Confirm & Save');
+
+        // 3. Verify MoveModal unused activation warning
+        const moveSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'actions', 'MoveModal.tsx'), 'utf-8');
+        expect(moveSrc).toContain('showUnusedWarning');
+        expect(moveSrc).toContain('handleTriggerMove');
+        expect(moveSrc).toContain('Unused Move Activation');
+        expect(moveSrc).toContain('Keep Moving (Plan More)');
+        expect(moveSrc).toContain('Confirm & Execute');
+
+        // 4. Verify TechMarketModal unused activation warning (for Hydran 2-tech research)
+        const techSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'tech', 'TechMarketModal.tsx'), 'utf-8');
+        expect(techSrc).toContain('showUnusedWarning');
+        expect(techSrc).toContain('Unused Research Activation');
+        expect(techSrc).toContain('Keep Selecting (Add More)');
+        expect(techSrc).toContain('Confirm & Research');
+
+        // 5. Verify ActionBar does not show a redundant second confirmation modal
+        const actionBarSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'ActionBar.tsx'), 'utf-8');
+        expect(actionBarSrc).not.toContain('showUnusedActivationsModal');
+      });
+
+      test('148. verifies hotseat takes turns for ready-for-upkeep and multiplayer acts simultaneously', async () => {
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction, transitionToUpkeep, getColonizablePlanetsForPlayer } = await import('../rules/gameReducer');
+
+        const game = createInitialGame(2, ['descendants_of_draco', 'planta']);
+        const draco = game.players[0]!;
+        const planta = game.players[1]!;
+
+        // Give both players ready colony ships and open colonizable sectors
+        draco.colonyShips.ready = 1;
+        planta.colonyShips.ready = 1;
+
+        const dracoSector = {
+          id: 'draco_open_sec',
+          sectorNumber: 216,
+          ring: 2 as const,
+          coord: { q: 1, r: -2 },
+          discOwner: draco.id,
+          planets: [{ id: 'draco_p1', resource: 'money' as const, isAdvanced: false }],
+        };
+        const plantaSector = {
+          id: 'planta_open_sec',
+          sectorNumber: 217,
+          ring: 2 as const,
+          coord: { q: -1, r: 2 },
+          discOwner: planta.id,
+          planets: [{ id: 'planta_p1', resource: 'science' as const, isAdvanced: false }],
+        };
+        game.sectors.push(dracoSector, plantaSector);
+
+        expect(getColonizablePlanetsForPlayer(game, draco.id).length).toBeGreaterThan(0);
+        expect(getColonizablePlanetsForPlayer(game, planta.id).length).toBeGreaterThan(0);
+
+        // 1. Transition to UPKEEP_PHASE
+        transitionToUpkeep(game);
+        expect(game.phase).toBe('UPKEEP_PHASE');
+        expect(game.upkeepReadyPlayers).toBeDefined();
+        expect(game.upkeepReadyPlayers![draco.id]).toBe(false);
+        expect(game.upkeepReadyPlayers![planta.id]).toBe(false);
+        expect(game.activePlayerIndex).toBe(0); // Draco takes turn first
+
+        // 2. In hotseat mode, Draco readies for upkeep -> turn advances to Planta
+        const readyDracoRes = executeAction(game, {
+          type: 'READY_FOR_UPKEEP',
+          playerId: draco.id,
+        });
+        expect(readyDracoRes.success).toBe(true);
+        expect(readyDracoRes.newState.upkeepReadyPlayers![draco.id]).toBe(true);
+        expect(readyDracoRes.newState.upkeepReadyPlayers![planta.id]).toBe(false);
+        // Turned to Planta!
+        expect(readyDracoRes.newState.activePlayerIndex).toBe(1);
+
+        // 3. Planta colonizes or readies -> all ready and upkeep calculations finalize
+        const readyPlantaRes = executeAction(readyDracoRes.newState, {
+          type: 'READY_FOR_UPKEEP',
+          playerId: planta.id,
+        });
+        expect(readyPlantaRes.success).toBe(true);
+        // All players ready -> executeUpkeepCalculations runs and clears upkeepReadyPlayers
+        expect(readyPlantaRes.newState.upkeepReadyPlayers).toBeUndefined();
+
+        // 4. Verify App.tsx handles hotseat turn switching and multiplayer simultaneous actions
+        const fs = await import('fs');
+        const path = await import('path');
+        const appSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'App.tsx'), 'utf-8');
+        expect(appSrc).toContain('effectiveColonizingPlayer');
+        expect(appSrc).toContain('Turn: {getPlayerDisplayName(effectiveColonizingPlayer)}');
+        expect(appSrc).toContain("state.phase !== 'UPKEEP_PHASE'");
       });
     });
   });

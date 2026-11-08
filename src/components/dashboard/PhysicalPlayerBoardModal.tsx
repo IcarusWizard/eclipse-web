@@ -136,12 +136,20 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
 
   return (
     <div className="fixed inset-0 z-50 bg-black/90 backdrop-blur-md flex items-center justify-center p-2 sm:p-4 select-none overflow-hidden">
-      <div className="bg-slate-900 border border-cyan-500/60 rounded-2xl w-full max-w-7xl h-[94vh] shadow-2xl overflow-hidden flex flex-col text-slate-100 ring-1 ring-cyan-500/20">
-        
+      <div className="bg-slate-900 border border-cyan-500/60 rounded-2xl w-full max-w-7xl h-[94vh] shadow-2xl overflow-hidden flex flex-col text-slate-100 ring-1 ring-cyan-500/20 relative">
+        {/* Dedicated Upper-Right Corner Exit Button */}
+        <button
+          onClick={onClose}
+          className="absolute top-3 right-3 sm:top-3.5 sm:right-4 z-30 p-2 bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-all border border-slate-700 shadow-lg hover:shadow-cyan-950/50 cursor-pointer"
+          title="Close Physical Player Board (Esc / P)"
+        >
+          <X className="w-5 h-5" />
+        </button>
+
         {/* =================================================================== */}
         {/* HEADER: Faction identity, resource summaries, hotseat & navigation  */}
         {/* =================================================================== */}
-        <div className="bg-slate-950 border-b border-slate-800 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0">
+        <div className="bg-slate-950 border-b border-slate-800 px-5 py-3.5 flex flex-wrap items-center justify-between gap-3 shrink-0 pr-14 sm:pr-16">
           <div className="flex items-center gap-3.5">
             <div
               className="w-5 h-5 rounded-full ring-2 ring-white/30 shadow-lg"
@@ -260,15 +268,6 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 Ship Blueprints
               </button>
             </div>
-
-            {/* Close Modal Button */}
-            <button
-              onClick={onClose}
-              className="p-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white rounded-lg transition-colors border border-slate-700"
-              title="Close Physical Player Board (Esc / P)"
-            >
-              <X className="w-5 h-5" />
-            </button>
           </div>
         </div>
 
@@ -962,9 +961,10 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         <div
                           key={`mil_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          className={`min-h-[72px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
+                          title={tech ? `${tech.name} (Military Tech)\n\n${tech.description}\n\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}` : undefined}
+                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
                             tech
-                              ? 'bg-rose-950/40 border-rose-500/80 shadow-md ring-1 ring-rose-500/30 cursor-pointer hover:border-rose-400'
+                              ? 'bg-rose-950/40 border-rose-500/80 shadow-md ring-1 ring-rose-500/30 cursor-pointer hover:border-rose-400 group'
                               : 'bg-slate-950/60 border-slate-800 border-dashed opacity-60'
                           }`}
                         >
@@ -978,11 +978,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           </div>
 
                           {tech ? (
-                            <div>
-                              <div className="text-xs font-bold text-rose-200 line-clamp-1 font-display">
+                            <div className="flex flex-col gap-0.5">
+                              <div className="text-xs font-bold text-rose-200 line-clamp-1 font-display group-hover:text-rose-100">
                                 {tech.name}
                               </div>
-                              <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                              <p className="text-[9px] text-slate-300 line-clamp-2 leading-tight" title={tech.description}>
+                                {tech.description}
+                              </p>
+                              <div className="text-[8.5px] text-slate-400 font-mono mt-0.5">
                                 Base: {tech.baseCost} sci
                               </div>
                             </div>
@@ -1029,9 +1032,10 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         <div
                           key={`grid_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          className={`min-h-[72px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
+                          title={tech ? `${tech.name} (Grid Tech)\n\n${tech.description}\n\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}` : undefined}
+                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
                             tech
-                              ? 'bg-emerald-950/40 border-emerald-500/80 shadow-md ring-1 ring-emerald-500/30 cursor-pointer hover:border-emerald-400'
+                              ? 'bg-emerald-950/40 border-emerald-500/80 shadow-md ring-1 ring-emerald-500/30 cursor-pointer hover:border-emerald-400 group'
                               : 'bg-slate-950/60 border-slate-800 border-dashed opacity-60'
                           }`}
                         >
@@ -1045,11 +1049,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           </div>
 
                           {tech ? (
-                            <div>
-                              <div className="text-xs font-bold text-emerald-200 line-clamp-1 font-display">
+                            <div className="flex flex-col gap-0.5">
+                              <div className="text-xs font-bold text-emerald-200 line-clamp-1 font-display group-hover:text-emerald-100">
                                 {tech.name}
                               </div>
-                              <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                              <p className="text-[9px] text-slate-300 line-clamp-2 leading-tight" title={tech.description}>
+                                {tech.description}
+                              </p>
+                              <div className="text-[8.5px] text-slate-400 font-mono mt-0.5">
                                 Base: {tech.baseCost} sci
                               </div>
                             </div>
@@ -1096,9 +1103,10 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         <div
                           key={`nano_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          className={`min-h-[72px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
+                          title={tech ? `${tech.name} (Nano Tech)\n\n${tech.description}\n\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}` : undefined}
+                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
                             tech
-                              ? 'bg-sky-950/40 border-sky-500/80 shadow-md ring-1 ring-sky-500/30 cursor-pointer hover:border-sky-400'
+                              ? 'bg-sky-950/40 border-sky-500/80 shadow-md ring-1 ring-sky-500/30 cursor-pointer hover:border-sky-400 group'
                               : 'bg-slate-950/60 border-slate-800 border-dashed opacity-60'
                           }`}
                         >
@@ -1112,11 +1120,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           </div>
 
                           {tech ? (
-                            <div>
-                              <div className="text-xs font-bold text-sky-200 line-clamp-1 font-display">
+                            <div className="flex flex-col gap-0.5">
+                              <div className="text-xs font-bold text-sky-200 line-clamp-1 font-display group-hover:text-sky-100">
                                 {tech.name}
                               </div>
-                              <div className="text-[9px] text-slate-400 font-mono mt-0.5">
+                              <p className="text-[9px] text-slate-300 line-clamp-2 leading-tight" title={tech.description}>
+                                {tech.description}
+                              </p>
+                              <div className="text-[8.5px] text-slate-400 font-mono mt-0.5">
                                 Base: {tech.baseCost} sci
                               </div>
                               {tech.id === 'artifact_key' && (
@@ -1149,6 +1160,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         <div
                           key={rt.id}
                           onClick={() => setSelectedTech(rt)}
+                          title={`${rt.name} (Rare Tech)\n\n${rt.description}\n\nBase Cost: ${rt.baseCost} Science${rt.victoryPoints ? ` • +${rt.victoryPoints} VP` : ''}`}
                           className="px-3 py-1.5 rounded-lg border border-purple-500/70 bg-purple-950/50 text-purple-200 text-xs font-semibold flex items-center gap-2 cursor-pointer hover:border-purple-400 shadow"
                         >
                           <span>{rt.name}</span>
@@ -1164,24 +1176,66 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 )}
               </div>
 
-              {/* Selected Tech Detail Drawer / Card */}
+              {/* Selected Tech Detail Floating Modal */}
               {selectedTech && (
-                <div className="bg-slate-900 border border-cyan-500/50 rounded-lg p-3 text-xs flex items-center justify-between">
-                  <div className="space-y-0.5">
-                    <div className="font-bold text-cyan-300 text-sm font-display flex items-center gap-2">
-                      {selectedTech.name}
-                      <span className="text-[10px] font-mono uppercase px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                        {selectedTech.category} tech
-                      </span>
+                <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm pointer-events-auto">
+                  <div className="bg-slate-900 border-2 border-cyan-500 rounded-2xl p-5 max-w-md w-full shadow-2xl space-y-3 animate-in zoom-in-95 duration-150 text-slate-100">
+                    <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
+                      <div>
+                        <div className="font-extrabold text-white text-base font-display flex items-center gap-2">
+                          {selectedTech.name}
+                          <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border font-bold ${
+                            selectedTech.category === 'military'
+                              ? 'bg-rose-950/80 border-rose-600 text-rose-300'
+                              : selectedTech.category === 'grid'
+                              ? 'bg-emerald-950/80 border-emerald-600 text-emerald-300'
+                              : selectedTech.category === 'nano'
+                              ? 'bg-sky-950/80 border-sky-600 text-sky-300'
+                              : 'bg-purple-950/80 border-purple-600 text-purple-300'
+                          }`}>
+                            {selectedTech.category} tech
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-400 font-mono mt-1">
+                          Base Cost: <strong className="text-pink-300">{selectedTech.baseCost} Science</strong> • Min Cost: <strong className="text-pink-300">{selectedTech.minCost} Science</strong>
+                          {selectedTech.victoryPoints && selectedTech.victoryPoints > 0 ? ` • +${selectedTech.victoryPoints} VP` : ''}
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => setSelectedTech(null)}
+                        className="p-1.5 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition cursor-pointer"
+                        title="Close details (Esc)"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
                     </div>
-                    <p className="text-slate-300">{selectedTech.description}</p>
+
+                    <div className="text-xs text-slate-200 leading-relaxed bg-slate-950/60 p-3 rounded-xl border border-slate-800">
+                      {selectedTech.description}
+                    </div>
+
+                    {selectedTech.unlocksPartId && (
+                      <div className="text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-800/60 p-2.5 rounded-xl flex items-center gap-2">
+                        <Wrench className="w-4 h-4 text-cyan-400 shrink-0" />
+                        <span>Unlocks ship component: <strong>{selectedTech.unlocksPartId.replace(/_/g, ' ').toUpperCase()}</strong></span>
+                      </div>
+                    )}
+                    {selectedTech.unlocksAbility && (
+                      <div className="text-xs text-amber-300 bg-amber-950/40 border border-amber-800/60 p-2.5 rounded-xl flex items-center gap-2">
+                        <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
+                        <span>Special Ability: <strong>{selectedTech.unlocksAbility.replace(/_/g, ' ').toUpperCase()}</strong></span>
+                      </div>
+                    )}
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        onClick={() => setSelectedTech(null)}
+                        className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition cursor-pointer"
+                      >
+                        Close
+                      </button>
+                    </div>
                   </div>
-                  <button
-                    onClick={() => setSelectedTech(null)}
-                    className="p-1 text-slate-400 hover:text-white rounded"
-                  >
-                    <X className="w-4 h-4" />
-                  </button>
                 </div>
               )}
             </div>

@@ -23,6 +23,7 @@ import {
   HelpCircle,
   Award,
   Eye,
+  AlertTriangle,
 } from 'lucide-react';
 
 import { SectorTile } from '../../engine/types/galaxy';
@@ -62,6 +63,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   const [viewMode, setViewMode] = useState<TrayViewMode>('all');
   const [selectedRareTrack, setSelectedRareTrack] = useState<Record<string, 'military' | 'grid' | 'nano'>>({});
   const [warpPortalSectorId, setWarpPortalSectorId] = useState<string>('');
+  const [showUnusedWarning, setShowUnusedWarning] = useState(false);
 
   const initialCommanderId =
     typeof currentSeat === 'number' && players?.[currentSeat]
@@ -243,6 +245,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
     const toggleSelect = () => {
       if (!isCommanderTurn) return;
+      if (showUnusedWarning) setShowUnusedWarning(false);
       if (isSelected) {
         setSelectedForResearch((prev) => prev.filter((s) => s.techId !== tech.id));
       } else {
@@ -575,7 +578,8 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
+    <>
+      <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-4">
       <div className="bg-slate-950 border border-slate-800 rounded-2xl w-full max-w-7xl shadow-2xl flex flex-col min-h-[480px] sm:min-h-[580px] max-h-[92vh] overflow-hidden text-slate-100">
         {/* Tray Header */}
         <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between p-4 border-b border-slate-800 bg-slate-900/80 gap-3 shrink-0">
@@ -985,7 +989,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               {selectedForResearch.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => setSelectedForResearch([])}
+                  onClick={() => {
+                    setSelectedForResearch([]);
+                    setShowUnusedWarning(false);
+                  }}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition-colors cursor-pointer"
                 >
                   Clear Selection
@@ -1010,6 +1017,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   isShrinePartiallySelected
                 }
                 onClick={() => {
+                  if (maxResearch > 1 && selectedForResearch.length < maxResearch && !showUnusedWarning) {
+                    setShowUnusedWarning(true);
+                    return;
+                  }
                   const hasWarp = selectedForResearch.some((s) => s.techId === 'warp_portal');
                   const targetSecId = hasWarp ? (warpPortalSectorId || (sectors || []).find((s) => s.discOwner === commander.id)?.id) : undefined;
                   onResearchTech(selectedForResearch, undefined, targetSecId, shrinePlacement);
@@ -1055,5 +1066,53 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         </div>
       </div>
     </div>
+
+    {/* Unused Activations Confirmation Dialog */}
+    {showUnusedWarning && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm pointer-events-auto animate-in fade-in duration-200 font-sans">
+        <div className="bg-slate-900 border-2 border-amber-500/80 rounded-2xl p-5 max-w-md w-full shadow-2xl text-slate-100 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-amber-300 font-display">
+                Unused Research Activation
+              </h3>
+              <p className="text-xs text-slate-400">
+                You have {maxResearch - selectedForResearch.length} unused Research activation{maxResearch - selectedForResearch.length > 1 ? 's' : ''} remaining ({selectedForResearch.length} of {maxResearch} used).
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-300">
+            Are you sure you want to research only {selectedForResearch.length} tech{selectedForResearch.length > 1 ? 's' : ''} and give up the extra activation?
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowUnusedWarning(false)}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shadow cursor-pointer"
+            >
+              Keep Selecting (Add More)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowUnusedWarning(false);
+                const hasWarp = selectedForResearch.some((s) => s.techId === 'warp_portal');
+                const targetSecId = hasWarp ? (warpPortalSectorId || (sectors || []).find((s) => s.discOwner === commander.id)?.id) : undefined;
+                onResearchTech(selectedForResearch, undefined, targetSecId, shrinePlacement);
+              }}
+              className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"
+            >
+              Confirm & Research {selectedForResearch.length} Tech{selectedForResearch.length > 1 ? 's' : ''}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 };

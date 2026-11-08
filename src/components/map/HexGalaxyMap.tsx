@@ -92,6 +92,8 @@ interface HexGalaxyMapProps {
     onSelectSector?: (sectorId: string) => void;
   } | null;
   initialShowGrid?: boolean;
+  effectivePlayerId?: string;
+  currentSeat?: number | 'all' | 'spectator';
 }
 
 const HEX_RADIUS = 78;
@@ -180,6 +182,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   stagedAbandonedSectorIds = [],
   blackHoleReturnMode = null,
   initialShowGrid = false,
+  effectivePlayerId,
+  currentSeat,
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
@@ -249,6 +253,13 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   const isRing3Possible = ring3SlotsRemaining > 0 && (state.sectorDecks?.ring3?.length ?? 0) > 0;
 
   const activePlayer = state.players[state.activePlayerIndex];
+  const colonizingPlayer = (
+    effectivePlayerId
+      ? state.players.find((p) => p.id === effectivePlayerId)
+      : typeof currentSeat === 'number'
+      ? state.players[currentSeat]
+      : null
+  ) || activePlayer;
 
   // Center pan on initial load
   useEffect(() => {
@@ -1747,12 +1758,22 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
                     const colonizer = state.players.find((p) => p.id === planet.colonizedBy);
 
+                    const isColonizableNow =
+                      !planet.colonizedBy &&
+                      sector.discOwner === colonizingPlayer?.id &&
+                      Boolean(colonizingPlayer && colonizingPlayer.colonyShips && colonizingPlayer.colonyShips.ready > 0) &&
+                      (!planet.isAdvanced ||
+                        (planet.resource === 'money' && colonizingPlayer.techTrack.researched.some((t) => t.id === 'advanced_economy')) ||
+                        (planet.resource === 'science' && colonizingPlayer.techTrack.researched.some((t) => t.id === 'advanced_labs')) ||
+                        (planet.resource === 'material' && colonizingPlayer.techTrack.researched.some((t) => t.id === 'advanced_mining')) ||
+                        colonizingPlayer.techTrack.researched.some((t) => t.id === 'metasynthesis'));
+
                     return (
                       <g
                         key={planet.id}
                         transform={`translate(${offsetX}, ${offsetY})`}
                         onClick={(e) => {
-                          if (!planet.colonizedBy && sector.discOwner === activePlayer?.id) {
+                          if (!planet.colonizedBy && sector.discOwner === colonizingPlayer?.id) {
                             e.stopPropagation();
                             if (planet.isOrbital || planet.resource === 'any') {
                               onSelectSector(sector);
@@ -1763,6 +1784,21 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         }}
                         className="cursor-pointer"
                       >
+                        {/* Pre-upkeep colonization highlight halo (Bug 249) */}
+                        {state.phase === 'UPKEEP_PHASE' && isColonizableNow && (
+                          <rect
+                            x="-9.5"
+                            y="-9.5"
+                            width="19"
+                            height="19"
+                            rx="4"
+                            fill="none"
+                            stroke="#22d3ee"
+                            strokeWidth="2"
+                            strokeDasharray="3 1.5"
+                            className="animate-pulse"
+                          />
+                        )}
                         {planet.isOrbital ? (
                           <g className="orbital-station">
                             {/* Photovoltaic solar array wings */}

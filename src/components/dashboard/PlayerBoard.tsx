@@ -849,14 +849,15 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 {player.techTrack.researched.map((tech) => (
                   <span
                     key={tech.id}
-                    className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border ${
+                    title={`${tech.name} (${tech.category.toUpperCase()} Tech)\n\n${tech.description}\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}`}
+                    className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border cursor-help transition-all hover:scale-105 ${
                       tech.category === 'military'
-                        ? 'bg-rose-950/50 border-rose-800/60 text-rose-300'
+                        ? 'bg-rose-950/50 border-rose-800/60 text-rose-300 hover:border-rose-500'
                         : tech.category === 'grid'
-                        ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-300'
+                        ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-300 hover:border-emerald-500'
                         : tech.category === 'nano'
-                        ? 'bg-sky-950/50 border-sky-800/60 text-sky-300'
-                        : 'bg-purple-950/50 border-purple-800/60 text-purple-300'
+                        ? 'bg-sky-950/50 border-sky-800/60 text-sky-300 hover:border-sky-500'
+                        : 'bg-purple-950/50 border-purple-800/60 text-purple-300 hover:border-purple-500'
                     }`}
                   >
                     {tech.name}

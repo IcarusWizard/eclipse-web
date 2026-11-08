@@ -670,6 +670,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
+      action.type !== 'READY_FOR_UPKEEP' &&
       action.type !== 'SET_AUTO_PASS' &&
       action.type !== 'SET_PASS_IN_ADVANCE'
     ) {
@@ -703,6 +704,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
+      action.type !== 'READY_FOR_UPKEEP' &&
       action.type !== 'SET_AUTO_PASS' &&
       action.type !== 'SET_PASS_IN_ADVANCE'
     ) {
@@ -1865,6 +1867,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           error: `Total allocated resources (${m + sc + mat}) must equal exactly ${totalReward}.`,
         };
       }
+      if (m % 5 !== 0 || sc % 5 !== 0 || mat % 5 !== 0) {
+        return {
+          valid: false,
+          error: `Each artifact yields 5 resources of one type. Allocations must be multiples of 5 (e.g. money: ${m}, science: ${sc}, materials: ${mat}).`,
+        };
+      }
       return { valid: true };
     }
 
@@ -1947,6 +1955,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (otherShip) {
           return { valid: false, error: 'Cannot retreat ships belonging to another player.' };
         }
+      }
+      return { valid: true };
+    }
+
+    case 'READY_FOR_UPKEEP': {
+      if (state.phase !== 'UPKEEP_PHASE') {
+        return { valid: false, error: 'Cannot ready for upkeep outside of the Upkeep Phase.' };
       }
       return { valid: true };
     }
@@ -3542,6 +3557,34 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         );
       }
 
+      if (newState.phase === 'UPKEEP_PHASE') {
+        if (!newState.upkeepReadyPlayers) newState.upkeepReadyPlayers = {};
+        if (getColonizablePlanetsForPlayer(newState, action.playerId).length === 0) {
+          newState.upkeepReadyPlayers[action.playerId] = true;
+          const allReady = newState.players
+            .filter((p) => !p.isEliminated)
+            .every((p) => newState.upkeepReadyPlayers?.[p.id]);
+          if (allReady) {
+            executeUpkeepCalculations(newState);
+            return { success: true, newState };
+          } else {
+            // Advance activePlayerIndex to next unready player for turn-taking
+            const curIdx = newState.players.findIndex((p) => p.id === action.playerId);
+            const numPlayers = newState.players.length;
+            for (let step = 1; step <= numPlayers; step++) {
+              const nextIdx = (curIdx + step) % numPlayers;
+              const nextPlayer = newState.players[nextIdx];
+              if (nextPlayer && !nextPlayer.isEliminated && !newState.upkeepReadyPlayers[nextPlayer.id]) {
+                newState.activePlayerIndex = nextIdx;
+                break;
+              }
+            }
+          }
+        } else {
+          newState.upkeepReadyPlayers[action.playerId] = false;
+        }
+      }
+
       return { success: true, newState }; // Colonize does not pass the turn
     }
 
@@ -4423,6 +4466,12 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           error: `Total allocated resources (${m + sc + mat}) must equal exactly ${totalReward}.`,
         };
       }
+      if (m % 5 !== 0 || sc % 5 !== 0 || mat % 5 !== 0) {
+        return {
+          newState: state,
+          error: `Each artifact yields 5 resources of one type. Allocations must be multiples of 5.`,
+        };
+      }
 
       player.resources.money += m;
       player.resources.science += sc;
@@ -4491,6 +4540,35 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         }
       }
 
+      return { success: true, newState };
+    }
+
+    case 'READY_FOR_UPKEEP': {
+      if (!newState.upkeepReadyPlayers) {
+        newState.upkeepReadyPlayers = {};
+      }
+      newState.upkeepReadyPlayers[action.playerId] = true;
+      addLog(`${player.name} is ready for Upkeep.`);
+
+      const allReady = newState.players
+        .filter((p) => !p.isEliminated)
+        .every((p) => newState.upkeepReadyPlayers?.[p.id]);
+
+      if (allReady) {
+        executeUpkeepCalculations(newState);
+      } else {
+        // Advance activePlayerIndex to the next unready player for turn-taking in hotseat mode
+        const curIdx = newState.players.findIndex((p) => p.id === action.playerId);
+        const numPlayers = newState.players.length;
+        for (let step = 1; step <= numPlayers; step++) {
+          const nextIdx = (curIdx + step) % numPlayers;
+          const nextPlayer = newState.players[nextIdx];
+          if (nextPlayer && !nextPlayer.isEliminated && !newState.upkeepReadyPlayers[nextPlayer.id]) {
+            newState.activePlayerIndex = nextIdx;
+            break;
+          }
+        }
+      }
       return { success: true, newState };
     }
 
@@ -5900,8 +5978,93 @@ export function checkAndTriggerCombat(state: GameState): void {
   transitionToUpkeep(state);
 }
 
-export function transitionToUpkeep(state: GameState): void {
+export function getColonizablePlanetsForPlayer(
+  state: GameState,
+  playerId: string
+): { sectorId: string; planetIndex: number }[] {
+  const player = state.players.find((p) => p.id === playerId);
+  if (!player || player.isEliminated || player.colonyShips.ready <= 0) return [];
+
+  const colonizable: { sectorId: string; planetIndex: number }[] = [];
+  for (const sector of state.sectors) {
+    if (sector.discOwner !== playerId) continue;
+    for (let i = 0; i < sector.planets.length; i++) {
+      const planet = sector.planets[i];
+      if (planet.colonizedBy) continue;
+      // Check advanced requirement
+      if (planet.isAdvanced) {
+        const hasAdvTech =
+          (planet.resource === 'money' &&
+            player.techTrack.researched.some((t) => t.id === 'advanced_economy')) ||
+          (planet.resource === 'science' &&
+            player.techTrack.researched.some((t) => t.id === 'advanced_labs')) ||
+          (planet.resource === 'material' &&
+            player.techTrack.researched.some((t) => t.id === 'advanced_mining')) ||
+          player.techTrack.researched.some((t) => t.id === 'metasynthesis');
+        if (!hasAdvTech) continue;
+      }
+      // Check population cubes available
+      const res = planet.resource;
+      if (res === 'any' || planet.isOrbital) {
+        if (
+          player.population.money.cubesOnBoard > 0 ||
+          player.population.science.cubesOnBoard > 0 ||
+          player.population.material.cubesOnBoard > 0
+        ) {
+          colonizable.push({ sectorId: sector.id, planetIndex: i });
+        }
+      } else {
+        if (player.population[res as 'money' | 'science' | 'material']?.cubesOnBoard > 0) {
+          colonizable.push({ sectorId: sector.id, planetIndex: i });
+        }
+      }
+    }
+  }
+  return colonizable;
+}
+
+export function transitionToUpkeep(state: GameState, immediate: boolean = false): void {
   state.phase = 'UPKEEP_PHASE';
+  state.upkeepReadyPlayers = {};
+
+  const playersWithChance = state.players.filter(
+    (p) => !p.isEliminated && getColonizablePlanetsForPlayer(state, p.id).length > 0
+  );
+
+  if (immediate || playersWithChance.length === 0) {
+    executeUpkeepCalculations(state);
+    return;
+  }
+
+  // Pre-ready any players who have no colonizable spots so only players with chances need to ready
+  for (const p of state.players) {
+    if (p.isEliminated || getColonizablePlanetsForPlayer(state, p.id).length === 0) {
+      state.upkeepReadyPlayers[p.id] = true;
+    } else {
+      state.upkeepReadyPlayers[p.id] = false;
+    }
+  }
+
+  // Set activePlayerIndex to the first unready player for turn-taking
+  const firstUnreadyIdx = state.players.findIndex(
+    (p) => !p.isEliminated && !state.upkeepReadyPlayers?.[p.id]
+  );
+  if (firstUnreadyIdx !== -1) {
+    state.activePlayerIndex = firstUnreadyIdx;
+  }
+
+  state.log.unshift({
+    id: `log_${Date.now()}_upkeep_colonization`,
+    timestamp: Date.now(),
+    round: state.round,
+    phase: 'UPKEEP_PHASE',
+    message: `🌱 PRE-UPKEEP COLONIZATION: Commanders may place population cubes with ready Colony Ships before income is calculated.`,
+    type: 'system',
+  });
+}
+
+export function executeUpkeepCalculations(state: GameState): void {
+  state.upkeepReadyPlayers = undefined;
 
   for (let i = 0; i < state.players.length; i++) {
     const p = state.players[i]!;

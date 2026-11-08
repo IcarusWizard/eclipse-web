@@ -10,6 +10,7 @@ import {
   playerHasWormholeGenerator,
   isPlayerInvaded,
   getPlayerHumanName,
+  getPlayerDisplayName,
   getFactionDisplayColor,
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
@@ -18,7 +19,7 @@ import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, findNe
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups } from './engine/rules/combatEngine';
 import { getNebulaSubsectorForOuterEdge } from './engine/rules/galacticEvents';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
-import { X, Sparkles, Coins } from 'lucide-react';
+import { X, Sparkles, Coins, Rocket, CheckCircle2, Check } from 'lucide-react';
 
 // UI Components
 import { Header } from './components/layout/Header';
@@ -440,8 +441,13 @@ export const App: React.FC = () => {
     if (isSpectator) return false;
     if (currentSeat === 'all') return true;
     if (typeof currentSeat === 'number') {
-      if (!targetPlayerId) return state.players[currentSeat]?.id === activePlayer.id;
-      return state.players[currentSeat]?.id === targetPlayerId;
+      const myPlayer = state.players[currentSeat];
+      if (!myPlayer) return false;
+      if (!targetPlayerId) {
+        if (state.phase === 'UPKEEP_PHASE') return true;
+        return myPlayer.id === activePlayer.id;
+      }
+      return myPlayer.id === targetPlayerId;
     }
     return false;
   };
@@ -450,12 +456,25 @@ export const App: React.FC = () => {
     isSpectator ||
     (currentSeat !== 'all' &&
       typeof currentSeat === 'number' &&
+      state.phase !== 'UPKEEP_PHASE' &&
       state.activePlayerIndex !== currentSeat);
 
   const myControlledPlayer =
     typeof currentSeat === 'number' && state.players[currentSeat]
       ? state.players[currentSeat]
       : activePlayer;
+
+  const effectiveColonizingPlayer = (
+    typeof currentSeat === 'number'
+      ? state.players[currentSeat]
+      : (currentSeat === 'all' && state.phase === 'UPKEEP_PHASE')
+      ? (
+          (!state.upkeepReadyPlayers?.[viewedPlayer.id] ? viewedPlayer : null) ||
+          state.players.find((p) => !p.isEliminated && !state.upkeepReadyPlayers?.[p.id]) ||
+          viewedPlayer
+        )
+      : viewedPlayer
+  ) || activePlayer;
 
   const hideOpponentReputation =
     currentSeat !== 'all' &&
@@ -1333,6 +1352,9 @@ export const App: React.FC = () => {
       return;
     }
     if (state.pendingExploreActivations && state.pendingExploreActivations > 0) {
+      if (!window.confirm(`You have ${state.pendingExploreActivations} Explore activation remaining! Are you sure you want to finish exploration and give up the extra activation?`)) {
+        return;
+      }
       handleFinishExplore();
       return;
     }
@@ -1889,21 +1911,43 @@ export const App: React.FC = () => {
     planetIndex: number,
     chosenResource?: 'money' | 'science' | 'material'
   ) => {
-    if (!canActForPlayer(activePlayer.id)) {
+    const targetSector = state.sectors.find((s) => s.id === sectorId);
+    const targetPlayerId = targetSector?.discOwner || effectiveColonizingPlayer.id;
+    if (!canActForPlayer(targetPlayerId)) {
       showToast('Spectators cannot perform actions.');
       return;
     }
     const res = executeAction(state, {
       type: 'COLONIZE',
-      playerId: activePlayer.id,
+      playerId: targetPlayerId,
       sectorId,
       planetIndex,
       chosenResource,
     });
     if (res.success) {
       setState(res.newState);
+      saveGameState(res.newState);
     } else {
       showToast(res.error || 'Colonization failed.');
+    }
+  };
+
+  // Ready for Upkeep flow (Bug 249: pre-upkeep colonization window)
+  const handleReadyForUpkeep = (targetPlayerId?: string) => {
+    const pId = targetPlayerId || effectiveColonizingPlayer.id;
+    if (!pId || !canActForPlayer(pId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'READY_FOR_UPKEEP',
+      playerId: pId,
+    });
+    if (res.success) {
+      setState(res.newState);
+      saveGameState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to ready for upkeep.');
     }
   };
 
@@ -2855,6 +2899,8 @@ export const App: React.FC = () => {
           isExploreMode={isExploreMode}
           onExploreTarget={handleExploreTarget}
           onColonizePlanet={!isTurnGated ? handleColonizePlanet : undefined}
+          effectivePlayerId={effectiveColonizingPlayer.id}
+          currentSeat={currentSeat}
           pendingExplore={
             pendingExploreCoords && activeCandidateTile
               ? {
@@ -2980,7 +3026,7 @@ export const App: React.FC = () => {
             <SectorInspector
               sector={state.sectors.find((s) => s.id === selectedSector.id) || selectedSector}
               players={state.players}
-              activePlayer={activePlayer}
+              activePlayer={effectiveColonizingPlayer}
               neutralShipBlueprints={state.neutralShipBlueprints}
               onColonizePlanet={!isTurnGated ? handleColonizePlanet : undefined}
               onAbandonInfluence={!isTurnGated ? handleAbandonInfluence : undefined}
@@ -3009,6 +3055,7 @@ export const App: React.FC = () => {
         {state.phase === 'ACTION_PHASE' && !pendingExploreCoords && !isBuildOpen && !isMoveOpen && !isInfluenceOpen && (
           <ActionBar
             activePlayer={activePlayer}
+            players={state.players}
             isExploreMode={isExploreMode}
             onToggleExplore={handleToggleExplore}
             onOpenResearch={() => setIsTechMarketOpen(true)}
@@ -3050,6 +3097,108 @@ export const App: React.FC = () => {
             onTogglePassInAdvance={() => handleTogglePassInAdvance(myControlledPlayer?.id)}
             canTogglePassInAdvance={Boolean(myControlledPlayer && canActForPlayer(myControlledPlayer.id))}
           />
+        )}
+
+        {/* Pre-Upkeep Colonization & Readiness Bar (Bottom-Center, Bug 249) */}
+        {state.phase === 'UPKEEP_PHASE' && state.upkeepReadyPlayers && !state.pendingBankruptcy && (
+          <div className="fixed bottom-[calc(0.5rem+env(safe-area-inset-bottom,0px))] sm:bottom-3 md:bottom-5 left-1/2 -translate-x-1/2 z-40 flex flex-col md:flex-row items-center gap-2 md:gap-4 bg-slate-950/95 backdrop-blur-md p-3 md:px-6 md:py-3.5 rounded-2xl border-2 border-cyan-500/60 shadow-2xl shadow-cyan-950/50 animate-in fade-in slide-in-from-bottom-3 duration-200 w-[calc(100vw-12px)] max-w-2xl md:w-auto md:max-w-fit font-sans">
+            <div className="flex items-center gap-3">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 border shadow-sm"
+                style={{
+                  backgroundColor: `${effectiveColonizingPlayer.color}25`,
+                  borderColor: effectiveColonizingPlayer.color,
+                  color: effectiveColonizingPlayer.color,
+                }}
+              >
+                <Rocket className="w-4 h-4" />
+              </div>
+              <div className="flex flex-col text-left">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] text-cyan-300 uppercase tracking-widest font-bold">
+                    Upkeep Phase • Pre-Income Colonization
+                  </span>
+                  {currentSeat === 'all' && (
+                    <span
+                      className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider border shadow-sm"
+                      style={{
+                        backgroundColor: `${effectiveColonizingPlayer.color}30`,
+                        borderColor: effectiveColonizingPlayer.color,
+                        color: effectiveColonizingPlayer.color,
+                      }}
+                    >
+                      Turn: {getPlayerDisplayName(effectiveColonizingPlayer)}
+                    </span>
+                  )}
+                </div>
+                <span className="text-xs text-slate-300">
+                  {effectiveColonizingPlayer.colonyShips.ready > 0
+                    ? `${getPlayerDisplayName(effectiveColonizingPlayer)} has ${effectiveColonizingPlayer.colonyShips.ready} ready Colony Ship(s). Click planet slots to colonize before income!`
+                    : `${getPlayerDisplayName(effectiveColonizingPlayer)}: Click slots on map to colonize, or confirm ready for Upkeep income.`}
+                </span>
+              </div>
+            </div>
+
+            {/* In hotseat mode, show faction switcher so players can take turns or switch */}
+            {currentSeat === 'all' && (
+              <div className="flex items-center gap-1.5 border-t md:border-t-0 md:border-l border-slate-800/80 pt-2 md:pt-0 md:pl-3">
+                {state.players
+                  .filter((p) => !p.isEliminated)
+                  .map((p) => {
+                    const isReady = Boolean(state.upkeepReadyPlayers?.[p.id]);
+                    const isSelected = p.id === effectiveColonizingPlayer.id;
+                    return (
+                      <button
+                        key={p.id}
+                        type="button"
+                        onClick={() => setSelectedViewIndex(state.players.findIndex((pl) => pl.id === p.id))}
+                        className={`px-2.5 py-1 rounded-lg text-[10px] font-bold flex items-center gap-1.5 transition-all cursor-pointer border ${
+                          isSelected
+                            ? 'bg-slate-800 text-white shadow ring-1 ring-cyan-400'
+                            : isReady
+                            ? 'bg-slate-900/60 text-emerald-400 border-emerald-900/40 opacity-70'
+                            : 'bg-slate-900/80 text-slate-300 border-slate-800 hover:bg-slate-800'
+                        }`}
+                        title={isReady ? `${p.name} is Ready` : `Switch turn to ${p.name}`}
+                      >
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: p.color }}
+                        />
+                        <span className="truncate max-w-[80px]">{p.faction?.name || p.name}</span>
+                        {isReady ? (
+                          <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
+                        ) : null}
+                      </button>
+                    );
+                  })}
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 w-full md:w-auto justify-end">
+              {state.upkeepReadyPlayers[effectiveColonizingPlayer.id] ? (
+                <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-400">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
+                  <span>
+                    Ready ({Object.values(state.upkeepReadyPlayers).filter(Boolean).length}/{state.players.filter((p) => !p.isEliminated).length})
+                  </span>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleReadyForUpkeep(effectiveColonizingPlayer.id)}
+                  className="flex items-center justify-center gap-2 px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-slate-950 font-black text-xs uppercase tracking-wider transition shadow-lg shadow-cyan-950/80 cursor-pointer"
+                >
+                  <Check className="w-4 h-4 stroke-[3]" />
+                  <span>
+                    {currentSeat === 'all'
+                      ? `Ready for Upkeep (${getPlayerDisplayName(effectiveColonizingPlayer)})`
+                      : 'Ready for Upkeep'}
+                  </span>
+                </button>
+              )}
+            </div>
+          </div>
         )}
 
         {/* Table Text Chat Drawer (Bottom-Right, next to Chronicle) */}

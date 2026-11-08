@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
-import { Player } from '../../engine/types/player';
+import { PlayerState } from '../../engine/types/player';
 import { Key, Coins, FlaskConical, Box, Sparkles, Check, Minimize2, Maximize2 } from 'lucide-react';
 
 interface ArtifactKeyModalProps {
-  player: Player;
+  player: PlayerState;
   totalResources: number;
   artifactsCount: number;
   onAllocate: (resources: { money: number; science: number; materials: number }) => void;
@@ -22,7 +22,14 @@ export const ArtifactKeyModal: React.FC<ArtifactKeyModalProps> = ({
 
   const currentAllocated = money + science + materials;
   const remaining = totalResources - currentAllocated;
-  const isValid = remaining === 0 && money >= 0 && science >= 0 && materials >= 0;
+  const isValid =
+    remaining === 0 &&
+    money >= 0 &&
+    science >= 0 &&
+    materials >= 0 &&
+    money % 5 === 0 &&
+    science % 5 === 0 &&
+    materials % 5 === 0;
 
   const handleAdjust = (type: 'money' | 'science' | 'materials', delta: number) => {
     if (delta > 0 && remaining <= 0) return;
@@ -160,20 +167,23 @@ export const ArtifactKeyModal: React.FC<ArtifactKeyModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => handleAdjust('money', -1)}
+                onClick={() => handleAdjust('money', -5)}
                 disabled={money <= 0}
                 className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-lg flex items-center justify-center text-slate-200"
+                title="Decrease by 5 (1 Artifact)"
               >
                 -
               </button>
-              <span className="w-10 text-center font-mono font-bold text-lg text-amber-400">
-                {money}
-              </span>
+              <div className="w-16 text-center font-mono">
+                <span className="font-bold text-lg text-amber-400 block">{money}</span>
+                <span className="text-[9px] text-slate-400 font-sans block leading-none">({money / 5} Art)</span>
+              </div>
               <button
                 type="button"
-                onClick={() => handleAdjust('money', 1)}
+                onClick={() => handleAdjust('money', 5)}
                 disabled={remaining <= 0}
                 className="w-8 h-8 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-lg flex items-center justify-center text-slate-950"
+                title="Increase by 5 (1 Artifact)"
               >
                 +
               </button>
@@ -202,20 +212,23 @@ export const ArtifactKeyModal: React.FC<ArtifactKeyModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => handleAdjust('science', -1)}
+                onClick={() => handleAdjust('science', -5)}
                 disabled={science <= 0}
                 className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-lg flex items-center justify-center text-slate-200"
+                title="Decrease by 5 (1 Artifact)"
               >
                 -
               </button>
-              <span className="w-10 text-center font-mono font-bold text-lg text-pink-400">
-                {science}
-              </span>
+              <div className="w-16 text-center font-mono">
+                <span className="font-bold text-lg text-pink-400 block">{science}</span>
+                <span className="text-[9px] text-slate-400 font-sans block leading-none">({science / 5} Art)</span>
+              </div>
               <button
                 type="button"
-                onClick={() => handleAdjust('science', 1)}
+                onClick={() => handleAdjust('science', 5)}
                 disabled={remaining <= 0}
                 className="w-8 h-8 rounded-lg bg-pink-600 hover:bg-pink-500 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-lg flex items-center justify-center text-slate-950"
+                title="Increase by 5 (1 Artifact)"
               >
                 +
               </button>
@@ -244,20 +257,23 @@ export const ArtifactKeyModal: React.FC<ArtifactKeyModalProps> = ({
               </button>
               <button
                 type="button"
-                onClick={() => handleAdjust('materials', -1)}
+                onClick={() => handleAdjust('materials', -5)}
                 disabled={materials <= 0}
                 className="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-lg flex items-center justify-center text-slate-200"
+                title="Decrease by 5 (1 Artifact)"
               >
                 -
               </button>
-              <span className="w-10 text-center font-mono font-bold text-lg text-amber-400">
-                {materials}
-              </span>
+              <div className="w-16 text-center font-mono">
+                <span className="font-bold text-lg text-amber-400 block">{materials}</span>
+                <span className="text-[9px] text-slate-400 font-sans block leading-none">({materials / 5} Art)</span>
+              </div>
               <button
                 type="button"
-                onClick={() => handleAdjust('materials', 1)}
+                onClick={() => handleAdjust('materials', 5)}
                 disabled={remaining <= 0}
                 className="w-8 h-8 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-30 disabled:cursor-not-allowed font-bold text-lg flex items-center justify-center text-slate-950"
+                title="Increase by 5 (1 Artifact)"
               >
                 +
               </button>

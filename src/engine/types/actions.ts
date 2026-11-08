@@ -23,6 +23,7 @@ export type ActionType =
   | 'COMBAT_CONQUEST'
   | 'ALLOCATE_ARTIFACT_REWARD'
   | 'ABANDON_SECTOR_BANKRUPTCY'
+  | 'READY_FOR_UPKEEP'
   | 'CONFIRM_TURN_ACTION'
   | 'CLAIM_MINOR_SPECIES'
   | 'REVERT_TURN_ACTION'
@@ -217,6 +218,10 @@ export interface AbandonSectorBankruptcyAction extends BaseAction {
   abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>; // Map of planetId to chosen return track for returning orbital/wild population cubes (Bug 195)
 }
 
+export interface ReadyForUpkeepAction extends BaseAction {
+  type: 'READY_FOR_UPKEEP';
+}
+
 export interface ConfirmTurnAction extends BaseAction {
   type: 'CONFIRM_TURN_ACTION';
 }
@@ -320,6 +325,7 @@ export type GameAction =
   | ClaimReputationTileAction
   | AllocateArtifactRewardAction
   | AbandonSectorBankruptcyAction
+  | ReadyForUpkeepAction
   | ConfirmTurnAction
   | RevertTurnAction
   | ConvertColonyShipAction

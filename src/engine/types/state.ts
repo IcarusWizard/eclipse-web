@@ -241,6 +241,7 @@ export interface GameState {
   pendingCombatConquest: PendingCombatConquest | null;
   pendingArtifactReward?: PendingArtifactReward | null;
   pendingBankruptcy?: PendingBankruptcy | null;
+  upkeepReadyPlayers?: Record<string, boolean>;
   pendingActionConfirmation?: PendingActionConfirmation | null;
   pendingReputationDraw?: PendingReputationDraw | null;
   pendingReputationDrawQueue?: PendingReputationDraw[];

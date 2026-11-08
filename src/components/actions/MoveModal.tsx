@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
 import { getMaxMoveActivations, playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
@@ -9,6 +9,7 @@ import {
   Rocket,
   ArrowRight,
   CircleAlert,
+  AlertTriangle,
   X,
   Trash2,
   Check,
@@ -119,30 +120,44 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   const distinctActivationsCount = activationGroups.length;
   const isSelectedShipPinned = selectedShipId ? isShipPinned(selectedShipId) : false;
   const canExecute = plannedMoves.length > 0;
+  const [showUnusedWarning, setShowUnusedWarning] = useState(false);
+
+  const handleTriggerMove = () => {
+    if (!canExecute) return;
+    if (distinctActivationsCount < maxMoves && !showUnusedWarning) {
+      setShowUnusedWarning(true);
+      return;
+    }
+    onMove(
+      plannedMoves.map((m) => ({
+        shipId: m.shipId,
+        fromSectorId: m.fromSectorId,
+        toSectorId: m.toSectorId,
+        activationIndex: m.activationIndex,
+        targetSubsector: m.targetSubsector,
+      })),
+      pulsarSectorId
+    );
+  };
 
   // Keyboard shortcut listener
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
-        onClose();
+        if (showUnusedWarning) {
+          setShowUnusedWarning(false);
+        } else {
+          onClose();
+        }
       } else if (e.key === 'Enter' && canExecute) {
         e.preventDefault();
-        onMove(
-          plannedMoves.map((m) => ({
-            shipId: m.shipId,
-            fromSectorId: m.fromSectorId,
-            toSectorId: m.toSectorId,
-            activationIndex: m.activationIndex,
-            targetSubsector: m.targetSubsector,
-          })),
-          pulsarSectorId
-        );
+        handleTriggerMove();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canExecute, plannedMoves, onMove, onClose, pulsarSectorId]);
+  }, [canExecute, plannedMoves, onMove, onClose, pulsarSectorId, distinctActivationsCount, maxMoves, showUnusedWarning]);
 
   const currentShipSubsector = useMemo(() => {
     if (!currentShipObj || !currentSimSector || !currentSimSector.isNebula) return undefined;
@@ -167,7 +182,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   };
 
   return (
-    <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-3xl px-4 pointer-events-none font-sans">
+    <>
+      <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-3xl px-4 pointer-events-none font-sans">
       <div className="bg-slate-900/95 backdrop-blur-md border border-cyan-700/80 rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto text-slate-100 p-4 pointer-events-auto flex flex-col gap-3 transition-all scrollbar-thin">
         {/* Pulsar Banner */}
         {isPulsarActive && (
@@ -510,7 +526,50 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             </button>
             <button
               disabled={!canExecute}
-              onClick={() =>
+              onClick={handleTriggerMove}
+              className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all"
+            >
+              Execute {plannedMoves.length} {plannedMoves.length === 1 ? 'Step' : 'Steps'} (Enter)
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    {/* Unused Activations Confirmation Dialog */}
+    {showUnusedWarning && (
+      <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm pointer-events-auto animate-in fade-in duration-200">
+        <div className="bg-slate-900 border-2 border-amber-500/80 rounded-2xl p-5 max-w-md w-full shadow-2xl text-slate-100 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-amber-300 font-display">
+                Unused Move Activation
+              </h3>
+              <p className="text-xs text-slate-400">
+                You have {maxMoves - distinctActivationsCount} unused Move activation{maxMoves - distinctActivationsCount > 1 ? 's' : ''} remaining ({distinctActivationsCount} of {maxMoves} used).
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-300">
+            Are you sure you want to execute only {distinctActivationsCount} move{distinctActivationsCount > 1 ? 's' : ''} and give up the extra activation?
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowUnusedWarning(false)}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shadow cursor-pointer"
+            >
+              Keep Moving (Plan More)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowUnusedWarning(false);
                 onMove(
                   plannedMoves.map((m) => ({
                     shipId: m.shipId,
@@ -520,15 +579,16 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                     targetSubsector: m.targetSubsector,
                   })),
                   pulsarSectorId
-                )
-              }
-              className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all"
+                );
+              }}
+              className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"
             >
-              Execute {plannedMoves.length} {plannedMoves.length === 1 ? 'Step' : 'Steps'} (Enter)
+              Confirm & Execute {plannedMoves.length} Step{plannedMoves.length > 1 ? 's' : ''}
             </button>
           </div>
         </div>
       </div>
-    </div>
+    )}
+  </>
   );
 };

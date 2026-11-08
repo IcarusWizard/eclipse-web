@@ -9,8 +9,6 @@ import {
   Zap,
   Shield,
   Crosshair,
-  Heart,
-  Navigation,
   Plus,
   Trash2,
   CheckCircle2,
@@ -307,8 +305,14 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     }));
   };
 
+  const [showUnusedWarning, setShowUnusedWarning] = useState(false);
+
   const handleSave = () => {
     if (readOnly || usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid) return;
+    if (usedActivations < maxUpgrades && !showUnusedWarning) {
+      setShowUnusedWarning(true);
+      return;
+    }
     const upgradesToApply = modifiedSlots.map((m) => ({
       shipType: m.shipType,
       slotIndex: m.slotIndex,
@@ -319,7 +323,8 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+    <>
+      <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-100">
         {/* Header with Live Activation Counter */}
         <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950">
@@ -428,101 +433,57 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
         <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-y-auto">
           {/* Left 2 Cols: Ship Blueprint Grid & Live Stats */}
           <div className="md:col-span-2 space-y-6">
-            {/* Live Stats HUD */}
-            <div className="grid grid-cols-3 gap-3 bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 text-xs">
-              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
-                <span className="text-slate-400 flex items-center gap-1 font-semibold">
-                  <Zap className="w-3.5 h-3.5 text-amber-400" /> POWER BALANCE
-                </span>
-                <div className="mt-1">
-                  <span
-                    className={`text-base font-bold block ${
-                      stats.totalPowerProduced >= stats.totalPowerConsumed
-                        ? 'text-emerald-400'
-                        : 'text-rose-400 animate-pulse'
-                    }`}
-                  >
-                    +{stats.totalPowerProduced} / -{stats.totalPowerConsumed} PWR
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                    {stats.totalPowerProduced >= stats.totalPowerConsumed ? `+${stats.totalPowerProduced - stats.totalPowerConsumed} Surplus` : `${stats.totalPowerProduced - stats.totalPowerConsumed} Deficit`}
-                  </span>
+            {/* Live Stats HUD (Single-row layout matching Player Mat view) */}
+            <div className="grid grid-cols-6 gap-1 sm:gap-2 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-center font-mono">
+              <div>
+                <div className="text-[9px] text-slate-500 uppercase font-sans">HP</div>
+                <div className="text-xs sm:text-sm font-bold text-rose-300">{stats.totalHull} HP</div>
+              </div>
+
+              <div>
+                <div className="text-[9px] text-slate-500 uppercase font-sans">Speed</div>
+                <div className="text-xs sm:text-sm font-bold text-cyan-300">
+                  {activeShipType === 'starbase' || activeShipType === 'orbital' ? 'Immobile' : `${stats.totalDriveSpeed} Hex`}
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
-                <span className="text-slate-400 flex items-center gap-1 font-semibold">
-                  <Heart className="w-3.5 h-3.5 text-rose-400" /> HULL / HP
-                </span>
-                <div className="mt-1">
-                  <span className="text-base font-bold text-slate-200 block">
-                    {stats.totalHull} HP
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                    Damage Capacity
-                  </span>
+              <div>
+                <div className="text-[9px] text-slate-500 uppercase font-sans">Init</div>
+                <div className="text-xs sm:text-sm font-bold text-indigo-300">
+                  {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative}
+                </div>
+                <div className="text-[7.5px] text-slate-500 font-mono">
+                  B{player.blueprints[activeShipType].baseInitiative >= 0 ? `+${player.blueprints[activeShipType].baseInitiative}` : player.blueprints[activeShipType].baseInitiative} P{stats.totalInitiative - player.blueprints[activeShipType].baseInitiative >= 0 ? `+${stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}` : stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
-                <span className="text-slate-400 flex items-center gap-1 font-semibold">
-                  <Navigation className="w-3.5 h-3.5 text-cyan-400" /> DRIVE SPEED
-                </span>
-                <div className="mt-1">
-                  <span
-                    className={`text-base font-bold block ${
-                      activeShipType === 'starbase' || activeShipType === 'orbital' || stats.totalDriveSpeed > 0
-                        ? 'text-cyan-400'
-                        : 'text-rose-400'
-                    }`}
-                  >
-                    {stats.totalDriveSpeed} Speed
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                    {activeShipType === 'starbase' || activeShipType === 'orbital' ? 'Stationary Structure' : 'Movement Range'}
-                  </span>
+              <div>
+                <div className="text-[9px] text-slate-500 uppercase font-sans">COMP</div>
+                <div className="text-xs sm:text-sm font-bold text-sky-300">
+                  {`+${stats.computerBonus} COMP`}
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
-                <span className="text-slate-400 flex items-center gap-1 font-semibold">
-                  <Crosshair className="w-3.5 h-3.5 text-indigo-400" /> INITIATIVE
-                </span>
-                <div className="mt-1">
-                  <span className="text-base font-bold text-indigo-300 block">
-                    {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative} Init
-                  </span>
-                  <span className="text-[10px] text-slate-400 font-mono block mt-0.5">
-                    Base {player.blueprints[activeShipType].baseInitiative >= 0 ? `+${player.blueprints[activeShipType].baseInitiative}` : player.blueprints[activeShipType].baseInitiative} | Parts {stats.totalInitiative - player.blueprints[activeShipType].baseInitiative >= 0 ? `+${stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}` : stats.totalInitiative - player.blueprints[activeShipType].baseInitiative}
-                  </span>
+              <div>
+                <div className="text-[9px] text-slate-500 uppercase font-sans">SHIELD</div>
+                <div className="text-xs sm:text-sm font-bold text-teal-300">
+                  {`-${stats.shieldBonus} Shield`}
                 </div>
               </div>
 
-              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
-                <span className="text-slate-400 flex items-center gap-1 font-semibold">
-                  <Crosshair className="w-3.5 h-3.5 text-sky-400" /> COMP
-                </span>
-                <div className="mt-1">
-                  <span className="text-base font-bold text-sky-300 block">
-                    {`+${stats.computerBonus} COMP`}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                    Cannon Hit Bonus
-                  </span>
+              <div>
+                <div className="text-[9px] text-slate-500 uppercase font-sans">Power</div>
+                <div
+                  className={`text-xs sm:text-sm font-bold ${
+                    stats.totalPowerProduced >= stats.totalPowerConsumed
+                      ? 'text-emerald-400'
+                      : 'text-rose-400 animate-pulse'
+                  }`}
+                >
+                  +{stats.totalPowerProduced}/-{stats.totalPowerConsumed}
                 </div>
-              </div>
-
-              <div className="flex flex-col justify-between p-2.5 rounded-lg bg-slate-900/60 border border-slate-800/80">
-                <span className="text-slate-400 flex items-center gap-1 font-semibold">
-                  <Shield className="w-3.5 h-3.5 text-teal-400" /> SHIELD
-                </span>
-                <div className="mt-1">
-                  <span className="text-base font-bold text-teal-300 block">
-                    {`-${stats.shieldBonus} Shield`}
-                  </span>
-                  <span className="text-[10px] text-slate-500 font-mono block mt-0.5">
-                    Opponent Aim Penalty
-                  </span>
+                <div className="text-[7.5px] text-slate-500 font-mono">
+                  {stats.totalPowerProduced >= stats.totalPowerConsumed ? `+${stats.totalPowerProduced - stats.totalPowerConsumed} Surplus` : `${stats.totalPowerProduced - stats.totalPowerConsumed} Deficit`}
                 </div>
               </div>
             </div>
@@ -1019,5 +980,57 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
         </div>
       </div>
     </div>
+
+    {/* Unused Activations Confirmation Dialog */}
+    {showUnusedWarning && (
+      <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm pointer-events-auto animate-in fade-in duration-200">
+        <div className="bg-slate-900 border-2 border-amber-500/80 rounded-2xl p-5 max-w-md w-full shadow-2xl text-slate-100 space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/30">
+              <AlertTriangle className="w-6 h-6" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-amber-300 font-display">
+                Unused Upgrade Activation
+              </h3>
+              <p className="text-xs text-slate-400">
+                You have {remainingActivations} unused Upgrade activation{remainingActivations > 1 ? 's' : ''} remaining ({usedActivations} of {maxUpgrades} used).
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-300">
+            Are you sure you want to save and give up the extra activation?
+          </div>
+
+          <div className="flex items-center justify-end gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={() => setShowUnusedWarning(false)}
+              className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shadow cursor-pointer"
+            >
+              Keep Upgrading (Add More)
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setShowUnusedWarning(false);
+                const upgradesToApply = modifiedSlots.map((m) => ({
+                  shipType: m.shipType,
+                  slotIndex: m.slotIndex,
+                  partId: m.newPart?.id || null,
+                  isExternal: m.isExternal,
+                }));
+                onSaveBlueprint(upgradesToApply, pulsarSectorId);
+              }}
+              className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"
+            >
+              Confirm & Save {usedActivations} Upgrade{usedActivations > 1 ? 's' : ''}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+  </>
   );
 };

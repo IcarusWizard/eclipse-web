@@ -15,6 +15,7 @@ import {
   Lock,
   Sparkles,
   Zap,
+  AlertTriangle,
 } from 'lucide-react';
 
 import {
@@ -29,6 +30,7 @@ import {
 
 interface ActionBarProps {
   activePlayer: PlayerState;
+  players?: PlayerState[];
   isExploreMode: boolean;
   onToggleExplore: () => void;
   onOpenResearch: () => void;
@@ -61,6 +63,7 @@ interface ActionBarProps {
 
 export const ActionBar: React.FC<ActionBarProps> = ({
   activePlayer,
+  players,
   isExploreMode,
   onToggleExplore,
   onOpenResearch,
@@ -90,11 +93,17 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onTogglePassInAdvance,
   canTogglePassInAdvance = true,
 }) => {
+  const actorPlayer =
+    (players && pendingConfirmation?.playerId
+      ? players.find((p) => p.id === pendingConfirmation.playerId)
+      : null) || activePlayer;
+
   const readyBlackHoleShip = !isSpectator && !isTurnGated
     ? (delayedBlackHoleShips || []).find(
         (ds) => ds.ownerId === activePlayer.id && currentRound !== undefined && currentRound >= ds.returnRound
       )
     : undefined;
+
   if (pendingConfirmation) {
     const isMyAction = !isTurnGated && !isSpectator;
     return (
