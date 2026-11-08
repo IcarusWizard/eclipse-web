@@ -153,7 +153,7 @@ export const Header: React.FC<HeaderProps> = ({
     const pathname = window.location.pathname;
     const tableParam = `table=${tableNum}`;
     const seatParam =
-      currentSeat === 'all'
+      state.isLocalGame || currentSeat === 'all'
         ? ''
         : currentSeat === 'spectator'
         ? '&seat=spectator'
@@ -453,6 +453,17 @@ export const Header: React.FC<HeaderProps> = ({
                           typeof currentSeat === 'number' && Boolean(state.players[currentSeat]?.isEliminated);
                         const isSeatLocked = isGameRunning && !state.isLocalGame && !isAdmin && !isEliminated;
 
+                        if (state.isLocalGame) {
+                          return (
+                            <div className="flex items-center gap-1.5 font-bold text-cyan-300">
+                              <Users className="w-3.5 h-3.5 text-cyan-400" />
+                              <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 text-xs font-mono font-bold">
+                                Hotseat
+                              </span>
+                            </div>
+                          );
+                        }
+
                         if (onChangeSeat && !isSeatLocked) {
                           return (
                             <select
@@ -545,7 +556,7 @@ export const Header: React.FC<HeaderProps> = ({
                     </button>
 
                     {/* Manage Seats (Admin Only) */}
-                    {currentUser.role === 'admin' && onOpenManageSeats && (
+                    {!state.isLocalGame && currentUser.role === 'admin' && onOpenManageSeats && (
                       <button
                         type="button"
                         data-testid="header-manage-seats-button"

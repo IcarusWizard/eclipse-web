@@ -432,25 +432,26 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         return;
       }
       const targetId = loaded.id || id;
-      const isLocal = Boolean(loaded.isLocalGame);
+      const isLocal = Boolean(loaded.isLocalGame || id.startsWith('local-') || id.startsWith('local_'));
+      const effectiveSeat = isLocal ? 'all' : joinSeat;
 
-      if (!isLocal && currentUser.role === 'guest' && joinSeat !== 'spectator') {
+      if (!isLocal && currentUser.role === 'guest' && effectiveSeat !== 'spectator') {
         setJoinError('Guest players can only join online multiplayer games as a spectator. Please select Spectator or log in.');
         setShowUserModal(true);
         setIsJoining(false);
         return;
       }
 
-      if (joinSeat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
+      if (effectiveSeat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
         setJoinError('Only administrators are allowed to use the hotseat function in online games.');
         setIsJoining(false);
         return;
       }
-      if (typeof joinSeat === 'number') {
-        const seatCheck = isSeatTaken(loaded.members, joinSeat, currentUser.id);
+      if (typeof effectiveSeat === 'number') {
+        const seatCheck = isSeatTaken(loaded.members, effectiveSeat, currentUser.id);
         if (seatCheck.isTaken && seatCheck.occupant) {
           const occ = seatCheck.occupant.username || seatCheck.occupant.name || 'another player';
-          setJoinError(`Seat ${joinSeat + 1} is already taken by ${occ}.`);
+          setJoinError(`Seat ${effectiveSeat + 1} is already taken by ${occ}.`);
           setIsJoining(false);
           return;
         }
@@ -461,7 +462,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         role: currentUser.role,
         email: currentUser.email,
         emailNotifications: currentUser.emailNotifications,
-        seat: joinSeat,
+        seat: effectiveSeat,
         joinedAt: Date.now(),
       }, isLocal);
       if (!regRes.success && regRes.error) {
@@ -470,7 +471,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         return;
       }
       setIsJoining(false);
-      onJoinTable(targetId, joinSeat);
+      onJoinTable(targetId, effectiveSeat);
     } catch {
       setJoinError(`Table "${id}" does not exist.`);
       setIsJoining(false);
@@ -479,21 +480,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
   const handleJoinFromList = async (tableId: string, seat: number | 'all' | 'spectator') => {
     const table = savedTables.find((t) => t.id === tableId);
-    const isLocal = Boolean(table?.isLocalGame);
-    if (!isLocal && currentUser.role === 'guest' && seat !== 'spectator') {
+    const isLocal = Boolean(table?.isLocalGame || tableId.startsWith('local-') || tableId.startsWith('local_'));
+    const effectiveSeat = isLocal ? 'all' : seat;
+    if (!isLocal && currentUser.role === 'guest' && effectiveSeat !== 'spectator') {
       alert('Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.');
       setShowUserModal(true);
       return;
     }
-    if (seat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
+    if (effectiveSeat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
       alert('Only administrators are allowed to use the hotseat function in online games.');
       return;
     }
-    if (typeof seat === 'number' && table) {
-      const seatCheck = isSeatTaken(table.members, seat, currentUser.id);
+    if (typeof effectiveSeat === 'number' && table) {
+      const seatCheck = isSeatTaken(table.members, effectiveSeat, currentUser.id);
       if (seatCheck.isTaken && seatCheck.occupant) {
         const occ = seatCheck.occupant.username || seatCheck.occupant.name || 'another player';
-        alert(`Seat ${seat + 1} is already taken by ${occ}.`);
+        alert(`Seat ${effectiveSeat + 1} is already taken by ${occ}.`);
         return;
       }
     }
@@ -503,14 +505,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       role: currentUser.role,
       email: currentUser.email,
       emailNotifications: currentUser.emailNotifications,
-      seat,
+      seat: effectiveSeat,
       joinedAt: Date.now(),
     }, isLocal);
     if (!regRes.success && regRes.error) {
       alert(regRes.error);
       return;
     }
-    onJoinTable(tableId, seat);
+    onJoinTable(tableId, effectiveSeat);
   };
 
   const handleDelete = (tableId: string) => {

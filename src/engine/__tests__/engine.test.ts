@@ -22161,6 +22161,61 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(appSrc).toContain('Turn: {getPlayerDisplayName(effectiveColonizingPlayer)}');
         expect(appSrc).toContain("state.phase !== 'UPKEEP_PHASE'");
       });
+
+      test('149. verifies local games strictly enforce hotseat mode (seat: all) and prevent seat assignment on refresh', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const fs = await import('fs');
+        const path = await import('path');
+        const { createInitialGame } = await import('../rules/setup');
+        const {
+          registerTableMember,
+          saveGameState,
+          sanitizeLoadedGameState,
+        } = await import('../rules/persistence');
+        const { Header } = await import('../../components/layout/Header');
+
+        const localTableId = 'local-404';
+        const game = createInitialGame(2, ['terran_federation', 'planta']);
+        game.id = localTableId;
+        game.isLocalGame = true;
+
+        // 1. sanitizeLoadedGameState converts any member seats on local games to 'all'
+        (game as any).members = [
+          { userId: 'u1', username: 'UserOne', seat: 0, role: 'user' },
+          { userId: 'u2', username: 'UserTwo', seat: 1, role: 'user' },
+        ];
+        const sanitized = sanitizeLoadedGameState(game);
+        expect(sanitized.isLocalGame).toBe(true);
+        expect(sanitized.members![0].seat).toBe('all');
+        expect(sanitized.members![1].seat).toBe('all');
+
+        // 2. registerTableMember on local game automatically forces member seat to 'all'
+        saveGameState(game, true);
+        const joinRes = await registerTableMember(localTableId, {
+          userId: 'u3',
+          username: 'UserThree',
+          seat: 0 as any, // Attempting to join as Seat 0 on a local game
+          role: 'user',
+          joinedAt: Date.now(),
+        });
+        expect(joinRes.success).toBe(true);
+        expect(joinRes.members).toBeDefined();
+        expect(joinRes.members![0].seat).toBe('all');
+
+        // 3. Header displays 'Hotseat' badge for local games and omits individual seat select and manage seats
+        const headerSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'layout', 'Header.tsx'), 'utf-8');
+        expect(headerSrc).toContain('if (state.isLocalGame) {');
+        expect(headerSrc).toContain('<span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 text-xs font-mono font-bold">\n                                Hotseat\n                              </span>');
+        expect(headerSrc).toContain("!state.isLocalGame && currentUser.role === 'admin' && onOpenManageSeats");
+
+        // 4. Verify App.tsx source enforces hotseat mode for local games on mount and refresh, and members is correctly scoped
+        const appSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'App.tsx'), 'utf-8');
+        expect(appSrc).toContain("state?.isLocalGame ||");
+        expect(appSrc).toContain("tableParam.startsWith('local-')");
+        expect(appSrc).toContain("if (isLocal) {\n      return 'all';\n    }");
+        expect(appSrc).toContain("const members = state.members || (state as any).members || [];\n\n      // Check if currentSeat is already occupied");
+      });
     });
   });
 });

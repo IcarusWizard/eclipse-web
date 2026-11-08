@@ -92,6 +92,9 @@ export const App: React.FC = () => {
   });
   const [selectedSector, setSelectedSector] = useState<SectorTile | null>(null);
   const [selectedViewIndex, setSelectedViewIndex] = useState<number>(() => {
+    if (state.isLocalGame) {
+      return state.activePlayerIndex || 0;
+    }
     if (typeof window !== 'undefined') {
       const params = new URLSearchParams(window.location.search);
       const seatParam = params.get('seat');
@@ -249,10 +252,18 @@ export const App: React.FC = () => {
 
   const [currentSeat, setCurrentSeat] = useState<number | 'all' | 'spectator'>(() => {
     const user = getCurrentUser();
+    const params = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : null;
+    const tableParam = params?.get('table');
+    const isLocal = Boolean(
+      state?.isLocalGame ||
+      (tableParam && (tableParam.startsWith('local-') || tableParam.startsWith('local_')))
+    );
+    if (isLocal) {
+      return 'all';
+    }
     const isAdmin = canUserUseHotseat(user.role);
     if (typeof window === 'undefined') return isAdmin ? 'all' : 0;
-    const params = new URLSearchParams(window.location.search);
-    const seatParam = params.get('seat');
+    const seatParam = params?.get('seat');
     if (!seatParam || seatParam === 'all') {
       return isAdmin ? 'all' : 0;
     }
@@ -260,6 +271,22 @@ export const App: React.FC = () => {
     const num = parseInt(seatParam, 10);
     return isNaN(num) ? (isAdmin ? 'all' : 0) : num;
   });
+
+  // Guarantee that local games only ever operate in hotseat mode and clean up any stray seat query param
+  useEffect(() => {
+    if (state?.isLocalGame) {
+      if (currentSeat !== 'all') {
+        setCurrentSeat('all');
+      }
+      if (typeof window !== 'undefined') {
+        const params = new URLSearchParams(window.location.search);
+        if (params.has('seat')) {
+          params.delete('seat');
+          window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+        }
+      }
+    }
+  }, [state?.id, state?.isLocalGame, currentSeat]);
 
   useEffect(() => {
     return subscribeToUserSession((u) => {
@@ -299,20 +326,23 @@ export const App: React.FC = () => {
         return;
       }
 
-      // Check if currentSeat is already occupied by another player
       const members = state.members || (state as any).members || [];
-      const seatCheck = isSeatTaken(members, currentSeat, currentUser.id);
-      if (seatCheck.isTaken && seatCheck.occupant) {
-        showToast(
-          `Seat ${typeof currentSeat === 'number' ? currentSeat + 1 : currentSeat} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}. Switched to Spectator.`
-        );
-        setCurrentSeat('spectator');
-        if (typeof window !== 'undefined') {
-          const params = new URLSearchParams(window.location.search);
-          params.set('seat', 'spectator');
-          window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+
+      // Check if currentSeat is already occupied by another player (online games only)
+      if (!state?.isLocalGame) {
+        const seatCheck = isSeatTaken(members, currentSeat, currentUser.id);
+        if (seatCheck.isTaken && seatCheck.occupant) {
+          showToast(
+            `Seat ${typeof currentSeat === 'number' ? currentSeat + 1 : currentSeat} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}. Switched to Spectator.`
+          );
+          setCurrentSeat('spectator');
+          if (typeof window !== 'undefined') {
+            const params = new URLSearchParams(window.location.search);
+            params.set('seat', 'spectator');
+            window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
+          }
+          return;
         }
-        return;
       }
 
       // Prevent redundant registerTableMember network requests and re-render ping-pong loops
@@ -397,6 +427,14 @@ export const App: React.FC = () => {
   useEffect(() => {
     if (!inGame || !state.id || !currentUser) return;
     if (syncedInitialViewTableRef.current === state.id) return;
+    if (state.isLocalGame) {
+      syncedInitialViewTableRef.current = state.id;
+      if (currentSeat !== 'all') {
+        setCurrentSeat('all');
+      }
+      setSelectedViewIndex(state.activePlayerIndex || 0);
+      return;
+    }
     const members = state.members || [];
     const myMem = members.find((m: any) => m.userId === currentUser.id);
     if (myMem && typeof myMem.seat === 'number' && state.players[myMem.seat]) {
@@ -413,7 +451,7 @@ export const App: React.FC = () => {
       setSelectedViewIndex(currentSeat);
       syncedInitialViewTableRef.current = state.id;
     }
-  }, [inGame, state.id, currentUser?.id, state.members, currentSeat]);
+  }, [inGame, state.id, state.isLocalGame, state.activePlayerIndex, currentUser?.id, state.members, currentSeat]);
 
   // Hotseat View: When activePlayerIndex changes in hot seat mode (currentSeat === 'all' or 'spectator'),
   // automatically update the top-left player dashboard to the active player by default
@@ -798,21 +836,24 @@ export const App: React.FC = () => {
       return;
     }
 
-    if (!loaded.isLocalGame && user.role === 'guest' && seat !== 'spectator') {
+    const isLocal = Boolean(loaded.isLocalGame || tableId.startsWith('local-') || tableId.startsWith('local_'));
+    const effectiveSeat = isLocal ? 'all' : seat;
+
+    if (!isLocal && user.role === 'guest' && effectiveSeat !== 'spectator') {
       alert('Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.');
       setIsUserModalOpen(true);
       return;
     }
 
-    if (seat === 'all' && !canUserUseHotseat(user.role, loaded.isLocalGame)) {
+    if (effectiveSeat === 'all' && !canUserUseHotseat(user.role, isLocal)) {
       alert('Only administrators are allowed to use the hotseat function in online games.');
       return;
     }
-    if (typeof seat === 'number') {
-      const seatCheck = isSeatTaken(loaded.members, seat, user.id);
+    if (typeof effectiveSeat === 'number') {
+      const seatCheck = isSeatTaken(loaded.members, effectiveSeat, user.id);
       if (seatCheck.isTaken && seatCheck.occupant) {
         alert(
-          `Seat ${seat + 1} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}.`
+          `Seat ${effectiveSeat + 1} is already taken by ${seatCheck.occupant.username || seatCheck.occupant.name}.`
         );
         return;
       }
@@ -824,9 +865,9 @@ export const App: React.FC = () => {
       role: user.role,
       email: user.email,
       emailNotifications: user.emailNotifications,
-      seat,
+      seat: effectiveSeat,
       joinedAt: Date.now(),
-    }, loaded.isLocalGame);
+    }, isLocal);
     if (!regRes.success && regRes.error) {
       alert(regRes.error);
       return;
@@ -837,9 +878,9 @@ export const App: React.FC = () => {
     saveGameState(loaded, true);
     setState(loaded);
     lastStateFingerprintRef.current = getStateFingerprint(loaded);
-    setCurrentSeat(seat);
-    if (typeof seat === 'number' && loaded.players[seat]) {
-      setSelectedViewIndex(seat);
+    setCurrentSeat(effectiveSeat);
+    if (typeof effectiveSeat === 'number' && loaded.players[effectiveSeat]) {
+      setSelectedViewIndex(effectiveSeat);
     } else {
       setSelectedViewIndex(loaded.activePlayerIndex || 0);
     }
@@ -847,7 +888,7 @@ export const App: React.FC = () => {
 
     if (typeof window !== 'undefined') {
       const seatParam =
-        seat === 'all' ? '' : seat === 'spectator' ? '&seat=spectator' : `&seat=${seat}`;
+        effectiveSeat === 'all' ? '' : effectiveSeat === 'spectator' ? '&seat=spectator' : `&seat=${effectiveSeat}`;
       window.history.pushState({}, '', `?table=${tableId}${seatParam}`);
     }
   };
@@ -860,6 +901,11 @@ export const App: React.FC = () => {
   };
 
   const handleChangeSeat = (seat: number | 'all' | 'spectator') => {
+    if (state.isLocalGame) {
+      setCurrentSeat('all');
+      setSelectedViewIndex(state.activePlayerIndex || 0);
+      return;
+    }
     const isGameRunning = Boolean(
       state.isGameStarted ||
       state.round > 1 ||
@@ -1199,6 +1245,9 @@ export const App: React.FC = () => {
     isDraftMode?: boolean
   ) => {
     const newGame = createInitialGame(playerCount, selectedFactionIds, expansions, neutralShips, isDraftMode);
+    newGame.isLocalGame = true;
+    (newGame as any).isGameStarted = true;
+    setCurrentSeat('all');
     setState(newGame);
     setSelectedViewIndex(0);
     setSelectedSector(null);
@@ -3574,6 +3623,11 @@ export const App: React.FC = () => {
           currentState={state}
           onJoinTable={(loaded) => {
             setState(loaded);
+            if (loaded.isLocalGame) {
+              setCurrentSeat('all');
+              setSelectedViewIndex(loaded.activePlayerIndex || 0);
+              return;
+            }
             const myMem = (loaded.members || []).find((m) => m.userId === currentUser.id);
             if (myMem && typeof myMem.seat !== 'undefined') {
               setCurrentSeat(myMem.seat);

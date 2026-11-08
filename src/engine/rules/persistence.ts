@@ -434,12 +434,21 @@ export function loadActiveGameState(): GameState | null {
  */
 export function sanitizeLoadedGameState(state: GameState): GameState {
   if (!state || !state.players) return state;
-  if (!Array.isArray(state.chatMessages)) {
-    state.chatMessages = [];
+  if (state.id?.startsWith('local-') || state.id?.startsWith('local_')) {
+    state.isLocalGame = true;
   }
-  // Spectator is a temporary seat; who has been the spectator should not be stored.
-  if (Array.isArray(state.members)) {
-    state.members = state.members.filter((m) => m && m.seat !== 'spectator');
+  if (state.isLocalGame) {
+    if (Array.isArray(state.members)) {
+      state.members = state.members.map((m) => ({
+        ...m,
+        seat: 'all',
+      }));
+    }
+  } else {
+    // Spectator is a temporary seat; who has been the spectator should not be stored.
+    if (Array.isArray(state.members)) {
+      state.members = state.members.filter((m) => m && m.seat !== 'spectator');
+    }
   }
   if (state.phase === 'ACTION_PHASE' && state.pendingExploreActivations && state.pendingExploreActivations > 0) {
     const activeP = state.players[state.activePlayerIndex];
@@ -495,6 +504,9 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
     if (tables[idStr]?.stateJson) {
       const parsed: GameState = JSON.parse(tables[idStr].stateJson!);
       (parsed as any).tableNumber = tables[idStr].tableNumber;
+      if (tables[idStr].isLocalGame || idStr.startsWith('local-') || idStr.startsWith('local_')) {
+        parsed.isLocalGame = true;
+      }
       if (tables[idStr].members) {
         parsed.members = tables[idStr].members;
       }
@@ -529,6 +541,9 @@ export function loadTable(tableIdentifier: string | number): GameState | null {
         if (best?.stateJson) {
           const parsed: GameState = JSON.parse(best.stateJson);
           (parsed as any).tableNumber = best.tableNumber;
+          if (best.isLocalGame || best.id?.startsWith('local-') || best.id?.startsWith('local_')) {
+            parsed.isLocalGame = true;
+          }
           if (best.members) {
             parsed.members = best.members;
           }
@@ -1109,7 +1124,32 @@ export async function registerTableMember(
     const tables: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
 
     const table = tables[tableId];
-    const isLocal = Boolean(isLocalGame || table?.isLocalGame);
+    const isLocal = Boolean(
+      table?.isLocalGame ||
+      tableId.startsWith('local-') ||
+      tableId.startsWith('local_') ||
+      (!table && isLocalGame)
+    );
+
+    if (isLocal) {
+      member.seat = 'all';
+      const curMembers: TableMember[] = [{ ...member, seat: 'all' }];
+      if (table) {
+        table.isLocalGame = true;
+        table.members = curMembers;
+        if (table.stateJson) {
+          try {
+            const parsed = JSON.parse(table.stateJson);
+            parsed.isLocalGame = true;
+            parsed.members = curMembers;
+            table.stateJson = JSON.stringify(parsed);
+            saveGameState(parsed, true);
+          } catch {}
+        }
+        storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
+      }
+      return { success: true, members: curMembers };
+    }
 
     // Only administrators are allowed to use the hotseat function in online games
     if (member.seat === 'all' && !canUserUseHotseat(member.role, isLocal)) {
@@ -1704,8 +1744,8 @@ export function getTableSeatsInfo(table: SavedTableSummary, currentUserId?: stri
   return Array.from({ length: pCount }).map((_, sIdx) => {
     const occupant = (table.members || []).find((m) => m.seat === sIdx);
     const parsedPlayer = parsedState?.players?.[sIdx];
-    const isOccupied = Boolean(occupant);
-    const isMySeat = Boolean(occupant && currentUserId && occupant.userId === currentUserId);
+    const isOccupied = !table.isLocalGame && Boolean(occupant);
+    const isMySeat = Boolean(!table.isLocalGame && occupant && currentUserId && occupant.userId === currentUserId);
 
     let playerName = occupant?.name || occupant?.username || parsedPlayer?.name || `Player ${sIdx + 1}`;
     if (!isOccupied && !parsedPlayer) {
