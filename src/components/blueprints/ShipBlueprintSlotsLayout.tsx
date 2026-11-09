@@ -22,6 +22,7 @@ export interface ShipLayoutDef {
   gridCols: number;
   gridRows: number;
   extraCube: SlotCoordinate;
+  externalCube?: SlotCoordinate;
 }
 
 export const SHIP_LAYOUTS_STANDARD: Record<string, ShipLayoutDef> = {
@@ -98,6 +99,7 @@ export const SHIP_LAYOUTS_PLANTA: Record<string, ShipLayoutDef> = {
     gridCols: 3,
     gridRows: 2,
     extraCube: { col: 1, row: 1, offsetY: 0 }, // Sits where engine was, forming a complete diamond
+    externalCube: { col: 3, row: 0, offsetY: 70 }, // Positioned directly right to the initial empty slot (col 2, row 0)
   },
   cruiser: {
     cubes: [
@@ -262,12 +264,20 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
   }
 
   externalParts.forEach((_, extIdx) => {
-    const extraOffset = hasPreprinted ? extIdx + 1 : extIdx;
-    allCoordinates.push({
-      col: layout.extraCube.col,
-      row: layout.extraCube.row + extraOffset,
-      offsetY: layout.extraCube.offsetY,
-    });
+    if (layout.externalCube) {
+      allCoordinates.push({
+        col: layout.externalCube.col + extIdx,
+        row: layout.externalCube.row,
+        offsetY: layout.externalCube.offsetY,
+      });
+    } else {
+      const extraOffset = hasPreprinted ? extIdx + 1 : extIdx;
+      allCoordinates.push({
+        col: layout.extraCube.col,
+        row: layout.extraCube.row + extraOffset,
+        offsetY: layout.extraCube.offsetY,
+      });
+    }
   });
 
   let maxX = 0;
@@ -458,11 +468,21 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
 
       {/* 3. External Module Slots (e.g. Muon Source, Ancient Parts attached) */}
       {externalParts.map((extPart, extIdx) => {
-        const extraOffset = hasPreprinted ? extIdx + 1 : extIdx;
-        const left = layout.extraCube.col * (cubeSize + gap);
+        const coord = layout.externalCube
+          ? {
+              col: layout.externalCube.col + extIdx,
+              row: layout.externalCube.row,
+              offsetY: layout.externalCube.offsetY,
+            }
+          : {
+              col: layout.extraCube.col,
+              row: layout.extraCube.row + (hasPreprinted ? extIdx + 1 : extIdx),
+              offsetY: layout.extraCube.offsetY,
+            };
+        const left = coord.col * (cubeSize + gap);
         const top =
-          (layout.extraCube.row + extraOffset) * (cubeSize + gap) +
-          (layout.extraCube.offsetY / 100) * cubeSize;
+          coord.row * (cubeSize + gap) +
+          (coord.offsetY / 100) * cubeSize;
 
         return (
           <div

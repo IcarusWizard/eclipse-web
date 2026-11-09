@@ -6,6 +6,7 @@ import { Technology } from '../../engine/types/tech';
 import { SHIP_PARTS } from '../../engine/rules/partData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from '../../engine/rules/shipValidation';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
+import { ShipPartTileIconography } from '../common/PhysicalTileIconography';
 
 interface DiscoveryChoiceModalProps {
   discovery: DiscoveryTile;
@@ -130,7 +131,13 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
     return (
       <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
         <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-amber-500 rounded-full shadow-2xl backdrop-blur-md text-white">
-          <Trophy className="w-4 h-4 text-amber-400" />
+          {part ? (
+            <div className="shrink-0 -my-1">
+              <ShipPartTileIconography part={part} size="sm" className="w-8 h-8 rounded-md" />
+            </div>
+          ) : (
+            <Trophy className="w-4 h-4 text-amber-400" />
+          )}
           <span className="font-bold text-xs sm:text-sm tracking-wide text-amber-300 font-display">
             ANCIENT DISCOVERY: {discovery.name} ({player.name})
           </span>
@@ -157,7 +164,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
         <div className="absolute -bottom-24 -right-24 w-48 h-48 bg-cyan-500/20 rounded-full blur-3xl pointer-events-none" />
 
         {/* Header Action Bar */}
-        <div className="w-full flex items-center justify-between mb-2">
+        <div className="w-full flex items-center justify-between mb-3">
           <span className="text-[10px] uppercase tracking-widest text-amber-400 font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800/80">
             Ancient Artifact
           </span>
@@ -171,22 +178,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           </button>
         </div>
 
-        {/* Discovery Icon Header */}
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-amber-400 to-amber-600 flex items-center justify-center shadow-lg shadow-amber-500/30 mb-2 border border-amber-300/40">
-          <svg
-            className="w-7 h-7 text-slate-950"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="currentColor"
-            strokeWidth={2.5}
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
-          </svg>
-        </div>
-
-        <h2 className="text-xl font-black text-white tracking-wide mb-1">
+        <h2 className="text-2xl font-black text-white tracking-wide mb-1 font-display">
           {discovery.name}
         </h2>
         <div className="text-xs text-slate-400 mb-3 font-medium">
@@ -200,32 +192,63 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           </p>
 
           {part && (
-            <div className="bg-slate-900/90 border border-cyan-500/30 rounded-lg p-2.5 flex items-center justify-between">
-              <div>
-                <div className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-                  <Cpu className="w-3.5 h-3.5 text-cyan-400" />
-                  Ancient Tech Module: {part.name}
-                </div>
-                <div className="text-[11px] text-slate-400 mt-0.5">
-                  {part.powerConsumed > 0 && `Power Consumed: ${part.powerConsumed} | `}
-                  {part.powerProduced > 0 && `Power Produced: +${part.powerProduced} | `}
-                  {part.initiativeBonus > 0 && `Initiative: +${part.initiativeBonus} | `}
-                  {part.driveSpeed && `Drive Speed: ${part.driveSpeed} | `}
-                  {part.isJumpDrive && 'Jump: 1 adjacent sector regardless of wormholes | '}
-                  {part.morphShield && 'Morph Shield: -1 Shield, heals 1 dmg/round | '}
-                  {part.hullBonus > 0 && `Hull: +${part.hullBonus} | `}
-                  {part.shieldBonus > 0 && `Shield: -${part.shieldBonus} | `}
-                  {part.computerBonus > 0 && `Computer: +${part.computerBonus} | `}
+            <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-3 flex items-center gap-3.5">
+              <div className="shrink-0">
+                <ShipPartTileIconography part={part} size="md" className="w-18 h-18 sm:w-20 sm:h-20 shadow-md shadow-black/70" />
+              </div>
+              <div className="flex-1 min-w-0 text-left">
+                <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
+                  {part.powerConsumed > 0 && (
+                    <span className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/50 text-amber-300 font-bold">
+                      -{part.powerConsumed}⚡ Power
+                    </span>
+                  )}
+                  {part.powerProduced > 0 && (
+                    <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 font-bold">
+                      +{part.powerProduced}⚡ Power
+                    </span>
+                  )}
+                  {part.initiativeBonus !== 0 && (
+                    <span className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-400/50 text-amber-200 font-bold">
+                      {part.initiativeBonus > 0 ? `+${part.initiativeBonus}` : part.initiativeBonus} Init
+                    </span>
+                  )}
+                  {part.driveSpeed ? (
+                    <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 font-bold">
+                      Speed {part.driveSpeed}
+                    </span>
+                  ) : part.isJumpDrive ? (
+                    <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 font-bold">
+                      Jump Drive (1 Hex)
+                    </span>
+                  ) : null}
+                  {part.morphShield && (
+                    <span className="px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/50 text-rose-300 font-bold">
+                      -1 Shield & Heals 1 HP/Round
+                    </span>
+                  )}
+                  {part.shieldBonus > 0 && !part.morphShield && (
+                    <span className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-500/50 text-blue-300 font-bold">
+                      -{part.shieldBonus} Shield
+                    </span>
+                  )}
+                  {part.computerBonus > 0 && (
+                    <span className="px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-500/50 text-indigo-300 font-bold">
+                      +{part.computerBonus} COMP
+                    </span>
+                  )}
+                  {part.hullBonus > 0 && (
+                    <span className="px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/50 text-rose-300 font-bold">
+                      +{part.hullBonus} HP
+                    </span>
+                  )}
                   {part.dice && part.dice.length > 0 && (
-                    <span className="text-amber-300 font-semibold">
-                      {part.dice.map((d) => `${d.count}x ${d.damagePerHit} Dmg ${d.color} ${d.isMissile ? '🚀 (Missile)' : '(Cannon)'}`).join(', ')}
+                    <span className="px-2 py-0.5 rounded bg-orange-950/80 border border-orange-500/50 text-orange-300 font-bold">
+                      {part.dice.map((d) => `${d.count}x ${d.damagePerHit} DMG ${d.color.toUpperCase()} ${d.isMissile ? '🚀' : ''}`).join(', ')}
                     </span>
                   )}
                 </div>
               </div>
-              <span className="px-2 py-0.5 bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded text-[10px] font-mono font-bold">
-                ANCIENT
-              </span>
             </div>
           )}
 
@@ -510,30 +533,78 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                 </div>
               </div>
             ) : (
-              <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-1">
-                {currentBlueprint.slots.map((sl, sIdx) => {
-                  const isSelected = selectedSlotIndex === sIdx;
-                  return (
-                    <button
-                      key={sIdx}
-                      type="button"
-                      onClick={() => setSelectedSlotIndex(sIdx)}
-                      className={`p-1.5 rounded-lg border text-left transition cursor-pointer text-[11px] ${
-                        isSelected
-                          ? 'border-cyan-400 bg-cyan-950/70 ring-1 ring-cyan-400 shadow'
-                          : 'border-slate-800 bg-slate-900/80 hover:border-slate-700'
-                      }`}
-                    >
-                      <div className="flex justify-between items-center text-[10px] text-slate-400 mb-0.5">
-                        <span>Slot {sIdx + 1}</span>
-                        {isSelected && <span className="text-cyan-300 font-bold">TARGET</span>}
-                      </div>
-                      <div className="font-bold truncate text-slate-200">
-                        {sl ? sl.name : <span className="text-slate-500 italic">Empty Slot</span>}
-                      </div>
-                    </button>
-                  );
-                })}
+              <div className="p-3 rounded-lg border border-cyan-500/40 bg-slate-900/60">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5">
+                    <span>Click a slot on {selectedShipType.toUpperCase()} to install:</span>
+                  </div>
+                  <span className="text-[10px] text-slate-400 font-mono">
+                    Slots: {currentBlueprint.maxSlots}
+                  </span>
+                </div>
+
+                <div className="flex flex-col items-center justify-center p-2.5 bg-slate-950/80 rounded-lg border border-slate-800 overflow-x-auto">
+                  <ShipBlueprintSlotsLayout
+                    shipType={selectedShipType}
+                    factionId={player.faction.id}
+                    slots={currentBlueprint.slots}
+                    maxSlots={currentBlueprint.maxSlots}
+                    preprintedPower={currentBlueprint.preprintedPower}
+                    preprintedComputer={currentBlueprint.preprintedComputer}
+                    preprintedShield={currentBlueprint.preprintedShield}
+                    preprintedHull={currentBlueprint.preprintedHull}
+                    externalParts={currentBlueprint.externalParts}
+                    interactive={true}
+                    canModify={true}
+                    selectedSlotIndex={selectedSlotIndex}
+                    onSelectSlot={(sIdx) => setSelectedSlotIndex(sIdx)}
+                    size="sm"
+                  />
+                </div>
+
+                <div className="w-full mt-2.5 pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs gap-1.5">
+                  <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                    <span className="text-slate-400">Target Slot:</span>
+                    <span className="px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-500/60 text-cyan-200 font-bold">
+                      {`Slot ${selectedSlotIndex + 1}`}
+                    </span>
+                    <span className="text-slate-300">
+                      ({currentBlueprint.slots[selectedSlotIndex] ? (
+                        <span>Replaces <strong className="text-amber-300">{currentBlueprint.slots[selectedSlotIndex]?.name}</strong></span>
+                      ) : (
+                        <span className="text-emerald-400 font-semibold italic">Empty Slot</span>
+                      )})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1.5 font-mono text-[11px]">
+                    <span className="text-slate-400">Power:</span>
+                    <span className={testStats && testStats.totalPowerConsumed > testStats.totalPowerProduced ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
+                      {testStats ? `${testStats.totalPowerProduced - testStats.totalPowerConsumed >= 0 ? '+' : ''}${testStats.totalPowerProduced - testStats.totalPowerConsumed}⚡` : '0⚡'}
+                    </span>
+                  </div>
+                </div>
+
+                {/* Quick-select Slot Pills */}
+                <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2 pt-2 border-t border-slate-800/60">
+                  {currentBlueprint.slots.map((sl, sIdx) => {
+                    const isSelected = selectedSlotIndex === sIdx;
+                    return (
+                      <button
+                        key={sIdx}
+                        type="button"
+                        onClick={() => setSelectedSlotIndex(sIdx)}
+                        className={`px-2 py-0.5 rounded text-[10.5px] font-mono font-bold transition border cursor-pointer ${
+                          isSelected
+                            ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 ring-1 ring-cyan-400 shadow'
+                            : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
+                        }`}
+                        title={`Slot ${sIdx + 1}: ${sl?.name || 'Empty'}`}
+                      >
+                        <span>{`Slot ${sIdx + 1}`}</span>
+                      </button>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>

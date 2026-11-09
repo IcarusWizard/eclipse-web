@@ -182,7 +182,7 @@ export const DiceGraphic: React.FC<DiceGraphicProps> = ({
     hitCount = 4;
   } else if (normColor === 'purple') {
     bgClass = 'bg-fuchsia-600 border-fuchsia-300 shadow-fuchsia-950/60';
-    pipFill = '#fef08a';
+    pipFill = '#0f172a';
     hitCount = 0;
   }
 
@@ -193,21 +193,8 @@ export const DiceGraphic: React.FC<DiceGraphicProps> = ({
       className={`relative ${sizeDims} ${bgClass} border-[1.5px] shadow-md flex items-center justify-center p-0.5 select-none shrink-0`}
     >
       {normColor === 'purple' ? (
-        // Physical Rift Cannon die (Magenta/Fuchsia square with glowing core)
-        <svg
-          width={pipSize + 4}
-          height={pipSize + 4}
-          viewBox="0 0 24 24"
-          fill="none"
-          className="filter drop-shadow-xs"
-        >
-          <polygon
-            points="12,2 14.5,9 22,9.5 16,14 18.5,21 12,16.5 5.5,21 8,14 2,9.5 9.5,9"
-            fill="#fdf4ff"
-            fillOpacity="0.9"
-          />
-          <circle cx="12" cy="12" r="3.5" fill="#a21caf" />
-        </svg>
+        // Physical Rift Cannon die (Magenta/Fuchsia square with black 8-pointed star pip)
+        <BlastPip size={pipSize + 3} color="#0f172a" />
       ) : hitCount === 1 ? (
         // 1 Starburst Pip (Centered - Ion)
         <BlastPip size={pipSize + 3} color={pipFill} />
@@ -294,14 +281,14 @@ export const CombatDieFaceGraphic: React.FC<CombatDieFaceGraphicProps> = ({
     bgClass = 'bg-orange-500 border-orange-300 text-slate-950 shadow-orange-950/60';
     pipColor = '#0f172a';
   } else if (normColor === 'blue' || normColor === 'sky' || normColor === 'cyan') {
-    bgClass = 'bg-sky-500 border-sky-300 text-white shadow-sky-950/60';
+    bgClass = 'bg-sky-500 border-sky-300 text-slate-950 shadow-sky-950/60';
     pipColor = '#0f172a';
   } else if (normColor === 'red') {
-    bgClass = 'bg-rose-600 border-rose-300 text-white shadow-rose-950/60';
+    bgClass = 'bg-rose-600 border-rose-300 text-slate-950 shadow-rose-950/60';
     pipColor = '#0f172a';
   } else if (normColor === 'purple' || normColor === 'fuchsia' || normColor === 'rift') {
-    bgClass = 'bg-purple-600 border-purple-300 text-white shadow-purple-950/60';
-    pipColor = '#fdf4ff';
+    bgClass = 'bg-purple-600 border-purple-300 text-slate-950 shadow-purple-950/60';
+    pipColor = '#0f172a';
   }
 
   // Star size scaling
@@ -488,81 +475,93 @@ export const DriveGraphic: React.FC<{
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }> = ({ speed, init = 0, powerProduced = 0, isJump = false, size = 'md', className = '' }) => {
-  const hexDim = size === 'sm' ? 17 : size === 'lg' ? 26 : 21;
-  const numClass = size === 'sm' ? 'text-sm font-black' : size === 'lg' ? 'text-xl font-black' : 'text-base font-black';
+  const isDual = powerProduced > 0;
+  const hexDim = isDual
+    ? size === 'sm' ? 14 : size === 'lg' ? 26 : 18
+    : size === 'sm' ? 17 : size === 'lg' ? 26 : 21;
+  const boltDim = isDual
+    ? size === 'sm' ? 14 : size === 'lg' ? 26 : 18
+    : 0;
+  const numClass = isDual
+    ? size === 'sm' ? 'text-xs font-black' : size === 'lg' ? 'text-lg font-black' : 'text-sm font-black'
+    : size === 'sm' ? 'text-sm font-black' : size === 'lg' ? 'text-xl font-black' : 'text-base font-black';
 
   return (
-    <div className={`inline-flex flex-col items-center justify-center gap-0.5 shrink-0 ${className}`}>
-      <div className="flex items-center justify-center gap-1">
-        {isJump ? (
-          <div className="flex items-center" title="Jump Drive (7-hex honeycomb hyperspace traverse)">
-            <svg
-              width={size === 'sm' ? 24 : size === 'lg' ? 42 : 32}
-              height={size === 'sm' ? 24 : size === 'lg' ? 42 : 32}
-              viewBox="0 0 44 44"
+    <div className={`inline-flex items-center justify-center gap-1 shrink-0 ${className}`}>
+      {isJump ? (
+        <div
+          className="flex items-center"
+          title="Jump Drive (7-hex honeycomb): Once per Move activation, this ship may move to any adjacent sector regardless of wormhole connections (crosses non-wormhole edges and closed borders). Consumes 2 Power."
+        >
+          <svg
+            width={size === 'sm' ? 24 : size === 'lg' ? 42 : 32}
+            height={size === 'sm' ? 24 : size === 'lg' ? 42 : 32}
+            viewBox="0 0 44 44"
+            fill="none"
+            className="shrink-0"
+          >
+            {/* 7-Hex Honeycomb: 1 in Center, 6 Surrounding; All White Lines, No Other Colors */}
+            {/* Center Hex 0 */}
+            <polygon
+              points="29.0,22.0 25.5,28.1 18.5,28.1 15.0,22.0 18.5,15.9 25.5,15.9"
+              stroke="#ffffff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
               fill="none"
-              className="shrink-0"
-            >
-              {/* 7-Hex Honeycomb: 1 in Center, 6 Surrounding; All White Lines, No Other Colors */}
-              {/* Center Hex 0 */}
-              <polygon
-                points="29.0,22.0 25.5,28.1 18.5,28.1 15.0,22.0 18.5,15.9 25.5,15.9"
-                stroke="#ffffff"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              {/* Top Hex 1 */}
-              <polygon
-                points="29.0,9.9 25.5,15.9 18.5,15.9 15.0,9.9 18.5,3.8 25.5,3.8"
-                stroke="#ffffff"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              {/* Top-Right Hex 2 */}
-              <polygon
-                points="39.5,15.9 36.0,22.0 29.0,22.0 25.5,15.9 29.0,9.9 36.0,9.9"
-                stroke="#ffffff"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              {/* Bottom-Right Hex 3 */}
-              <polygon
-                points="39.5,28.1 36.0,34.1 29.0,34.1 25.5,28.1 29.0,22.0 36.0,22.0"
-                stroke="#ffffff"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              {/* Bottom Hex 4 */}
-              <polygon
-                points="29.0,34.1 25.5,40.2 18.5,40.2 15.0,34.1 18.5,28.1 25.5,28.1"
-                stroke="#ffffff"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              {/* Bottom-Left Hex 5 */}
-              <polygon
-                points="18.5,28.1 15.0,34.1 8.0,34.1 4.5,28.1 8.0,22.0 15.0,22.0"
-                stroke="#ffffff"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-                fill="none"
-              />
-              {/* Top-Left Hex 6 */}
-              <polygon
-                points="18.5,15.9 15.0,22.0 8.0,22.0 4.5,15.9 8.0,9.9 15.0,9.9"
-                stroke="#ffffff"
-                strokeWidth="1.6"
-                strokeLinejoin="round"
-                fill="none"
-              />
-            </svg>
-          </div>
-        ) : (
+            />
+            {/* Top Hex 1 */}
+            <polygon
+              points="29.0,9.9 25.5,15.9 18.5,15.9 15.0,9.9 18.5,3.8 25.5,3.8"
+              stroke="#ffffff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            {/* Top-Right Hex 2 */}
+            <polygon
+              points="39.5,15.9 36.0,22.0 29.0,22.0 25.5,15.9 29.0,9.9 36.0,9.9"
+              stroke="#ffffff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            {/* Bottom-Right Hex 3 */}
+            <polygon
+              points="39.5,28.1 36.0,34.1 29.0,34.1 25.5,28.1 29.0,22.0 36.0,22.0"
+              stroke="#ffffff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            {/* Bottom Hex 4 */}
+            <polygon
+              points="29.0,34.1 25.5,40.2 18.5,40.2 15.0,34.1 18.5,28.1 25.5,28.1"
+              stroke="#ffffff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            {/* Bottom-Left Hex 5 */}
+            <polygon
+              points="18.5,28.1 15.0,34.1 8.0,34.1 4.5,28.1 8.0,22.0 15.0,22.0"
+              stroke="#ffffff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              fill="none"
+            />
+            {/* Top-Left Hex 6 */}
+            <polygon
+              points="18.5,15.9 15.0,22.0 8.0,22.0 4.5,15.9 8.0,9.9 15.0,9.9"
+              stroke="#ffffff"
+              strokeWidth="1.6"
+              strokeLinejoin="round"
+              fill="none"
+            />
+          </svg>
+        </div>
+      ) : (
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* Speed Number + Hexagon */}
           <div className="flex items-center gap-1">
             <span
               className={`font-display font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.9)] leading-none select-none ${numClass}`}
@@ -580,19 +579,26 @@ export const DriveGraphic: React.FC<{
               />
             </svg>
           </div>
-        )}
 
-        {init !== 0 && <InitiativeBadge init={init} size={size === 'lg' ? 'md' : 'sm'} />}
-      </div>
-
-      {powerProduced > 0 && (
-        <div className="flex items-center gap-0.5 px-1 py-0.2 rounded bg-slate-950/90 border border-emerald-500/70 shrink-0">
-          <span className={`${size === 'sm' ? 'text-[9px]' : size === 'lg' ? 'text-xs' : 'text-[10px]'} font-mono font-bold text-emerald-400 leading-none`}>
-            +{powerProduced}
-          </span>
-          <LightningPip size={size === 'sm' ? 8 : size === 'lg' ? 12 : 10} color="#34d399" />
+          {/* Power Produced Number + Lightning Symbol (Same size as speed & hex, matching other power sources) */}
+          {isDual && (
+            <div className="flex items-center gap-1" title={`+${powerProduced} Energy Produced`}>
+              <span
+                className={`font-display font-black text-white drop-shadow-[0_2px_3px_rgba(0,0,0,0.9)] leading-none select-none ${numClass}`}
+              >
+                {powerProduced}
+              </span>
+              <LightningPip
+                size={boltDim}
+                color="#ffffff"
+                className="filter drop-shadow-[0_0_4px_rgba(251,191,36,0.9)] shrink-0"
+              />
+            </div>
+          )}
         </div>
       )}
+
+      {init !== 0 && <InitiativeBadge init={init} size={size === 'lg' ? 'md' : 'sm'} />}
     </div>
   );
 };
@@ -1690,6 +1696,7 @@ export const ShipPartTileIconography: React.FC<{
 
   return (
     <div
+      title={getPartTooltip(part)}
       className={`relative aspect-square ${sizeDims} mx-auto rounded-xl bg-gradient-to-b from-slate-800/90 via-slate-900 to-slate-950 border border-slate-700/90 flex items-center justify-center overflow-hidden shadow-md shadow-black/60 select-none ${className}`}
     >
       {/* Subtle Horizontal Scanline Texture matching physical tiles */}
@@ -1979,7 +1986,7 @@ export const ShipPartSlotGraphic: React.FC<{
           <DriveGraphic
             speed={part.driveSpeed || 0}
             init={0} // Rendered at top-left
-            powerProduced={0} // Rendered at top-right if present
+            powerProduced={part.powerProduced}
             isJump={Boolean(part.isJumpDrive)}
             size={size}
           />
@@ -2075,7 +2082,11 @@ export const getPartTooltip = (p: ShipPart): string => {
   if (p.computerBonus > 0) lines.push(`🎯 Computer: +${p.computerBonus}`);
   if (p.shieldBonus > 0) lines.push(`🛡️ Shield: -${p.shieldBonus}`);
   if (p.hullBonus > 0) lines.push(`❤️ Hull: +${p.hullBonus} HP`);
-  if (p.isJumpDrive) lines.push(`✨ Special: Jump Drive (crosses non-wormhole edges)`);
+  if (p.isJumpDrive) {
+    lines.push(
+      `✨ Special: Jump Traverse (Non-standard component) - Once per Move activation, this ship may move to any adjacent sector regardless of wormhole connections (even if there are no connecting wormholes between the sectors, or across sectors with closed borders). Requires 2 Power consumed to equip.`
+    );
+  }
   if (p.id === 'morph_shield' || p.morphShield) {
     lines.push(
       `✨ Special: Morph Regeneration (Non-standard component) - In addition to -${p.shieldBonus} Shield reducing enemy hit rolls, this ship automatically removes 1 damage cube at the end of each Engagement Round in battle (surviving ships heal 1 HP per round during active combat).`

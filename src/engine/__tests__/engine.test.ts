@@ -8978,7 +8978,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(isExpansionActive([], 'turn_order')).toBe(false);
 
         // 2. Setup 3-player game with turn_order expansion
-        const game = createInitialGame(3, undefined, ['turn_order']);
+        const game = createInitialGame(3, ['terran_federation', 'planta', 'orion_hegemony'], ['turn_order']);
         expect(game.expansions).toContain('turn_order');
         expect(game.players.length).toBe(3);
         const [p0, p1, p2] = game.players;
@@ -22697,7 +22697,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(impLogisticsLgHtml).toContain('width="98"');
         expect(impLogisticsLgHtml).toContain('height="42"');
 
-        // 3. Verify Nonlinear Drive Graphic vertical stacking (speed 2 on top, +2 power underneath):
+        // 3. Verify Nonlinear Drive Graphic renders 2 <hex> and 2 <lightning> on the same size matching power sources:
         const nonlinearDrivePart = SHIP_PARTS.nonlinear_drive!;
         const nlDriveGraphicHtml = renderToString(
           React.createElement(DriveGraphic, {
@@ -22706,11 +22706,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
             size: 'md',
           })
         );
-        expect(nlDriveGraphicHtml).toContain('inline-flex flex-col items-center justify-center');
+        expect(nlDriveGraphicHtml).toContain('inline-flex items-center justify-center');
         expect(nlDriveGraphicHtml).toContain('>2<');
-        expect(nlDriveGraphicHtml).toContain('width="21"'); // Speed 2 hexagon
-        expect(nlDriveGraphicHtml).toContain('+<!-- -->2'); // Stacked +2 power badge underneath
-        expect(nlDriveGraphicHtml).toContain('#34d399'); // Emerald energy pip
+        expect(nlDriveGraphicHtml).toContain('width="18"'); // Speed 2 hexagon
+        expect(nlDriveGraphicHtml).toContain('M13 2L3 14H12L11 22L21 10H12L13 2Z'); // Matching power source lightning
+        expect(nlDriveGraphicHtml).toContain('title="+2 Energy Produced"');
 
         // 4. Verify TechTileIconography and ShipPartTileIconography support size="lg" (w-24 h-24 sm:w-28 sm:h-28):
         const amSplitterTech = ALL_RARE_TECHS.find((t) => t.id === 'antimatter_splitter')!;
@@ -22840,12 +22840,13 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(nanoCategoryHtml).toContain('M9.671 4.136'); // Gear cogwheel path
         expect(nanoCategoryHtml).not.toContain('M12 2v2M12 20v2'); // No sun rays
 
-        // 3c. Verify ShipBlueprintEditor available parts grid uses 3 columns without hover glitch
+        // 3c. Verify ShipBlueprintEditor available parts grid uses matching 72px slot dimensions without hover glitch
         const fs = await import('fs');
         const path = await import('path');
         const editorSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'), 'utf-8');
-        expect(editorSource).toContain('grid-cols-3 gap-2 overflow-y-auto max-h-[440px] p-1 pb-3 pr-1.5');
-        expect(editorSource).toContain('col-span-3 text-center');
+        expect(editorSource).toContain('grid-cols-[repeat(auto-fill,72px)]');
+        expect(editorSource).toContain('w-[72px] h-[72px]');
+        expect(editorSource).toContain('w-full col-span-full text-center');
         expect(editorSource).toContain('hover:ring-2 hover:ring-cyan-400/40');
         expect(editorSource).not.toContain('hover:scale-[1.03]');
 
@@ -23043,6 +23044,183 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(editorSource).toContain('onClearExternalPart');
         expect(editorSource).toContain('External Module');
         expect(editorSource).toContain('Detach external module to reserves');
+      });
+
+      it('157. verifies black dice numbers for blue and red, detailed Jump Drive explanation, nonlinear drive matching power/speed size, and upgrade page 72px component sizing', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { CombatDieFaceGraphic, DriveGraphic, getPartTooltip, ShipPartSlotGraphic } = await import('../../components/common/PhysicalTileIconography');
+        const { renderDieFacePips } = await import('../../components/gallery/GalacticGalleryModal');
+
+        // 1. Black numbers on blue and red combat dice
+        const blueCombatFace4 = renderToString(React.createElement(CombatDieFaceGraphic, { color: 'blue', roll: 4, size: 'sm' }));
+        expect(blueCombatFace4).toContain('text-slate-950');
+        expect(blueCombatFace4).not.toContain('text-white shadow-sky');
+
+        const redCombatFace3 = renderToString(React.createElement(CombatDieFaceGraphic, { color: 'red', roll: 3, size: 'sm' }));
+        expect(redCombatFace3).toContain('text-slate-950');
+        expect(redCombatFace3).not.toContain('text-white shadow-rose');
+
+        const galleryBluePip4 = renderToString(renderDieFacePips('blue', 4, 3, false) as any);
+        expect(galleryBluePip4).toContain('text-slate-950');
+        expect(galleryBluePip4).toContain('4');
+
+        const galleryRedPip5 = renderToString(renderDieFacePips('red', 5, 4, false) as any);
+        expect(galleryRedPip5).toContain('text-slate-950');
+        expect(galleryRedPip5).toContain('5');
+
+        // 2. Jump Drive detailed explanation in getPartTooltip and DriveGraphic
+        const jumpDrivePart = SHIP_PARTS.jump_drive!;
+        const jumpTooltip = getPartTooltip(jumpDrivePart);
+        expect(jumpTooltip).toContain('Jump Traverse');
+        expect(jumpTooltip).toContain('regardless of wormhole connections');
+        expect(jumpTooltip).toContain('closed borders');
+        expect(jumpTooltip).toContain('Requires 2 Power consumed');
+
+        const jumpGraphicHtml = renderToString(React.createElement(DriveGraphic, { speed: 0, isJump: true, size: 'md' }));
+        expect(jumpGraphicHtml).toContain('title="Jump Drive (7-hex honeycomb): Once per Move activation');
+
+        // 3. Nonlinear Drive: 2 power is 2 <lightning> on the same size with 2 <hex> matching other power sources
+        const nlDriveHtml = renderToString(React.createElement(DriveGraphic, { speed: 2, powerProduced: 2, size: 'md' }));
+        expect(nlDriveHtml).toContain('text-sm font-black');
+        expect(nlDriveHtml).toContain('polygon'); // Hexagon
+        expect(nlDriveHtml).toContain('M13 2L3 14H12L11 22L21 10H12L13 2Z'); // Lightning symbol
+        expect(nlDriveHtml).toContain('title="+2 Energy Produced"');
+        expect(nlDriveHtml).not.toContain('+2</span>'); // No separate green chip with plus
+
+        // ShipPartSlotGraphic for Nonlinear Drive passes powerProduced to DriveGraphic and avoids duplicate top-right chip
+        const nlSlotHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: SHIP_PARTS.nonlinear_drive!, size: 'lg' }));
+        expect(nlSlotHtml).toContain('title="+2 Energy Produced"');
+
+        // 4. Upgrade page available parts matching installed parts size (72px) and auto-fill responsive grid
+        const editorSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'), 'utf-8');
+        expect(editorSource).toContain('w-[72px] h-[72px]');
+        expect(editorSource).toContain('grid-cols-[repeat(auto-fill,72px)]');
+        expect(editorSource).toContain('max-w-5xl xl:max-w-6xl');
+      });
+
+      it('158. verifies black stars on rift dice and comprehensive Jump Drive explanation in Galactic Gallery', async () => {
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { CombatDieFaceGraphic, DiceGraphic, ShipPartTileIconography } = await import('../../components/common/PhysicalTileIconography');
+        const { renderDieFacePips, GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+
+        // 1. Black stars on Rift Dice (pipColor = '#0f172a') in GalacticGalleryModal
+        const riftFace3 = renderToString(renderDieFacePips('purple', 3, 1, false) as any);
+        expect(riftFace3).toContain('fill="#0f172a"');
+        expect(riftFace3).not.toContain('fill="#fdf4ff"');
+
+        const riftFace4 = renderToString(renderDieFacePips('purple', 4, 2, false) as any);
+        expect(riftFace4).toContain('fill="#0f172a"');
+        expect(riftFace4).not.toContain('fill="#fdf4ff"');
+
+        const riftFace5 = renderToString(renderDieFacePips('purple', 5, 3, true) as any);
+        expect(riftFace5).toContain('fill="#0f172a"');
+        expect(riftFace5).not.toContain('fill="#fdf4ff"');
+
+        // 2. Black stars on Rift Dice in Combat rolls (CombatDieFaceGraphic)
+        const combatRiftFace3 = renderToString(React.createElement(CombatDieFaceGraphic, { color: 'purple', roll: 3, size: 'sm' }));
+        expect(combatRiftFace3).toContain('fill="#0f172a"');
+        expect(combatRiftFace3).not.toContain('fill="#fdf4ff"');
+
+        const combatRiftFace5 = renderToString(React.createElement(CombatDieFaceGraphic, { color: 'purple', roll: 5, size: 'sm' }));
+        expect(combatRiftFace5).toContain('fill="#0f172a"');
+        expect(combatRiftFace5).not.toContain('fill="#fdf4ff"');
+
+        // 3. Black star on Rift Dice icon in DiceGraphic
+        const purpleDiceGraphic = renderToString(React.createElement(DiceGraphic, { color: 'purple', count: 1, size: 'sm' }));
+        expect(purpleDiceGraphic).toContain('fill="#0f172a"');
+        expect(purpleDiceGraphic).not.toContain('fill="#fdf4ff"');
+
+        // 4. Jump Drive explanation across all Galactic Gallery tabs
+        // Tab 1: Core Symbols / Icons
+        const galleryIconsTab = renderToString(React.createElement(GalacticGalleryModal, { isOpen: true, onClose: () => {}, initialTab: 'icons' }));
+        expect(galleryIconsTab).toContain('Jump Drive (Honeycomb):');
+        expect(galleryIconsTab).toContain('Once per Move activation, this ship may move to any adjacent sector regardless of wormhole connections');
+
+        // Tab 2: Ship Parts
+        const galleryPartsTab = renderToString(React.createElement(GalacticGalleryModal, { isOpen: true, onClose: () => {}, initialTab: 'parts' }));
+        expect(galleryPartsTab).toContain('Jump Traverse:');
+        expect(galleryPartsTab).toContain('Non-standard drive. Once per Move activation, this ship may move to any adjacent sector regardless of wormhole connections');
+        expect(galleryPartsTab).toContain('Jump 1 Hex');
+        expect(galleryPartsTab).toContain('1 Jump / Act');
+
+        // Tab 5: Discovery Tiles
+        const galleryDiscoveriesTab = renderToString(React.createElement(GalacticGalleryModal, { isOpen: true, onClose: () => {}, initialTab: 'discoveries' }));
+        expect(galleryDiscoveriesTab).toContain('Jump Traverse: 1 jump/act across non-wormholes (2⚡)');
+
+        // 5. ShipPartTileIconography displays tooltip with Jump Drive explanation
+        const jumpPartTile = renderToString(React.createElement(ShipPartTileIconography, { part: SHIP_PARTS.jump_drive!, size: 'md' }));
+        expect(jumpPartTile).toContain('Jump Drive (DRIVE)');
+        expect(jumpPartTile).toContain('Jump Traverse (Non-standard component)');
+      });
+
+      it('159. verifies DiscoveryChoiceModal renders authentic ShipPartTileIconography and ShipBlueprintSlotsLayout icon layout for immediate equip', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+        const game = createInitialGame(2, ['terran_federation', 'orion_hegemony']);
+        const player = game.players[0]!;
+
+        // 1. Ship part discovery tile: Plasma Turret
+        const plasmaTurretTile: any = {
+          id: 'disc_plasma_turret',
+          name: 'Plasma Turret',
+          description: 'Ancient weapon: 2 Orange dice (2 dmg each), 1 power consumed.',
+          shipPartId: 'plasma_turret',
+        };
+
+        const modalHtml = renderToString(
+          React.createElement(DiscoveryChoiceModal, {
+            discovery: plasmaTurretTile,
+            player,
+            onChoice: () => {},
+          })
+        );
+
+        // Header uses name of the tile, Middle Details Card renders ShipPartTileIconography with stats
+        expect(modalHtml).toContain('Plasma Turret');
+        expect(modalHtml).toContain('Plasma Turret (CANNON)');
+        expect(modalHtml).toContain('2x 2 DMG ORANGE');
+        expect(modalHtml).not.toContain('Ancient Tech Module:');
+
+        // Immediate Blueprint Installation uses ShipBlueprintSlotsLayout (square component cubes with SVG iconography)
+        expect(modalHtml).toContain('Click a slot on');
+        expect(modalHtml).toContain('to install:');
+        expect(modalHtml).toContain('aspect-square');
+        expect(modalHtml).toContain('Target Slot:');
+        expect(modalHtml).toContain('Slot 1');
+
+        // Does NOT render legacy text button slots layout
+        expect(modalHtml).not.toContain('grid-cols-2 sm:grid-cols-3');
+        expect(modalHtml).not.toContain('truncate text-slate-200');
+
+        // 2. Source inspection: DiscoveryChoiceModal uses ShipPartTileIconography and ShipBlueprintSlotsLayout
+        const discModalSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'discovery', 'DiscoveryChoiceModal.tsx'), 'utf-8');
+        expect(discModalSource).toContain('<ShipPartTileIconography');
+        expect(discModalSource).toContain('<ShipBlueprintSlotsLayout');
+        expect(discModalSource).not.toContain('grid grid-cols-2 sm:grid-cols-3');
+
+        // 3. Planta Interceptor Muon Source positioning: sits directly right to the initial empty slot (col: 3, row: 0, offsetY: 70)
+        const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
+        const plantaInterceptorLayout = renderToString(
+          React.createElement(ShipBlueprintSlotsLayout, {
+            shipType: 'interceptor',
+            factionId: 'planta',
+            slots: [SHIP_PARTS.ion_cannon, SHIP_PARTS.nuclear_drive, null],
+            maxSlots: 3,
+            preprintedPower: 2,
+            preprintedComputer: 1,
+            externalParts: [SHIP_PARTS.muon_source],
+            size: 'md',
+          })
+        );
+        expect(plantaInterceptorLayout).toContain('left:192px;top:42px');
+        expect(plantaInterceptorLayout).toContain('External Module: Muon Source');
       });
     });
   });

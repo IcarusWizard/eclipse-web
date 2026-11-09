@@ -327,7 +327,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-100">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-5xl xl:max-w-6xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-100">
         {/* Header with Live Activation Counter */}
         <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950">
           <div>
@@ -669,9 +669,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 </div>
               )}
 
-            <div className="grid grid-cols-3 gap-2 overflow-y-auto max-h-[440px] p-1 pb-3 pr-1.5">
+            <div className="grid grid-cols-[repeat(auto-fill,72px)] gap-2.5 justify-center sm:justify-start overflow-y-auto max-h-[460px] p-1.5 pb-4 pr-2 content-start">
               {displayedParts.length === 0 ? (
-                <div className="col-span-3 text-center py-8 text-slate-500 text-xs italic">
+                <div className="w-full col-span-full text-center py-8 text-slate-500 text-xs italic">
                   No unlocked components in this category. Research technologies or discover Ancient modules to unlock additional parts.
                 </div>
               ) : (
@@ -702,9 +702,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                           handleInstallPart(part);
                         }
                       }}
-                      className={`relative aspect-square p-1 rounded-xl border transition-all flex flex-col items-center justify-center overflow-hidden select-none text-center ${
+                      className={`relative w-[72px] h-[72px] min-w-[72px] min-h-[72px] max-w-[72px] max-h-[72px] p-0.5 rounded-lg border transition-all flex flex-col items-center justify-center overflow-hidden select-none text-center shrink-0 ${
                         isAncientUnlocked
-                          ? 'border-amber-500/60 bg-amber-950/30 hover:bg-amber-950/50 hover:border-amber-400 hover:ring-2 hover:ring-amber-400/50 shadow-md shadow-amber-950/40'
+                          ? 'border-amber-500/70 bg-amber-950/30 hover:bg-amber-950/50 hover:border-amber-400 hover:ring-2 hover:ring-amber-400/50 shadow-md shadow-amber-950/40'
                           : 'border-slate-750 bg-slate-900/90 hover:bg-slate-800 hover:border-cyan-400 hover:ring-2 hover:ring-cyan-400/40 shadow-md shadow-black/50'
                       } ${canEquip ? 'cursor-pointer hover:brightness-110' : 'cursor-not-allowed opacity-40'}`}
                       title={getPartTooltip(part)}
@@ -715,20 +715,20 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
                       {/* Top-Right Tag: ANCIENT or OUTSIDE */}
                       {isMuon ? (
-                        <div className="absolute top-1 right-1 z-20 pointer-events-none">
-                          <span className="text-[7.5px] bg-amber-500/25 text-amber-300 border border-amber-500/50 px-1 py-0.2 rounded font-mono font-bold leading-none">
+                        <div className="absolute top-0.5 right-0.5 z-20 pointer-events-none">
+                          <span className="text-[6.5px] bg-amber-500/30 text-amber-300 border border-amber-500/60 px-1 py-0.2 rounded font-mono font-bold leading-none">
                             OUTSIDE
                           </span>
                         </div>
                       ) : isAncientUnlocked ? (
-                        <div className="absolute top-1 right-1 z-20 pointer-events-none">
-                          <span className="text-[7.5px] bg-amber-500/25 text-amber-300 border border-amber-500/50 px-1 py-0.2 rounded font-mono font-bold leading-none">
+                        <div className="absolute top-0.5 right-0.5 z-20 pointer-events-none">
+                          <span className="text-[6.5px] bg-amber-500/30 text-amber-300 border border-amber-500/60 px-1 py-0.2 rounded font-mono font-bold leading-none">
                             ANCIENT
                           </span>
                         </div>
                       ) : null}
 
-                      {/* Physical Square Component Tile (Initiative at Top-Left, Energy at Bottom-Right) */}
+                      {/* Physical Square Component Tile matching installed slots size (72px) */}
                       <ShipPartSlotGraphic part={part} size="lg" className="w-full h-full" />
                     </button>
                   );

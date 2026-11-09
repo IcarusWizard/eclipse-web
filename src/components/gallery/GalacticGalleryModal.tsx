@@ -118,7 +118,7 @@ const COMBAT_DICE_SPECS = [
     damage: 3,
     bgColor: 'bg-sky-500',
     borderColor: 'border-sky-300',
-    textColor: 'text-white',
+    textColor: 'text-slate-950',
     note: '3 DMG per hit. Hits when Roll + Computers - Shields ≥ 6.',
     faces: [
       { face: 1, stars: 0, targetDmg: 0, selfDmg: 0, isCrit: false, isBackfire: false, desc: 'Empty (Always Misses)' },
@@ -136,7 +136,7 @@ const COMBAT_DICE_SPECS = [
     damage: 4,
     bgColor: 'bg-rose-600',
     borderColor: 'border-rose-300',
-    textColor: 'text-white',
+    textColor: 'text-slate-950',
     note: '4 DMG per hit. Hits when Roll + Computers - Shields ≥ 6.',
     faces: [
       { face: 1, stars: 0, targetDmg: 0, selfDmg: 0, isCrit: false, isBackfire: false, desc: 'Empty (Always Misses)' },
@@ -174,7 +174,7 @@ export const renderDieFacePips = (
   isBackfire?: boolean
 ) => {
   if (dieId === 'purple') {
-    const pipColor = '#fdf4ff';
+    const pipColor = '#0f172a';
 
     if (face === 1 || face === 2) {
       return null; // Empty face on miss side (physical Eclipse Rift die is blank on Faces 1 & 2)
@@ -225,7 +225,7 @@ export const renderDieFacePips = (
 
   if (face >= 2 && face <= 5) {
     return (
-      <span className="font-display font-black text-sm leading-none select-none">
+      <span className="font-display font-black text-sm leading-none select-none text-slate-950">
         {face}
       </span>
     );
@@ -717,9 +717,20 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                           <DriveGraphic speed={2} size="sm" />
                           <span className="text-[9px] font-mono text-slate-400 mt-1">Speed 2</span>
                         </div>
-                        <div className="flex flex-col items-center">
+                        <div
+                          className="flex flex-col items-center cursor-help"
+                          title="Jump Drive (7-hex honeycomb): Once per Move activation, this ship may jump to any adjacent sector regardless of wormhole connections (crosses non-wormhole edges and closed borders). Consumes 2 Power."
+                        >
                           <DriveGraphic speed={0} isJump={true} size="sm" />
-                          <span className="text-[9px] font-mono text-slate-400 mt-1">Jump Drive</span>
+                          <span className="text-[9px] font-mono text-cyan-300 mt-1 font-semibold">Jump Drive</span>
+                        </div>
+                      </div>
+                      <div className="pt-2 border-t border-slate-800/80 text-[10px] text-slate-300 space-y-1">
+                        <div className="flex items-start gap-1.5">
+                          <Navigation className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                          <span>
+                            <strong className="text-cyan-300">Jump Drive (Honeycomb):</strong> Once per Move activation, this ship may move to any adjacent sector regardless of wormhole connections (crosses non-wormhole edges and closed borders). Consumes 2⚡.
+                          </span>
                         </div>
                       </div>
                     </div>
@@ -1150,6 +1161,12 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                           </div>
                           <div className="text-[10px] text-slate-400 flex flex-col gap-1 flex-1 font-mono">
                             <div>Category: <span className="text-slate-200 font-bold uppercase">{part.category}</span></div>
+                            {part.isJumpDrive && (
+                              <div className="text-cyan-400 font-bold flex items-center gap-1">
+                                <span>Drive:</span>
+                                <span className="text-[9.5px] px-1 py-0.2 rounded bg-cyan-950 border border-cyan-500/50">1 Jump / Act</span>
+                              </div>
+                            )}
                             {part.initiativeBonus !== 0 && (
                               <div className="flex items-center gap-1 text-amber-300 font-bold">
                                 <span>Init:</span>
@@ -1189,11 +1206,15 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                               .join(', ')}
                           </div>
                         )}
-                        {part.driveSpeed && (
+                        {part.driveSpeed ? (
                           <div className="text-cyan-400 flex items-center gap-1">
                             <Navigation className="w-3 h-3" /> Speed {part.driveSpeed}
                           </div>
-                        )}
+                        ) : part.isJumpDrive ? (
+                          <div className="text-cyan-400 flex items-center gap-1 font-bold">
+                            <Navigation className="w-3 h-3" /> Jump 1 Hex
+                          </div>
+                        ) : null}
                         {part.initiativeBonus > 0 && (
                           <div className="text-violet-400 flex items-center gap-1 font-bold">
                             Init +{part.initiativeBonus}
@@ -1212,6 +1233,14 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         {part.hullBonus > 0 && (
                           <div className="text-rose-400 flex items-center gap-1">
                             <Heart className="w-3 h-3" /> +{part.hullBonus} HP
+                          </div>
+                        )}
+                        {(part.id === 'jump_drive' || (part as any).isJumpDrive) && (
+                          <div className="col-span-2 text-cyan-300 flex items-start gap-1.5 font-semibold text-[10px] bg-cyan-950/40 p-2 rounded-lg border border-cyan-500/30">
+                            <Navigation className="w-3.5 h-3.5 text-cyan-400 shrink-0 mt-0.5" />
+                            <span>
+                              <strong>Jump Traverse:</strong> Non-standard drive. Once per Move activation, this ship may move to any adjacent sector regardless of wormhole connections (crosses non-wormhole edges and closed borders). Consumes 2 Power.
+                            </span>
                           </div>
                         )}
                         {(part.id === 'morph_shield' || (part as any).morphShield) && (
@@ -1517,13 +1546,22 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                               <span className="font-sans font-semibold">{partId}</span>
                             </div>
                             {part && (
-                              <div className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-900/90 border border-slate-800">
-                                <div className="shrink-0">
-                                  <ShipPartTileIconography part={part} size="md" className="w-18 h-18 sm:w-20 sm:h-20" />
+                              <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-slate-900/90 border border-slate-800">
+                                <div className="flex items-center gap-2.5">
+                                  <div className="shrink-0">
+                                    <ShipPartTileIconography part={part} size="md" className="w-18 h-18 sm:w-20 sm:h-20" />
+                                  </div>
+                                  <div>
+                                    <span className="text-xs text-amber-300 font-sans font-bold block">
+                                      {part.name}
+                                    </span>
+                                    {part.isJumpDrive && (
+                                      <span className="text-[10px] text-cyan-300 font-sans font-semibold block mt-0.5">
+                                        Jump Traverse: 1 jump/act across non-wormholes (2⚡)
+                                      </span>
+                                    )}
+                                  </div>
                                 </div>
-                                <span className="text-xs text-amber-300 font-sans font-bold">
-                                  {part.name}
-                                </span>
                               </div>
                             )}
                           </div>

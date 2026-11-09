@@ -567,7 +567,7 @@ export const RIFT_CONDUCTOR_DISCOVERY: DiscoveryTile = {
 export const JUMP_DRIVE_DISCOVERY: DiscoveryTile = {
   id: 'disc_jump_drive',
   name: 'Jump Drive',
-  description: 'Ancient drive: Once per Move Activation, ships with Jump Drive may move to any adjacent sector regardless of wormholes. Consumes 2 power.',
+  description: 'Ancient drive: Once per Move Activation, ships with Jump Drive may move to any adjacent sector regardless of wormhole connections (crosses non-wormhole edges and closed borders). Consumes 2 power.',
   shipPartId: 'jump_drive',
 };
 
