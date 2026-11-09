@@ -9,6 +9,7 @@ import {
   calculateTechCost,
 } from '../../engine/rules/techData';
 import { getMinorSpeciesTechDiscount } from '../../engine/rules/minorSpecies';
+import { TechTileIconography } from '../common/PhysicalTileIconography';
 import {
   Cpu,
   FlaskConical,
@@ -312,6 +313,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
       >
         {/* Detailed Description Hover Tooltip (Bug 214, Bug 237, Bug 243) */}
         <div
+          role="tooltip"
           style={{ backgroundColor: '#020617' }}
           className={`hidden group-hover:block absolute ${horizontalPlacement} ${verticalPlacement} z-50 w-72 max-w-[calc(100vw-2rem)] p-3 bg-slate-950 border-2 border-amber-500/90 rounded-xl shadow-2xl shadow-black text-xs text-slate-100 pointer-events-none animate-in fade-in zoom-in-95 duration-150`}
         >
@@ -350,9 +352,17 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         {/* Slot Header */}
         <div>
           <div className="flex items-center justify-between gap-1 mb-1.5 text-[10px] font-mono whitespace-nowrap">
-            <span className="text-slate-400 font-bold uppercase tracking-wider shrink-0">
-              {tech.tier ? `Slot ${tech.tier}` : 'Rare Tech'}
-            </span>
+            <div className="flex items-center gap-1.5">
+              <span className="text-slate-400 font-bold uppercase tracking-wider shrink-0">
+                {tech.tier ? `Slot ${tech.tier}` : 'Rare Tech'}
+              </span>
+              {tech.victoryPoints && (
+                <span className="text-[10px] text-amber-400 font-sans font-bold flex items-center gap-0.5">
+                  <Award className="w-3 h-3 text-amber-400" />
+                  +{tech.victoryPoints} VP
+                </span>
+              )}
+            </div>
 
             {/* Stock count badge */}
             {stock > 0 ? (
@@ -373,23 +383,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             )}
           </div>
 
-          {/* Tech Name */}
-          <div className="font-bold text-sm text-slate-100 font-display flex items-center justify-between mb-1">
-            <span className="truncate" title={tech.name}>
-              {tech.name}
-            </span>
-            {tech.victoryPoints && (
-              <span className="text-[10px] text-amber-400 font-sans font-bold flex items-center gap-0.5">
-                <Award className="w-3 h-3 text-amber-400" />
-                +{tech.victoryPoints} VP
-              </span>
-            )}
+          {/* Physical Tile Iconography Face (Second Dawn board game design, no text name on face) */}
+          <div className="my-1.5 cursor-help" title={`${tech.name}: ${tech.description}`}>
+            <TechTileIconography tech={tech} />
           </div>
-
-          {/* Description / Effect */}
-          <p className="text-[11px] text-slate-300 leading-snug mb-2 line-clamp-3 cursor-help" title={tech.description}>
-            {tech.description}
-          </p>
 
           {/* Artifact Key Controlled Artifacts Counter */}
           {tech.id === 'artifact_key' && (

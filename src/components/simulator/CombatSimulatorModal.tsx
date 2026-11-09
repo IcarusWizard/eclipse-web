@@ -13,6 +13,7 @@ import { GameState } from '../../engine/types/state';
 import { ShipBlueprint, ShipPart } from '../../engine/types/blueprints';
 import { SHIP_PARTS } from '../../engine/rules/partData';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
+import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import {
   ALL_FACTIONS,
   HUMAN_FACTIONS,
@@ -760,6 +761,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
   const roleColor = isAttacker ? 'red' : 'cyan';
   const isCommunityBalance = Boolean(activeExpansions?.includes('community_balance'));
   const partGroups = useMemo(() => getPartGroups(isCommunityBalance), [isCommunityBalance]);
+  const [simSelectedSlotIndex, setSimSelectedSlotIndex] = useState<number>(0);
 
   // Handle faction or NPC selection change
   const handleFactionChange = (val: string) => {
@@ -1176,36 +1178,60 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
               </div>
             )}
 
-            {/* Modular Slots Grid */}
-            <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
-              {activeBp.slots.map((part, idx) => (
-                <div
-                  key={idx}
-                  className="flex items-center justify-between gap-2 p-1.5 rounded-lg bg-slate-950/80 border border-slate-800/80 text-xs"
-                >
-                  <span className="text-[10px] font-mono text-slate-500 w-12 shrink-0">
-                    Slot {idx + 1}:
-                  </span>
-                  <select
-                    value={part?.id || ''}
-                    onChange={(e) =>
-                      handleSlotChange(activeBp.type, idx, e.target.value || null)
-                    }
-                    className="flex-1 bg-slate-900 border border-slate-700 rounded px-2 py-0.5 text-xs text-white focus:outline-none"
-                  >
-                    <option value="">(Empty Slot)</option>
-                    {partGroups.map((g) => (
-                      <optgroup key={g.category} label={g.category}>
-                        {g.parts.map((p) => (
-                          <option key={p.id} value={p.id}>
-                            {p.name}
-                          </option>
-                        ))}
-                      </optgroup>
+            {/* Visual Ship Blueprint Component Slots (Square tiles in authentic bghelper layout) */}
+            <div className="flex flex-col items-center justify-center p-3 bg-slate-950/60 rounded-xl border border-slate-800/80 my-1 overflow-x-auto">
+              <ShipBlueprintSlotsLayout
+                shipType={activeBp.type}
+                factionId={sideConfig.factionId}
+                slots={activeBp.slots}
+                maxSlots={activeBp.slots.length}
+                preprintedPower={activeBp.preprintedPower}
+                preprintedComputer={activeBp.preprintedComputer}
+                preprintedShield={activeBp.preprintedShield}
+                preprintedHull={activeBp.preprintedHull}
+                externalParts={activeBp.externalParts || []}
+                interactive={true}
+                selectedSlotIndex={simSelectedSlotIndex}
+                onSelectSlot={(idx) => setSimSelectedSlotIndex(idx)}
+                onClearSlot={(idx) => handleSlotChange(activeBp.type, idx, null)}
+                size="md"
+              />
+            </div>
+
+            {/* Quick-Equip Selector for Selected Square */}
+            <div className="flex flex-wrap items-center gap-2 p-2 bg-slate-900/90 border border-slate-700/80 rounded-xl shadow-inner">
+              <span className="text-[11px] font-bold text-slate-300">
+                Equip Component:
+              </span>
+              <select
+                value={activeBp.slots[simSelectedSlotIndex]?.id || ''}
+                onChange={(e) =>
+                  handleSlotChange(activeBp.type, simSelectedSlotIndex, e.target.value || null)
+                }
+                className="flex-1 min-w-[180px] bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-medium"
+              >
+                <option value="">(Empty Slot)</option>
+                {partGroups.map((g) => (
+                  <optgroup key={g.category} label={g.category}>
+                    {g.parts.map((p) => (
+                      <option key={p.id} value={p.id}>
+                        {p.name}
+                      </option>
                     ))}
-                  </select>
-                </div>
-              ))}
+                  </optgroup>
+                ))}
+              </select>
+              {activeBp.slots[simSelectedSlotIndex] && (
+                <button
+                  type="button"
+                  onClick={() => handleSlotChange(activeBp.type, simSelectedSlotIndex, null)}
+                  className="px-2 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                  title="Clear component"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Clear</span>
+                </button>
+              )}
             </div>
           </div>
         )}

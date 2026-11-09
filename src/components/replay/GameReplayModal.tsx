@@ -4,6 +4,7 @@ import { SectorTile } from '../../engine/types/galaxy';
 import { isReplayAvailable, resolveStepState } from '../../engine/rules/replay';
 import { getPlayerShortName, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { HexGalaxyMap } from '../map/HexGalaxyMap';
+import { CombatDieFaceGraphic } from '../common/PhysicalTileIconography';
 import {
   History,
   Play,
@@ -310,6 +311,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
                           roll.isHit ? `HIT (${roll.damage} dmg)` : 'MISS'
                         }`}
                       >
+                        <CombatDieFaceGraphic color={roll.dieColor} roll={roll.roll} size="xs" />
                         <span>{roll.roll}</span>
                         <span>{roll.isHit ? '✓' : '✗'}</span>
                         {roll.isHit && (

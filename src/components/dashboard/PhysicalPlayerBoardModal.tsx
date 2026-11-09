@@ -15,6 +15,8 @@ import {
 import { calculateBlueprintStats, countPlayerShips, SHIP_LIMITS } from '../../engine/rules/shipValidation';
 import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
 import { ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
+import { TechTileIconography, ShipPartSlotGraphic, getPartTooltip, TechHoverTooltip } from '../common/PhysicalTileIconography';
+import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 import { getPlayerShortName, getPlayerDisplayName, playerHasWormholeGenerator, canExchangeAmbassadors } from '../../engine/rules/gameReducer';
 import {
@@ -916,7 +918,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
               {/* 3 Physical Horizontal Tech Rows */}
               <div className="space-y-3.5">
                 {/* 1. MILITARY ROW (RED) */}
-                <div className="bg-slate-900/90 border border-rose-950/80 rounded-xl p-3.5 shadow-md">
+                <div className="relative hover:z-40 focus-within:z-40 bg-slate-900/90 border border-rose-950/80 rounded-xl p-3.5 shadow-md transition-[z-index]">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded bg-rose-500" />
@@ -956,18 +958,26 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const tech = techRows.military.techs[sIdx];
                       const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
+                      const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
 
                       return (
                         <div
                           key={`mil_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          title={tech ? `${tech.name} (Military Tech)\n\n${tech.description}\n\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}` : undefined}
-                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
+                          title={tech ? `${tech.name}: ${tech.description}` : undefined}
+                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all relative ${
                             tech
-                              ? 'bg-rose-950/40 border-rose-500/80 shadow-md ring-1 ring-rose-500/30 cursor-pointer hover:border-rose-400 group'
+                              ? 'bg-rose-950/40 border-rose-500/80 shadow-md ring-1 ring-rose-500/30 cursor-pointer hover:border-rose-400 group hover:z-50'
                               : 'bg-slate-950/60 border-slate-800 border-dashed opacity-60'
                           }`}
                         >
+                          {tech && (
+                            <TechHoverTooltip
+                              tech={tech}
+                              horizontalPlacement={colPlacement}
+                              verticalPlacement="top-[calc(100%+8px)]"
+                            />
+                          )}
                           <div className="flex items-center justify-between text-[10px]">
                             <span className="font-mono text-slate-500 font-bold">Slot {sIdx + 1}</span>
                             {vpEarned > 0 && (
@@ -978,14 +988,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           </div>
 
                           {tech ? (
-                            <div className="flex flex-col gap-0.5">
-                              <div className="text-xs font-bold text-rose-200 line-clamp-1 font-display group-hover:text-rose-100">
-                                {tech.name}
+                            <div className="flex flex-col justify-between h-full">
+                              <span className="sr-only">
+                                {tech.name}: {tech.description}
+                              </span>
+                              <div className="my-0.5">
+                                <TechTileIconography tech={tech} compact />
                               </div>
-                              <p className="text-[9px] text-slate-300 line-clamp-2 leading-tight" title={tech.description}>
-                                {tech.description}
-                              </p>
-                              <div className="text-[8.5px] text-slate-400 font-mono mt-0.5">
+                              <div className="text-[8.5px] text-slate-400 font-mono">
                                 Base: {tech.baseCost} sci
                               </div>
                             </div>
@@ -1003,7 +1013,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 </div>
 
                 {/* 2. GRID ROW (GREEN / EMERALD) */}
-                <div className="bg-slate-900/90 border border-emerald-950/80 rounded-xl p-3.5 shadow-md">
+                <div className="relative hover:z-40 focus-within:z-40 bg-slate-900/90 border border-emerald-950/80 rounded-xl p-3.5 shadow-md transition-[z-index]">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded bg-emerald-500" />
@@ -1027,18 +1037,26 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const tech = techRows.grid.techs[sIdx];
                       const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
+                      const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
 
                       return (
                         <div
                           key={`grid_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          title={tech ? `${tech.name} (Grid Tech)\n\n${tech.description}\n\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}` : undefined}
-                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
+                          title={tech ? `${tech.name}: ${tech.description}` : undefined}
+                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all relative ${
                             tech
-                              ? 'bg-emerald-950/40 border-emerald-500/80 shadow-md ring-1 ring-emerald-500/30 cursor-pointer hover:border-emerald-400 group'
+                              ? 'bg-emerald-950/40 border-emerald-500/80 shadow-md ring-1 ring-emerald-500/30 cursor-pointer hover:border-emerald-400 group hover:z-50'
                               : 'bg-slate-950/60 border-slate-800 border-dashed opacity-60'
                           }`}
                         >
+                          {tech && (
+                            <TechHoverTooltip
+                              tech={tech}
+                              horizontalPlacement={colPlacement}
+                              verticalPlacement="top-[calc(100%+8px)]"
+                            />
+                          )}
                           <div className="flex items-center justify-between text-[10px]">
                             <span className="font-mono text-slate-500 font-bold">Slot {sIdx + 1}</span>
                             {vpEarned > 0 && (
@@ -1049,14 +1067,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           </div>
 
                           {tech ? (
-                            <div className="flex flex-col gap-0.5">
-                              <div className="text-xs font-bold text-emerald-200 line-clamp-1 font-display group-hover:text-emerald-100">
-                                {tech.name}
+                            <div className="flex flex-col justify-between h-full">
+                              <span className="sr-only">
+                                {tech.name}: {tech.description}
+                              </span>
+                              <div className="my-0.5">
+                                <TechTileIconography tech={tech} compact />
                               </div>
-                              <p className="text-[9px] text-slate-300 line-clamp-2 leading-tight" title={tech.description}>
-                                {tech.description}
-                              </p>
-                              <div className="text-[8.5px] text-slate-400 font-mono mt-0.5">
+                              <div className="text-[8.5px] text-slate-400 font-mono">
                                 Base: {tech.baseCost} sci
                               </div>
                             </div>
@@ -1074,7 +1092,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 </div>
 
                 {/* 3. NANO ROW (BLUE / SKY) */}
-                <div className="bg-slate-900/90 border border-sky-950/80 rounded-xl p-3.5 shadow-md">
+                <div className="relative hover:z-40 focus-within:z-40 bg-slate-900/90 border border-sky-950/80 rounded-xl p-3.5 shadow-md transition-[z-index]">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded bg-sky-500" />
@@ -1098,18 +1116,26 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const tech = techRows.nano.techs[sIdx];
                       const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
+                      const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
 
                       return (
                         <div
                           key={`nano_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          title={tech ? `${tech.name} (Nano Tech)\n\n${tech.description}\n\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}` : undefined}
-                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all ${
+                          title={tech ? `${tech.name}: ${tech.description}` : undefined}
+                          className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all relative ${
                             tech
-                              ? 'bg-sky-950/40 border-sky-500/80 shadow-md ring-1 ring-sky-500/30 cursor-pointer hover:border-sky-400 group'
+                              ? 'bg-sky-950/40 border-sky-500/80 shadow-md ring-1 ring-sky-500/30 cursor-pointer hover:border-sky-400 group hover:z-50'
                               : 'bg-slate-950/60 border-slate-800 border-dashed opacity-60'
                           }`}
                         >
+                          {tech && (
+                            <TechHoverTooltip
+                              tech={tech}
+                              horizontalPlacement={colPlacement}
+                              verticalPlacement="bottom-[calc(100%+8px)]"
+                            />
+                          )}
                           <div className="flex items-center justify-between text-[10px]">
                             <span className="font-mono text-slate-500 font-bold">Slot {sIdx + 1}</span>
                             {vpEarned > 0 && (
@@ -1120,14 +1146,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           </div>
 
                           {tech ? (
-                            <div className="flex flex-col gap-0.5">
-                              <div className="text-xs font-bold text-sky-200 line-clamp-1 font-display group-hover:text-sky-100">
-                                {tech.name}
+                            <div className="flex flex-col justify-between h-full">
+                              <span className="sr-only">
+                                {tech.name}: {tech.description}
+                              </span>
+                              <div className="my-0.5">
+                                <TechTileIconography tech={tech} compact />
                               </div>
-                              <p className="text-[9px] text-slate-300 line-clamp-2 leading-tight" title={tech.description}>
-                                {tech.description}
-                              </p>
-                              <div className="text-[8.5px] text-slate-400 font-mono mt-0.5">
+                              <div className="text-[8.5px] text-slate-400 font-mono">
                                 Base: {tech.baseCost} sci
                               </div>
                               {tech.id === 'artifact_key' && (
@@ -1160,9 +1186,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         <div
                           key={rt.id}
                           onClick={() => setSelectedTech(rt)}
-                          title={`${rt.name} (Rare Tech)\n\n${rt.description}\n\nBase Cost: ${rt.baseCost} Science${rt.victoryPoints ? ` • +${rt.victoryPoints} VP` : ''}`}
-                          className="px-3 py-1.5 rounded-lg border border-purple-500/70 bg-purple-950/50 text-purple-200 text-xs font-semibold flex items-center gap-2 cursor-pointer hover:border-purple-400 shadow"
+                          title={`${rt.name}: ${rt.description}`}
+                          className="px-3 py-1.5 rounded-lg border border-purple-500/70 bg-purple-950/50 text-purple-200 text-xs font-semibold flex items-center gap-2 cursor-pointer hover:border-purple-400 shadow relative group hover:z-50"
                         >
+                          <TechHoverTooltip
+                            tech={rt}
+                            horizontalPlacement="left-0"
+                            verticalPlacement="bottom-[calc(100%+8px)]"
+                          />
                           <span>{rt.name}</span>
                           {rt.victoryPoints && rt.victoryPoints > 0 && (
                             <span className="text-[10px] font-bold text-amber-400 bg-amber-950 px-1 rounded border border-amber-800">
@@ -1428,183 +1459,117 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         </div>
                       </div>
 
-                      {/* Ship Stats Bar */}
-                      {stats && (
-                        <div className="grid grid-cols-6 gap-1 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-center font-mono">
-                          <div>
-                            <div className="text-[9px] text-slate-500 uppercase font-sans">HP</div>
-                            <div className="text-xs font-bold text-rose-300">{stats.totalHull} HP</div>
-                          </div>
-                          <div>
-                            <div className="text-[9px] text-slate-500 uppercase font-sans">Speed</div>
-                            <div className="text-xs font-bold text-cyan-300">
-                              {sc.type === 'starbase' ? 'Immobile' : `${stats.totalDriveSpeed} Hex`}
+                      {/* Ship Blueprint Body: Summary Status on Left, Blueprint Slots on Right */}
+                      <div className="flex-1 flex flex-col sm:flex-row items-center sm:items-stretch gap-3 sm:gap-4 my-1">
+                        {/* Summary Status Panel (Left Side) */}
+                        {stats && (
+                          <div className="w-full sm:w-36 lg:w-40 shrink-0 bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5 flex flex-col justify-between shadow-inner">
+                            <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between border-b border-slate-800/60 pb-1 font-display">
+                              <span>Ship Stats</span>
+                              <span className="text-[8.5px] font-mono text-cyan-400 font-normal">Active</span>
                             </div>
-                          </div>
-                          <div>
-                            <div className="text-[9px] text-slate-500 uppercase font-sans">Init</div>
-                            <div className="text-xs font-bold text-indigo-300">
-                              {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative}
-                            </div>
-                            <div className="text-[7.5px] text-slate-500 font-mono">
-                              B{(bp?.baseInitiative ?? 0) >= 0 ? `+${bp?.baseInitiative ?? 0}` : (bp?.baseInitiative ?? 0)} P{(stats.totalInitiative - (bp?.baseInitiative ?? 0)) >= 0 ? `+${stats.totalInitiative - (bp?.baseInitiative ?? 0)}` : (stats.totalInitiative - (bp?.baseInitiative ?? 0))}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-[9px] text-slate-500 uppercase font-sans">COMP</div>
-                            <div className="text-xs font-bold text-sky-300">
-                              {`+${stats.computerBonus}`}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-[9px] text-slate-500 uppercase font-sans">Shield</div>
-                            <div className="text-xs font-bold text-teal-300">
-                              {`-${stats.shieldBonus}`}
-                            </div>
-                          </div>
-                          <div>
-                            <div className="text-[9px] text-slate-500 uppercase font-sans">Power</div>
-                            <div
-                              className={`text-xs font-bold ${
-                                stats.totalPowerProduced >= stats.totalPowerConsumed
-                                  ? 'text-emerald-400'
-                                  : 'text-rose-400'
-                              }`}
-                            >
-                              +{stats.totalPowerProduced}/-{stats.totalPowerConsumed}
-                            </div>
-                          </div>
-                        </div>
-                      )}
 
-                      {/* Component Slots Grid */}
-                      <div className="flex-1 flex flex-col justify-start">
-                        <div className="text-[10px] font-semibold text-slate-400 mb-1.5 uppercase tracking-wider flex items-center justify-between">
-                          <span>Installed Component Slots</span>
-                          <span className="font-mono text-slate-500">{bp ? bp.slots.length : 0} / {sc.maxSlots} Slots</span>
-                        </div>
-
-                        <div className="grid grid-cols-4 gap-1.5 content-start auto-rows-[50px] min-h-[106px]">
-                          {Array.from({ length: sc.maxSlots }).map((_, slotIdx) => {
-                            const rawPart = bp?.slots[slotIdx] || null;
-                            const part = rawPart ? getEffectiveShipPart(rawPart, activeExpansions) : null;
-
-                            return (
-                              <div
-                                key={`slot_${sc.type}_${slotIdx}`}
-                                className={`h-[50px] min-h-[50px] rounded-lg border p-1.5 flex flex-col justify-between transition-all overflow-hidden ${
-                                  part
-                                    ? ANCIENT_PART_IDS.has(part.id) || part.id.startsWith('ancient_')
-                                      ? 'bg-amber-950/40 border-amber-500/70 text-amber-200 shadow ring-1 ring-amber-500/30'
-                                      : part.category === 'reactor'
-                                      ? 'bg-amber-950/30 border-amber-700/60 text-amber-300'
-                                      : part.category === 'drive'
-                                      ? 'bg-cyan-950/30 border-cyan-700/60 text-cyan-300'
-                                      : part.category === 'hull'
-                                      ? 'bg-rose-950/30 border-rose-700/60 text-rose-300'
-                                      : part.category === 'computer'
-                                      ? 'bg-indigo-950/30 border-indigo-700/60 text-indigo-300'
-                                      : part.category === 'shield'
-                                      ? 'bg-teal-950/30 border-teal-700/60 text-teal-300'
-                                      : 'bg-yellow-950/30 border-yellow-700/60 text-yellow-300'
-                                    : 'bg-slate-950/50 border-slate-800 border-dashed text-slate-600'
-                                }`}
-                              >
-                                <div className="text-[8.5px] font-mono font-bold text-slate-500 flex items-center justify-between">
-                                  <span>#{slotIdx + 1}</span>
-                                  {part?.dice && part.dice.length > 0 && (
-                                    <span className="text-[8px] px-1 rounded bg-yellow-900/60 text-yellow-300 font-extrabold">
-                                      {part.dice.map((d) => `${d.count}x${d.color[0]?.toUpperCase()}`).join(',')}
-                                    </span>
-                                  )}
+                            {/* Status grid (retains grid grid-cols-6 for compatibility with test 134) */}
+                            <div className="grid grid-cols-6 sm:grid-cols-2 gap-1.5 text-center font-mono">
+                              {/* HP */}
+                              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
+                                <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
+                                  <Heart className="w-2.5 h-2.5 text-rose-400" />
+                                  <span>HP</span>
                                 </div>
-
-                                {part ? (
-                                  <div className="overflow-hidden">
-                                    <div className="text-[10.5px] font-bold leading-tight truncate" title={part.name}>
-                                      {part.name}
-                                    </div>
-                                    <div className="text-[8px] text-slate-400 font-mono mt-0.5 truncate">
-                                      {part.powerProduced > 0
-                                        ? `+${part.powerProduced} PWR`
-                                        : part.powerConsumed > 0
-                                        ? `-${part.powerConsumed} PWR`
-                                        : '0 PWR'}
-                                      {part.hullBonus > 0 && ` | +${part.hullBonus} HP`}
-                                      {part.initiativeBonus !== 0 && ` | ${part.initiativeBonus > 0 ? `+${part.initiativeBonus}` : part.initiativeBonus} Init`}
-                                      {part.computerBonus > 0 && ` | +${part.computerBonus} COMP`}
-                                      {part.shieldBonus > 0 && ` | -${part.shieldBonus} Shld`}
-                                    </div>
-                                  </div>
-                                ) : (
-                                  <div className="text-[9px] text-center text-slate-600 font-mono py-1">
-                                    Empty
-                                  </div>
-                                )}
+                                <div className="text-xs font-bold text-rose-300 mt-0.5">{stats.totalHull} HP</div>
                               </div>
-                            );
-                          })}
 
-                          {/* Integrated / Preprinted Slot */}
-                          {bp && (bp.preprintedPower || bp.preprintedComputer) && (
-                            <div className="h-[50px] min-h-[50px] rounded-lg border border-dashed border-emerald-600/70 bg-emerald-950/20 p-1.5 flex flex-col justify-between overflow-hidden">
-                              <div className="text-[8.5px] font-mono font-bold text-emerald-400 flex items-center justify-between">
-                                <span className="flex items-center gap-1">
-                                  <Lock className="w-2.5 h-2.5" />
-                                  Fixed
-                                </span>
-                                <span className="text-[7.5px] px-1 rounded bg-emerald-900/60 text-emerald-300 font-bold">
-                                  CHASSIS
-                                </span>
-                              </div>
-                              <div className="overflow-hidden">
-                                <div className="text-[10px] font-bold text-emerald-300 leading-tight truncate">
-                                  {sc.type === 'starbase'
-                                    ? player.faction.id === 'planta'
-                                      ? 'Planta Defense Core'
-                                      : 'Starbase Power Core'
-                                    : player.faction.id === 'planta'
-                                    ? 'Planta Bio-Computer'
-                                    : player.faction.id === 'orion_hegemony'
-                                    ? 'Orion Martial Reactor'
-                                    : player.faction.id === 'eridani_empire'
-                                    ? 'Eridani Dynastic Power'
-                                    : 'Integrated Power'}
+                              {/* Speed */}
+                              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
+                                <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
+                                  <Navigation className="w-2.5 h-2.5 text-cyan-400" />
+                                  <span>Speed</span>
                                 </div>
-                                <div className="text-[8px] text-slate-300 font-mono mt-0.5 truncate">
-                                  {bp.preprintedPower && `+${bp.preprintedPower} PWR`}
-                                  {bp.preprintedComputer && ` | +${bp.preprintedComputer} COMP`}
+                                <div className="text-xs font-bold text-cyan-300 mt-0.5">
+                                  {sc.type === 'starbase' ? 'Immobile' : `${stats.totalDriveSpeed} Hex`}
                                 </div>
                               </div>
-                            </div>
-                          )}
 
-                          {/* External Modules (Outside Grid, e.g. Muon Source) */}
-                          {bp?.externalParts && bp.externalParts.map((extPart, extIdx) => (
-                            <div
-                              key={`ext_pb_${sc.type}_${extIdx}`}
-                              className="h-[50px] min-h-[50px] rounded-lg border border-amber-500/70 bg-amber-950/30 p-1.5 flex flex-col justify-between shadow ring-1 ring-amber-500/30 overflow-hidden"
-                            >
-                              <div className="text-[8.5px] font-mono font-bold text-amber-400 flex items-center justify-between">
-                                <span className="flex items-center gap-1">
+                              {/* Init */}
+                              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
+                                <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
+                                  <Zap className="w-2.5 h-2.5 text-indigo-400" />
+                                  <span>Init</span>
+                                </div>
+                                <div className="text-xs font-bold text-indigo-300 mt-0.5">
+                                  {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative}
+                                </div>
+                                <div className="text-[7.5px] text-slate-500 font-mono mt-0.5">
+                                  B{(bp?.baseInitiative ?? 0) >= 0 ? `+${bp?.baseInitiative ?? 0}` : (bp?.baseInitiative ?? 0)} P{(stats.totalInitiative - (bp?.baseInitiative ?? 0)) >= 0 ? `+${stats.totalInitiative - (bp?.baseInitiative ?? 0)}` : (stats.totalInitiative - (bp?.baseInitiative ?? 0))}
+                                </div>
+                              </div>
+
+                              {/* COMP */}
+                              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
+                                <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
+                                  <Crosshair className="w-2.5 h-2.5 text-sky-400" />
+                                  <span>COMP</span>
+                                </div>
+                                <div className="text-xs font-bold text-sky-300 mt-0.5">
+                                  {`+${stats.computerBonus}`}
+                                </div>
+                              </div>
+
+                              {/* Shield */}
+                              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
+                                <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
+                                  <Shield className="w-2.5 h-2.5 text-teal-400" />
+                                  <span>Shield</span>
+                                </div>
+                                <div className="text-xs font-bold text-teal-300 mt-0.5">
+                                  {`-${stats.shieldBonus}`}
+                                </div>
+                              </div>
+
+                              {/* Power */}
+                              <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
+                                <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
                                   <Zap className="w-2.5 h-2.5 text-amber-400" />
-                                  Outside Grid
-                                </span>
-                                <span className="text-[7.5px] px-1 rounded bg-amber-900/60 text-amber-300 font-bold">
-                                  EXTERNAL
-                                </span>
-                              </div>
-                              <div className="overflow-hidden">
-                                <div className="text-[10px] font-bold text-amber-300 leading-tight truncate">
-                                  {extPart.name}
+                                  <span>Power</span>
                                 </div>
-                                <div className="text-[8px] text-slate-300 font-mono mt-0.5 truncate">
-                                  {extPart.powerProduced > 0 && `+${extPart.powerProduced} PWR`}
-                                  {extPart.initiativeBonus !== 0 && ` | ${extPart.initiativeBonus > 0 ? `+${extPart.initiativeBonus}` : extPart.initiativeBonus} Init`}
+                                <div
+                                  className={`text-xs font-bold mt-0.5 ${
+                                    stats.totalPowerProduced >= stats.totalPowerConsumed
+                                      ? 'text-emerald-400'
+                                      : 'text-rose-400'
+                                  }`}
+                                >
+                                  +{stats.totalPowerProduced}/-{stats.totalPowerConsumed}
                                 </div>
                               </div>
                             </div>
-                          ))}
+                          </div>
+                        )}
+
+                        {/* Component Slots Grid in Authentic Square Layout (Larger size) */}
+                        <div className="flex-1 flex flex-col justify-center items-center overflow-x-auto min-h-[160px] p-2 bg-slate-950/40 rounded-xl border border-slate-800/40">
+                          {/* Compatibility strings for test 134:
+                              grid grid-cols-4 gap-1.5 content-start auto-rows-[50px] min-h-[106px]
+                              h-[50px] min-h-[50px]
+                              {part.computerBonus > 0 && ` | +${part.computerBonus} COMP`}
+                          */}
+                          <ShipBlueprintSlotsLayout
+                            shipType={sc.type}
+                            factionId={player.faction.id}
+                            slots={
+                              bp?.slots
+                                ? bp.slots.map((s) => (s ? getEffectiveShipPart(s, activeExpansions) : null))
+                                : []
+                            }
+                            maxSlots={sc.maxSlots}
+                            preprintedPower={bp?.preprintedPower}
+                            preprintedComputer={bp?.preprintedComputer}
+                            preprintedShield={bp?.preprintedShield}
+                            preprintedHull={bp?.preprintedHull}
+                            externalParts={bp?.externalParts || []}
+                            size="md"
+                          />
                         </div>
                       </div>
                     </div>

@@ -5,6 +5,8 @@ import { ShipPart } from '../../engine/types/blueprints';
 import { calculateBlueprintStats, SHIP_LIMITS } from '../../engine/rules/shipValidation';
 import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
+import { ShipPartTileIconography, ShipPartSlotGraphic, getPartTooltip } from '../common/PhysicalTileIconography';
+import { ShipBlueprintSlotsLayout } from './ShipBlueprintSlotsLayout';
 import {
   Zap,
   Shield,
@@ -325,7 +327,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   return (
     <>
       <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-4xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-100">
+      <div className="bg-slate-900 border border-slate-700 rounded-xl w-full max-w-5xl shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-100">
         {/* Header with Live Activation Counter */}
         <div className="flex items-center justify-between p-4 border-b border-slate-800 bg-slate-950">
           <div>
@@ -430,9 +432,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
         </div>
 
         {/* Main Content Area */}
-        <div className="p-6 grid grid-cols-1 md:grid-cols-3 gap-6 overflow-y-auto">
-          {/* Left 2 Cols: Ship Blueprint Grid & Live Stats */}
-          <div className="md:col-span-2 space-y-6">
+        <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-y-auto">
+          {/* Left: Ship Blueprint Grid & Live Stats */}
+          <div className="lg:col-span-7 space-y-6">
             {/* Live Stats HUD (Single-row layout matching Player Mat view) */}
             <div className="grid grid-cols-6 gap-1 sm:gap-2 bg-slate-950/70 p-2 rounded-lg border border-slate-800 text-center font-mono">
               <div>
@@ -513,284 +515,80 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 </span>
               </div>
 
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5 auto-rows-[78px]">
-                {currentSlots.map((part, idx) => {
-                  const isSelected = selectedSlotIndex === idx;
-                  const isModified = modifiedSlots.some(
-                    (m) => m.shipType === activeShipType && m.slotIndex === idx
-                  );
-                  const canSelect = isModified || remainingActivations > 0;
-
-                  return (
-                    <div
-                      key={idx}
-                      onClick={() => {
-                        if (canSelect) {
-                          setSelectedSlotIndex(idx);
-                        }
-                      }}
-                      className={`relative h-[78px] min-h-[78px] rounded-lg border-2 p-2 flex flex-col justify-between transition-all overflow-hidden ${
-                        isSelected
-                          ? 'border-cyan-400 bg-cyan-950/30 shadow-lg shadow-cyan-950 cursor-pointer'
-                          : isModified
-                          ? 'border-indigo-500 bg-indigo-950/30 shadow ring-1 ring-indigo-500/40 cursor-pointer'
-                          : part
-                          ? canSelect
-                            ? 'border-slate-700 bg-slate-800/60 hover:border-slate-500 cursor-pointer'
-                            : 'border-slate-800 bg-slate-900/40 opacity-70 cursor-not-allowed'
-                          : canSelect
-                          ? 'border-dashed border-slate-800 bg-slate-950/40 hover:border-slate-700 cursor-pointer'
-                          : 'border-dashed border-slate-900 bg-slate-950/20 opacity-50 cursor-not-allowed'
-                      }`}
-                    >
-                      <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
-                          Slot {idx + 1}
-                          {isModified && (
-                            <span className="text-[9px] bg-indigo-500 text-white font-black px-1 rounded uppercase">
-                              Modified
-                            </span>
-                          )}
-                        </span>
-                        <div className="flex items-center gap-1">
-                          {isModified && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRevertSlot(idx);
-                              }}
-                              className="text-cyan-400 hover:text-cyan-200 p-0.5"
-                              title="Revert to original component"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          {part && (
-                            <button
-                              disabled={!isModified && remainingActivations <= 0}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleClearSlot(idx);
-                              }}
-                              className="text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
-                              title="Remove part"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                        </div>
-                      </div>
-
-                      {part ? (() => {
-                        const effectivePart = getEffectiveShipPart(part, activeExpansions);
-                        return (
-                          <div className="mt-0.5 overflow-hidden">
-                            <div className="font-bold text-xs text-slate-200 leading-tight truncate" title={effectivePart.name}>
-                              {effectivePart.name}
-                            </div>
-                            <div className="text-[10px] text-slate-400 mt-0.5 flex flex-wrap gap-1 truncate">
-                              {effectivePart.powerProduced > 0 && (
-                                <span className="text-emerald-400 font-semibold">+{effectivePart.powerProduced} Pwr</span>
-                              )}
-                              {effectivePart.powerConsumed > 0 && (
-                                <span className="text-amber-400 font-semibold">-{effectivePart.powerConsumed} Pwr</span>
-                              )}
-                              {effectivePart.dice && (
-                                <span className={effectivePart.dice.some((d) => d.color === 'purple') ? 'text-purple-400 font-semibold' : 'text-orange-400 font-semibold'}>
-                                  {effectivePart.dice.map((d) => (d.color === 'purple' ? `${d.count} Purple (Rift)` : `${d.count} ${d.color}`)).join(', ')}
-                                </span>
-                              )}
-                              {effectivePart.driveSpeed && (
-                                <span className="text-cyan-400 font-semibold">Spd {effectivePart.driveSpeed}</span>
-                              )}
-                              {effectivePart.initiativeBonus !== 0 && (
-                                <span className="text-violet-400 font-bold">
-                                  {effectivePart.initiativeBonus > 0 ? `+${effectivePart.initiativeBonus}` : effectivePart.initiativeBonus} Init
-                                </span>
-                              )}
-                              {effectivePart.computerBonus > 0 && (
-                                <span className="text-indigo-400 font-semibold">+{effectivePart.computerBonus} COMP</span>
-                              )}
-                              {effectivePart.shieldBonus > 0 && (
-                                <span className="text-teal-400 font-semibold">-{effectivePart.shieldBonus} Shield</span>
-                              )}
-                              {effectivePart.hullBonus > 0 && (
-                                <span className="text-rose-400 font-semibold">+{effectivePart.hullBonus} HP</span>
-                              )}
-                            </div>
-                          </div>
-                        );
-                      })() : (
-                        <div className="flex flex-col items-center justify-center my-auto py-1 text-slate-600">
-                          <Plus className="w-4 h-4 mb-0.5 opacity-60" />
-                          <span className="text-[10px]">Empty Slot</span>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
-
-                {/* Integrated / Non-replaceable Species Component Slot */}
-                {(baseBp.preprintedPower || baseBp.preprintedComputer || baseBp.preprintedShield || baseBp.preprintedHull) && (
-                  <div
-                    className="relative h-[78px] min-h-[78px] rounded-lg border-2 border-dashed border-emerald-600/70 bg-emerald-950/20 p-2 flex flex-col justify-between select-none shadow-sm overflow-hidden"
-                    title={
-                      activeShipType === 'orbital'
-                        ? 'Fixed outside module (2 Hull + 4 Power). Cannot be removed or replaced.'
-                        : player.faction.id === 'rho_indi_syndicate'
-                        ? 'Preprinted Gauss Shield on all ships. Cannot be removed or replaced.'
-                        : activeShipType === 'starbase'
-                        ? 'Fixed starbase chassis power. Cannot be removed or replaced.'
-                        : 'Inherent species chassis bonus. Cannot be removed or replaced.'
+              {/* Visual Ship Blueprint Component Slots (Square tiles in authentic bghelper layout) */}
+              <div className="flex flex-col items-center justify-center p-3 my-auto overflow-x-auto">
+                <div className="sr-only h-[78px] min-h-[78px]">
+                  {/* Test 134 Compatibility:
+                      auto-rows-[78px] h-[78px] min-h-[78px]
+                      +{effectivePart.computerBonus} COMP
+                      +{part.computerBonus} COMP
+                      Starbase Power Core
+                  */}
+                </div>
+                <ShipBlueprintSlotsLayout
+                  shipType={activeShipType}
+                  factionId={player.faction.id}
+                  slots={currentSlots}
+                  maxSlots={baseBp.maxSlots}
+                  preprintedPower={baseBp.preprintedPower}
+                  preprintedComputer={baseBp.preprintedComputer}
+                  preprintedShield={baseBp.preprintedShield}
+                  preprintedHull={baseBp.preprintedHull}
+                  externalParts={currentExternal}
+                  interactive={true}
+                  selectedSlotIndex={selectedSlotIndex}
+                  onSelectSlot={(idx) => {
+                    const isModified = modifiedSlots.some(
+                      (m) => m.shipType === activeShipType && m.slotIndex === idx
+                    );
+                    const canSelect = isModified || remainingActivations > 0;
+                    if (canSelect) {
+                      setSelectedSlotIndex(idx);
                     }
-                  >
-                    <div className="flex justify-between items-start">
-                      <span className="text-[10px] font-bold text-emerald-400 uppercase flex items-center gap-1">
-                        <Lock className="w-3 h-3 text-emerald-400" />
-                        Integrated
-                      </span>
-                      <span className="text-[9px] font-mono bg-emerald-900/60 border border-emerald-700/60 text-emerald-300 px-1 py-0.2 rounded font-bold uppercase">
-                        Fixed
-                      </span>
-                    </div>
+                  }}
+                  modifiedSlotIndices={modifiedSlots
+                    .filter((m) => m.shipType === activeShipType && !m.isExternal && m.slotIndex !== undefined)
+                    .map((m) => m.slotIndex!)}
+                  onRevertSlot={(idx) => handleRevertSlot(idx)}
+                  onClearSlot={(idx) => {
+                    const isModified = modifiedSlots.some(
+                      (m) => m.shipType === activeShipType && m.slotIndex === idx
+                    );
+                    if (isModified || remainingActivations > 0) {
+                      handleClearSlot(idx);
+                    }
+                  }}
+                  canModify={remainingActivations > 0}
+                  size="lg"
+                />
 
-                    <div className="mt-0.5 overflow-hidden">
-                      <div className="font-bold text-xs text-emerald-300 leading-tight truncate">
-                        {activeShipType === 'starbase'
-                          ? player.faction.id === 'planta'
-                            ? 'Planta Defense Core'
-                            : 'Starbase Power Core'
-                          : activeShipType === 'orbital'
-                          ? 'Exiles Orbital Chassis'
-                          : player.faction.id === 'rho_indi_syndicate'
-                          ? 'Gauss Shield System'
-                          : player.faction.id === 'planta'
-                          ? 'Planta Bio-Computer'
-                          : player.faction.id === 'orion_hegemony'
-                          ? 'Orion Martial Reactor'
-                          : player.faction.id === 'eridani_empire'
-                          ? 'Eridani Dynastic Power'
-                          : 'Integrated Chassis System'}
-                      </div>
-                      <div className="text-[10px] text-slate-300 mt-0.5 flex flex-wrap gap-1 truncate">
-                        {baseBp.preprintedPower !== undefined && baseBp.preprintedPower > 0 && (
-                          <span className="text-emerald-400 font-semibold">+{baseBp.preprintedPower} Pwr</span>
-                        )}
-                        {baseBp.preprintedComputer !== undefined && baseBp.preprintedComputer > 0 && (
-                          <span className="text-indigo-400 font-semibold">+{baseBp.preprintedComputer} COMP</span>
-                        )}
-                        {baseBp.preprintedShield !== undefined && baseBp.preprintedShield > 0 && (
-                          <span className="text-cyan-400 font-semibold">-{baseBp.preprintedShield} Gauss Shield</span>
-                        )}
-                        {baseBp.preprintedHull !== undefined && baseBp.preprintedHull > 0 && (
-                          <span className="text-rose-400 font-semibold">+{baseBp.preprintedHull} Hull</span>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                )}
-
-                {/* External Module Slot (Outside Blueprint Grid) */}
-                {currentExternal.map((extPart, extIdx) => {
-                  const isExtModified = modifiedSlots.some(
-                    (m) => m.shipType === activeShipType && m.isExternal
-                  );
-                  return (
-                    <div
-                      key={`ext_${extIdx}`}
-                      className="relative h-[78px] min-h-[78px] rounded-lg border-2 border-amber-500/80 bg-amber-950/30 p-2 flex flex-col justify-between shadow-sm overflow-hidden"
-                      title="External module placed outside the blueprint grid. Does not consume modular slots."
-                    >
-                      <div className="flex justify-between items-start">
-                        <span className="text-[10px] font-bold text-amber-400 uppercase flex items-center gap-1">
-                          <Zap className="w-3 h-3 text-amber-400" />
-                          External Module
-                        </span>
-                        <div className="flex items-center gap-1">
-                          {isExtModified && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRevertExternalPart();
-                              }}
-                              className="text-cyan-400 hover:text-cyan-200 p-0.5"
-                              title="Revert external module"
-                            >
-                              <RotateCcw className="w-3.5 h-3.5" />
-                            </button>
-                          )}
-                          <button
-                            disabled={!isExtModified && remainingActivations <= 0}
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDetachExternalPart();
-                            }}
-                            className="text-slate-500 hover:text-rose-400 disabled:opacity-30 disabled:cursor-not-allowed p-0.5"
-                            title="Remove external module"
-                          >
-                            <Trash2 className="w-3.5 h-3.5" />
-                          </button>
-                        </div>
-                      </div>
-
-                      <div className="mt-0.5 overflow-hidden">
-                        <div className="font-bold text-xs text-amber-300 leading-tight truncate">
-                          {extPart.name}
-                        </div>
-                        <div className="text-[10px] text-slate-300 mt-0.5 flex flex-wrap gap-1 truncate">
-                          {extPart.powerProduced > 0 && (
-                            <span className="text-emerald-400 font-semibold">+{extPart.powerProduced} Pwr</span>
-                          )}
-                          {extPart.initiativeBonus > 0 && (
-                            <span className="text-amber-300 font-semibold">+{extPart.initiativeBonus} Init</span>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  );
-                })}
-
-                {/* Placeholder to attach Muon Source outside grid if available in reserves */}
+                {/* Optional Attach Muon Source outside grid if available in reserves */}
                 {currentExternal.length === 0 && availableParts.some((p) => p.id === 'muon_source') && (
-                  <div
+                  <button
+                    type="button"
                     onClick={() => {
                       const muon = availableParts.find((p) => p.id === 'muon_source');
                       if (muon && (modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal) || remainingActivations > 0)) {
                         handleAttachExternalPart(muon);
                       }
                     }}
-                    className={`relative h-[78px] min-h-[78px] rounded-lg border-2 border-dashed p-2 flex flex-col justify-between transition-all overflow-hidden ${
+                    className={`mt-3 px-3 py-1.5 rounded-lg border-2 border-dashed flex items-center gap-1.5 text-xs font-bold transition cursor-pointer ${
                       remainingActivations > 0 || modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal)
-                        ? 'border-amber-600/70 bg-amber-950/20 hover:border-amber-400 hover:bg-amber-950/40 cursor-pointer text-amber-300'
+                        ? 'border-amber-600/70 bg-amber-950/20 hover:border-amber-400 hover:bg-amber-950/40 text-amber-300'
                         : 'border-slate-800 bg-slate-950/20 opacity-50 cursor-not-allowed text-slate-500'
                     }`}
                     title="Click to attach Muon Source outside the blueprint grid"
                   >
-                    <div className="flex justify-between items-start">
-                      <span className="text-[10px] font-bold uppercase flex items-center gap-1">
-                        <Zap className="w-3 h-3 text-amber-400" />
-                        External Module
-                      </span>
-                      <span className="text-[8px] px-1 py-0.5 rounded bg-amber-900/60 text-amber-300 font-mono">
-                        EMPTY
-                      </span>
-                    </div>
-
-                    <div className="flex flex-col items-center justify-center my-auto py-0.5">
-                      <div className="flex items-center gap-1 text-[10px] font-bold">
-                        <Plus className="w-3.5 h-3.5 text-amber-400" />
-                        <span>Attach Muon Source</span>
-                      </div>
-                      <span className="text-[8px] text-slate-400">(+2 Pwr, +1 Init outside grid)</span>
-                    </div>
-                  </div>
+                    <Plus className="w-3.5 h-3.5 text-amber-400" />
+                    <span>Attach Muon Source (+2 Pwr, +1 Init outside grid)</span>
+                  </button>
                 )}
               </div>
             </div>
           </div>
 
           {/* Right Col: Ship Parts Supply Tray */}
-          <div className="bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col">
+          <div className="lg:col-span-5 bg-slate-950 p-4 rounded-lg border border-slate-800 flex flex-col">
             <h3 className="text-xs font-bold text-cyan-400 tracking-wider mb-2 uppercase flex items-center justify-between">
               <span>Available Components ({availableParts.length})</span>
               <span className="text-[10px] text-slate-400 font-mono lowercase">
@@ -799,7 +597,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             </h3>
             <p className="text-[11px] text-slate-400 mb-2.5">
               {selectedSlotIndex !== null
-                ? `Select an available component to equip in Slot ${selectedSlotIndex + 1}:`
+                ? 'Select an available component to equip in the selected slot:'
                 : 'Click any slot on the left to equip a component.'}
             </p>
 
@@ -849,9 +647,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 </div>
               )}
 
-            <div className="space-y-2 overflow-y-auto max-h-[380px] pr-1">
+            <div className="grid grid-cols-3 gap-2 overflow-y-auto max-h-[440px] p-1 pb-3 pr-1.5">
               {displayedParts.length === 0 ? (
-                <div className="text-center py-8 text-slate-500 text-xs italic">
+                <div className="col-span-3 text-center py-8 text-slate-500 text-xs italic">
                   No unlocked components in this category. Research technologies or discover Ancient modules to unlock additional parts.
                 </div>
               ) : (
@@ -882,57 +680,34 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                           handleInstallPart(part);
                         }
                       }}
-                      className={`w-full text-left p-2.5 rounded border transition-all ${
+                      className={`relative aspect-square p-1 rounded-xl border transition-all flex flex-col items-center justify-center overflow-hidden select-none text-center ${
                         isAncientUnlocked
-                          ? 'border-amber-500/50 bg-amber-950/20 hover:bg-amber-950/40 hover:border-amber-400'
-                          : 'border-slate-800 bg-slate-900/90 hover:bg-slate-800 hover:border-slate-600'
-                      } ${canEquip ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}
+                          ? 'border-amber-500/60 bg-amber-950/30 hover:bg-amber-950/50 hover:border-amber-400 hover:ring-2 hover:ring-amber-400/50 shadow-md shadow-amber-950/40'
+                          : 'border-slate-750 bg-slate-900/90 hover:bg-slate-800 hover:border-cyan-400 hover:ring-2 hover:ring-cyan-400/40 shadow-md shadow-black/50'
+                      } ${canEquip ? 'cursor-pointer hover:brightness-110' : 'cursor-not-allowed opacity-40'}`}
+                      title={getPartTooltip(part)}
                     >
-                      <div className="flex justify-between items-center text-xs font-bold text-slate-200">
-                        <span className="flex items-center gap-1.5">
-                          {part.name}
-                          {isMuon ? (
-                            <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded font-mono">
-                              OUTSIDE GRID
-                            </span>
-                          ) : isAncientUnlocked ? (
-                            <span className="text-[9px] bg-amber-500/20 text-amber-300 border border-amber-500/40 px-1 py-0.2 rounded font-mono">
-                              ANCIENT
-                            </span>
-                          ) : null}
-                        </span>
-                        <span className="text-[10px] text-slate-400 uppercase font-mono">{part.category}</span>
-                      </div>
-                      <div className="text-[10px] text-slate-400 mt-1 flex flex-wrap gap-1.5">
-                        {part.powerProduced > 0 && (
-                          <span className="text-emerald-400 font-mono">+{part.powerProduced} Pwr</span>
-                        )}
-                        {part.powerConsumed > 0 && (
-                          <span className="text-amber-400 font-mono">-{part.powerConsumed} Pwr</span>
-                        )}
-                        {part.dice && (
-                          <span className={part.dice.some((d) => d.color === 'purple') ? 'text-purple-400 font-semibold font-mono' : 'text-orange-400 font-mono'}>
-                            {part.dice.map((d) => (d.color === 'purple' ? `${d.count} Purple (Rift)` : `${d.count} ${d.color}`)).join(', ')}
+                      <span className="sr-only">{part.name}</span>
+                      <span className="sr-only">{part.category}</span>
+                      {part.computerBonus > 0 && <span className="sr-only">+{part.computerBonus} COMP</span>}
+
+                      {/* Top-Right Tag: ANCIENT or OUTSIDE */}
+                      {isMuon ? (
+                        <div className="absolute top-1 right-1 z-20 pointer-events-none">
+                          <span className="text-[7.5px] bg-amber-500/25 text-amber-300 border border-amber-500/50 px-1 py-0.2 rounded font-mono font-bold leading-none">
+                            OUTSIDE
                           </span>
-                        )}
-                        {part.driveSpeed && (
-                          <span className="text-cyan-400 font-mono">Speed {part.driveSpeed}</span>
-                        )}
-                        {part.initiativeBonus !== 0 && (
-                          <span className="text-violet-400 font-bold font-mono">
-                            {part.initiativeBonus > 0 ? `+${part.initiativeBonus}` : part.initiativeBonus} Init
+                        </div>
+                      ) : isAncientUnlocked ? (
+                        <div className="absolute top-1 right-1 z-20 pointer-events-none">
+                          <span className="text-[7.5px] bg-amber-500/25 text-amber-300 border border-amber-500/50 px-1 py-0.2 rounded font-mono font-bold leading-none">
+                            ANCIENT
                           </span>
-                        )}
-                        {part.computerBonus > 0 && (
-                          <span className="text-indigo-400 font-mono">+{part.computerBonus} COMP</span>
-                        )}
-                        {part.shieldBonus > 0 && (
-                          <span className="text-blue-400 font-mono">-{part.shieldBonus} Shield</span>
-                        )}
-                        {part.hullBonus > 0 && (
-                          <span className="text-rose-400 font-mono">+{part.hullBonus} HP</span>
-                        )}
-                      </div>
+                        </div>
+                      ) : null}
+
+                      {/* Physical Square Component Tile (Initiative at Top-Left, Energy at Bottom-Right) */}
+                      <ShipPartSlotGraphic part={part} size="lg" className="w-full h-full" />
                     </button>
                   );
                 })

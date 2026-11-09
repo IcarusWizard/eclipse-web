@@ -22216,6 +22216,747 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(appSrc).toContain("if (isLocal) {\n      return 'all';\n    }");
         expect(appSrc).toContain("const members = state.members || (state as any).members || [];\n\n      // Check if currentSeat is already occupied");
       });
+
+      test('150. verifies physical board game iconography design for tech tiles and ship parts', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { TECH_CATALOG } = await import('../rules/techData');
+        const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
+        const { SHIP_PARTS } = await import('../rules/partData');
+        const {
+          TechTileIconography,
+          ShipPartTileIconography,
+          ShipPartSlotGraphic,
+          getPartTooltip,
+        } = await import('../../components/common/PhysicalTileIconography');
+
+        // 1. Fusion Source: 1 lightning bolt with number 6 and +6 PWR in a square box
+        const fusionTech = TECH_CATALOG.find((t) => t.id === 'fusion_source')!;
+        const fusionPart = SHIP_PARTS['fusion_source']!;
+        const fusionTechHtml = renderToString(React.createElement(TechTileIconography, { tech: fusionTech }));
+        const fusionPartHtml = renderToString(React.createElement(ShipPartTileIconography, { part: fusionPart }));
+        expect(fusionTechHtml).toContain('+6 PWR');
+        expect(fusionPartHtml).toContain('+6 PWR');
+        expect(fusionTechHtml).toContain('6');
+        expect(fusionPartHtml).toContain('6');
+        const lightningPath = 'M13 2L3 14H12L11 22L21 10H12L13 2Z';
+        expect(fusionTechHtml.split(lightningPath).length - 1).toBe(1);
+        expect(fusionPartHtml.split(lightningPath).length - 1).toBe(1);
+        expect(fusionTechHtml).toContain('aspect-square');
+        expect(fusionPartHtml).toContain('aspect-square');
+
+        // 2. Plasma Cannon: 1 orange die with 2 hit starburst symbols in a square box
+        // Power cost convention: if cost is 1, show a single lightning symbol; if cost is n, show <n> and <lightning symbol>
+        // Plasma Cannon cost is 2 -> shows "2" and 1 lightning bolt
+        // On Tech Tile: TOP RIGHT corner; on Ship Part: BOTTOM RIGHT corner
+        const plasmaTech = TECH_CATALOG.find((t) => t.id === 'plasma_cannon')!;
+        const plasmaPart = SHIP_PARTS['plasma_cannon']!;
+        const plasmaTechHtml = renderToString(React.createElement(TechTileIconography, { tech: plasmaTech }));
+        const plasmaPartHtml = renderToString(React.createElement(ShipPartTileIconography, { part: plasmaPart }));
+        expect(plasmaTechHtml).toContain('bg-orange-500');
+        expect(plasmaTechHtml).toContain('2 DMG');
+        expect(plasmaPartHtml).toContain('bg-orange-500');
+        expect(plasmaPartHtml).toContain('2 DMG');
+        expect(plasmaTechHtml).toContain('top-');
+        expect(plasmaPartHtml).toContain('bottom-');
+        expect(plasmaTechHtml).toContain('aspect-square');
+        expect(plasmaPartHtml).toContain('aspect-square');
+        expect(plasmaTechHtml.split(lightningPath).length - 1).toBe(1);
+        expect(plasmaPartHtml.split(lightningPath).length - 1).toBe(1);
+        expect(plasmaTechHtml).toContain('2');
+        expect(plasmaPartHtml).toContain('2');
+
+        // 3. Antimatter Cannon: 1 red die with 4 hit starburst symbols, cost 4 -> shows "4" and 1 lightning bolt
+        const amTech = TECH_CATALOG.find((t) => t.id === 'antimatter_cannon')!;
+        const amPart = SHIP_PARTS['antimatter_cannon']!;
+        const amTechHtml = renderToString(React.createElement(TechTileIconography, { tech: amTech }));
+        const amPartHtml = renderToString(React.createElement(ShipPartTileIconography, { part: amPart }));
+        expect(amTechHtml).toContain('bg-rose-600');
+        expect(amTechHtml).toContain('4 DMG');
+        expect(amTechHtml).toContain('top-');
+        expect(amPartHtml).toContain('bottom-');
+        expect(amTechHtml).toContain('aspect-square');
+        expect(amPartHtml).toContain('aspect-square');
+        expect(amTechHtml.split(lightningPath).length - 1).toBe(1);
+        expect(amPartHtml.split(lightningPath).length - 1).toBe(1);
+        expect(amTechHtml).toContain('4');
+        expect(amPartHtml).toContain('4');
+
+        // 3b. Cost 1 verification (e.g. Tachyon Drive has powerConsumed = 1):
+        // Shows exactly 1 single lightning bolt and NO number
+        const tachyonTech = TECH_CATALOG.find((t) => t.id === 'tachyon_drive')!;
+        const tachyonPart = SHIP_PARTS['tachyon_drive']!;
+        const tachyonTechHtml = renderToString(React.createElement(TechTileIconography, { tech: tachyonTech }));
+        const tachyonPartHtml = renderToString(React.createElement(ShipPartTileIconography, { part: tachyonPart }));
+        expect(tachyonTechHtml.split(lightningPath).length - 1).toBe(1);
+        expect(tachyonPartHtml.split(lightningPath).length - 1).toBe(1);
+
+        // 4. Non-ship part technologies render their authentic board game iconography
+        const nanoTech = TECH_CATALOG.find((t) => t.id === 'nanorobots')!;
+        const monolithTech = TECH_CATALOG.find((t) => t.id === 'monolith')!;
+        const orbitalTech = TECH_CATALOG.find((t) => t.id === 'orbital')!;
+        const artKeyTech = TECH_CATALOG.find((t) => t.id === 'artifact_key')!;
+        expect(renderToString(React.createElement(TechTileIconography, { tech: nanoTech }))).toContain('+1');
+        expect(renderToString(React.createElement(TechTileIconography, { tech: monolithTech }))).toContain('3');
+        expect(renderToString(React.createElement(TechTileIconography, { tech: monolithTech }))).toContain('★');
+        expect(renderToString(React.createElement(TechTileIconography, { tech: orbitalTech }))).toContain('bg-yellow-400');
+        expect(renderToString(React.createElement(TechTileIconography, { tech: orbitalTech }))).toContain('bg-pink-500');
+        expect(renderToString(React.createElement(TechTileIconography, { tech: artKeyTech }))).toContain('+5');
+
+        // 5. Verify tech name is removed from the face of the card and only displayed in hover tooltip
+        const fs = await import('fs');
+        const path = await import('path');
+        const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+        const { createInitialGame } = await import('../rules/setup');
+        const modalGame = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const tPlayer = modalGame.players[0]!;
+        const techModalHtml = renderToString(
+          React.createElement(TechMarketModal, {
+            player: tPlayer,
+            activePlayer: tPlayer,
+            players: modalGame.players,
+            sectors: modalGame.sectors,
+            techSupply: [plasmaTech],
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        );
+        // Tooltip contains Plasma Cannon
+        expect(techModalHtml).toContain('role="tooltip"');
+        expect(techModalHtml).toContain('Plasma Cannon');
+        // Card face no longer displays standalone text name block
+        const techMarketSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'tech', 'TechMarketModal.tsx'), 'utf-8');
+        expect(techMarketSrc).not.toContain('{/* Tech Name */}');
+
+        // 5. Hover tooltip formatter returns complete textual explanation
+        const plasmaTooltip = getPartTooltip(plasmaPart);
+        expect(plasmaTooltip).toContain('Plasma Cannon');
+        expect(plasmaTooltip).toContain('Power Consumed: -2');
+        expect(plasmaTooltip).toContain('ORANGE (2 DMG/hit)');
+
+        // 6. Compact slot graphic renders accurately for ship blueprints
+        const slotHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: plasmaPart }));
+        expect(slotHtml).toContain('Plasma Cannon');
+        expect(slotHtml).toContain('bg-orange-500');
+        expect(slotHtml).toContain('bottom-0.5 right-0.5');
+      });
+
+      test('151. verifies authentic bghelper square blueprint layout and additional component squares across Player Board, Ship Upgrader, and Combat Simulator', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { createInitialGame } = await import('../rules/setup');
+        const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+        const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+        const { CombatSimulatorModal } = await import('../../components/simulator/CombatSimulatorModal');
+        const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
+
+        // 1. Verify ShipBlueprintSlotsLayout renders square slots in authentic layout
+        const game = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orionPlayer = game.players[0]!;
+
+        // Orion Interceptor has preprintedPower: 1 (additional square)
+        const orionInterceptorHtml = renderToString(
+          React.createElement(ShipBlueprintSlotsLayout, {
+            shipType: 'interceptor',
+            factionId: 'orion_hegemony',
+            slots: orionPlayer.blueprints.interceptor.slots,
+            maxSlots: 4,
+            preprintedPower: 1,
+            size: 'md',
+          })
+        );
+        // Has square slots
+        expect(orionInterceptorHtml).toContain('aspect-square');
+        // Additional square for Orion's Martial Reactor (+1 Power) with FIXED label
+        expect(orionInterceptorHtml).toContain('FIXED');
+        expect(orionInterceptorHtml).toContain('+1');
+        expect(orionInterceptorHtml).toContain('Orion Martial Reactor');
+        // No top bar slot numbers on slots
+        expect(orionInterceptorHtml).not.toContain('Slot 1');
+        expect(orionInterceptorHtml).not.toContain('>#1<');
+
+        // 2. Player Board renders square blueprints with authentic layout and summary status on the left
+        const boardHtml = renderToString(
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: orionPlayer,
+            players: game.players,
+            sectors: game.sectors,
+            activeExpansions: [],
+            initialTab: 'blueprints',
+            onClose: () => {},
+            onOpenBlueprintEditor: () => {},
+          })
+        );
+        expect(boardHtml).toContain('aspect-square');
+        expect(boardHtml).toContain('FIXED');
+        expect(boardHtml).toContain('Orion Martial Reactor');
+        expect(boardHtml).toContain('Ship Stats');
+        expect(boardHtml).toContain('w-full sm:w-36 lg:w-40');
+
+        // 3. Ship Upgrader renders square blueprints and additional square
+        const editorHtml = renderToString(
+          React.createElement(ShipBlueprintEditor, {
+            player: orionPlayer,
+            initialShipType: 'cruiser',
+            onSaveBlueprint: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(editorHtml).toContain('aspect-square');
+        expect(editorHtml).toContain('FIXED');
+        expect(editorHtml).toContain('+2');
+        expect(editorHtml).toContain('Orion Martial Reactor');
+        expect(editorHtml).not.toContain('Slot 1');
+
+        // 4. Combat Simulator renders square blueprint layout and removes 'Slot 1:'
+        const simHtml = renderToString(
+          React.createElement(CombatSimulatorModal, {
+            isOpen: true,
+            onClose: () => {},
+            gameState: game,
+          })
+        );
+        expect(simHtml).toContain('aspect-square');
+        expect(simHtml).toContain('Equip Component:');
+        expect(simHtml).not.toContain('Slot 1:');
+      });
+
+      test('152. verifies correct scaling and visibility of drive components and advance multi-stat parts across square blueprint slots and tiles', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { SHIP_PARTS } = await import('../rules/partData');
+        const {
+          DriveGraphic,
+          ComputerGraphic,
+          ShieldGraphic,
+          HullGraphic,
+          MissileGraphic,
+          ShipPartSlotGraphic,
+          ShipPartTileIconography,
+          TechTileIconography,
+        } = await import('../../components/common/PhysicalTileIconography');
+        const { TECH_CATALOG } = await import('../rules/techData');
+        const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
+
+        // 1. Verify DriveGraphic scaling across sm, md, lg
+        const nucDrive = SHIP_PARTS.nuclear_drive!;
+        const fusionDrive = SHIP_PARTS.fusion_drive!;
+        const tachyonDrive = SHIP_PARTS.tachyon_drive!;
+        const jumpDrive = SHIP_PARTS.jump_drive!;
+        const nonlinearDrive = SHIP_PARTS.nonlinear_drive!;
+
+        // Render standalone DriveGraphic
+        const driveMdHtml = renderToString(React.createElement(DriveGraphic, { speed: 2, init: 2, size: 'md' }));
+        expect(driveMdHtml).toContain('width="21"');
+        expect(driveMdHtml).toContain('height="21"');
+        expect(driveMdHtml).toContain('text-base');
+        expect(driveMdHtml).toContain('>2<');
+        expect(driveMdHtml).toContain('+2');
+
+        const driveSmHtml = renderToString(React.createElement(DriveGraphic, { speed: 1, init: 1, size: 'sm' }));
+        expect(driveSmHtml).toContain('width="17"');
+        expect(driveSmHtml).toContain('height="17"');
+        expect(driveSmHtml).toContain('text-sm');
+        expect(driveSmHtml).toContain('>1<');
+
+        const driveLgHtml = renderToString(React.createElement(DriveGraphic, { speed: 3, init: 3, size: 'lg' }));
+        expect(driveLgHtml).toContain('width="26"');
+        expect(driveLgHtml).toContain('height="26"');
+        expect(driveLgHtml).toContain('text-xl');
+        expect(driveLgHtml).toContain('>3<');
+
+        // 2. Verify ShipPartSlotGraphic for Drive has unclipped layout:
+        // Initiative in top-left, Speed in center, Power Cost in bottom-right
+        const slotFusionHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: fusionDrive, size: 'md' }));
+        expect(slotFusionHtml).toContain('top-0.5 left-0.5'); // Initiative badge strictly in top-left
+        expect(slotFusionHtml).toContain('+2');
+        expect(slotFusionHtml).toContain('width="21"'); // Center hex
+        expect(slotFusionHtml).toContain('>2<'); // Speed 2
+        expect(slotFusionHtml).toContain('bottom-0.5 right-0.5'); // Power cost in bottom-right
+        expect(slotFusionHtml).toContain('>2<'); // Power cost 2
+
+        // Jump Drive in slot has 7-hex honeycomb svg in center and power consumed at bottom-right
+        const slotJumpHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: jumpDrive, size: 'md' }));
+        expect(slotJumpHtml).toContain('7-hex honeycomb');
+        expect(slotJumpHtml).toContain('stroke="#ffffff"');
+        expect(slotJumpHtml).not.toContain('stroke="#38bdf8"');
+        expect(slotJumpHtml).toContain('bottom-0.5 right-0.5');
+
+        // Nonlinear Drive in slot has power production at top-right and speed 2 in center
+        const slotNonlinearHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: nonlinearDrive, size: 'md' }));
+        expect(slotNonlinearHtml).toContain('top-0.5 right-0.5');
+        expect(slotNonlinearHtml).toContain('+2');
+        expect(slotNonlinearHtml).toContain('>2<');
+
+        // 3. Verify TechTileIconography for Fusion Drive matches physical tile
+        const fusionTech = TECH_CATALOG.find((t) => t.id === 'fusion_drive')!;
+        const techFusionHtml = renderToString(React.createElement(TechTileIconography, { tech: fusionTech }));
+        expect(techFusionHtml).toContain('top-0.5 left-0.5'); // Initiative strictly in top-left
+        expect(techFusionHtml).toContain('+2');
+        expect(techFusionHtml).toContain('top-'); // Power consumed in top-right for tech tiles
+        expect(techFusionHtml).toContain('>2<'); // Speed 2 in center
+        expect(techFusionHtml).toContain('width="21"'); // Centered hex matching physical tile
+
+        // 4. Verify ShipPartTileIconography for Fusion Drive has top-left initiative and bottom-right power
+        const partFusionHtml = renderToString(React.createElement(ShipPartTileIconography, { part: fusionDrive }));
+        expect(partFusionHtml).toContain('top-0.5 left-0.5');
+        expect(partFusionHtml).toContain('+2');
+        expect(partFusionHtml).toContain('bottom-');
+        expect(partFusionHtml).toContain('>2<');
+
+        // 5. ADVANCE SHIP PARTS WITH MULTIPLE STATS:
+        // A. Sentient Hull (+1 COMP, 1 HULL)
+        const sentientHull = SHIP_PARTS.sentient_hull!;
+        const slotSentientHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: sentientHull, size: 'md' }));
+        expect(slotSentientHtml).toContain('+1'); // Computer bonus die
+        expect(slotSentientHtml).toContain('>1<'); // Hull HP number
+        expect(slotSentientHtml).toContain('points="16,6'); // Hull starburst ring polygon
+        expect(slotSentientHtml).toContain('w-5.5 h-5.5'); // Scaled computer die in md multi-stat
+
+        const slotSentientSmHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: sentientHull, size: 'sm' }));
+        expect(slotSentientSmHtml).toContain('w-5 h-5'); // Scaled computer die in sm multi-stat
+
+        const partSentientHtml = renderToString(React.createElement(ShipPartTileIconography, { part: sentientHull }));
+        expect(partSentientHtml).toContain('+1');
+        expect(partSentientHtml).toContain('>1<');
+
+        // B. Absorption Shield (-1 SHIELD, +4 POWER)
+        const absorptionShield = SHIP_PARTS.absorption_shield!;
+        const slotAbsorbHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: absorptionShield, size: 'md' }));
+        expect(slotAbsorbHtml).toContain('-1'); // Shield die
+        expect(slotAbsorbHtml).toContain('>4<'); // Energy output
+        expect(slotAbsorbHtml).toContain('w-5.5 h-5.5'); // Scaled shield die in md multi-stat
+
+        // C. Inversion Shield (-2 SHIELD, +2 POWER)
+        const inversionShield = SHIP_PARTS.inversion_shield!;
+        const slotInversionHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: inversionShield, size: 'md' }));
+        expect(slotInversionHtml).toContain('-2'); // Shield die
+        expect(slotInversionHtml).toContain('>2<'); // Energy output
+
+        // D. Rift Conductor (1 Purple Die, +1 HULL, 1 Power Cost)
+        const riftConductor = SHIP_PARTS.rift_conductor!;
+        const slotRiftHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: riftConductor, size: 'md' }));
+        expect(slotRiftHtml).toContain('purple'); // Purple die
+        expect(slotRiftHtml).toContain('>1<'); // Hull number
+        expect(slotRiftHtml).toContain('points="16,6'); // Hull starburst
+        expect(slotRiftHtml).toContain('bottom-0.5 right-0.5'); // Power cost in bottom-right
+
+        // E. Multi-Dice Weapons (Plasma Turret 2 Orange, Ion Turret 2 Yellow)
+        const plasmaTurret = SHIP_PARTS.plasma_turret!;
+        const slotTurretHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: plasmaTurret, size: 'md' }));
+        expect(slotTurretHtml).toContain('orange');
+        expect(slotTurretHtml).toContain('bottom-0.5 right-0.5');
+        expect(slotTurretHtml).toContain('>3<'); // Power cost 3
+
+        const ionTurret = SHIP_PARTS.ion_turret!;
+        const slotIonTurretHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: ionTurret, size: 'md' }));
+        expect(slotIonTurretHtml).toContain('yellow');
+
+        // F. Missile Salvo Scaling (Plasma Missile, Ion Missile, Soliton Missile)
+        const plasmaMissile = SHIP_PARTS.plasma_missile!;
+        const slotMissileHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: plasmaMissile, size: 'md' }));
+        expect(slotMissileHtml).toContain('width="34"'); // Scaled missile fuselage
+        expect(slotMissileHtml).toContain('height="10"');
+        expect(slotMissileHtml).toContain('bottom-0.5 right-0.5'); // Power cost 1
+
+        const slotMissileSmHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: plasmaMissile, size: 'sm' }));
+        expect(slotMissileSmHtml).toContain('width="26"');
+        expect(slotMissileSmHtml).toContain('height="8"');
+
+        // G. Parts with Initiative: Axion Computer (+1 init), Flux Shield (+1 init), Conformal Drive (+2 init)
+        const axionComputer = SHIP_PARTS.axion_computer!;
+        const slotAxionHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: axionComputer, size: 'md' }));
+        expect(slotAxionHtml).toContain('top-0.5 left-0.5'); // Top-left initiative
+        expect(slotAxionHtml).toContain('+1');
+        expect(slotAxionHtml).toContain('+2'); // +2 COMP die
+
+        // H. ShipBlueprintSlotsLayout Symmetrical Corner Placement:
+        // Initiative Badge at Top-Left (top-0.5 left-0.5 z-20) symmetrical to Trash Bin at Top-Right (top-0.5 right-0.5 z-20)
+        const bpLayoutHtml = renderToString(React.createElement(ShipBlueprintSlotsLayout, {
+          shipType: 'interceptor',
+          factionId: 'terran_directorate',
+          slots: [fusionDrive, null, null, null],
+          maxSlots: 4,
+          interactive: true,
+          onClearSlot: () => {},
+          size: 'md',
+        }));
+        expect(bpLayoutHtml).toContain('absolute top-0.5 left-0.5 flex items-center z-20'); // Initiative at top-left
+        expect(bpLayoutHtml).toContain('absolute top-0.5 right-0.5 flex items-center gap-0.5 z-20'); // Trash bin at top-right
+        expect(bpLayoutHtml).toContain('+2'); // Fusion Drive +2 initiative
+      });
+
+      test('153. verifies Galactic Gallery All Icons showcase and physical iconography rendering across Techs, Parts, and Discoveries tabs', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+
+        // 1. Verify default All Icons tab rendering
+        const galleryIconsHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'icons',
+          })
+        );
+        expect(galleryIconsHtml).toContain('All Icons');
+        expect(galleryIconsHtml).toContain('Core Symbols');
+        expect(galleryIconsHtml).toContain('Combat Dice');
+        expect(galleryIconsHtml).toContain('Power Cost / Consumption');
+        expect(galleryIconsHtml).toContain('Initiative Badges (Top-Left)');
+        expect(galleryIconsHtml).toContain('Ship Components');
+        expect(galleryIconsHtml).toContain('Technology Tiles');
+        expect(galleryIconsHtml).toContain('Fusion Drive');
+        expect(galleryIconsHtml).toContain('Plasma Cannon');
+        expect(galleryIconsHtml).toContain('Sentient Hull');
+
+        // 2. Verify Technologies tab includes TechTileIconography
+        const galleryTechsHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'techs',
+          })
+        );
+        expect(galleryTechsHtml).toContain('Technologies');
+        expect(galleryTechsHtml).toContain('Fusion Drive');
+        expect(galleryTechsHtml).toContain('width="21"'); // Hexagon in tech tile (size="md")
+
+        // 3. Verify Ship Parts tab includes ShipPartTileIconography
+        const galleryPartsHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'parts',
+          })
+        );
+        expect(galleryPartsHtml).toContain('Ship Parts');
+        expect(galleryPartsHtml).toContain('top-0.5 left-0.5'); // Top-left initiative on tiles
+        expect(galleryPartsHtml).toContain('Sentient Hull');
+
+        // 4. Verify Discoveries tab includes unlocked component iconography
+        const galleryDiscHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'discoveries',
+          })
+        );
+        expect(galleryDiscHtml).toContain('Discoveries');
+        expect(galleryDiscHtml).toContain('Unlocks Component:');
+        expect(galleryDiscHtml).toContain('Axion Computer');
+      });
+
+      test('154. verifies larger square tiles in gallery view and unclipped scaling for antimatter splitter, improved logistics, and nonlinear drive across gallery and game interface', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const {
+          NonPartTechGraphic,
+          DriveGraphic,
+          ShipPartTileIconography,
+          TechTileIconography,
+          ShipPartSlotGraphic,
+        } = await import('../../components/common/PhysicalTileIconography');
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+        const { SHIP_PARTS } = await import('../rules/partData');
+        const { ALL_RARE_TECHS, GRID_TECHS } = await import('../rules/techData');
+
+        // 1. Verify Antimatter Splitter Graphic scaling & unclipped layout:
+        // Compact mode: width 44, height 20 (fits 48px inner area without clipping)
+        const amSplitterSmHtml = renderToString(
+          React.createElement(NonPartTechGraphic, { techId: 'antimatter_splitter', size: 'sm' })
+        );
+        expect(amSplitterSmHtml).toContain('viewBox="0 0 76 34"');
+        expect(amSplitterSmHtml).toContain('width="44"');
+        expect(amSplitterSmHtml).toContain('height="20"');
+        expect(amSplitterSmHtml).toContain('#e11d48'); // Red die face
+        expect(amSplitterSmHtml).toContain('M34 17H46'); // Transition arrow
+
+        // Large mode: width 92, height 42 (fills larger gallery square)
+        const amSplitterLgHtml = renderToString(
+          React.createElement(NonPartTechGraphic, { techId: 'antimatter_splitter', size: 'lg' })
+        );
+        expect(amSplitterLgHtml).toContain('width="92"');
+        expect(amSplitterLgHtml).toContain('height="42"');
+
+        // 2. Verify Improved Logistics Graphic scaling & unclipped layout:
+        // Compact mode: width 48, height 20 (fits without clipping with 10px+ gap)
+        const impLogisticsSmHtml = renderToString(
+          React.createElement(NonPartTechGraphic, { techId: 'improved_logistics', size: 'sm' })
+        );
+        expect(impLogisticsSmHtml).toContain('viewBox="0 0 82 32"');
+        expect(impLogisticsSmHtml).toContain('width="48"');
+        expect(impLogisticsSmHtml).toContain('height="20"');
+        expect(impLogisticsSmHtml).toContain('+1');
+        expect(impLogisticsSmHtml).toContain('M54 16H76'); // Forward motion arrow with generous spacing
+
+        // Large mode: width 98, height 42
+        const impLogisticsLgHtml = renderToString(
+          React.createElement(NonPartTechGraphic, { techId: 'improved_logistics', size: 'lg' })
+        );
+        expect(impLogisticsLgHtml).toContain('width="98"');
+        expect(impLogisticsLgHtml).toContain('height="42"');
+
+        // 3. Verify Nonlinear Drive Graphic vertical stacking (speed 2 on top, +2 power underneath):
+        const nonlinearDrivePart = SHIP_PARTS.nonlinear_drive!;
+        const nlDriveGraphicHtml = renderToString(
+          React.createElement(DriveGraphic, {
+            speed: nonlinearDrivePart.driveSpeed || 0,
+            powerProduced: nonlinearDrivePart.powerProduced,
+            size: 'md',
+          })
+        );
+        expect(nlDriveGraphicHtml).toContain('inline-flex flex-col items-center justify-center');
+        expect(nlDriveGraphicHtml).toContain('>2<');
+        expect(nlDriveGraphicHtml).toContain('width="21"'); // Speed 2 hexagon
+        expect(nlDriveGraphicHtml).toContain('+<!-- -->2'); // Stacked +2 power badge underneath
+        expect(nlDriveGraphicHtml).toContain('#34d399'); // Emerald energy pip
+
+        // 4. Verify TechTileIconography and ShipPartTileIconography support size="lg" (w-24 h-24 sm:w-28 sm:h-28):
+        const amSplitterTech = ALL_RARE_TECHS.find((t) => t.id === 'antimatter_splitter')!;
+        const amTileLgHtml = renderToString(
+          React.createElement(TechTileIconography, { tech: amSplitterTech, size: 'lg' })
+        );
+        expect(amTileLgHtml).toContain('w-24 h-24 sm:w-28 sm:h-28 p-2.5');
+        expect(amTileLgHtml).toContain('width="92"');
+
+        const impLogisticsTech = ALL_RARE_TECHS.find((t) => t.id === 'improved_logistics')!;
+        const impTileLgHtml = renderToString(
+          React.createElement(TechTileIconography, { tech: impLogisticsTech, size: 'lg' })
+        );
+        expect(impTileLgHtml).toContain('w-24 h-24 sm:w-28 sm:h-28 p-2.5');
+        expect(impTileLgHtml).toContain('width="98"');
+
+        const nlPartTileLgHtml = renderToString(
+          React.createElement(ShipPartTileIconography, { part: nonlinearDrivePart, size: 'lg' })
+        );
+        expect(nlPartTileLgHtml).toContain('w-24 h-24 sm:w-28 sm:h-28 p-2.5');
+        expect(nlPartTileLgHtml).toContain('width="26"'); // size="lg" hexDim
+
+        // 5. Verify GalacticGalleryModal All Icons view renders larger square cards:
+        const galleryIconsHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'icons',
+          })
+        );
+        expect(galleryIconsHtml).toContain('grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4');
+        expect(galleryIconsHtml).toContain('w-24 h-24 sm:w-28 sm:h-28'); // Larger square cards
+
+        // 6. Verify ShipPartSlotGraphic for Nonlinear Drive scales cleanly in size="lg" and size="sm":
+        const slotNlLgHtml = renderToString(
+          React.createElement(ShipPartSlotGraphic, { part: nonlinearDrivePart, size: 'lg' })
+        );
+        expect(slotNlLgHtml).toContain('+2'); // Top-right power produced
+        expect(slotNlLgHtml).toContain('text-xs');
+
+        const slotNlSmHtml = renderToString(
+          React.createElement(ShipPartSlotGraphic, { part: nonlinearDrivePart, size: 'sm' })
+        );
+        expect(slotNlSmHtml).toContain('+2');
+        expect(slotNlSmHtml).toContain('text-[8.5px]');
+      });
+
+      test('155. verifies authentic iconography enhancements: larger initiative font, top missile with middle dice, 6 combat dice faces in gallery, discovery star, metasynthesis colors, orbital yellow, pico wrench, morph shield crossed damage, jump drive honeycomb, nanorobot hammer, advanced resources, monolith foundation, and wormhole generator', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const {
+          InitiativeBadge,
+          MissileGraphic,
+          DriveGraphic,
+          ShieldGraphic,
+          AdvancedPlanetSquareIcon,
+          NonPartTechGraphic,
+          ShipPartTileIconography,
+          TechTileIconography,
+        } = await import('../../components/common/PhysicalTileIconography');
+        const { GalacticGalleryModal, renderDieFacePips } = await import('../../components/gallery/GalacticGalleryModal');
+        const { SHIP_PARTS } = await import('../rules/partData');
+        const { TECH_CATALOG, ALL_RARE_TECHS } = await import('../rules/techData');
+
+        // 1. Initiative badge font size is larger
+        const initSm = renderToString(React.createElement(InitiativeBadge, { init: 2, size: 'sm' }));
+        expect(initSm).toContain('text-[8.5px]');
+        const initMd = renderToString(React.createElement(InitiativeBadge, { init: 2, size: 'md' }));
+        expect(initMd).toContain('text-[10.5px]');
+
+        // 2. Missile layout: colored missile symbol on top, colored dice in middle
+        const plasmaMissilePart = SHIP_PARTS.plasma_missile!;
+        const missileHtml = renderToString(React.createElement(MissileGraphic, { dice: plasmaMissilePart.dice! }));
+        expect(missileHtml).toContain('flex flex-col items-center justify-center');
+        expect(missileHtml).toContain('viewBox="0 0 60 18"'); // Top missile fuselage SVG
+        expect(missileHtml).toContain('#f97316'); // Orange missile fill
+        expect(missileHtml).toContain('bg-orange-500'); // Dice in middle
+
+        // 3. Galactic Gallery 6 Combat Dice Faces reference with authentic roll numbers (2, 3, 4, 5) & Face 6 star
+        const galleryHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'icons',
+          })
+        );
+        expect(galleryHtml).toContain('Combat Dice 6-Faces Reference');
+        expect(galleryHtml).toContain('Ion Cannon (Yellow)');
+        expect(galleryHtml).toContain('Plasma Cannon (Orange)');
+        expect(galleryHtml).toContain('Soliton Cannon (Blue)');
+        expect(galleryHtml).toContain('Antimatter Cannon (Red)');
+        expect(galleryHtml).toContain('Rift Die (Purple)');
+        // BlastPip 8-pointed starburst polygon rendered for Face 6 critical hit & Rift damage faces
+        expect(galleryHtml).toContain('12,1.5 14.3,7.8 20.8,5.2 16.9,10.8');
+        expect(galleryHtml).toContain('Special Rift Die');
+        expect(galleryHtml).toContain('💥 +1 Self');
+        // Unit assertions on renderDieFacePips
+        expect(renderDieFacePips('yellow', 1, 0, false)).toBeNull(); // Face 1 miss is empty
+        expect(renderToString(renderDieFacePips('yellow', 2, 1, false) as any)).toContain('2'); // Face 2 shows number 2
+        expect(renderToString(renderDieFacePips('yellow', 3, 1, false) as any)).toContain('3'); // Face 3 shows number 3
+        expect(renderToString(renderDieFacePips('yellow', 4, 1, false) as any)).toContain('4'); // Face 4 shows number 4
+        expect(renderToString(renderDieFacePips('yellow', 5, 1, false) as any)).toContain('5'); // Face 5 shows number 5
+        const face6YellowHtml = renderToString(renderDieFacePips('yellow', 6, 1, false) as any);
+        expect(face6YellowHtml.match(/12,1.5 14.3,7.8/g)?.length).toBe(1); // Yellow Face 6 shows 1 star (1 DMG)
+        const face6OrangeHtml = renderToString(renderDieFacePips('orange', 6, 2, false) as any);
+        expect(face6OrangeHtml.match(/12,1.5 14.3,7.8/g)?.length).toBe(2); // Orange Face 6 shows 2 stars (2 DMG)
+        const face6BlueHtml = renderToString(renderDieFacePips('blue', 6, 3, false) as any);
+        expect(face6BlueHtml.match(/12,1.5 14.3,7.8/g)?.length).toBe(3); // Blue Face 6 shows 3 stars (3 DMG)
+        const face6RedHtml = renderToString(renderDieFacePips('red', 6, 4, false) as any);
+        expect(face6RedHtml.match(/12,1.5 14.3,7.8/g)?.length).toBe(4); // Red Face 6 shows 4 stars (4 DMG in 2x2 grid)
+
+        expect(renderDieFacePips('purple', 1, 0, false)).toBeNull(); // Rift Face 1 miss is empty
+        expect(renderDieFacePips('purple', 2, 0, false)).toBeNull(); // Rift Face 2 miss is empty
+        const riftFace3Html = renderToString(renderDieFacePips('purple', 3, 1, false) as any);
+        expect(riftFace3Html).toContain('12,1.5 14.3,7.8'); // Rift Face 3 shows 1 star
+        const riftFace5Html = renderToString(renderDieFacePips('purple', 5, 3, true) as any);
+        expect(riftFace5Html).toContain('grid grid-cols-2'); // 2x2 layout
+        expect(riftFace5Html.match(/12,1.5 14.3,7.8/g)?.length).toBe(3); // Rift Face 5 has 3 stars
+        expect(riftFace5Html).toContain('💥'); // Rift Face 5 has self-damage explosion symbol
+        const riftFace6Html = renderToString(renderDieFacePips('purple', 6, 0, true) as any);
+        expect(riftFace6Html).toContain('💥');
+        expect(riftFace6Html).not.toContain('12,1.5 14.3,7.8');
+
+        // 3b. Nano Tech Watermark: Gear / Cogwheel icon on bottom-right, not sun symbol
+        const nanoCategoryTech = TECH_CATALOG.find((t) => t.category === 'nano')!;
+        const nanoCategoryHtml = renderToString(React.createElement(TechTileIconography, { tech: nanoCategoryTech }));
+        expect(nanoCategoryHtml).toContain('M9.671 4.136'); // Gear cogwheel path
+        expect(nanoCategoryHtml).not.toContain('M12 2v2M12 20v2'); // No sun rays
+
+        // 3c. Verify ShipBlueprintEditor available parts grid uses 3 columns without hover glitch
+        const fs = await import('fs');
+        const path = await import('path');
+        const editorSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'), 'utf-8');
+        expect(editorSource).toContain('grid-cols-3 gap-2 overflow-y-auto max-h-[440px] p-1 pb-3 pr-1.5');
+        expect(editorSource).toContain('col-span-3 text-center');
+        expect(editorSource).toContain('hover:ring-2 hover:ring-cyan-400/40');
+        expect(editorSource).not.toContain('hover:scale-[1.03]');
+
+        // 3d. Verify Personal Board Tech Rows render TechHoverTooltip matching TechMarketModal tech tray
+        const boardSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'dashboard', 'PhysicalPlayerBoardModal.tsx'), 'utf-8');
+        expect(boardSource).toContain('<TechHoverTooltip');
+        const { TechHoverTooltip, CombatDieFaceGraphic } = await import('../../components/common/PhysicalTileIconography');
+        const testTech = TECH_CATALOG[0];
+        const tooltipHtml = renderToString(React.createElement(TechHoverTooltip, { tech: testTech }));
+        expect(tooltipHtml).toContain('role="tooltip"');
+        expect(tooltipHtml).toContain(testTech.name);
+        expect(tooltipHtml).toContain(testTech.description);
+        expect(tooltipHtml).toContain('Base Cost:');
+        expect(tooltipHtml).toContain('Min Cost:');
+
+        // 3e. Verify CombatDieFaceGraphic in combat phase: physical die face icons instead of just raw numbers
+        const dieFaceRoll4 = renderToString(React.createElement(CombatDieFaceGraphic, { color: 'orange', roll: 4, size: 'sm' }));
+        expect(dieFaceRoll4).toContain('bg-orange-500');
+        expect(dieFaceRoll4).toContain('4');
+        const dieFaceRoll6 = renderToString(React.createElement(CombatDieFaceGraphic, { color: 'orange', roll: 6, size: 'sm' }));
+        expect(dieFaceRoll6.match(/12,1.5 14.3,7.8/g)?.length).toBe(2); // 2 stars on Face 6 for orange
+        const dieFaceRift5 = renderToString(React.createElement(CombatDieFaceGraphic, { color: 'purple', roll: 5, size: 'sm' }));
+        expect(dieFaceRift5).toContain('grid grid-cols-2');
+        expect(dieFaceRift5.match(/12,1.5 14.3,7.8/g)?.length).toBe(3);
+        expect(dieFaceRift5).toContain('💥');
+        const combatModalSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'combat', 'CombatModal.tsx'), 'utf-8');
+        expect(combatModalSource).toContain('<CombatDieFaceGraphic');
+
+        // 4. Ancient Labs discovery diamond with center star ★ matching HexGalaxyMap
+        const ancientLabsTech = ALL_RARE_TECHS.find((t) => t.id === 'ancient_labs')!;
+        const ancientLabsHtml = renderToString(
+          React.createElement(TechTileIconography, { tech: ancientLabsTech })
+        );
+        expect(ancientLabsHtml).toContain('fill="#f59e0b"'); // Amber discovery tile fill
+        expect(ancientLabsHtml).toContain('rotate(45 26 26)'); // Rotated diamond
+        expect(ancientLabsHtml).toContain('★'); // Star in center
+
+        // 5. Metasynthesis: 3 distinct solid segments for Yellow (money), Pink (science), and Brown (materials)
+        const metaTech = TECH_CATALOG.find((t) => t.id === 'metasynthesis')!;
+        const metaHtml = renderToString(React.createElement(TechTileIconography, { tech: metaTech }));
+        expect(metaHtml).toContain('#facc15'); // Yellow segment
+        expect(metaHtml).toContain('#ec4899'); // Pink segment
+        expect(metaHtml).toContain('#92400e'); // Brown segment
+        expect(metaHtml).toContain('10,40 29,29'); // Yellow polygon strictly bounds at y=40, no overflow into brown
+        expect(metaHtml).not.toContain('10,48 14,48 29,29" fill="#facc15"');
+
+        // 6. Orbital: yellow replacing orange matching money color
+        const orbitalTech = TECH_CATALOG.find((t) => t.id === 'orbital')!;
+        const orbitalHtml = renderToString(React.createElement(TechTileIconography, { tech: orbitalTech }));
+        expect(orbitalHtml).toContain('bg-yellow-400');
+        expect(orbitalHtml).toContain('bg-pink-500');
+        expect(orbitalHtml).not.toContain('bg-orange-500');
+
+        // 7. Pico Modulator: wrench symbol matching upgrade action in gameplay
+        const picoModTech = ALL_RARE_TECHS.find((t) => t.id === 'pico_modulator')!;
+        const picoHtml = renderToString(React.createElement(TechTileIconography, { tech: picoModTech }));
+        expect(picoHtml).toContain('+2');
+        expect(picoHtml).toContain('viewBox="0 0 76 34"'); // Generous spacing
+        expect(picoHtml).toContain('14.7 6.3'); // Matching Upgrade Action wrench path
+
+        // 8. Morph Shield: cross damage symbol removing damage cube and detailed hover explanation
+        const morphShieldPart = SHIP_PARTS.morph_shield!;
+        const morphHtml = renderToString(React.createElement(ShipPartTileIconography, { part: morphShieldPart }));
+        expect(morphHtml).toContain('-1'); // Shield -1
+        expect(morphHtml).toContain('#e11d48'); // Red damage cube
+        expect(morphHtml).toContain('Removes 1 damage cube from this ship at the end of each Engagement Round in battle');
+        const { getPartTooltip } = await import('../../components/common/PhysicalTileIconography');
+        const morphTooltip = getPartTooltip(morphShieldPart);
+        expect(morphTooltip).toContain('Morph Regeneration');
+        expect(morphTooltip).toContain('Non-standard component');
+        expect(morphTooltip).toContain('Engagement Round');
+
+        // 9. Jump Drive: 7-hex honeycomb symbol (all white lines, no other colors)
+        const jumpPart = SHIP_PARTS.jump_drive!;
+        const jumpHtml = renderToString(React.createElement(ShipPartTileIconography, { part: jumpPart }));
+        expect(jumpHtml).toContain('stroke="#ffffff"');
+        expect(jumpHtml).not.toContain('stroke="#38bdf8"');
+        expect(jumpHtml).toContain('polygon');
+
+        // 10. Nanorobots: hammer symbol matching build action and materials in game UI
+        const nanoTech = TECH_CATALOG.find((t) => t.id === 'nanorobots')!;
+        const nanoHtml = renderToString(React.createElement(TechTileIconography, { tech: nanoTech }));
+        expect(nanoHtml).toContain('+1');
+        expect(nanoHtml).toContain('viewBox="0 0 74 36"');
+        expect(nanoHtml).toContain('m15 12-9.373'); // Matching build action & materials hammer path
+
+        // 11. Advanced Resources: matching material hammer, two-coin money, flask for science
+        const advMiningHtml = renderToString(React.createElement(AdvancedPlanetSquareIcon, { type: 'materials', dim: 56 }));
+        expect(advMiningHtml).toContain('#92400e'); // Brown
+        expect(advMiningHtml).toContain('m15 12-9.373'); // Hammer matching material symbol & build action
+        const advMoneyHtml = renderToString(React.createElement(AdvancedPlanetSquareIcon, { type: 'money', dim: 56 }));
+        expect(advMoneyHtml).toContain('#eab308'); // Yellow
+        expect(advMoneyHtml).toContain('13.744'); // Two-coin symbol matching top-left window
+        const advScienceHtml = renderToString(React.createElement(AdvancedPlanetSquareIcon, { type: 'science', dim: 56 }));
+        expect(advScienceHtml).toContain('#ec4899'); // Pink
+
+        // 12. Monolith: foundation platform pedestal
+        const monolithTech = TECH_CATALOG.find((t) => t.id === 'monolith')!;
+        const monolithHtml = renderToString(React.createElement(TechTileIconography, { tech: monolithTech }));
+        expect(monolithHtml).toContain('viewBox="0 0 54 54"');
+        expect(monolithHtml).toContain('3');
+        expect(monolithHtml).toContain('fill="#64748b"'); // Foundation top face
+        expect(monolithHtml).toContain('fill="#475569"'); // Foundation front face
+
+        // 13. Wormhole Generator: 2 attached hexes + half wormhole on left side + moving arrow
+        const wormholeTech = TECH_CATALOG.find((t) => t.id === 'wormhole_generator')!;
+        const wormholeHtml = renderToString(React.createElement(TechTileIconography, { tech: wormholeTech }));
+        expect(wormholeHtml).toContain('viewBox="0 0 80 44"');
+        expect(wormholeHtml).toContain('M 40 16 A 6 6 0 0 0 40 28'); // Half wormhole on left of shared edge
+        expect(wormholeHtml).toContain('M 27 22 H 62'); // Moving arrow crossing through half-wormhole
+      });
     });
   });
 });

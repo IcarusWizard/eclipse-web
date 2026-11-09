@@ -21,6 +21,23 @@ import { ShipPart } from '../../engine/types/blueprints';
 import { DiscoveryTile } from '../../engine/types/galaxy';
 import { FactionInfo } from '../../engine/types/player';
 import {
+  TechTileIconography,
+  ShipPartTileIconography,
+  ShipPartSlotGraphic,
+  InitiativeBadge,
+  PowerCostBadge,
+  DiceGraphic,
+  BlastPip,
+  LightningPip,
+  ReactorPowerGraphic,
+  DriveGraphic,
+  ComputerGraphic,
+  ShieldGraphic,
+  HullGraphic,
+  MissileGraphic,
+  getPartTooltip,
+} from '../common/PhysicalTileIconography';
+import {
   BookOpen,
   X,
   Search,
@@ -38,6 +55,7 @@ import {
   CheckCircle2,
   Lock,
   Compass,
+  Dices,
 } from 'lucide-react';
 
 interface GalacticGalleryModalProps {
@@ -47,6 +65,7 @@ interface GalacticGalleryModalProps {
 }
 
 export type GalleryTab =
+  | 'icons'
   | 'techs'
   | 'parts'
   | 'sectors'
@@ -55,10 +74,212 @@ export type GalleryTab =
   | 'reputation'
   | 'minorSpecies';
 
+const COMBAT_DICE_SPECS = [
+  {
+    id: 'yellow',
+    name: 'Ion Cannon',
+    colorName: 'Yellow',
+    damage: 1,
+    bgColor: 'bg-yellow-500',
+    borderColor: 'border-yellow-300',
+    textColor: 'text-slate-950',
+    note: '1 DMG per hit. Hits when Roll + Computers - Shields ≥ 6.',
+    faces: [
+      { face: 1, stars: 0, targetDmg: 0, selfDmg: 0, isCrit: false, isBackfire: false, desc: 'Empty (Always Misses)' },
+      { face: 2, stars: 1, targetDmg: 1, selfDmg: 0, isCrit: false, isBackfire: false, desc: '1 DMG if Modified ≥ 6' },
+      { face: 3, stars: 1, targetDmg: 1, selfDmg: 0, isCrit: false, isBackfire: false, desc: '1 DMG if Modified ≥ 6' },
+      { face: 4, stars: 1, targetDmg: 1, selfDmg: 0, isCrit: false, isBackfire: false, desc: '1 DMG if Modified ≥ 6' },
+      { face: 5, stars: 1, targetDmg: 1, selfDmg: 0, isCrit: false, isBackfire: false, desc: '1 DMG if Modified ≥ 6' },
+      { face: 6, stars: 1, targetDmg: 1, selfDmg: 0, isCrit: true, isBackfire: false, desc: 'Critical Hit! Always Hits' },
+    ],
+  },
+  {
+    id: 'orange',
+    name: 'Plasma Cannon',
+    colorName: 'Orange',
+    damage: 2,
+    bgColor: 'bg-orange-500',
+    borderColor: 'border-orange-300',
+    textColor: 'text-slate-950',
+    note: '2 DMG per hit. Hits when Roll + Computers - Shields ≥ 6.',
+    faces: [
+      { face: 1, stars: 0, targetDmg: 0, selfDmg: 0, isCrit: false, isBackfire: false, desc: 'Empty (Always Misses)' },
+      { face: 2, stars: 2, targetDmg: 2, selfDmg: 0, isCrit: false, isBackfire: false, desc: '2 DMG if Modified ≥ 6' },
+      { face: 3, stars: 2, targetDmg: 2, selfDmg: 0, isCrit: false, isBackfire: false, desc: '2 DMG if Modified ≥ 6' },
+      { face: 4, stars: 2, targetDmg: 2, selfDmg: 0, isCrit: false, isBackfire: false, desc: '2 DMG if Modified ≥ 6' },
+      { face: 5, stars: 2, targetDmg: 2, selfDmg: 0, isCrit: false, isBackfire: false, desc: '2 DMG if Modified ≥ 6' },
+      { face: 6, stars: 2, targetDmg: 2, selfDmg: 0, isCrit: true, isBackfire: false, desc: 'Critical Hit! Always Hits' },
+    ],
+  },
+  {
+    id: 'blue',
+    name: 'Soliton Cannon',
+    colorName: 'Blue',
+    damage: 3,
+    bgColor: 'bg-sky-500',
+    borderColor: 'border-sky-300',
+    textColor: 'text-white',
+    note: '3 DMG per hit. Hits when Roll + Computers - Shields ≥ 6.',
+    faces: [
+      { face: 1, stars: 0, targetDmg: 0, selfDmg: 0, isCrit: false, isBackfire: false, desc: 'Empty (Always Misses)' },
+      { face: 2, stars: 3, targetDmg: 3, selfDmg: 0, isCrit: false, isBackfire: false, desc: '3 DMG if Modified ≥ 6' },
+      { face: 3, stars: 3, targetDmg: 3, selfDmg: 0, isCrit: false, isBackfire: false, desc: '3 DMG if Modified ≥ 6' },
+      { face: 4, stars: 3, targetDmg: 3, selfDmg: 0, isCrit: false, isBackfire: false, desc: '3 DMG if Modified ≥ 6' },
+      { face: 5, stars: 3, targetDmg: 3, selfDmg: 0, isCrit: false, isBackfire: false, desc: '3 DMG if Modified ≥ 6' },
+      { face: 6, stars: 3, targetDmg: 3, selfDmg: 0, isCrit: true, isBackfire: false, desc: 'Critical Hit! Always Hits' },
+    ],
+  },
+  {
+    id: 'red',
+    name: 'Antimatter Cannon',
+    colorName: 'Red',
+    damage: 4,
+    bgColor: 'bg-rose-600',
+    borderColor: 'border-rose-300',
+    textColor: 'text-white',
+    note: '4 DMG per hit. Hits when Roll + Computers - Shields ≥ 6.',
+    faces: [
+      { face: 1, stars: 0, targetDmg: 0, selfDmg: 0, isCrit: false, isBackfire: false, desc: 'Empty (Always Misses)' },
+      { face: 2, stars: 4, targetDmg: 4, selfDmg: 0, isCrit: false, isBackfire: false, desc: '4 DMG if Modified ≥ 6' },
+      { face: 3, stars: 4, targetDmg: 4, selfDmg: 0, isCrit: false, isBackfire: false, desc: '4 DMG if Modified ≥ 6' },
+      { face: 4, stars: 4, targetDmg: 4, selfDmg: 0, isCrit: false, isBackfire: false, desc: '4 DMG if Modified ≥ 6' },
+      { face: 5, stars: 4, targetDmg: 4, selfDmg: 0, isCrit: false, isBackfire: false, desc: '4 DMG if Modified ≥ 6' },
+      { face: 6, stars: 4, targetDmg: 4, selfDmg: 0, isCrit: true, isBackfire: false, desc: 'Critical Hit! Always Hits' },
+    ],
+  },
+  {
+    id: 'purple',
+    name: 'Rift Die',
+    colorName: 'Purple',
+    damage: 0,
+    bgColor: 'bg-purple-600',
+    borderColor: 'border-purple-300',
+    textColor: 'text-white',
+    note: 'Special Die: Ignores Computers & Shields. Hits are never modified. Backfire (💥) inflicts 1 self-damage to own largest ship equipped with purple dice.',
+    faces: [
+      { face: 1, stars: 0, targetDmg: 0, selfDmg: 0, isCrit: false, isBackfire: false, desc: 'Empty (Miss)' },
+      { face: 2, stars: 0, targetDmg: 0, selfDmg: 0, isCrit: false, isBackfire: false, desc: 'Empty (Miss)' },
+      { face: 3, stars: 1, targetDmg: 1, selfDmg: 0, isCrit: false, isBackfire: false, desc: '1 Target DMG (0 Self DMG)' },
+      { face: 4, stars: 2, targetDmg: 2, selfDmg: 0, isCrit: false, isBackfire: false, desc: '2 Target DMG (0 Self DMG)' },
+      { face: 5, stars: 3, targetDmg: 3, selfDmg: 1, isCrit: false, isBackfire: true, desc: '3 Target DMG + 1 Self DMG' },
+      { face: 6, stars: 0, targetDmg: 0, selfDmg: 1, isCrit: false, isBackfire: true, desc: '0 Target DMG + 1 Self DMG' },
+    ],
+  },
+];
+
+export const renderDieFacePips = (
+  dieId: string,
+  face: number,
+  stars: number,
+  isBackfire?: boolean
+) => {
+  if (dieId === 'purple') {
+    const pipColor = '#fdf4ff';
+
+    if (face === 1 || face === 2) {
+      return null; // Empty face on miss side (physical Eclipse Rift die is blank on Faces 1 & 2)
+    }
+
+    if (face === 3) {
+      return <BlastPip size={15} color={pipColor} />;
+    }
+
+    if (face === 4) {
+      return (
+        <div className="flex items-center justify-center gap-0.5">
+          <BlastPip size={11} color={pipColor} />
+          <BlastPip size={11} color={pipColor} />
+        </div>
+      );
+    }
+
+    if (face === 5) {
+      // Face 5: 2x2 layout for 3 damage stars and 1 self-damage explosion symbol
+      return (
+        <div className="grid grid-cols-2 gap-0.5 place-items-center w-full h-full p-1">
+          <BlastPip size={8.5} color={pipColor} />
+          <BlastPip size={8.5} color={pipColor} />
+          <BlastPip size={8.5} color={pipColor} />
+          <span className="text-[10.5px] leading-none select-none filter drop-shadow-xs">
+            💥
+          </span>
+        </div>
+      );
+    }
+
+    if (face === 6) {
+      // Face 6: 0 damage, 1 self-damage (Backfire explosion only)
+      return (
+        <div className="flex items-center justify-center leading-none">
+          <span className="text-sm select-none filter drop-shadow">💥</span>
+        </div>
+      );
+    }
+  }
+
+  // Standard combat dice: Yellow (Ion), Orange (Plasma), Blue (Soliton), Red (Antimatter)
+  // Face 1 is empty, Faces 2-5 show roll numbers (2, 3, 4, 5), Face 6 shows damage stars (critical hit)
+  if (face === 1) {
+    return null; // Empty face on miss side
+  }
+
+  if (face >= 2 && face <= 5) {
+    return (
+      <span className="font-display font-black text-sm leading-none select-none">
+        {face}
+      </span>
+    );
+  }
+
+  if (face === 6) {
+    const pipColor = '#0f172a';
+
+    if (dieId === 'orange') {
+      // Orange (Plasma): 2 stars for Face 6 (2 DMG)
+      return (
+        <div className="flex items-center justify-center gap-0.5">
+          <BlastPip size={11} color={pipColor} />
+          <BlastPip size={11} color={pipColor} />
+        </div>
+      );
+    }
+
+    if (dieId === 'blue') {
+      // Blue (Soliton): 3 stars for Face 6 (3 DMG)
+      return (
+        <div className="flex flex-col items-center justify-center -space-y-0.5">
+          <div className="flex gap-0.5">
+            <BlastPip size={9} color={pipColor} />
+            <BlastPip size={9} color={pipColor} />
+          </div>
+          <BlastPip size={9} color={pipColor} />
+        </div>
+      );
+    }
+
+    if (dieId === 'red') {
+      // Red (Antimatter): 4 stars for Face 6 (4 DMG in 2x2 grid)
+      return (
+        <div className="grid grid-cols-2 gap-0.5 place-items-center">
+          <BlastPip size={8.5} color={pipColor} />
+          <BlastPip size={8.5} color={pipColor} />
+          <BlastPip size={8.5} color={pipColor} />
+          <BlastPip size={8.5} color={pipColor} />
+        </div>
+      );
+    }
+
+    // Yellow (Ion): 1 star for Face 6 (1 DMG)
+    return <BlastPip size={15} color={pipColor} />;
+  }
+
+  return null;
+};
+
 export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
   isOpen,
   onClose,
-  initialTab = 'techs',
+  initialTab = 'icons',
 }) => {
   const [activeTab, setActiveTab] = useState<GalleryTab>(initialTab);
   const [searchQuery, setSearchQuery] = useState('');
@@ -66,6 +287,8 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
   const [partCategory, setPartCategory] = useState<string>('all');
   const [sectorCategory, setSectorCategory] = useState<string>('all');
   const [discoveryCategory, setDiscoveryCategory] = useState<string>('all');
+  const [iconCategory, setIconCategory] = useState<string>('all');
+  const [iconViewMode, setIconViewMode] = useState<'tile' | 'slot'>('tile');
 
   // Reset search when switching tabs
   const handleTabChange = (tab: GalleryTab) => {
@@ -118,6 +341,49 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
     });
   }, [allParts, partCategory, searchQuery]);
 
+  // Iconography Tab Filtered Lists
+  const filteredIconParts = useMemo(() => {
+    return allParts.filter((part) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        part.name.toLowerCase().includes(q) ||
+        part.category.toLowerCase().includes(q) ||
+        part.id.toLowerCase().includes(q);
+
+      if (!matchesSearch) return false;
+
+      if (iconCategory === 'all' || iconCategory === 'parts') return true;
+      if (iconCategory === 'power') return part.category === 'reactor' || part.powerProduced > 0;
+      if (iconCategory === 'drives') return part.category === 'drive';
+      if (iconCategory === 'weapons') return part.category === 'cannon' || part.category === 'missile' || Boolean(part.dice);
+      if (iconCategory === 'defense') return part.category === 'shield' || part.category === 'hull' || part.shieldBonus > 0 || part.hullBonus > 0;
+      if (iconCategory === 'computers') return part.category === 'computer' || part.computerBonus > 0;
+      return false;
+    });
+  }, [allParts, iconCategory, searchQuery]);
+
+  const filteredIconTechs = useMemo(() => {
+    return allTechs.filter((tech) => {
+      const q = searchQuery.toLowerCase().trim();
+      const matchesSearch =
+        !q ||
+        tech.name.toLowerCase().includes(q) ||
+        tech.category.toLowerCase().includes(q) ||
+        tech.id.toLowerCase().includes(q);
+
+      if (!matchesSearch) return false;
+
+      if (iconCategory === 'all' || iconCategory === 'techs') return true;
+      if (iconCategory === 'power') return tech.id.includes('source') || tech.id.includes('energy');
+      if (iconCategory === 'drives') return tech.id.includes('drive');
+      if (iconCategory === 'weapons') return tech.id.includes('cannon') || tech.id.includes('missile') || tech.id.includes('bomb');
+      if (iconCategory === 'defense') return tech.id.includes('shield') || tech.id.includes('hull') || tech.id.includes('field');
+      if (iconCategory === 'computers') return tech.id.includes('computer');
+      return false;
+    });
+  }, [allTechs, iconCategory, searchQuery]);
+
   // 3. Sector Tiles Catalog
   const allSectors = useMemo<SectorCatalogEntry[]>(() => {
     return getAllSectorsCatalog(true);
@@ -157,7 +423,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
       let cat = 'special';
       if (tile.immediateReward?.materials || tile.immediateReward?.science || tile.immediateReward?.money) {
         cat = 'resources';
-      } else if (tile.unlockedShipPartId) {
+      } else if (tile.shipPartId || (tile as any).unlockedShipPartId) {
         cat = 'modules';
       }
       const matchesCat =
@@ -232,7 +498,8 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
         <div className="flex flex-wrap items-center justify-between gap-2 px-6 py-3 border-b border-slate-800 bg-slate-950/50 shrink-0">
           <div className="flex flex-wrap gap-1.5 sm:gap-2">
             {[
-              { id: 'techs', label: 'Technologies', count: allTechs.length, icon: Sparkles },
+              { id: 'icons', label: 'All Icons', count: allParts.length + allTechs.length, icon: Sparkles },
+              { id: 'techs', label: 'Technologies', count: allTechs.length, icon: Layers },
               { id: 'parts', label: 'Ship Parts', count: allParts.length, icon: Zap },
               { id: 'sectors', label: 'Sector Tiles', count: allSectors.length, icon: Compass },
               { id: 'discoveries', label: 'Discoveries', count: '36', icon: Award },
@@ -291,6 +558,369 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-4">
+          {/* ===================== TAB 0: ALL ICONS (ICONOGRAPHY GALLERY) ===================== */}
+          {activeTab === 'icons' && (
+            <div className="space-y-6">
+              {/* Category Filter Chips & View Mode Switcher */}
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-950/80 p-3 rounded-xl border border-slate-800">
+                <div className="flex flex-wrap gap-1.5">
+                  {[
+                    { id: 'all', label: 'All Icons', count: allParts.length + allTechs.length },
+                    { id: 'power', label: 'Power & Reactors' },
+                    { id: 'drives', label: 'Drives & Speed' },
+                    { id: 'weapons', label: 'Cannons & Missiles' },
+                    { id: 'defense', label: 'Shields & Hulls' },
+                    { id: 'computers', label: 'Computers' },
+                    { id: 'techs', label: 'Tech Tiles', count: allTechs.length },
+                    { id: 'parts', label: 'Ship Parts', count: allParts.length },
+                    { id: 'symbols', label: 'Core Symbols & Dice' },
+                  ].map((chip) => (
+                    <button
+                      key={chip.id}
+                      onClick={() => setIconCategory(chip.id)}
+                      className={`px-3 py-1 rounded-lg text-xs font-semibold border transition-all cursor-pointer ${
+                        iconCategory === chip.id
+                          ? 'bg-cyan-500/20 border-cyan-400 text-cyan-200'
+                          : 'bg-slate-900 border-slate-800 text-slate-400 hover:border-slate-700 hover:text-slate-200'
+                      }`}
+                    >
+                      {chip.label} {chip.count !== undefined ? `(${chip.count})` : ''}
+                    </button>
+                  ))}
+                </div>
+
+                {/* View Mode Toggle: Physical Card Face vs Blueprint Slot Tile */}
+                <div className="flex items-center gap-1 bg-slate-900 p-1 rounded-lg border border-slate-800 text-xs">
+                  <span className="text-slate-500 text-[10px] uppercase font-mono px-1">Display:</span>
+                  <button
+                    onClick={() => setIconViewMode('tile')}
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                      iconViewMode === 'tile'
+                        ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Physical Tile
+                  </button>
+                  <button
+                    onClick={() => setIconViewMode('slot')}
+                    className={`px-2 py-0.5 rounded text-xs font-medium transition-all cursor-pointer ${
+                      iconViewMode === 'slot'
+                        ? 'bg-cyan-500 text-slate-950 font-bold shadow-xs'
+                        : 'text-slate-400 hover:text-white'
+                    }`}
+                  >
+                    Blueprint Slot
+                  </button>
+                </div>
+              </div>
+
+              {/* 1. Core Symbols & Mechanics Reference */}
+              {(iconCategory === 'all' || iconCategory === 'symbols') && !searchQuery && (
+                <div className="p-4 rounded-xl border border-slate-800 bg-slate-950/60 space-y-4">
+                  <h3 className="text-xs font-bold text-slate-300 uppercase tracking-wider font-mono flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+                    Core Symbols & Mechanics Reference
+                  </h3>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                    {/* Combat Dice */}
+                    <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 space-y-2">
+                      <span className="text-[11px] font-bold text-amber-300 block">Combat Dice & Starbursts</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col items-center">
+                          <DiceGraphic color="yellow" count={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">1 Ion (1★)</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <DiceGraphic color="orange" count={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">2 Plasma (2★)</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <DiceGraphic color="blue" count={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">3 Soliton (3★)</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <DiceGraphic color="red" count={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">4 AM (4★)</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <DiceGraphic color="purple" count={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">Rift Die</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Power Consumption Badges */}
+                    <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 space-y-2">
+                      <span className="text-[11px] font-bold text-amber-400 block">Power Cost / Consumption</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col items-center">
+                          <PowerCostBadge cost={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">Cost 1 ⚡</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <PowerCostBadge cost={2} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">Cost 2 ⚡</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <PowerCostBadge cost={3} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">Cost 3 ⚡</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <PowerCostBadge cost={4} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">Cost 4 ⚡</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Initiative Chevrons */}
+                    <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 space-y-2">
+                      <span className="text-[11px] font-bold text-amber-300 block">Initiative Badges (Top-Left)</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col items-center">
+                          <InitiativeBadge init={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">+1 Init</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <InitiativeBadge init={2} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">+2 Init</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <InitiativeBadge init={3} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">+3 Init</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <InitiativeBadge init={-1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">-1 Init</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Stats Die Badges */}
+                    <div className="p-3 rounded-lg bg-slate-900/60 border border-slate-800/80 space-y-2">
+                      <span className="text-[11px] font-bold text-cyan-300 block">Targeting, Shields, Hulls & Speed</span>
+                      <div className="flex flex-wrap items-center gap-2">
+                        <div className="flex flex-col items-center">
+                          <ComputerGraphic computerBonus={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">+1 COMP</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <ShieldGraphic shieldBonus={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">-1 Shield</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <HullGraphic hullBonus={1} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">1 Hull</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <DriveGraphic speed={2} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">Speed 2</span>
+                        </div>
+                        <div className="flex flex-col items-center">
+                          <DriveGraphic speed={0} isJump={true} size="sm" />
+                          <span className="text-[9px] font-mono text-slate-400 mt-1">Jump Drive</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Combat Dice 6-Faces Reference Guide */}
+                    <div className="col-span-1 sm:col-span-2 lg:col-span-4 p-4 rounded-xl bg-slate-900/80 border border-slate-800 space-y-4">
+                      <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-800/80 pb-2.5">
+                        <span className="text-xs font-bold text-amber-300 flex items-center gap-2">
+                          <Dices className="w-4 h-4 text-purple-400" />
+                          Combat Dice 6-Faces Reference (All Standard Weapons & Purple Rift Die)
+                        </span>
+                        <span className="text-[10px] text-slate-400 font-mono">
+                          Exact probabilities, target damage, criticals & backfire effects
+                        </span>
+                      </div>
+
+                      <div className="space-y-3.5">
+                        {COMBAT_DICE_SPECS.map((die) => (
+                          <div
+                            key={die.id}
+                            className="p-3 rounded-lg bg-slate-950/70 border border-slate-800/90 space-y-2"
+                          >
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div className="flex items-center gap-2">
+                                <DiceGraphic color={die.id} count={1} size="sm" />
+                                <span className="text-xs font-bold text-slate-200">
+                                  {`${die.name} (${die.colorName})`}
+                                </span>
+                                {die.damage > 0 && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 font-mono font-bold">
+                                    {die.damage} DMG / hit
+                                  </span>
+                                )}
+                                {die.id === 'purple' && (
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-purple-950/80 border border-purple-500/50 text-purple-300 font-mono font-bold">
+                                    Special Rift Die
+                                  </span>
+                                )}
+                              </div>
+                              <span className="text-[10px] text-slate-400 font-sans italic">
+                                {die.note}
+                              </span>
+                            </div>
+
+                            {/* 6 Dice Faces Grid */}
+                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 pt-1">
+                              {die.faces.map((f) => (
+                                <div
+                                  key={f.face}
+                                  className="p-2 rounded-md bg-slate-900/90 border border-slate-800 flex flex-col items-center justify-between gap-1 text-center shadow-xs"
+                                >
+                                  <span className="text-[9.5px] font-mono font-bold text-slate-400">
+                                    Face {f.face}
+                                  </span>
+                                  <div
+                                    className={`w-9 h-9 rounded-md ${die.bgColor} border ${die.borderColor} ${die.textColor} flex items-center justify-center shadow select-none relative`}
+                                  >
+                                    {renderDieFacePips(die.id, f.face, f.stars, f.isBackfire)}
+                                  </div>
+                                  <div className="text-[9px] font-mono leading-tight">
+                                    <span
+                                      className={
+                                        f.targetDmg > 0
+                                          ? 'text-emerald-400 font-bold block'
+                                          : 'text-slate-500 block'
+                                      }
+                                    >
+                                      {f.targetDmg > 0 ? `${f.targetDmg} DMG` : 'Miss'}
+                                    </span>
+                                    {f.selfDmg > 0 ? (
+                                      <span className="text-rose-400 font-bold block">
+                                        💥 +1 Self
+                                      </span>
+                                    ) : (
+                                      <span className="text-slate-400 block text-[8px] truncate max-w-[80px]" title={f.desc}>
+                                        {f.desc}
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* 2. Ship Component Icons Grid */}
+              {filteredIconParts.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h3 className="text-xs font-bold text-cyan-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                      <Zap className="w-3.5 h-3.5" />
+                      Ship Components ({filteredIconParts.length})
+                    </h3>
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      {iconViewMode === 'tile' ? 'Physical Tile Face' : 'Blueprint Slot Tile'}
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4 sm:gap-5">
+                    {filteredIconParts.map((part) => {
+                      const exp = getExpansionForItem(part.id);
+                      return (
+                        <div
+                          key={part.id}
+                          title={getPartTooltip(part)}
+                          className="p-3 rounded-2xl border border-slate-800 bg-slate-950/80 hover:border-slate-600 transition-all flex flex-col items-center justify-between gap-3 shadow-md group"
+                        >
+                          {/* Square Icon Display */}
+                          <div className="flex items-center justify-center p-1 w-full">
+                            {iconViewMode === 'tile' ? (
+                              <ShipPartTileIconography part={part} size="lg" />
+                            ) : (
+                              <div className="w-24 h-24 sm:w-28 sm:h-28 aspect-square rounded-2xl bg-slate-900/90 border-2 border-slate-700 relative overflow-hidden flex items-center justify-center p-1 shadow-lg shadow-black/60">
+                                <ShipPartSlotGraphic part={part} size="lg" />
+                              </div>
+                            )}
+                          </div>
+
+                          {/* Info & Category */}
+                          <div className="w-full text-center">
+                            <span className="text-xs font-bold text-slate-200 block truncate group-hover:text-cyan-300">
+                              {part.name}
+                            </span>
+                            <div className="flex items-center justify-center gap-1 mt-1">
+                              <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700/60">
+                                {part.category}
+                              </span>
+                              {exp && (
+                                <span className="text-[8.5px] font-mono px-1 py-0.2 rounded bg-purple-900/60 text-purple-300 border border-purple-600/40">
+                                  EXP
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. Technology Tiles Grid */}
+              {filteredIconTechs.length > 0 && (
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between border-b border-slate-800 pb-2">
+                    <h3 className="text-xs font-bold text-emerald-400 uppercase tracking-wider font-mono flex items-center gap-2">
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Technology Tiles ({filteredIconTechs.length})
+                    </h3>
+                    <span className="text-[11px] text-slate-500 font-mono">
+                      Square Tech Cards
+                    </span>
+                  </div>
+
+                  <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4 gap-4 sm:gap-5">
+                    {filteredIconTechs.map((tech) => {
+                      const exp = getExpansionForItem(tech.id);
+                      return (
+                        <div
+                          key={tech.id}
+                          title={`${tech.name} (${tech.category.toUpperCase()})\nBase Science Cost: ${tech.baseCost}\n${tech.description}`}
+                          className="p-3 rounded-2xl border border-slate-800 bg-slate-950/80 hover:border-slate-600 transition-all flex flex-col items-center justify-between gap-3 shadow-md group"
+                        >
+                          {/* Square Tech Icon Display */}
+                          <div className="flex items-center justify-center p-1 w-full">
+                            <TechTileIconography tech={tech} size="lg" />
+                          </div>
+
+                          {/* Info & Category */}
+                          <div className="w-full text-center">
+                            <span className="text-xs font-bold text-slate-200 block truncate group-hover:text-emerald-300">
+                              {tech.name}
+                            </span>
+                            <div className="flex items-center justify-center gap-1 mt-1">
+                              <span className="text-[9px] uppercase font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-400 border border-slate-700/60">
+                                {tech.category}
+                              </span>
+                              <span className="text-[9px] font-mono px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-700/60">
+                                {tech.baseCost}⚛
+                              </span>
+                              {exp && (
+                                <span className="text-[8.5px] font-mono px-1 py-0.2 rounded bg-purple-900/60 text-purple-300 border border-purple-600/40">
+                                  EXP
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
           {/* ===================== TAB 1: TECHNOLOGIES ===================== */}
           {activeTab === 'techs' && (
             <div>
@@ -371,9 +1001,15 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                           </div>
                         </div>
 
-                        <p className="text-xs text-slate-300 leading-relaxed mb-3">
-                          {tech.description}
-                        </p>
+                        {/* Physical Technology Card Icon + Description */}
+                        <div className="flex items-center gap-3 mb-3">
+                          <div className="shrink-0">
+                            <TechTileIconography tech={tech} size="md" className="w-20 h-20 sm:w-22 sm:h-22" />
+                          </div>
+                          <p className="text-xs text-slate-300 leading-relaxed flex-1">
+                            {tech.description}
+                          </p>
+                        </div>
                       </div>
 
                       <div className="pt-3 border-t border-slate-800/80 text-[11px] text-slate-400 space-y-1 font-mono">
@@ -507,8 +1143,26 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                           </div>
                         </div>
 
-                        <div className="text-[10px] text-slate-400 uppercase font-mono mb-2">
-                          Category: <span className="text-slate-200">{part.category}</span>
+                        {/* Physical Square Component Tile */}
+                        <div className="flex items-center gap-3 my-2">
+                          <div className="shrink-0">
+                            <ShipPartTileIconography part={part} size="md" className="w-20 h-20 sm:w-22 sm:h-22" />
+                          </div>
+                          <div className="text-[10px] text-slate-400 flex flex-col gap-1 flex-1 font-mono">
+                            <div>Category: <span className="text-slate-200 font-bold uppercase">{part.category}</span></div>
+                            {part.initiativeBonus !== 0 && (
+                              <div className="flex items-center gap-1 text-amber-300 font-bold">
+                                <span>Init:</span>
+                                <InitiativeBadge init={part.initiativeBonus} size="sm" />
+                              </div>
+                            )}
+                            {part.powerConsumed > 0 && (
+                              <div className="flex items-center gap-1 text-amber-400 font-bold">
+                                <span>Cost:</span>
+                                <PowerCostBadge cost={part.powerConsumed} size="sm" />
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
 
@@ -558,6 +1212,12 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         {part.hullBonus > 0 && (
                           <div className="text-rose-400 flex items-center gap-1">
                             <Heart className="w-3 h-3" /> +{part.hullBonus} HP
+                          </div>
+                        )}
+                        {(part.id === 'morph_shield' || (part as any).morphShield) && (
+                          <div className="col-span-2 text-rose-300 flex items-center gap-1 font-semibold text-[10px]">
+                            <Heart className="w-3 h-3 text-rose-400 shrink-0" />
+                            <span>Morph Regen: Non-standard component. Heals 1 HP (removes 1 dmg cube) at end of each round.</span>
                           </div>
                         )}
                       </div>
@@ -847,12 +1507,28 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         <span>Alternate Choice:</span>
                         <span className="text-amber-400 font-bold">Keep for 2 VP</span>
                       </div>
-                      {tile.unlockedShipPartId && (
-                        <div className="flex justify-between text-cyan-400">
-                          <span>Unlocks Component:</span>
-                          <span className="font-sans">{tile.unlockedShipPartId}</span>
-                        </div>
-                      )}
+                      {(tile.shipPartId || (tile as any).unlockedShipPartId) && (() => {
+                        const partId = tile.shipPartId || (tile as any).unlockedShipPartId;
+                        const part = SHIP_PARTS[partId];
+                        return (
+                          <div className="space-y-1.5 pt-1">
+                            <div className="flex justify-between text-cyan-400">
+                              <span>Unlocks Component:</span>
+                              <span className="font-sans font-semibold">{partId}</span>
+                            </div>
+                            {part && (
+                              <div className="flex items-center gap-2.5 p-2 rounded-lg bg-slate-900/90 border border-slate-800">
+                                <div className="shrink-0">
+                                  <ShipPartTileIconography part={part} size="md" className="w-18 h-18 sm:w-20 sm:h-20" />
+                                </div>
+                                <span className="text-xs text-amber-300 font-sans font-bold">
+                                  {part.name}
+                                </span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </div>
                   </div>
                 );

@@ -11,6 +11,7 @@ import {
 } from '../../engine/rules/combatEngine';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
 import { playerHasWormholeGenerator, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor } from '../../engine/rules/gameReducer';
+import { CombatDieFaceGraphic } from '../common/PhysicalTileIconography';
 
 export interface CombatUnitDisplayGroup {
   key: string;
@@ -783,6 +784,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     >
                       <div className="flex items-center justify-between">
                         <div className="flex items-center gap-2">
+                          <CombatDieFaceGraphic
+                            color={effectiveDieColor}
+                            roll={roll.roll}
+                            size="sm"
+                          />
                           <span
                             className={`font-mono text-xs px-2 py-0.5 rounded font-black flex items-center gap-1.5 ${
                               effectiveDieColor === 'purple'
@@ -814,8 +820,13 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                             <span className="capitalize font-bold">
                               {colorName}
                             </span>
-                            <span>{isPurple ? 'Rift' : `Die #${idx + 1}: ${roll.roll}`}</span>
+                            <span>{isPurple ? 'Rift' : `Die #${idx + 1}`}</span>
                           </span>
+                          {!isPurple && (
+                            <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
+                              (Roll {roll.roll} {pendingSalvo.computerBonus >= 0 ? `+${pendingSalvo.computerBonus}` : pendingSalvo.computerBonus} {shieldBonus > 0 ? `-${shieldBonus}` : ''} = {modified})
+                            </span>
+                          )}
                           <span className="text-[10px] text-slate-400 font-bold">
                             {roll.damage} Dmg
                           </span>
@@ -951,39 +962,46 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         const histDieColor = roll.dieColor || (roll as any).diceColor || (roll as any).color || 'yellow';
                         const colorName = histDieColor.charAt(0).toUpperCase() + histDieColor.slice(1);
                         return (
-                      <span
-                        className={`font-mono text-xs px-2 py-0.5 rounded font-black flex items-center gap-1.5 ${
-                          histDieColor === 'purple'
-                            ? 'bg-purple-900 border border-purple-400 text-purple-100'
-                            : histDieColor === 'red'
-                            ? 'bg-rose-950 text-rose-300 border border-rose-800'
-                            : histDieColor === 'orange'
-                            ? 'bg-orange-950 text-orange-300 border border-orange-800'
-                            : histDieColor === 'blue'
-                            ? 'bg-sky-950 text-sky-300 border border-sky-800'
-                            : 'bg-yellow-950 text-yellow-300 border border-yellow-800'
-                        }`}
-                      >
-                        <span
-                          className="w-2 h-2 rounded-full inline-block shrink-0"
-                          style={{
-                            backgroundColor:
-                              histDieColor === 'purple'
-                                ? '#a855f7'
-                                : histDieColor === 'red'
-                                ? '#ef4444'
-                                : histDieColor === 'orange'
-                                ? '#f97316'
-                                : histDieColor === 'blue'
-                                ? '#0ea5e9'
-                                : '#eab308',
-                          }}
-                        />
-                        <span className="capitalize font-bold text-[10.5px]">
-                          {colorName}
-                        </span>
-                        <span className="font-extrabold text-sm">{isPurple ? 'RIFT' : roll.roll}</span>
-                      </span>
+                          <>
+                            <CombatDieFaceGraphic
+                              color={histDieColor}
+                              roll={roll.roll}
+                              size="sm"
+                            />
+                            <span
+                              className={`font-mono text-xs px-2 py-0.5 rounded font-black flex items-center gap-1.5 ${
+                                histDieColor === 'purple'
+                                  ? 'bg-purple-900 border border-purple-400 text-purple-100'
+                                  : histDieColor === 'red'
+                                  ? 'bg-rose-950 text-rose-300 border border-rose-800'
+                                  : histDieColor === 'orange'
+                                  ? 'bg-orange-950 text-orange-300 border border-orange-800'
+                                  : histDieColor === 'blue'
+                                  ? 'bg-sky-950 text-sky-300 border border-sky-800'
+                                  : 'bg-yellow-950 text-yellow-300 border border-yellow-800'
+                              }`}
+                            >
+                              <span
+                                className="w-2 h-2 rounded-full inline-block shrink-0"
+                                style={{
+                                  backgroundColor:
+                                    histDieColor === 'purple'
+                                      ? '#a855f7'
+                                      : histDieColor === 'red'
+                                      ? '#ef4444'
+                                      : histDieColor === 'orange'
+                                      ? '#f97316'
+                                      : histDieColor === 'blue'
+                                      ? '#0ea5e9'
+                                      : '#eab308',
+                                }}
+                              />
+                              <span className="capitalize font-bold text-[10.5px]">
+                                {colorName}
+                              </span>
+                              <span className="font-extrabold text-xs">{isPurple ? 'Rift' : `#${roll.roll}`}</span>
+                            </span>
+                          </>
                         );
                       })()}
 
