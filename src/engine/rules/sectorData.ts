@@ -1328,6 +1328,11 @@ export interface SectorCatalogEntry {
   ancientsCount: number;
   guardianCount?: number;
   hasGCDS?: boolean;
+  hasWarpPortal?: boolean;
+  isNebula?: boolean;
+  isPulsar?: boolean;
+  isBlackHole?: boolean;
+  isSupernova?: boolean;
   wormholes: boolean[];
   planets: { resource: string; isAdvanced: boolean }[];
   factionName?: string;
@@ -1378,6 +1383,7 @@ export function getAllSectorsCatalog(includeExpansions: boolean = false): Sector
       hasArtifact: cfg.artifact,
       hasDiscovery: cfg.discovery,
       ancientsCount: cfg.ancients,
+      hasWarpPortal: cfg.sectorNum === 281 || !!(cfg as any).hasWarpPortal,
       wormholes: cfg.wh,
       planets: cfg.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
     });
@@ -1445,40 +1451,27 @@ export function getAllSectorsCatalog(includeExpansions: boolean = false): Sector
       hasArtifact: cfg.artifact,
       hasDiscovery: cfg.discovery,
       ancientsCount: cfg.ancients,
+      hasWarpPortal: cfg.sectorNum === 381 || cfg.sectorNum === 382 || !!(cfg as any).hasWarpPortal,
       wormholes: cfg.wh,
       planets: cfg.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
     });
   }
 
   if (includeExpansions) {
-    // 7. Warped Universe Large Warp Sector Tiles (Double-Hex modular boards)
-    const warpDescriptions = [
-      'Tile 1 (Double-Hex Apex): Ring 1 conduit endpoint connects border to border across the apex.',
-      'Tile 2 (Double-Hex Core): Ring 1 stabilization zone adjoining the apex hexes.',
-      'Tile 3 (Double-Hex Left Flank): Ring 2 conduit left gateway endpoint.',
-      'Tile 4 (Double-Hex Central Bridge): Ring 2 central crossway connecting left and right sectors.',
-      'Tile 5 (Double-Hex Right Flank): Ring 2 conduit right gateway endpoint.',
-      'Tile 6 (Double-Hex Spine): Central vertical spine bridging inner rings to the outer rim.',
-      'Tile 7 (Double-Hex Outer Left): Ring 3 conduit left gateway endpoint.',
-      'Tile 8 (Double-Hex Outer Right): Ring 3 conduit right gateway endpoint.',
-      'Tile 9 (Double-Hex Outer Rim Base): Stabilizing outer corner tile anchoring the warp sector boundary.',
-    ];
-
-    for (let i = 1; i <= 9; i++) {
-      entries.push({
-        sectorNumber: 900 + i,
-        name: `Warp Tile ${i} (Double-Hex)`,
-        ring: 'Warp',
-        category: 'Warped Universe',
-        victoryPoints: 0,
-        hasArtifact: false,
-        hasDiscovery: false,
-        ancientsCount: 0,
-        wormholes: [false, false, false, false, false, false],
-        planets: [],
-        factionName: warpDescriptions[i - 1],
-      });
-    }
+    // 7. Warped Universe Large Warp Sector Modular Board (represented as a unified whole)
+    entries.push({
+      sectorNumber: 900,
+      name: 'Large Warp Sector',
+      ring: 'Warp',
+      category: 'Warped Universe',
+      victoryPoints: 0,
+      hasArtifact: false,
+      hasDiscovery: false,
+      ancientsCount: 0,
+      wormholes: [false, false, false, false, false, false],
+      planets: [],
+      factionName: 'Modular Double-Hex Board (18 Hexes, 9 Tiles, 12 Wormhole Conduits)',
+    });
 
     // 8. Galactic Events Phenomenon Sectors
     for (const [secNumStr, cfg] of Object.entries(GALACTIC_EVENTS_CONFIGS)) {
@@ -1500,6 +1493,10 @@ export function getAllSectorsCatalog(includeExpansions: boolean = false): Sector
         hasArtifact: cfg.artifact,
         hasDiscovery: cfg.discovery || cfg.type === 'nebula' || cfg.type === 'black_hole',
         ancientsCount: cfg.type === 'nebula' ? 1 : cfg.ancients,
+        isNebula: cfg.type === 'nebula',
+        isPulsar: cfg.type === 'pulsar',
+        isSupernova: cfg.type === 'supernova',
+        isBlackHole: cfg.type === 'black_hole',
         wormholes: cfg.wh,
         planets: cfg.planets.map((p) => ({ resource: p.resource, isAdvanced: p.isAdvanced })),
         factionName: desc,

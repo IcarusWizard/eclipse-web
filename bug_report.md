@@ -371,3 +371,51 @@
   - **Planta Interceptor Muon Source Location**:
     - In [`ShipBlueprintSlotsLayout.tsx`](file:///home/xyz/eclipse-web/src/components/blueprints/ShipBlueprintSlotsLayout.tsx), added `externalCube?: SlotCoordinate` to `ShipLayoutDef`.
     - Configured Planta Interceptor with `externalCube: { col: 3, row: 0, offsetY: 70 }`. Since the initial empty slot (right wing) is at `{ col: 2, row: 0, offsetY: 70 }`, Muon Source now renders directly to the right of the initial empty slot rather than awkwardly under the bottom preprinted diamond.
+- [x] In-Game Hexagonal Sector Tile Previews and Warped Universe Unified Modular Board in Galactic Gallery:
+  - **Direct In-Game View Alignment (`SectorPreviewGraphic`)**:
+    - Re-architected [`SectorPreviewGraphic.tsx`](file:///home/xyz/eclipse-web/src/components/common/SectorPreviewGraphic.tsx) to directly match the exact in-game visual rendering from [`HexGalaxyMap.tsx`](file:///home/xyz/eclipse-web/src/components/map/HexGalaxyMap.tsx):
+      - Uses identical in-game hex fill (`rgba(15, 23, 42, 0.95)` / phenomenon tones) and stroke (`#334155` / `#cbd5e1`).
+      - Uses identical in-game high-contrast `SEC {number}` badges (and `GCDS 1` for Sector 001 with purple shield).
+      - Uses identical in-game `★ {vp} VP` badges.
+      - Uses identical in-game half-wormhole arcs (`d="M 0 -13 A 13 13 ..."` and inner arc `r=7`) and Home system setup arrows.
+      - Uses [`getPlanetSlotOffset`](file:///home/xyz/eclipse-web/src/components/map/HexGalaxyMap.tsx) with identical in-game square cube slots (`13x13` outer, `6x6` inner) and official resource colors (`#facc15` money, `#ec4899` science, `#854d0e` material).
+      - Uses identical in-game Warp Portals (`#a855f7` swirl), Discovery rotated gold diamonds (`★`), and Artifact cyan diamonds (`A`).
+      - Preserved the clean Ancient ship emblem (with multiplier) and Guardian fortress emblem, as specifically preferred by the user.
+  - **Warped Universe Unified Modular Board Showcase (`WarpSectorPreviewGraphic`)**:
+    - Removed the 9 synthetic fake tiles (`Warp Tile 1` through `Warp Tile 9`) from [`sectorData.ts`](file:///home/xyz/eclipse-web/src/engine/rules/sectorData.ts).
+    - Replaced with a single cohesive entry representing the Large Warp Sector as a whole (`sectorNumber: 900`).
+    - Created [`WarpSectorPreviewGraphic`](file:///home/xyz/eclipse-web/src/components/common/SectorPreviewGraphic.tsx) rendering the complete 18-hex double-hex modular board and all 12 purple conduit splines connecting Ring 1, Ring 2, and Ring 3 across border sectors.
+    - In [`GalacticGalleryModal.tsx`](file:///home/xyz/eclipse-web/src/components/gallery/GalacticGalleryModal.tsx), rendered a featured overview card for Warped Universe detailing non-stopping transit, balanced player count geometry, and Wormhole Generator mechanics alongside the board preview graphic.
+  - **Sector Tiles Tab Graphical Transformation**:
+    - In [`GalacticGalleryModal.tsx`](file:///home/xyz/eclipse-web/src/components/gallery/GalacticGalleryModal.tsx), upgraded each sector tile card in the grid to display [`SectorPreviewGraphic`](file:///home/xyz/eclipse-web/src/components/common/SectorPreviewGraphic.tsx) side-by-side with key metadata, badges, and planetary squares, transitioning from a text-heavy layout to an authentic graphical gallery view.
+- [x] Elimination of Sector Icon Overlaps across Galactic Gallery and In-Game Galaxy Map:
+  - **Preserved Exact Original Population Slot Coordinates (`isCenter ? 10 : 6`)**:
+    - Population slots strictly remain at their original in-game coordinates (`y = 10` for Center, `y = 6` for all other sectors), preventing any overlap with the fleet ship badges at `y + 38` / `y + 34`.
+  - **Sector 1 (Galactic Center 001)**:
+    - Shifted GCDS Shield higher to `(0, -25)` (`translate(-12, -37)` with 24x24 bounds), Artifact diamond to upper-left at `(-26, -24)`, and Discovery tile diamond to upper-right at `(26, -24)`.
+    - Discovery tile bottom sits at `y = -14.1`, leaving **>7.5px of vertical clearance** above the top edge of Row 0 planet slots (`y = -6.5`), completely eliminating overlap while keeping the population slots and ship banner in their original positions.
+  - **Sectors 109, 204, 301, 302, 303 (Ancient + Artifact + Discovery)**:
+    - Distributed icons across 3 distinct columns at `y = -18`: Artifact on the left at `(-26, -18)`, Ancient ship in the center at `(0, -18)`, and Discovery tile on the right at `(26, -18)`.
+    - Provides 26px of clean horizontal clearance between adjacent icons and >7.5px vertical clearance above population slots at `y = 6` (`top = -0.5`), completely preventing the Artifact icon from covering the Ancient emblem or crosshair.
+  - **Terran Sol Home Systems (221–226) & Multi-Planet Systems (>= 4 planets)**:
+    - Whenever a sector contains 4 or more planets and an Artifact, shifted the Artifact icon to the upper-left at `(-26, -22)` instead of `(0, -15)`.
+    - Leaves Row 0 middle planet at `(0, -4)` completely open above, with >5.5px clearance above Row 0 left planet.
+  - **Nebula Sectors (295 & 395)**:
+    - Removed generic center Ancient and Discovery icons from both [`SectorPreviewGraphic.tsx`](file:///home/xyz/eclipse-web/src/components/common/SectorPreviewGraphic.tsx) and [`HexGalaxyMap.tsx`](file:///home/xyz/eclipse-web/src/components/map/HexGalaxyMap.tsx) (and `pendingExplore`).
+    - Dedicated icons are cleanly split across the 3 subsectors: Subsector 1 (top) has Discovery Tile (`Sub 1`), Subsector 2 (bottom-left) has Discovery Tile (`Sub 2`), and Subsector 3 (bottom-right) has Ancient Ship (`Sub 3`).
+  - **Black Hole Sectors (396 & 399)**:
+    - Shifted Discovery tile to the right at `(28, -10)`, placing it safely outside the 18px radius vortex circle and well clear of the return banner (`y = 16..27`).
+  - **Synchronized Across Live Galaxy Map and Exploration Preview**:
+    - Applied the exact same non-overlapping coordinate logic and checks to [`HexGalaxyMap.tsx`](file:///home/xyz/eclipse-web/src/components/map/HexGalaxyMap.tsx) for both rendered board hexes and `pendingExplore` candidate tiles.
+- [x] Combat Hit Logic Fix: Dreadnought with +1 Computer Rolling 5 vs Normal GCDS (0 Shields):
+  - **Root Cause**:
+    - In [`combatEngine.ts`](file:///home/xyz/eclipse-web/src/engine/rules/combatEngine.ts) (lines 695 and 894), when building `salvoRolls` for missile and cannon weapons, `isHit` was hardcoded to `raw === 6`.
+    - When manual damage assignment is active (`autoAssign === false`, which is the default interactive salvo flow), the engine pauses with `pendingDamageAssignment` and sets `activeCombat.lastRolls = salvoRolls`.
+    - Because `isHit` was initialized to `raw === 6`, any die rolling 5 (even with `modifiedRoll = 5 + 1 = 6` against 0-shield GCDS) had `isHit: false`, causing the combat modal under "Recent Salvo Dice Results" to display `MISS` instead of `HIT`, logging `5✗` in the action log, and carrying `isHit: false` into the pending assignment state.
+    - Furthermore, in [`applyManualDamageAssignments`](file:///home/xyz/eclipse-web/src/engine/rules/combatEngine.ts#L456), if `targetShipId` was unselected or empty, `target` became `null`, setting `roll.isHit = false` and causing damage to be lost instead of defaulting to the enemy target.
+  - **Resolution**:
+    - In [`combatEngine.ts`](file:///home/xyz/eclipse-web/src/engine/rules/combatEngine.ts#L690-L705) & [`combatEngine.ts`](file:///home/xyz/eclipse-web/src/engine/rules/combatEngine.ts#L890-L905), properly computed `isHit = raw === 6 || (raw !== 1 && canHitAny)` where `canHitAny = enemyTargets.length === 0 || enemyTargets.some((t) => raw + activeGroup.computerBonus - t.shieldBonus >= 6)`.
+    - In [`applyManualDamageAssignments`](file:///home/xyz/eclipse-web/src/engine/rules/combatEngine.ts#L456), added fallback to `enemyTargets[0]` if `targetShipId` is missing or invalid.
+    - In [`CombatModal.tsx`](file:///home/xyz/eclipse-web/src/components/combat/CombatModal.tsx#L182) and [`App.tsx`](file:///home/xyz/eclipse-web/src/App.tsx#L2480), passed `state.expansions` to `buildCombatUnitsForSector`, and ensured `targetUnit` falls back to `eligibleEnemyTargets[0]` when rendering dice cards.
+    - In [`gameReducer.ts`](file:///home/xyz/eclipse-web/src/engine/rules/gameReducer.ts#L2473), fixed single die damage fallback in Lyra die rerolls to respect die damage values (Orange: 2, Red: 4, Blue: 3, Yellow: 1).
+    - Verified all 230 unit tests pass and production build succeeds.

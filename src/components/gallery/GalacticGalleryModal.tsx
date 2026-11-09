@@ -24,6 +24,8 @@ import {
   TechTileIconography,
   ShipPartTileIconography,
   ShipPartSlotGraphic,
+  SectorPreviewGraphic,
+  WarpSectorPreviewGraphic,
   InitiativeBadge,
   PowerCostBadge,
   DiceGraphic,
@@ -1294,95 +1296,188 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
               </div>
 
               {/* Grid of Sector Cards */}
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5">
                 {filteredSectors.map((sec) => {
                   const wormholeCount = sec.wormholes.filter(Boolean).length;
-                  const isWarp = sec.category === 'Warped Universe';
+                  const isWarp = sec.category === 'Warped Universe' || sec.sectorNumber === 900;
                   const isGE = sec.category === 'Galactic Events';
+                  const isGuardian = sec.category === 'Guardian' || (sec.sectorNumber >= 271 && sec.sectorNumber <= 274);
+
+                  if (isWarp) {
+                    return (
+                      <div
+                        key="warped_universe_board"
+                        className="col-span-1 md:col-span-2 lg:col-span-3 p-5 rounded-2xl border border-purple-800/80 bg-gradient-to-br from-purple-950/40 via-slate-950/90 to-purple-950/20 hover:border-purple-500 transition-all shadow-xl shadow-purple-950/30 flex flex-col md:flex-row items-center gap-6"
+                      >
+                        {/* Left: Full 18-Hex Modular Board with 12 Conduits */}
+                        <div className="shrink-0 flex items-center justify-center p-3 bg-slate-950/90 rounded-2xl border border-purple-800/60 shadow-inner">
+                          <WarpSectorPreviewGraphic size="lg" />
+                        </div>
+
+                        {/* Right: Rules and Details */}
+                        <div className="flex-1 min-w-0 text-left space-y-3">
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-black font-mono text-purple-400">#900</span>
+                                <h4 className="text-base font-bold text-slate-100">{sec.name}</h4>
+                              </div>
+                              <p className="text-xs text-purple-300/90 mt-0.5 font-medium">
+                                Warped Universe Expansion • Modular Double-Hex Board (18 Hexes, 9 Double-Hex Tiles)
+                              </p>
+                            </div>
+                            <span className="text-xs px-2.5 py-1 rounded bg-purple-900/70 text-purple-200 border border-purple-500/80 font-mono font-bold shadow-sm">
+                              WARPED UNIVERSE BOARD
+                            </span>
+                          </div>
+
+                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                            <div className="p-2.5 rounded-lg bg-slate-900/80 border border-purple-900/50 space-y-1">
+                              <span className="font-bold text-purple-300 block flex items-center gap-1.5">
+                                <span>⚡</span> 12 Wormhole Conduits (R1, R2, R3)
+                              </span>
+                              <span className="text-slate-300 text-[11px] leading-relaxed block">
+                                Flow lines create 12 direct conduits linking left and right border sectors across Rings 1, 2, and 3 in exactly 1 Move step.
+                              </span>
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-slate-900/80 border border-purple-900/50 space-y-1">
+                              <span className="font-bold text-purple-300 block flex items-center gap-1.5">
+                                <span>🚀</span> Non-Stopping Transit Zone
+                              </span>
+                              <span className="text-slate-300 text-[11px] leading-relaxed block">
+                                Ships cannot end their move or stop inside the Warp Sector. Ships transit directly from one border sector to the other.
+                              </span>
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-slate-900/80 border border-purple-900/50 space-y-1">
+                              <span className="font-bold text-purple-300 block flex items-center gap-1.5">
+                                <span>⚖️</span> Tighter Player Balance (2–5 Players)
+                              </span>
+                              <span className="text-slate-300 text-[11px] leading-relaxed block">
+                                Eliminates dead space in 2-player to 5-player galaxies. Guardian sectors are replaced by large modular warp sectors.
+                              </span>
+                            </div>
+
+                            <div className="p-2.5 rounded-lg bg-slate-900/80 border border-purple-900/50 space-y-1">
+                              <span className="font-bold text-purple-300 block flex items-center gap-1.5">
+                                <span>🔬</span> Wormhole Generator Synergy
+                              </span>
+                              <span className="text-slate-300 text-[11px] leading-relaxed block">
+                                With Wormhole Generator researched, a conduit connection is valid as long as either sector holds a wormhole on the conduit edge.
+                              </span>
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  }
 
                   return (
                     <div
                       key={`${sec.category}_${sec.sectorNumber}_${sec.name}`}
-                      className={`p-4 rounded-xl border flex flex-col justify-between transition-all ${
-                        isWarp
-                          ? 'border-purple-800/60 bg-purple-950/20 hover:border-purple-500'
-                          : isGE
+                      className={`p-3.5 rounded-xl border flex flex-col justify-between transition-all group ${
+                        isGE
                           ? 'border-emerald-800/60 bg-emerald-950/20 hover:border-emerald-500'
+                          : isGuardian
+                          ? 'border-amber-800/60 bg-amber-950/20 hover:border-amber-500'
                           : 'border-slate-800 bg-slate-950/80 hover:border-slate-600'
                       }`}
                     >
                       <div>
                         {/* Header: Sector #, Name, VP */}
                         <div className="flex items-start justify-between gap-2 mb-2">
-                          <div>
+                          <div className="min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className={`text-sm font-black font-mono ${isWarp ? 'text-purple-400' : isGE ? 'text-emerald-400' : 'text-cyan-400'}`}>
+                              <span className={`text-sm font-black font-mono ${isGE ? 'text-emerald-400' : isGuardian ? 'text-amber-400' : 'text-cyan-400'}`}>
                                 #{String(sec.sectorNumber).padStart(3, '0')}
                               </span>
-                              <h4 className="text-sm font-bold text-slate-100">{sec.name}</h4>
+                              <h4 className="text-sm font-bold text-slate-100 truncate">{sec.name}</h4>
                             </div>
                             {sec.factionName && (
-                              <div className={`text-[10px] font-semibold mt-0.5 ${isWarp ? 'text-purple-300/80' : isGE ? 'text-emerald-300/90' : 'text-amber-400'}`}>
-                                {isWarp ? sec.factionName : isGE ? sec.factionName : `Home of: ${sec.factionName}`}
+                              <div className={`text-[10px] font-semibold mt-0.5 truncate ${isGE ? 'text-emerald-300/90' : 'text-amber-400'}`}>
+                                {sec.category === 'Home System' ? `Home of: ${sec.factionName}` : sec.factionName}
                               </div>
                             )}
                           </div>
                           <div className="flex items-center gap-1.5 shrink-0">
-                            {isWarp ? (
-                              <span className="text-xs px-2 py-0.5 rounded bg-purple-900/60 text-purple-200 border border-purple-500/60 font-mono font-bold">
-                                WARP
+                            {sec.victoryPoints > 0 ? (
+                              <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold">
+                                ★ {sec.victoryPoints} VP
                               </span>
                             ) : isGE ? (
                               <span className="text-xs px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-200 border border-emerald-500/60 font-mono font-bold">
-                                {sec.victoryPoints > 0 ? `${sec.victoryPoints} VP` : 'EVENT'}
+                                EVENT
                               </span>
-                            ) : (
-                              <span className="text-xs px-2 py-0.5 rounded bg-amber-500/20 text-amber-300 border border-amber-500/40 font-mono font-bold">
-                                {sec.victoryPoints} VP
-                              </span>
-                            )}
+                            ) : null}
                           </div>
                         </div>
 
-                        {/* Badges: Ring, Wormholes, Ancients */}
-                        <div className="flex flex-wrap gap-1.5 mb-3">
-                          <span className={`text-[10px] px-2 py-0.5 rounded font-mono ${isWarp ? 'bg-purple-900/40 text-purple-300 border border-purple-700/40' : isGE ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/40' : 'bg-slate-800 text-slate-300'}`}>
-                            {sec.category} (Ring {sec.ring})
-                          </span>
-                          {isWarp ? (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950/60 border border-purple-700/60 text-purple-300 font-mono">
-                              Modular Double-Hex
-                            </span>
-                          ) : (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                              {wormholeCount} / 6 Wormholes
-                            </span>
-                          )}
-                          {sec.ancientsCount > 0 && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-rose-950/50 border border-rose-700/60 text-rose-300 font-mono font-bold">
-                              {sec.ancientsCount} Ancient Ship{sec.ancientsCount > 1 ? 's' : ''}
-                            </span>
-                          )}
-                          {sec.guardianCount && sec.guardianCount > 0 && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950/50 border border-amber-700/60 text-amber-300 font-mono font-bold">
-                              1 Guardian Ship (Sector {sec.sectorNumber})
-                            </span>
-                          )}
-                          {sec.hasGCDS && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-purple-950/50 border border-purple-700/60 text-purple-300 font-mono font-bold">
-                              Galactic Center Defense System (GCDS)
-                            </span>
-                          )}
-                          {sec.hasDiscovery && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950/40 border border-cyan-700/50 text-cyan-300 font-mono">
-                              Discovery Tile Slot
-                            </span>
-                          )}
-                          {sec.hasArtifact && (
-                            <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950/40 border border-amber-700/50 text-amber-300 font-mono">
-                              Artifact Controlled
-                            </span>
-                          )}
+                        {/* Graphic Preview & Key Stats Side-by-Side */}
+                        <div className="flex items-center gap-3 my-2.5">
+                          {/* Hexagonal Sector Preview Graphic */}
+                          <div className="shrink-0 flex items-center justify-center p-1 bg-slate-900/60 rounded-xl border border-slate-800 shadow-md shadow-black/50">
+                            <SectorPreviewGraphic sector={sec} size="md" className="w-24 h-24 sm:w-26 sm:h-26" />
+                          </div>
+
+                          {/* Badges and Encounters */}
+                          <div className="text-[10px] text-slate-400 flex flex-col gap-1.5 flex-1 font-mono min-w-0">
+                            <div className="flex flex-wrap gap-1">
+                              <span className={`px-1.5 py-0.5 rounded text-[9.5px] ${isGE ? 'bg-emerald-900/40 text-emerald-300 border border-emerald-700/40' : 'bg-slate-800 text-slate-300'}`}>
+                                {sec.category} (Ring {sec.ring})
+                              </span>
+                              <span className="px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 text-[9.5px]">
+                                {wormholeCount} / 6 Wormholes
+                              </span>
+                            </div>
+
+                            {sec.ancientsCount > 0 && (
+                              <div className="text-rose-400 font-bold flex items-center gap-1">
+                                <span>Ancients:</span>
+                                <span className="px-1.5 py-0.2 rounded bg-rose-950/60 border border-rose-600/60 text-rose-200">
+                                  {sec.ancientsCount} Ancient Ship{sec.ancientsCount > 1 ? 's' : ''}
+                                </span>
+                              </div>
+                            )}
+
+                            {sec.guardianCount && sec.guardianCount > 0 && (
+                              <div className="text-amber-400 font-bold flex items-center gap-1">
+                                <span>Guardian:</span>
+                                <span className="px-1.5 py-0.2 rounded bg-amber-950/60 border border-amber-600/60 text-amber-200">
+                                  1 Guardian Ship
+                                </span>
+                              </div>
+                            )}
+
+                            {sec.hasGCDS && (
+                              <div className="text-purple-300 font-bold flex items-center gap-1">
+                                <span className="px-1.5 py-0.2 rounded bg-purple-950/80 border border-purple-500 text-purple-200">
+                                  GCDS Defense System
+                                </span>
+                              </div>
+                            )}
+
+                            {sec.hasDiscovery && (
+                              <div className="text-amber-300 flex items-center gap-1">
+                                <span>Discovery:</span>
+                                <span className="text-amber-400 font-bold">1 Discovery Tile</span>
+                              </div>
+                            )}
+
+                            {sec.hasArtifact && (
+                              <div className="text-cyan-300 flex items-center gap-1">
+                                <span>Artifact:</span>
+                                <span className="text-cyan-400 font-bold">Controlled</span>
+                              </div>
+                            )}
+
+                            {sec.hasWarpPortal && (
+                              <div className="text-purple-300 flex items-center gap-1">
+                                <span>Portal:</span>
+                                <span className="text-purple-400 font-bold">Warp Portal (+2 VP)</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         {/* Planets */}
@@ -1419,6 +1514,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                             </div>
                           )}
                         </div>
+
                         {/* Galactic Events Rules Summary */}
                         {isGE && (
                           <div className="p-2 mb-2 rounded-lg bg-emerald-950/40 border border-emerald-700/50 text-[10px] text-emerald-200 space-y-0.5">

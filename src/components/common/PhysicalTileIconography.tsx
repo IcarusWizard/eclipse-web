@@ -2143,3 +2143,7 @@ export const TechHoverTooltip: React.FC<TechHoverTooltipProps> = ({
     </div>
   );
 };
+
+export { SectorPreviewGraphic, WarpSectorPreviewGraphic } from './SectorPreviewGraphic';
+export type { SectorPreviewGraphicProps } from './SectorPreviewGraphic';
+

@@ -1488,12 +1488,12 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
                 {/* Center / Discovery / Ancient / Artifact Badges */}
                 {sector.hasGCDS && (
-                  <g transform={`translate(${x - 14}, ${y - 20})`}>
-                    <Shield className="text-purple-400" width="28" height="28" />
+                  <g transform={`translate(${x - 12}, ${y - 37})`}>
+                    <Shield className="text-purple-400" width="24" height="24" />
                   </g>
                 )}
 
-                {sector.ancientsCount > 0 && !sector.hasGCDS && (
+                {sector.ancientsCount > 0 && !sector.hasGCDS && !sector.isNebula && (
                   <g transform={`translate(${x - 12}, ${y - 20})`}>
                     <Crosshair className="text-rose-500 animate-pulse" width="24" height="24" />
                     <text x="12" y="32" textAnchor="middle" fill="#f43f5e" fontSize="10" fontWeight="bold">
@@ -1508,20 +1508,30 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   const hasWarp = sector.hasWarpPortal || sector.structures?.warpPortal || sector.hasRareWarpPortal || sector.hasDiscoveryWarpPortal;
                   const hasMono = sector.structures?.monolith || sector.hasMonolith;
                   const hasOther = sector.hasGCDS || sector.ancientsCount > 0 || hasDiscovery;
+                  const isMultiPlanet = sector.planets && sector.planets.length >= 4;
+
                   const posX = (hasWarp && hasMono)
                     ? x
+                    : isMultiPlanet
+                    ? x - 26
                     : !hasOther
                     ? x
                     : sector.hasGCDS
-                    ? x - 22
+                    ? x - 26
+                    : (sector.ancientsCount > 0 && hasDiscovery)
+                    ? x - 26
                     : sector.ancientsCount > 0
                     ? x - 26
                     : x - 18;
                   const posY = (hasWarp && hasMono)
                     ? y - 26
+                    : sector.hasGCDS
+                    ? y - 24
+                    : isMultiPlanet
+                    ? y - 22
                     : !hasOther
-                    ? y - 15
-                    : y - 12;
+                    ? y - 18
+                    : y - 18;
 
                   return (
                     <g
@@ -1548,34 +1558,54 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   );
                 })()}
 
-                {(sector.discoveryTile || (sector.hasDiscovery && !sector.discoveryClaimed)) && (
-                  <g
-                    transform={`translate(${sector.ancientsCount > 0 ? x + 18 : sector.hasArtifact ? x + 18 : x}, ${y - 12})`}
-                    className="pointer-events-none"
-                  >
-                    <rect
-                      x="-7"
-                      y="-7"
-                      width="14"
-                      height="14"
-                      rx="2.5"
-                      transform="rotate(45)"
-                      fill="#f59e0b"
-                      stroke="#fbbf24"
-                      strokeWidth="1.5"
-                    />
-                    <text
-                      x="0"
-                      y="3.5"
-                      textAnchor="middle"
-                      fill="#78350f"
-                      fontSize="9"
-                      fontWeight="900"
+                {(sector.discoveryTile || (sector.hasDiscovery && !sector.discoveryClaimed)) && !sector.isNebula && (() => {
+                  const isCenter = sector.hasGCDS || sector.sectorNumber === 1;
+                  const posX = sector.isBlackHole
+                    ? x + 28
+                    : isCenter
+                    ? x + 26
+                    : (sector.ancientsCount > 0 && sector.hasArtifact)
+                    ? x + 26
+                    : sector.ancientsCount > 0
+                    ? x + 18
+                    : sector.hasArtifact
+                    ? x + 18
+                    : x;
+                  const posY = sector.isBlackHole
+                    ? y - 10
+                    : isCenter
+                    ? y - 24
+                    : y - 18;
+
+                  return (
+                    <g
+                      transform={`translate(${posX}, ${posY})`}
+                      className="pointer-events-none"
                     >
-                      ★
-                    </text>
-                  </g>
-                )}
+                      <rect
+                        x="-7"
+                        y="-7"
+                        width="14"
+                        height="14"
+                        rx="2.5"
+                        transform="rotate(45)"
+                        fill="#f59e0b"
+                        stroke="#fbbf24"
+                        strokeWidth="1.5"
+                      />
+                      <text
+                        x="0"
+                        y="3.5"
+                        textAnchor="middle"
+                        fill="#78350f"
+                        fontSize="9"
+                        fontWeight="900"
+                      >
+                        ★
+                      </text>
+                    </g>
+                  );
+                })()}
 
                 {/* Galactic Events: Pulsar Action Spaces */}
                 {sector.isPulsar && (
@@ -2669,7 +2699,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 </text>
 
                 {/* Center / Ancient / Discovery / Artifact Badges */}
-                {pendingExplore.candidateTile.ancientsCount > 0 && (
+                {pendingExplore.candidateTile.ancientsCount > 0 && !pendingExplore.candidateTile.isNebula && (
                   <g transform={`translate(${x - 12}, ${y - 20})`}>
                     <Crosshair className="text-rose-500 animate-pulse" width="24" height="24" />
                     <text x="12" y="32" textAnchor="middle" fill="#f43f5e" fontSize="10" fontWeight="bold">
@@ -2678,41 +2708,66 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   </g>
                 )}
 
-                {pendingExplore.candidateTile.hasDiscovery && (
-                  <g
-                    transform={`translate(${
-                      pendingExplore.candidateTile.ancientsCount > 0
-                        ? x + 18
-                        : pendingExplore.candidateTile.hasArtifact
-                        ? x + 18
-                        : x
-                    }, ${y - 12})`}
-                  >
-                    <rect
-                      x="-7"
-                      y="-7"
-                      width="14"
-                      height="14"
-                      rx="2.5"
-                      transform="rotate(45)"
-                      fill="#f59e0b"
-                      stroke="#fbbf24"
-                      strokeWidth="1.5"
-                    />
-                    <text x="0" y="3.5" textAnchor="middle" fill="#78350f" fontSize="9" fontWeight="900">
-                      ★
-                    </text>
-                  </g>
-                )}
+                {pendingExplore.candidateTile.hasDiscovery && !pendingExplore.candidateTile.isNebula && (() => {
+                  const isCenter = pendingExplore.candidateTile.sectorNumber === 1;
+                  const isBlackHole = pendingExplore.candidateTile.isBlackHole ||
+                    pendingExplore.candidateTile.sectorNumber === 396 ||
+                    pendingExplore.candidateTile.sectorNumber === 399;
+                  const posX = isBlackHole
+                    ? x + 28
+                    : isCenter
+                    ? x + 26
+                    : (pendingExplore.candidateTile.ancientsCount > 0 && pendingExplore.candidateTile.hasArtifact)
+                    ? x + 26
+                    : pendingExplore.candidateTile.ancientsCount > 0
+                    ? x + 18
+                    : pendingExplore.candidateTile.hasArtifact
+                    ? x + 18
+                    : x;
+                  const posY = isBlackHole ? y - 10 : isCenter ? y - 24 : y - 18;
+
+                  return (
+                    <g transform={`translate(${posX}, ${posY})`}>
+                      <rect
+                        x="-7"
+                        y="-7"
+                        width="14"
+                        height="14"
+                        rx="2.5"
+                        transform="rotate(45)"
+                        fill="#f59e0b"
+                        stroke="#fbbf24"
+                        strokeWidth="1.5"
+                      />
+                      <text x="0" y="3.5" textAnchor="middle" fill="#78350f" fontSize="9" fontWeight="900">
+                        ★
+                      </text>
+                    </g>
+                  );
+                })()}
 
                 {pendingExplore.candidateTile.hasArtifact && (() => {
                   const hasOther = pendingExplore.candidateTile.ancientsCount > 0 || pendingExplore.candidateTile.hasDiscovery;
-                  const posX = !hasOther
+                  const isMultiPlanet = pendingExplore.candidateTile.planets && pendingExplore.candidateTile.planets.length >= 4;
+                  const isCenter = pendingExplore.candidateTile.sectorNumber === 1;
+                  const posX = isMultiPlanet
+                    ? x - 26
+                    : isCenter
+                    ? x - 26
+                    : !hasOther
                     ? x
+                    : (pendingExplore.candidateTile.ancientsCount > 0 && pendingExplore.candidateTile.hasDiscovery)
+                    ? x - 26
                     : pendingExplore.candidateTile.ancientsCount > 0
                     ? x - 26
                     : x - 18;
-                  const posY = !hasOther ? y - 15 : y - 12;
+                  const posY = isCenter
+                    ? y - 24
+                    : isMultiPlanet
+                    ? y - 22
+                    : !hasOther
+                    ? y - 18
+                    : y - 18;
 
                   return (
                     <g transform={`translate(${posX}, ${posY})`}>
@@ -2804,7 +2859,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                 )}
 
                 {/* Habitable Planets */}
-                <g transform={`translate(${x}, ${y + 6})`}>
+                <g transform={`translate(${x}, ${y + (pendingExplore.candidateTile.sectorNumber === 1 ? 10 : 6)})`}>
                   {pendingExplore.candidateTile.planets.map((planet, pIdx) => {
                     const { offsetX, offsetY } = getPlanetSlotOffset(pIdx, pendingExplore.candidateTile.planets.length);
 

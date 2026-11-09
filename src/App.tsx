@@ -2477,7 +2477,8 @@ export const App: React.FC = () => {
           sec,
           state.players,
           state.activeCombat.participatingPlayerIds,
-          state.neutralShipBlueprints
+          state.neutralShipBlueprints,
+          state.expansions
         );
         const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
         const aliveUnits = sortUnitsByInitiative(
@@ -2594,7 +2595,8 @@ export const App: React.FC = () => {
             sec,
             currentState.players,
             currentState.activeCombat.participatingPlayerIds,
-            currentState.neutralShipBlueprints
+            currentState.neutralShipBlueprints,
+            currentState.expansions
           );
           const defenderId = currentState.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, currentState.players);
           const aliveUnits = sortUnitsByInitiative(

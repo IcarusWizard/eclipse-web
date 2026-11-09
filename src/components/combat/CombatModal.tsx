@@ -185,7 +185,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       : sector,
     state.players,
     combat.participatingPlayerIds,
-    state.neutralShipBlueprints
+    state.neutralShipBlueprints,
+    state.expansions
   );
   const defenderOwnerId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector, state.players);
   const aliveUnits = sortUnitsByInitiative(
@@ -761,7 +762,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 {pendingSalvo.rolls.map((roll, idx) => {
                   const targetId = selectedTargets[idx] || eligibleEnemyTargets[0]?.id;
-                  const targetUnit = eligibleEnemyTargets.find((u) => u.id === targetId);
+                  const targetUnit = (targetId ? eligibleEnemyTargets.find((u) => u.id === targetId) : null) || eligibleEnemyTargets[0];
                   const isPurple = roll.dieColor === 'purple' || (roll as any).diceColor === 'purple' || (roll as any).color === 'purple';
                   const shieldBonus = targetUnit?.shieldBonus || 0;
                   const modified = isPurple ? roll.roll : roll.roll + pendingSalvo.computerBonus - shieldBonus;

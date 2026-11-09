@@ -26,6 +26,8 @@ import {
   getSectorDefenderOwnerId,
   buildCombatUnitsForSector,
   executeCombatStep,
+  autoAssignSalvoDamage,
+  applyManualDamageAssignments,
   rollPurpleDie,
   applyRiftSelfDamage,
   getCombatShipTypeGroups,
@@ -11232,7 +11234,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           })
         );
         expect(galleryHtml).toContain('Warped Universe');
-        expect(galleryHtml).toContain('Warp Tile 1 (Double-Hex)');
+        expect(galleryHtml).toContain('Large Warp Sector');
         expect(galleryHtml).toContain('Modular Double-Hex');
       });
 
@@ -23221,6 +23223,253 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(plantaInterceptorLayout).toContain('left:192px;top:42px');
         expect(plantaInterceptorLayout).toContain('External Module: Muon Source');
+      });
+
+      it('160. verifies SectorPreviewGraphic authentic hex previews in Galactic Gallery and Warped Universe unified board showcase', async () => {
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { getAllSectorsCatalog } = await import('../rules/sectorData');
+        const { SectorPreviewGraphic, WarpSectorPreviewGraphic } = await import('../../components/common/SectorPreviewGraphic');
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+
+        // 1. Catalog verification: 60 base + 1 unified Large Warp Sector board + 8 Galactic Events = 69 total
+        const catalog = getAllSectorsCatalog(true);
+        expect(catalog.length).toBe(69);
+
+        // Verify NO individual fake warp tiles (901..909)
+        const fakeWarpTiles = catalog.filter((s) => s.name.startsWith('Warp Tile '));
+        expect(fakeWarpTiles.length).toBe(0);
+
+        // Verify Warped Universe is represented as a whole (Large Warp Sector, sector 900)
+        const warpBoard = catalog.find((s) => s.category === 'Warped Universe');
+        expect(warpBoard).toBeDefined();
+        expect(warpBoard?.sectorNumber).toBe(900);
+        expect(warpBoard?.name).toBe('Large Warp Sector');
+
+        // 2. Center Sector 001 Graphic Preview (matches in-game GCDS 1 and Shield)
+        const centerEntry = catalog.find((s) => s.sectorNumber === 1)!;
+        const centerHtml = renderToString(React.createElement(SectorPreviewGraphic, { sector: centerEntry, size: 'md' }));
+        expect(centerHtml).toContain('GCDS 1');
+        expect(centerHtml).toContain('text-purple-400');
+        // 6 half-wormholes matching in-game radius 13 arc
+        const centerWhCount = (centerHtml.match(/M 0 -13 A 13 13/g) || []).length;
+        expect(centerWhCount).toBe(6);
+
+        // 3. Ring 1 Sector 101 Graphic Preview (matches in-game SEC 101, 5 wormholes, money, material, advanced material)
+        const sec101Entry = catalog.find((s) => s.sectorNumber === 101)!;
+        const sec101Html = renderToString(React.createElement(SectorPreviewGraphic, { sector: sec101Entry, size: 'md' }));
+        expect(sec101Html).toContain('SEC 101');
+        expect(sec101Html).toContain('★ 2 VP');
+        const sec101WhCount = (sec101Html.match(/M 0 -13 A 13 13/g) || []).length;
+        expect(sec101WhCount).toBe(5);
+        expect(sec101Html).toContain('#facc15'); // in-game money planet
+        expect(sec101Html).toContain('#854d0e'); // in-game warm brown material planet
+        expect(sec101Html).toContain('★'); // advanced planet star
+
+        // 4. Guardian Sector 271 Graphic Preview (preserves custom Guardian representation)
+        const sec271Entry = catalog.find((s) => s.sectorNumber === 271)!;
+        const sec271Html = renderToString(React.createElement(SectorPreviewGraphic, { sector: sec271Entry, size: 'md' }));
+        expect(sec271Html).toContain('SEC 271');
+        expect(sec271Html).toContain('GUARDIAN');
+        expect(sec271Html).toContain('#f59e0b');
+
+        // 5. Warp Portal Sector 281 Graphic Preview (matches in-game purple swirling portal)
+        const sec281Entry = catalog.find((s) => s.sectorNumber === 281)!;
+        const sec281Html = renderToString(React.createElement(SectorPreviewGraphic, { sector: sec281Entry, size: 'md' }));
+        expect(sec281Html).toContain('SEC 281');
+        expect(sec281Html).toContain('#a855f7'); // in-game purple portal ring
+
+        // 6. Galactic Events Phenomenon Previews (matches in-game Nebula 295, Pulsar 393, Black Hole 396, Supernova 397)
+        const nebula295 = catalog.find((s) => s.sectorNumber === 295)!;
+        const nebulaHtml = renderToString(React.createElement(SectorPreviewGraphic, { sector: nebula295, size: 'md' }));
+        expect(nebulaHtml).toContain('Sub 1');
+        expect(nebulaHtml).toContain('Sub 2');
+        expect(nebulaHtml).toContain('Sub 3');
+
+        const pulsar393 = catalog.find((s) => s.sectorNumber === 393)!;
+        const pulsarHtml = renderToString(React.createElement(SectorPreviewGraphic, { sector: pulsar393, size: 'md' }));
+        expect(pulsarHtml).toContain('MOV');
+        expect(pulsarHtml).toContain('BUI');
+        expect(pulsarHtml).toContain('UPG');
+
+        const bh396 = catalog.find((s) => s.sectorNumber === 396)!;
+        const bhHtml = renderToString(React.createElement(SectorPreviewGraphic, { sector: bh396, size: 'md' }));
+        expect(bhHtml).toContain('BH');
+        expect(bhHtml).toContain('Ring I Return');
+
+        const nova397 = catalog.find((s) => s.sectorNumber === 397)!;
+        const novaHtml = renderToString(React.createElement(SectorPreviewGraphic, { sector: nova397, size: 'md' }));
+        expect(novaHtml).toContain('NOVA');
+
+        // 7. Warped Universe Board Graphic Preview as a whole
+        const warpBoardHtml = renderToString(React.createElement(WarpSectorPreviewGraphic, { size: 'lg' }));
+        expect(warpBoardHtml).toContain('WARP SECTOR');
+        expect(warpBoardHtml).toContain('R1');
+        expect(warpBoardHtml).toContain('R2');
+        expect(warpBoardHtml).toContain('R3');
+        // 18 hexes
+        const warpHexCount = (warpBoardHtml.match(/data-warp-hex=/g) || []).length;
+        expect(warpHexCount).toBe(18);
+        // 12 conduits
+        const splineCount = (warpBoardHtml.match(/data-conduit-spline=/g) || []).length;
+        expect(splineCount).toBe(12);
+
+        // 8. Overlap Elimination Verifications across all requested sectors:
+        // Sector 1 (001): Discovery at (26, -24), Artifact at (-26, -24), Shield at (-12, -37).
+        // Population slots remain strictly at original in-game position y=10 (preventing ship banner overlap).
+        expect(centerHtml).toContain('transform="translate(26, -24)"');
+        expect(centerHtml).toContain('transform="translate(-26, -24)"');
+        expect(centerHtml).toContain('transform="translate(0, 10)"');
+
+        // Sectors 109, 204, 301, 302, 303: 3 distinct columns (Artifact -26, Ancient 0, Discovery +26) at y=-18
+        // Population slots remain strictly at original in-game position y=6.
+        const sec109Entry = catalog.find((s) => s.sectorNumber === 109)!;
+        const sec109Html = renderToString(React.createElement(SectorPreviewGraphic, { sector: sec109Entry, size: 'md' }));
+        expect(sec109Html).toContain('transform="translate(-26, -18)"'); // Artifact left
+        expect(sec109Html).toContain('transform="translate(0, -18)"');   // Ancient center
+        expect(sec109Html).toContain('transform="translate(26, -18)"');  // Discovery right
+        expect(sec109Html).toContain('transform="translate(0, 6)"');     // Planets original position
+
+        // Terran Home Systems (221-226, 5 planets): Artifact placed at upper-left (-26, -22) clearing population slots.
+        // Population slots remain strictly at original in-game position y=6.
+        const terranHomeEntry = catalog.find((s) => s.sectorNumber === 221)!;
+        const terranHomeHtml = renderToString(React.createElement(SectorPreviewGraphic, { sector: terranHomeEntry, size: 'md' }));
+        expect(terranHomeHtml).toContain('transform="translate(-26, -22)"'); // Artifact upper-left
+        expect(terranHomeHtml).not.toContain('transform="translate(0, -18)"'); // Not covering middle planet
+        expect(terranHomeHtml).toContain('transform="translate(0, 6)"');     // Planets original position
+
+        // Nebula 295 & 395: Icons split directly into 3 subsectors, no generic center icons
+        expect(nebulaHtml).toContain('transform="translate(0, -22)"');  // Sub 1 Discovery
+        expect(nebulaHtml).toContain('transform="translate(-26, 16)"'); // Sub 2 Discovery
+        expect(nebulaHtml).toContain('transform="translate(26, 16)"');  // Sub 3 Ancient ship
+        expect(nebulaHtml).not.toContain('transform="translate(0, -18)"');
+
+        // Black Hole 396 & 399: Discovery tile shifted outside the 18px radius vortex to (28, -10)
+        expect(bhHtml).toContain('transform="translate(28, -10)"');
+
+        // 9. GalacticGalleryModal Sector Tiles Tab integration
+        const galleryHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            initialTab: 'sectors',
+            onClose: () => {},
+          })
+        );
+        expect(galleryHtml).toContain('WARPED UNIVERSE BOARD');
+        expect(galleryHtml).toContain('Large Warp Sector');
+        expect(galleryHtml).not.toContain('Warp Tile 1 (Double-Hex)');
+        expect(galleryHtml).toContain('viewBox="-78 -80 156 160"'); // In-game sector previews rendered
+      });
+
+      it('161. verifies combat logic: Dreadnought with +1 computer rolling 5 hits normal GCDS (0 shield)', () => {
+        const game = createInitialGame(2, ['terran_federation', 'orion_hegemony']);
+        const player = game.players[0]!;
+
+        // Dreadnought equipped with 2 orange cannons, 1 blue cannon, +1 electron computer
+        player.blueprints.dreadnought = {
+          type: 'dreadnought',
+          baseInitiative: 0,
+          preprintedComputer: 0,
+          preprintedShield: 0,
+          preprintedHull: 1,
+          slots: [
+            SHIP_PARTS.electron_computer, // +1 comp
+            SHIP_PARTS.plasma_cannon,     // 1 orange die (2 dmg)
+            SHIP_PARTS.plasma_cannon,     // 1 orange die (2 dmg)
+            SHIP_PARTS.soliton_cannon,    // 1 blue die (3 dmg)
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            SHIP_PARTS.hull,
+          ],
+        };
+
+        const centerSector = {
+          ...CENTER_SECTOR,
+          ships: [
+            { id: 'gcds_ship_1', ownerId: 'gcds', type: 'gcds', damage: 0 },
+            { id: 'player_dread_1', ownerId: player.id, type: 'dreadnought', damage: 0 },
+          ],
+        };
+
+        const units = buildCombatUnitsForSector(centerSector, game.players);
+        const gcdsUnit = units.find((u) => u.id === 'gcds_ship_1')!;
+        const dreadUnit = units.find((u) => u.id === 'player_dread_1')!;
+
+        expect(gcdsUnit.shieldBonus).toBe(0);
+        expect(gcdsUnit.maxHull).toBe(7);
+        expect(dreadUnit.computerBonus).toBe(1);
+
+        const combat: any = {
+          sectorId: centerSector.id,
+          attackerOwnerId: player.id,
+          defenderOwnerId: 'gcds',
+          participatingPlayerIds: [player.id, 'gcds'],
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          retreatDeclared: {},
+          missileFiredShipIds: [],
+        };
+
+        // 1. Initial manual assignment salvo: rolls of 5 must have isHit === true (modifiedRoll 6 >= 6 against 0 shield)
+        const step1 = executeCombatStep(units, combat, undefined, 'gcds', false);
+        expect(step1.isPendingAssignment).toBe(true);
+        expect(step1.rolls.length).toBe(3); // 2 orange, 1 blue
+        for (const r of step1.rolls) {
+          if (r.roll === 6 || (r.roll > 1 && r.roll + dreadUnit.computerBonus - gcdsUnit.shieldBonus >= 6)) {
+            expect(r.isHit).toBe(true);
+          } else {
+            expect(r.isHit).toBe(false);
+          }
+        }
+
+        // 2. Test autoAssignSalvoDamage with exact rolls of 5, 5, 5
+        const customSalvo: any = [
+          { shipId: 'player_dread_1', shipOwner: player.id, dieColor: 'orange', roll: 5, modifiedRoll: 6, isHit: false, damage: 2 },
+          { shipId: 'player_dread_1', shipOwner: player.id, dieColor: 'orange', roll: 5, modifiedRoll: 6, isHit: false, damage: 2 },
+          { shipId: 'player_dread_1', shipOwner: player.id, dieColor: 'blue', roll: 5, modifiedRoll: 6, isHit: false, damage: 3 },
+        ];
+        const activeGroup: any = {
+          ownerId: player.id,
+          type: 'dreadnought',
+          computerBonus: 1,
+          shieldBonus: 0,
+        };
+        const combatMock: any = { destroyedShips: [] };
+        const enemyTargets = [gcdsUnit];
+
+        autoAssignSalvoDamage(customSalvo, activeGroup, enemyTargets, combatMock, units);
+        expect(customSalvo[0].isHit).toBe(true);
+        expect(customSalvo[1].isHit).toBe(true);
+        expect(customSalvo[2].isHit).toBe(true);
+        expect(gcdsUnit.currentDamage).toBe(7); // 2 + 2 + 3 = 7
+        expect(combatMock.destroyedShips.some((d: any) => d.shipId === 'gcds_ship_1')).toBe(true);
+
+        // 3. Test applyManualDamageAssignments with roll of 5
+        const manualSalvo: any = {
+          attackerOwnerId: player.id,
+          attackerShipType: 'dreadnought',
+          attackerShipIds: ['player_dread_1'],
+          computerBonus: 1,
+          rolls: [
+            { shipId: 'player_dread_1', shipOwner: player.id, dieColor: 'orange', roll: 5, modifiedRoll: 6, isHit: true, damage: 2 },
+          ],
+          isMissile: false,
+        };
+        const resetGcds: any = { ...gcdsUnit, currentDamage: 0 };
+        const combatMock2: any = { destroyedShips: [] };
+        const manualRes = applyManualDamageAssignments(
+          [{ rollIndex: 0, targetShipId: 'gcds_ship_1' }],
+          manualSalvo,
+          [resetGcds],
+          combatMock2,
+          units
+        );
+        expect(manualRes[0].isHit).toBe(true);
+        expect(resetGcds.currentDamage).toBe(2);
       });
     });
   });

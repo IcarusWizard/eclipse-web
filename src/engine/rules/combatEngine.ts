@@ -145,7 +145,10 @@ export function rollD6(): number {
 }
 
 export const SHIP_SIZE_RANK: Record<string, number> = {
+  gcds: 5,
+  guardian: 4,
   dreadnought: 4,
+  ancient: 3,
   cruiser: 3,
   starbase: 2,
   orbital: 2,
@@ -453,7 +456,7 @@ export function applyManualDamageAssignments(
     const roll = { ...pendingSalvo.rolls[idx]! };
     const assign = assignments.find((a) => a.rollIndex === idx);
     const targetShipId = assign?.targetShipId;
-    const target = targetShipId ? enemyTargets.find((u) => u.id === targetShipId) : null;
+    const target = (targetShipId ? enemyTargets.find((u) => u.id === targetShipId) : null) || enemyTargets[0] || null;
 
     if (roll.dieColor === 'purple') {
       if (roll.selfDamage && roll.selfDamage > 0) {
@@ -686,13 +689,17 @@ export function executeCombatStep(
               });
             } else {
               const raw = rollD6();
+              const canHitAny =
+                enemyTargets.length === 0 ||
+                enemyTargets.some((t) => raw + activeGroup.computerBonus - t.shieldBonus >= 6);
+              const isHit = raw === 6 || (raw !== 1 && canHitAny);
               salvoRolls.push({
                 shipId: ship.id,
                 shipOwner: activeGroup.ownerId,
                 dieColor: weapon.color,
                 roll: raw,
                 modifiedRoll: raw + activeGroup.computerBonus,
-                isHit: raw === 6,
+                isHit,
                 damage: weapon.damage,
               });
             }
@@ -885,13 +892,17 @@ export function executeCombatStep(
           });
         } else {
           const raw = rollD6();
+          const canHitAny =
+            enemyTargets.length === 0 ||
+            enemyTargets.some((t) => raw + activeGroup.computerBonus - t.shieldBonus >= 6);
+          const isHit = raw === 6 || (raw !== 1 && canHitAny);
           salvoRolls.push({
             shipId: ship.id,
             shipOwner: activeGroup.ownerId,
             dieColor: weapon.color,
             roll: raw,
             modifiedRoll: raw + activeGroup.computerBonus,
-            isHit: raw === 6,
+            isHit,
             damage: weapon.damage,
           });
         }

@@ -2470,7 +2470,7 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
     } else {
       newIsHit = modified >= 6;
     }
-    const singleDieDmg = oldDmg > 0 ? oldDmg : targetRoll.dieColor === 'orange' ? 4 : targetRoll.dieColor === 'blue' ? 2 : 1;
+    const singleDieDmg = oldDmg > 0 ? oldDmg : (targetRoll.damage > 0 ? targetRoll.damage : targetRoll.dieColor === 'red' ? 4 : targetRoll.dieColor === 'blue' ? 3 : targetRoll.dieColor === 'orange' ? 2 : 1);
     newDmg = newIsHit ? singleDieDmg : 0;
     targetRoll.roll = newRollVal;
     targetRoll.modifiedRoll = modified;

@@ -434,11 +434,15 @@ export function simulateEngagement(
             });
           } else {
             const raw = rollD6();
+            const canHitAny =
+              enemyTargets.length === 0 ||
+              enemyTargets.some((t) => raw + group.computerBonus - t.shieldBonus >= 6);
+            const isHit = raw === 6 || (raw !== 1 && canHitAny);
             rolls.push({
               rawRoll: raw,
               damage: w.damage,
               dieColor: w.color,
-              isHit: raw === 6,
+              isHit,
             });
           }
         }
@@ -556,11 +560,15 @@ export function simulateEngagement(
               });
             } else {
               const raw = rollD6();
+              const canHitAny =
+                enemyTargets.length === 0 ||
+                enemyTargets.some((t) => raw + group.computerBonus - t.shieldBonus >= 6);
+              const isHit = raw === 6 || (raw !== 1 && canHitAny);
               rolls.push({
                 rawRoll: raw,
                 damage: w.damage,
                 dieColor: w.color,
-                isHit: raw === 6,
+                isHit,
               });
             }
           }
