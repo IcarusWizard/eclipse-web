@@ -5,6 +5,7 @@ import { PlayerState } from '../../engine/types/player';
 import { Technology } from '../../engine/types/tech';
 import { SHIP_PARTS } from '../../engine/rules/partData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from '../../engine/rules/shipValidation';
+import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 
 interface DiscoveryChoiceModalProps {
   discovery: DiscoveryTile;
@@ -490,9 +491,23 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   <Zap className="w-4 h-4 text-amber-400" />
                   <span>External Power Module (Placed Outside Blueprint Grid)</span>
                 </div>
-                <p className="text-[11px] text-slate-300 leading-relaxed">
+                <p className="text-[11px] text-slate-300 leading-relaxed mb-2.5">
                   Attaches to <strong>{selectedShipType.toUpperCase()}</strong> outside the component grid without consuming any of its standard modular slots. Grants <strong>+2 Energy Produced</strong> and <strong>+1 Initiative</strong>.
                 </p>
+                <div className="flex flex-col items-center justify-center p-2.5 bg-slate-950/70 rounded-lg border border-slate-800/80 overflow-x-auto">
+                  <ShipBlueprintSlotsLayout
+                    shipType={selectedShipType}
+                    factionId={player.faction.id}
+                    slots={currentBlueprint.slots}
+                    maxSlots={currentBlueprint.maxSlots}
+                    preprintedPower={currentBlueprint.preprintedPower}
+                    preprintedComputer={currentBlueprint.preprintedComputer}
+                    preprintedShield={currentBlueprint.preprintedShield}
+                    preprintedHull={currentBlueprint.preprintedHull}
+                    externalParts={[...(currentBlueprint.externalParts || []), part]}
+                    size="sm"
+                  />
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5 mb-1">

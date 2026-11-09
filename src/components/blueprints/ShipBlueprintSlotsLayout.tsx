@@ -207,6 +207,7 @@ export interface ShipBlueprintSlotsLayoutProps {
   modifiedSlotIndices?: number[];
   onRevertSlot?: (index: number) => void;
   onClearSlot?: (index: number) => void;
+  onClearExternalPart?: (extIndex: number) => void;
   canModify?: boolean;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
@@ -228,6 +229,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
   modifiedSlotIndices = [],
   onRevertSlot,
   onClearSlot,
+  onClearExternalPart,
   canModify = true,
   size = 'md',
   className = '',
@@ -487,6 +489,21 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
               <div className="absolute top-0.5 right-0.5 flex items-center gap-0.5 text-amber-400 bg-slate-950/80 px-1 py-0.2 rounded-full border border-amber-500/50 z-20">
                 <span className="text-[6.5px] font-mono font-bold leading-none uppercase">EXT</span>
               </div>
+
+              {/* Bottom-Right: Interactive Trash button to detach external module */}
+              {interactive && canModify && onClearExternalPart && (
+                <button
+                  type="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onClearExternalPart(extIdx);
+                  }}
+                  className="absolute bottom-0.5 right-0.5 z-20 p-0.5 rounded bg-rose-950/90 hover:bg-rose-900 border border-rose-600/80 text-rose-300 hover:text-white transition cursor-pointer"
+                  title={`Detach ${extPart.name}`}
+                >
+                  <Trash2 className={size === 'lg' ? 'w-3.5 h-3.5' : 'w-2.5 h-2.5'} />
+                </button>
+              )}
             </div>
           </div>
         );

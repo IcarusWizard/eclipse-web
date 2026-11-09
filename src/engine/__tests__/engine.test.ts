@@ -22957,6 +22957,93 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(wormholeHtml).toContain('M 40 16 A 6 6 0 0 0 40 28'); // Half wormhole on left of shared edge
         expect(wormholeHtml).toContain('M 27 22 H 62'); // Moving arrow crossing through half-wormhole
       });
+
+      it('156. verifies Muon Source outside slots support in Combat Simulator, Discovery Tile installation, and 2 outside slots layout', async () => {
+        const fs = await import('fs');
+        const path = await import('path');
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+
+        // 1. Verify CombatSimulatorModal has checkbox to install Muon Source outside normal slots
+        const simModalSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'simulator', 'CombatSimulatorModal.tsx'), 'utf-8');
+        expect(simModalSource).toContain('Install Muon Source (+2🔋, +1 Init outside slot)');
+        expect(simModalSource).toContain('handleToggleMuonSource');
+        // Verify muon_source was removed from partGroups standard slot options
+        expect(simModalSource).not.toContain("{ id: 'muon_source', name: 'Muon Source (+2🔋, +1 Init)' }");
+
+        // 2. Verify Combat Simulator calculation with Muon Source equipped as an externalPart
+        const { createDefaultSimulatorSide, buildSimulatorUnits } = await import('../rules/combatSimulator');
+        const terranSide = createDefaultSimulatorSide('terran_federation', {
+          shipCounts: { cruiser: 1 },
+        });
+        terranSide.blueprints.cruiser.externalParts = [SHIP_PARTS.muon_source];
+        const stats = calculateBlueprintStats(terranSide.blueprints.cruiser);
+        expect(stats.isValid).toBe(true);
+        expect(stats.totalPowerProduced).toBe(5); // 3 (nuclear source) + 2 (muon source)
+        const units = buildSimulatorUnits(terranSide, 'attacker');
+        expect(units.length).toBe(1);
+        expect(units[0]!.initiative).toBe(stats.totalInitiative);
+
+        // 3. Verify Discovery Tile claim for Muon Source installs outside grid without touching standard slots
+        const discGame = createInitialGame(2, ['orion_hegemony', 'terran_federation']);
+        const orionPlayer = discGame.players[0]!;
+        const muonTile = DISCOVERY_TILES.find((d) => d.id === 'disc_muon_source')!;
+        discGame.pendingDiscovery = {
+          playerId: orionPlayer.id,
+          sectorId: 'sec_orion_home',
+          discovery: muonTile,
+        };
+
+        const orionInterceptorBefore = { ...orionPlayer.blueprints.interceptor };
+        expect(orionInterceptorBefore.preprintedPower).toBe(1); // Orion Interceptor has 1 preprinted power (1 outside slot)
+
+        const discRes = executeAction(discGame, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: orionPlayer.id,
+          sectorId: 'sec_orion_home',
+          keepForVictoryPoints: false,
+          equipShipType: 'interceptor',
+          equipSlotIndex: -1,
+        });
+        expect(discRes.success).toBe(true);
+        const postOrionInterceptor = discRes.newState.players[0]!.blueprints.interceptor;
+        expect(postOrionInterceptor.externalParts?.length).toBe(1);
+        expect(postOrionInterceptor.externalParts![0]!.id).toBe('muon_source');
+        // Standard modular slots were preserved
+        expect(postOrionInterceptor.slots.length).toBe(orionInterceptorBefore.slots.length);
+
+        // 4. Verify ShipBlueprintSlotsLayout renders 2 outside slots:
+        // One for preprinted power + One for Muon Source external module
+        const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
+        const layoutHtml = renderToString(React.createElement(ShipBlueprintSlotsLayout, {
+          shipType: 'interceptor',
+          factionId: 'orion_hegemony',
+          slots: postOrionInterceptor.slots,
+          maxSlots: postOrionInterceptor.maxSlots,
+          preprintedPower: postOrionInterceptor.preprintedPower,
+          externalParts: postOrionInterceptor.externalParts,
+          interactive: true,
+          canModify: true,
+          onClearExternalPart: () => {},
+        }));
+
+        // Contains preprinted +1⚡ badge (outside slot 1)
+        expect(layoutHtml).toContain('+1');
+        // Contains Muon Source EXT badge & trash detach button (outside slot 2)
+        expect(layoutHtml).toContain('EXT');
+        expect(layoutHtml).toContain('Detach Muon Source');
+
+        // 5. Verify DiscoveryChoiceModal renders ShipBlueprintSlotsLayout preview for Muon Source
+        const discModalSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'discovery', 'DiscoveryChoiceModal.tsx'), 'utf-8');
+        expect(discModalSource).toContain('ShipBlueprintSlotsLayout');
+        expect(discModalSource).toContain('externalParts={[...(currentBlueprint.externalParts || []), part]}');
+
+        // 6. Verify ShipBlueprintEditor renders external modules and detach button
+        const editorSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'), 'utf-8');
+        expect(editorSource).toContain('onClearExternalPart');
+        expect(editorSource).toContain('External Module');
+        expect(editorSource).toContain('Detach external module to reserves');
+      });
     });
   });
 });

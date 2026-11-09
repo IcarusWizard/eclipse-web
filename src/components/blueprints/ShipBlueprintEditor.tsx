@@ -558,9 +558,31 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                       handleClearSlot(idx);
                     }
                   }}
+                  onClearExternalPart={() => handleDetachExternalPart()}
                   canModify={remainingActivations > 0}
                   size="lg"
                 />
+
+                {/* External Modules Banner & Detach Action */}
+                {currentExternal.length > 0 && (
+                  <div className="mt-3 flex items-center justify-between p-2 rounded-lg bg-amber-950/40 border border-amber-600/60 text-xs">
+                    <div className="flex items-center gap-2 text-amber-300 font-bold">
+                      <Zap className="w-3.5 h-3.5 text-amber-400" />
+                      <span>External Module ({currentExternal.length}): {currentExternal.map((p) => p.name).join(', ')}</span>
+                    </div>
+                    {(remainingActivations > 0 || modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal)) && (
+                      <button
+                        type="button"
+                        onClick={handleDetachExternalPart}
+                        className="px-2 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-300 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        title="Detach external module to reserves"
+                      >
+                        <Trash2 className="w-3 h-3" />
+                        <span>Detach</span>
+                      </button>
+                    )}
+                  </div>
+                )}
 
                 {/* Optional Attach Muon Source outside grid if available in reserves */}
                 {currentExternal.length === 0 && availableParts.some((p) => p.id === 'muon_source') && (
@@ -664,7 +686,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   const isExtModified = modifiedSlots.some(
                     (m) => m.shipType === activeShipType && m.isExternal
                   );
-                  const canAttachMuon = (isExtModified || remainingActivations > 0) && currentExternal.length === 0;
+                  const canAttachMuon = (isExtModified || remainingActivations > 0);
                   const canEquip = isMuon
                     ? canAttachMuon
                     : selectedSlotIndex !== null && (isSelectedSlotModified || remainingActivations > 0);

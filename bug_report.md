@@ -314,3 +314,17 @@
   - In `ShipBlueprintEditor.tsx`, eliminated the jitter/flicker loop caused by `hover:scale-[1.03]` on available component buttons inside the scrollable container (`overflow-y-auto max-h-[440px]`).
   - Added bottom padding `p-1 pb-3 pr-1.5` to the parts grid container so tiles on the bottom row have adequate clearance from the container boundary.
   - Replaced the CSS bounding box expansion (`hover:scale-[1.03]`) with non-disruptive border and ring highlights (`hover:border-cyan-400 hover:ring-2 hover:ring-cyan-400/40`, `hover:border-amber-400 hover:ring-2 hover:ring-amber-400/50` for ancient components, and `hover:brightness-110`), ensuring steady dimensions and completely eliminating layout shifts or scrollbar oscillation when hovering over any component.
+- [x] Muon Source external outside slots support in Combat Simulator, Discovery Tile Claim, and Multi-Outside-Slots Layout:
+  - **Combat Simulator Checkbox**:
+    - Removed `muon_source` from standard modular slot dropdown options in [`CombatSimulatorModal.tsx`](file:///home/xyz/eclipse-web/src/components/simulator/CombatSimulatorModal.tsx), preventing illegal blueprint configurations caused by putting Muon Source into a standard slot.
+    - Added a dedicated checkbox in the blueprint editor for each ship class: `[x] Install Muon Source (+2🔋, +1 Init outside slot)`.
+    - Toggling the checkbox installs or detaches Muon Source to `externalParts: [SHIP_PARTS.muon_source]`.
+    - Preserved `externalParts` when importing blueprints from active game players.
+  - **Support for 2 Outside Slots**:
+    - When a ship class already has preprinted chassis stats outside the slots (e.g. Orion Interceptor/Cruiser/Dreadnought preprinted power `+1`/`+2`/`+3`, Planta preprinted power `+2`/`+5`, Rho Indi preprinted Gauss Shield `-1`, Exiles preprinted hull `2`), installing Muon Source grants an additional outside slot, resulting in **2 outside slots**.
+    - [`ShipBlueprintSlotsLayout.tsx`](file:///home/xyz/eclipse-web/src/components/blueprints/ShipBlueprintSlotsLayout.tsx) correctly stacks and renders both outside slots (`hasPreprinted ? extIdx + 1 : extIdx`), rendering the preprinted stat slot and the external Muon Source module with the `EXT` badge and initiative badge.
+    - Added `onClearExternalPart` callback and an interactive detach/trash button directly on external module slots in [`ShipBlueprintSlotsLayout.tsx`](file:///home/xyz/eclipse-web/src/components/blueprints/ShipBlueprintSlotsLayout.tsx).
+  - **Discovery Tile Installation Preview**:
+    - In [`DiscoveryChoiceModal.tsx`](file:///home/xyz/eclipse-web/src/components/discovery/DiscoveryChoiceModal.tsx), integrated [`ShipBlueprintSlotsLayout`](file:///home/xyz/eclipse-web/src/components/blueprints/ShipBlueprintSlotsLayout.tsx) to provide a live visual blueprint preview with the external Muon Source module attached outside the grid upon claiming the Ancient Discovery tile.
+  - **Ship Blueprint Upgrader Detach Action**:
+    - In [`ShipBlueprintEditor.tsx`](file:///home/xyz/eclipse-web/src/components/blueprints/ShipBlueprintEditor.tsx), added an external module banner with a "Detach" button allowing players to detach Muon Source back to reserves.

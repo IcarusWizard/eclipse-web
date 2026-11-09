@@ -141,7 +141,6 @@ const getPartGroups = (communityBalance: boolean) => [
       { id: 'fusion_source', name: 'Fusion Source (+6🔋)' },
       { id: 'tachyon_source', name: 'Tachyon Source (+9🔋)' },
       { id: 'zero_point_source', name: 'Zero-Point Source (+12🔋)' },
-      { id: 'muon_source', name: 'Muon Source (+2🔋, +1 Init)' },
       { id: 'hypergrid_source', name: 'Hypergrid Source (+11🔋)' },
     ],
   },
@@ -226,7 +225,11 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
 
     const clonedBps: Record<string, ShipBlueprint> = {};
     for (const [k, v] of Object.entries(p.blueprints)) {
-      clonedBps[k] = { ...v, slots: [...v.slots] };
+      clonedBps[k] = {
+        ...v,
+        slots: [...v.slots],
+        externalParts: v.externalParts ? [...v.externalParts] : [],
+      };
     }
 
     setAttacker((prev) => ({
@@ -248,7 +251,11 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
 
     const clonedBps: Record<string, ShipBlueprint> = {};
     for (const [k, v] of Object.entries(p.blueprints)) {
-      clonedBps[k] = { ...v, slots: [...v.slots] };
+      clonedBps[k] = {
+        ...v,
+        slots: [...v.slots],
+        externalParts: v.externalParts ? [...v.externalParts] : [],
+      };
     }
 
     setDefenders((prev) => {
@@ -834,6 +841,34 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
     });
   };
 
+  // Handle Muon Source toggle (placed outside blueprint slots)
+  const handleToggleMuonSource = (shipType: string, install: boolean) => {
+    onChangeSideConfig((prev) => {
+      const bp = prev.blueprints[shipType];
+      if (!bp) return prev;
+
+      let newExternal = bp.externalParts ? [...bp.externalParts] : [];
+      if (install) {
+        if (!newExternal.some((p) => p.id === 'muon_source')) {
+          newExternal.push(SHIP_PARTS.muon_source);
+        }
+      } else {
+        newExternal = newExternal.filter((p) => p.id !== 'muon_source');
+      }
+
+      return {
+        ...prev,
+        blueprints: {
+          ...prev.blueprints,
+          [shipType]: {
+            ...bp,
+            externalParts: newExternal,
+          },
+        },
+      };
+    });
+  };
+
   const availableShipTypes = useMemo(() => {
     if (sideConfig.isNpc) return [];
     return Object.keys(sideConfig.blueprints);
@@ -1194,8 +1229,30 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 selectedSlotIndex={simSelectedSlotIndex}
                 onSelectSlot={(idx) => setSimSelectedSlotIndex(idx)}
                 onClearSlot={(idx) => handleSlotChange(activeBp.type, idx, null)}
+                onClearExternalPart={() => handleToggleMuonSource(activeBp.type, false)}
                 size="md"
               />
+            </div>
+
+            {/* Muon Source Checkbox (Outside Slot) */}
+            <div className="flex items-center justify-between p-2.5 bg-slate-900/90 border border-amber-600/50 rounded-xl shadow-inner">
+              <label className="flex items-center gap-2.5 cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={Boolean(activeBp.externalParts?.some((p) => p.id === 'muon_source'))}
+                  onChange={(e) => handleToggleMuonSource(activeBp.type, e.target.checked)}
+                  className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-amber-500 w-4 h-4 cursor-pointer accent-amber-500"
+                />
+                <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
+                  <Zap className="w-3.5 h-3.5 text-amber-400" />
+                  Install Muon Source (+2🔋, +1 Init outside slot)
+                </span>
+              </label>
+              {Boolean(activeBp.externalParts?.some((p) => p.id === 'muon_source')) && (
+                <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-950/80 border border-amber-600/60 px-2 py-0.5 rounded-full">
+                  OUTSIDE SLOT EQUIPPED
+                </span>
+              )}
             </div>
 
             {/* Quick-Equip Selector for Selected Square */}
