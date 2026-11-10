@@ -419,3 +419,4 @@
     - In [`CombatModal.tsx`](file:///home/xyz/eclipse-web/src/components/combat/CombatModal.tsx#L182) and [`App.tsx`](file:///home/xyz/eclipse-web/src/App.tsx#L2480), passed `state.expansions` to `buildCombatUnitsForSector`, and ensured `targetUnit` falls back to `eligibleEnemyTargets[0]` when rendering dice cards.
     - In [`gameReducer.ts`](file:///home/xyz/eclipse-web/src/engine/rules/gameReducer.ts#L2473), fixed single die damage fallback in Lyra die rerolls to respect die damage values (Orange: 2, Red: 4, Blue: 3, Yellow: 1).
     - Verified all 230 unit tests pass and production build succeeds.
+- [ ] the influence action is doing in a sequence, so influence the first sector may open the chance to influence another sector that is only possible after influence the first sector (Round 7, ACTION_PHASE, Player: Orion Hegemony, Table #565)
