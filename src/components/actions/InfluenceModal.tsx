@@ -6,7 +6,9 @@ import {
   getMaxInfluenceActivations,
   getInfluenceColonyShipRefreshes,
   playerHasWormholeGenerator,
+  findValidClaimSequence,
 } from '../../engine/rules/gameReducer';
+import type { WarpConduit } from '../../engine/rules/warpedUniverse';
 import {
   CircleDot,
   Rocket,
@@ -28,6 +30,7 @@ interface InfluenceModalProps {
     abandonSectors: string[],
     abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>
   ) => void;
+  warpConduits?: WarpConduit[];
 }
 
 export const InfluenceModal: React.FC<InfluenceModalProps> = ({
@@ -35,6 +38,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
   sectors,
   onClose,
   onConfirm,
+  warpConduits,
 }) => {
   const maxActivations = getMaxInfluenceActivations(player);
   const [claimSectors, setClaimSectors] = useState<string[]>([]);
@@ -47,32 +51,116 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
 
   const isDraco = player.faction.id === 'descendants_of_draco';
 
-  // Sectors eligible to claim:
-  // - Not controlled by anyone
-  // - No hostile forces (ancients, gcds, enemy ships) - Draco coexists peacefully with Ancients!
-  // - Stationed friendly ship OR connected by wormhole to friendly-controlled sector
+  // Sectors eligible to claim (either already selected in claimSectors or reachable next in sequence)
   const eligibleToClaim = useMemo(() => {
-    return sectors.filter((sec) => {
-      if (sec.discOwner) return false;
+    // 1. Base controlled sectors (excluding sectors currently marked for abandonment)
+    const baseControlled = new Set(
+      sectors
+        .filter((s) => s.discOwner === player.id && !abandonSectors.includes(s.id))
+        .map((s) => s.id)
+    );
+    // 2. Currently simulated controlled sectors (including sectors already chosen to claim)
+    const currentControlled = new Set([...baseControlled, ...claimSectors]);
+
+    // Helper: is sector reachable from currentControlled?
+    const isReachable = (sec: SectorTile) => {
+      const hasFriendlyShip = sec.ships.some((s) => s.ownerId === player.id);
+      if (hasFriendlyShip) return true;
+      return sectors.some((other) => {
+        if (other.id === sec.id) return false;
+        const isFriendly =
+          currentControlled.has(other.id) ||
+          other.ships.some((s) => s.ownerId === player.id);
+        if (!isFriendly) return false;
+        return areSectorsConnected(other, sec, hasWormholeGen, warpConduits);
+      });
+    };
+
+    // Helper: is sector directly reachable from baseControlled (without needing any claimSectors)?
+    const isBaseReachable = (sec: SectorTile) => {
+      const hasFriendlyShip = sec.ships.some((s) => s.ownerId === player.id);
+      if (hasFriendlyShip) return true;
+      return sectors.some((other) => {
+        if (other.id === sec.id) return false;
+        const isFriendly =
+          baseControlled.has(other.id) ||
+          other.ships.some((s) => s.ownerId === player.id);
+        if (!isFriendly) return false;
+        return areSectorsConnected(other, sec, hasWormholeGen, warpConduits);
+      });
+    };
+
+    const candidates: Array<{
+      sector: SectorTile;
+      isSelected: boolean;
+      activationIndex: number;
+      unlockedBySectorNumber?: number;
+    }> = [];
+
+    // First, add all currently selected sectors in their sequential order
+    for (let i = 0; i < claimSectors.length; i++) {
+      const secId = claimSectors[i];
+      const sec = sectors.find((s) => s.id === secId);
+      if (!sec) continue;
+
+      let unlockedBySectorNumber: number | undefined;
+      if (!isBaseReachable(sec)) {
+        // Find which earlier claimed sector unlocked it
+        for (let j = 0; j < i; j++) {
+          const prevSec = sectors.find((s) => s.id === claimSectors[j]);
+          if (prevSec && areSectorsConnected(prevSec, sec, hasWormholeGen, warpConduits)) {
+            unlockedBySectorNumber = prevSec.sectorNumber;
+            break;
+          }
+        }
+      }
+
+      candidates.push({
+        sector: sec,
+        isSelected: true,
+        activationIndex: i + 1,
+        unlockedBySectorNumber,
+      });
+    }
+
+    // Next, find all other eligible uncontrolled sectors
+    for (const sec of sectors) {
+      if (claimSectors.includes(sec.id)) continue;
+      if (sec.discOwner) continue;
+      if (sec.isNebula || sec.isBlackHole || sec.isSupernovaExploded) continue;
+
       const hasHostiles =
         (!isDraco && sec.ancientsCount > 0) ||
         sec.hasGCDS ||
         sec.ships.some(
           (s) => s.ownerId !== player.id && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
         );
-      if (hasHostiles) {
-        return false;
+      if (hasHostiles) continue;
+
+      if (!isReachable(sec)) continue;
+
+      let unlockedBySectorNumber: number | undefined;
+      if (!isBaseReachable(sec)) {
+        // Find which claimed sector unlocked this one
+        for (const claimedId of claimSectors) {
+          const prevSec = sectors.find((s) => s.id === claimedId);
+          if (prevSec && areSectorsConnected(prevSec, sec, hasWormholeGen, warpConduits)) {
+            unlockedBySectorNumber = prevSec.sectorNumber;
+            break;
+          }
+        }
       }
-      const hasFriendlyShip = sec.ships.some((s) => s.ownerId === player.id);
-      const hasConnectedFriendly = sectors.some((other) => {
-        if (other.id === sec.id) return false;
-        const isFriendly = other.discOwner === player.id || other.ships.some((s) => s.ownerId === player.id);
-        if (!isFriendly) return false;
-        return areSectorsConnected(other, sec, hasWormholeGen);
+
+      candidates.push({
+        sector: sec,
+        isSelected: false,
+        activationIndex: 0,
+        unlockedBySectorNumber,
       });
-      return hasFriendlyShip || hasConnectedFriendly;
-    });
-  }, [sectors, player.id, hasWormholeGen, isDraco]);
+    }
+
+    return candidates;
+  }, [sectors, player.id, claimSectors, abandonSectors, hasWormholeGen, isDraco, warpConduits]);
 
   // Sectors currently controlled by this player (eligible to abandon)
   const controlledSectors = useMemo(() => {
@@ -87,12 +175,34 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
 
   const toggleClaim = (sectorId: string) => {
     if (claimSectors.includes(sectorId)) {
-      setClaimSectors(claimSectors.filter((id) => id !== sectorId));
+      // Prune any subsequent claim that was only valid because of this claimed sector
+      const remaining = claimSectors.filter((id) => id !== sectorId);
+      const validSeq = findValidClaimSequence(
+        remaining,
+        sectors,
+        player.id,
+        abandonSectors,
+        hasWormholeGen,
+        warpConduits,
+        isDraco
+      );
+      setClaimSectors(validSeq || []);
     } else {
       if (totalActivations >= maxActivations) return;
-      // Also ensure not in abandon
-      setAbandonSectors(abandonSectors.filter((id) => id !== sectorId));
-      setClaimSectors([...claimSectors, sectorId]);
+      const nextClaims = [...claimSectors, sectorId];
+      const validSeq = findValidClaimSequence(
+        nextClaims,
+        sectors,
+        player.id,
+        abandonSectors,
+        hasWormholeGen,
+        warpConduits,
+        isDraco
+      );
+      if (validSeq) {
+        setAbandonSectors(abandonSectors.filter((id) => id !== sectorId));
+        setClaimSectors(validSeq);
+      }
     }
   };
 
@@ -101,9 +211,19 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
       setAbandonSectors(abandonSectors.filter((id) => id !== sectorId));
     } else {
       if (totalActivations >= maxActivations) return;
-      // Also ensure not in claim
-      setClaimSectors(claimSectors.filter((id) => id !== sectorId));
-      setAbandonSectors([...abandonSectors, sectorId]);
+      const nextAbandon = [...abandonSectors, sectorId];
+      setAbandonSectors(nextAbandon);
+      // Re-validate claimSectors in case abandoning this sector broke a connection
+      const validClaims = findValidClaimSequence(
+        claimSectors.filter((id) => id !== sectorId),
+        sectors,
+        player.id,
+        nextAbandon,
+        hasWormholeGen,
+        warpConduits,
+        isDraco
+      );
+      setClaimSectors(validClaims || []);
     }
   };
 
@@ -132,7 +252,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                 </span>
               </h2>
               <p className="text-[11px] text-slate-400 leading-tight">
-                Flip up to {colonyShipRefreshes} Colony Ship{colonyShipRefreshes === 1 ? '' : 's'}, modify Control on up to {maxActivations} sectors.
+                Flip up to {colonyShipRefreshes} Colony Ship{colonyShipRefreshes === 1 ? '' : 's'}, modify Control on up to {maxActivations} sectors in sequence.
               </p>
             </div>
           </div>
@@ -208,7 +328,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5 text-emerald-400" /> Claim Sector Control ({claimSectors.length} selected)
               </span>
-              <span className="text-[11px] text-slate-500">Costs 1 Disc from Track per sector</span>
+              <span className="text-[11px] text-slate-500">1 Disc per sector • Resolved in sequence</span>
             </div>
 
             {eligibleToClaim.length === 0 ? (
@@ -218,26 +338,42 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2">
-                {eligibleToClaim.map((sec) => {
-                  const isSelected = claimSectors.includes(sec.id);
+                {eligibleToClaim.map(({ sector: sec, isSelected, activationIndex, unlockedBySectorNumber }) => {
                   const hasShip = sec.ships.some((s) => s.ownerId === player.id);
+                  const isMaxReached = !isSelected && totalActivations >= maxActivations;
                   return (
                     <div
                       key={sec.id}
-                      onClick={() => toggleClaim(sec.id)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between ${
+                      onClick={() => !isMaxReached && toggleClaim(sec.id)}
+                      className={`p-3 rounded-xl border transition-all ${
+                        isMaxReached
+                          ? 'bg-slate-950/40 border-slate-800/60 opacity-60 cursor-not-allowed'
+                          : 'cursor-pointer'
+                      } flex items-center justify-between ${
                         isSelected
                           ? 'bg-emerald-950/40 border-emerald-500 shadow-md ring-1 ring-emerald-500/50'
-                          : 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                          : !isMaxReached
+                          ? 'bg-slate-950/70 border-slate-800 hover:border-slate-700'
+                          : ''
                       }`}
                     >
                       <div>
-                        <div className="font-bold text-xs text-slate-200 flex items-center gap-1.5">
+                        <div className="font-bold text-xs text-slate-200 flex items-center gap-1.5 flex-wrap">
                           <span>Sector {sec.sectorNumber}</span>
                           <span className="text-[10px] text-slate-500 font-normal">Ring {sec.ring}</span>
                           {hasShip && (
                             <span className="text-[9px] bg-cyan-950 text-cyan-300 px-1 py-0.2 rounded font-mono">
                               Ship stationed
+                            </span>
+                          )}
+                          {isSelected && (
+                            <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-1.5 py-0.2 rounded font-bold">
+                              Activation #{activationIndex}
+                            </span>
+                          )}
+                          {unlockedBySectorNumber && (
+                            <span className="text-[9px] bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 px-1.5 py-0.2 rounded font-medium flex items-center gap-0.5">
+                              ⚡ Unlocked via Sector {unlockedBySectorNumber}
                             </span>
                           )}
                         </div>
@@ -247,13 +383,17 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                       </div>
                       <button
                         type="button"
+                        disabled={isMaxReached}
                         className={`text-xs px-2.5 py-1 rounded font-bold transition-all ${
                           isSelected
-                            ? 'bg-emerald-500 text-slate-950'
+                            ? 'bg-emerald-500 text-slate-950 hover:bg-rose-500 hover:text-white'
+                            : isMaxReached
+                            ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                             : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                         }`}
+                        title={isSelected ? 'Click to unclaim' : isMaxReached ? 'Max activations reached' : 'Click to claim'}
                       >
-                        {isSelected ? 'Claiming' : 'Claim'}
+                        {isSelected ? `Claiming #${activationIndex}` : isMaxReached ? 'Max Reached' : 'Claim'}
                       </button>
                     </div>
                   );

@@ -3393,6 +3393,7 @@ export const App: React.FC = () => {
           sectors={state.sectors}
           onClose={() => setIsInfluenceOpen(false)}
           onConfirm={handleExecuteInfluence}
+          warpConduits={state.warpedUniverse?.conduits}
         />
       )}
 

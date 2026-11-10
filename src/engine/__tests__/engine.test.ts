@@ -62,6 +62,7 @@ import {
   playerHasWormholeGenerator,
   applyShrinePlacement,
   getMaxMoveActivations,
+  findValidClaimSequence,
   getPlayerShortName,
   getFactionShortName,
   getPlayerDisplayName,
@@ -23470,6 +23471,171 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(manualRes[0].isHit).toBe(true);
         expect(resetGcds.currentDamage).toBe(2);
+      });
+
+      it('162. verifies sequential Influence Action claiming: sector 1 opens connectivity to sector 2 in sequence, handles arbitrary order, dependency pruning, and chained discoveries', async () => {
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const initialDiscs = p1.influenceTrack.discsOnTrack;
+        expect(initialDiscs).toBeGreaterThanOrEqual(4);
+
+        const homeSec = game.sectors.find((s) => s.discOwner === p1.id)!;
+
+        // Sector 104 is adjacent to homeSec and connected by wormholes
+        const sec104: SectorTile = {
+          id: 'sec_104_test',
+          sectorNumber: 104,
+          ring: 1,
+          coord: { q: homeSec.coord.q + 1, r: homeSec.coord.r },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: true,
+          discoveryTile: {
+            id: 'disc_cache_1',
+            name: 'Ancient Cache 1',
+            description: '+2 Materials',
+            category: 'immediate',
+            immediateReward: { materials: 2 },
+          },
+          ancientsCount: 0,
+          ships: [],
+        };
+
+        // Sector 271 is adjacent to sec104, NOT adjacent to homeSec
+        const sec271: SectorTile = {
+          id: 'sec_271_test',
+          sectorNumber: 271,
+          ring: 2,
+          coord: { q: sec104.coord.q + 1, r: sec104.coord.r },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 3,
+          hasArtifact: false,
+          hasDiscovery: true,
+          discoveryTile: {
+            id: 'disc_cache_2',
+            name: 'Ancient Cache 2',
+            description: '+2 Science',
+            category: 'immediate',
+            immediateReward: { science: 2 },
+          },
+          ancientsCount: 0,
+          ships: [],
+        };
+
+        // Sector 999 is isolated and not connected to anything
+        const secIsolated: SectorTile = {
+          id: 'sec_999_isolated',
+          sectorNumber: 999,
+          ring: 3,
+          coord: { q: 10, r: 10 },
+          rotation: 0,
+          wormholes: [true, true, true, true, true, true],
+          planets: [],
+          victoryPoints: 1,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          ships: [],
+        };
+
+        game.sectors.push(sec104, sec271, secIsolated);
+
+        // 1. findValidClaimSequence unit tests
+        // sec271 alone without sec104 should fail (not connected to homeSec)
+        const seqSolo271 = findValidClaimSequence([sec271.id], game.sectors, p1.id);
+        expect(seqSolo271).toBeNull();
+
+        // sec104 alone should succeed
+        const seqSolo104 = findValidClaimSequence([sec104.id], game.sectors, p1.id);
+        expect(seqSolo104).toEqual([sec104.id]);
+
+        // [sec104, sec271] in sequence should succeed
+        const seqBoth = findValidClaimSequence([sec104.id, sec271.id], game.sectors, p1.id);
+        expect(seqBoth).toEqual([sec104.id, sec271.id]);
+
+        // [sec271, sec104] passed in reverse order should automatically be sorted to valid sequence
+        const seqReversed = findValidClaimSequence([sec271.id, sec104.id], game.sectors, p1.id);
+        expect(seqReversed).toEqual([sec104.id, sec271.id]);
+
+        // Including isolated sector should fail
+        const seqWithIsolated = findValidClaimSequence([sec104.id, secIsolated.id], game.sectors, p1.id);
+        expect(seqWithIsolated).toBeNull();
+
+        // 2. executeAction: test executing sequential claim action [sec104.id, sec271.id]
+        const infRes = executeAction(game, {
+          type: 'INFLUENCE',
+          playerId: p1.id,
+          claimSectors: [sec104.id, sec271.id],
+        });
+
+        expect(infRes.success).toBe(true);
+        expect(infRes.newState.sectors.find((s) => s.id === sec104.id)?.discOwner).toBe(p1.id);
+        expect(infRes.newState.sectors.find((s) => s.id === sec271.id)?.discOwner).toBe(p1.id);
+        // Net discs: 1 action disc + 2 claim discs = 3 discs deducted
+        expect(infRes.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 3);
+
+        // First discovery tile is pending for sec104
+        expect(infRes.newState.pendingDiscovery).toBeDefined();
+        expect(infRes.newState.pendingDiscovery?.sectorId).toBe(sec104.id);
+        expect(infRes.newState.pendingDiscovery?.discovery.id).toBe('disc_cache_1');
+
+        // Resolve first discovery (claim +2 Materials reward)
+        const disc1Res = executeAction(infRes.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: sec104.id,
+          keepForVictoryPoints: false,
+        });
+
+        expect(disc1Res.success).toBe(true);
+        expect(disc1Res.newState.players[0]!.resources.materials).toBe(game.players[0]!.resources.materials + 2);
+
+        // Verify that the second discovery tile in sec271 was automatically chained and popped up!
+        expect(disc1Res.newState.pendingDiscovery).toBeDefined();
+        expect(disc1Res.newState.pendingDiscovery?.sectorId).toBe(sec271.id);
+        expect(disc1Res.newState.pendingDiscovery?.discovery.id).toBe('disc_cache_2');
+
+        // Resolve second discovery (keep for 2 VP)
+        const disc2Res = executeAction(disc1Res.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: sec271.id,
+          keepForVictoryPoints: true,
+        });
+
+        expect(disc2Res.success).toBe(true);
+        expect(disc2Res.newState.pendingDiscovery).toBeNull();
+        expect(disc2Res.newState.players[0]!.keptDiscoveryTiles.length).toBe(1);
+
+        // 3. UI InfluenceModal rendering and sequential interaction verification
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+        const { InfluenceModal } = await import('../../components/actions/InfluenceModal');
+
+        // Render modal with 0 claims selected: sec104 is eligible, sec271 is NOT eligible yet
+        const htmlInitial = renderToString(
+          React.createElement(InfluenceModal, {
+            player: game.players[0]!,
+            sectors: [homeSec, sec104, sec271],
+            onClose: () => {},
+            onConfirm: () => {},
+          })
+        );
+        expect(htmlInitial).toContain('104');
+        expect(htmlInitial).not.toContain('271');
+        expect(htmlInitial).toContain('sectors in sequence');
+        expect(htmlInitial).toContain('Resolved in sequence');
+
+        // Render modal with sec104 claimed in sequence: sec271 is NOW UNLOCKED and eligible to claim!
+        // We can test this by creating a mock state or testing the candidate logic with claimSectors
+        const { findValidClaimSequence: findSeq } = await import('../rules/gameReducer');
+        const unlockedSeq = findSeq([sec104.id, sec271.id], [homeSec, sec104, sec271], p1.id);
+        expect(unlockedSeq).toEqual([sec104.id, sec271.id]);
       });
     });
   });

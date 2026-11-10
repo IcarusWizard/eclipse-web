@@ -55,6 +55,7 @@ import {
   calculateMinorSpeciesScores,
   MinorSpeciesId,
 } from './minorSpecies';
+import type { WarpConduit } from './warpedUniverse';
 import { commitReplayStep, createCleanSnapshot, isReplayAvailable } from './replay';
 export { commitReplayStep, createCleanSnapshot, isReplayAvailable };
 
@@ -1542,7 +1543,16 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Not enough influence discs on track for the requested claims.' };
       }
 
+      for (const secId of abandoned) {
+        const sec = state.sectors.find((s) => s.id === secId);
+        if (!sec) return { valid: false, error: `Sector ${secId} not found.` };
+        if (sec.discOwner !== player.id) {
+          return { valid: false, error: `You do not control Sector ${sec.sectorNumber}.` };
+        }
+      }
+
       const hasWormholeGen = playerHasWormholeGenerator(player);
+      const isDraco = player.faction.id === 'descendants_of_draco';
 
       for (const secId of claimed) {
         const sec = state.sectors.find((s) => s.id === secId);
@@ -1556,7 +1566,6 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (sec.discOwner) {
           return { valid: false, error: `Sector ${sec.sectorNumber} is already controlled by another player.` };
         }
-        const isDraco = player.faction.id === 'descendants_of_draco';
         const hasHostiles =
           (!isDraco && sec.ancientsCount > 0) ||
           sec.hasGCDS ||
@@ -1566,29 +1575,32 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (hasHostiles) {
           return { valid: false, error: `Cannot claim Sector ${sec.sectorNumber} while hostile forces are present.` };
         }
-        // Rulebook page 14: Uncontrolled sector where only you have a ship OR no opponent ships and wormhole connection exists to friendly sector
-        const hasShips = sec.ships.some((s) => s.ownerId === player.id);
-        const hasConnectedFriendly = state.sectors.some((other) => {
-          if (other.id === sec.id) return false;
-          const isFriendly = other.discOwner === player.id || other.ships.some((s) => s.ownerId === player.id);
-          if (!isFriendly) return false;
-          return areSectorsConnected(other, sec, hasWormholeGen, state.warpedUniverse?.conduits);
-        });
-
-        if (!hasShips && !hasConnectedFriendly) {
-          return {
-            valid: false,
-            error: `Sector ${sec.sectorNumber} must have a friendly ship or a wormhole connection to a friendly-controlled sector.`,
-          };
-        }
       }
 
-      for (const secId of abandoned) {
-        const sec = state.sectors.find((s) => s.id === secId);
-        if (!sec) return { valid: false, error: `Sector ${secId} not found.` };
-        if (sec.discOwner !== player.id) {
-          return { valid: false, error: `You do not control Sector ${sec.sectorNumber}.` };
+      if (claimed.length > 0) {
+        const validSequence = findValidClaimSequence(
+          claimed,
+          state.sectors,
+          player.id,
+          abandoned,
+          hasWormholeGen,
+          state.warpedUniverse?.conduits,
+          isDraco
+        );
+        if (!validSequence) {
+          if (claimed.length === 1) {
+            const failedSec = state.sectors.find((s) => s.id === claimed[0]);
+            return {
+              valid: false,
+              error: `Sector ${failedSec?.sectorNumber || claimed[0]} must have a friendly ship or a wormhole connection to a friendly-controlled sector.`,
+            };
+          }
+          return {
+            valid: false,
+            error: 'Claimed sectors must have a friendly ship or a wormhole connection to a friendly-controlled sector in sequence.',
+          };
         }
+        action.claimSectors = validSequence;
       }
 
       return { valid: true };
@@ -3485,7 +3497,20 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       // Claim sectors next (places influence disc from track)
       if (action.claimSectors) {
-        for (const secId of action.claimSectors) {
+        const hasWormholeGen = playerHasWormholeGenerator(player);
+        const isDraco = player.faction.id === 'descendants_of_draco';
+        const seq =
+          findValidClaimSequence(
+            action.claimSectors,
+            newState.sectors,
+            player.id,
+            [],
+            hasWormholeGen,
+            newState.warpedUniverse?.conduits,
+            isDraco
+          ) || action.claimSectors;
+
+        for (const secId of seq) {
           const sec = newState.sectors.find((s) => s.id === secId);
           if (sec && !sec.discOwner && player.influenceTrack.discsOnTrack > 0) {
             player.influenceTrack.discsOnTrack -= 1;
@@ -3889,6 +3914,18 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         addLog(`${player.name} claimed Discovery Reward: ${disc.name} (${disc.description})!`);
       }
       newState.pendingDiscovery = null;
+      // If there are other sectors claimed by this player with unclaimed discovery tiles, trigger the next one
+      const nextUnclaimedSec = newState.sectors.find(
+        (s) => s.discOwner === player.id && s.discoveryTile && !s.discoveryClaimed && (!s.ancientsCount || s.ancientsCount === 0)
+      );
+      if (nextUnclaimedSec && nextUnclaimedSec.discoveryTile) {
+        newState.pendingDiscovery = {
+          sectorId: nextUnclaimedSec.id,
+          discovery: nextUnclaimedSec.discoveryTile,
+          playerId: player.id,
+        };
+        addLog(`${player.name} uncovered another Ancient artifact "${nextUnclaimedSec.discoveryTile.name}" in Sector ${nextUnclaimedSec.sectorNumber}! Awaiting commander's decision...`);
+      }
       if (newState.phase === 'COMBAT_PHASE') {
         if (!newState.pendingCombatConquest && !newState.activeCombat) {
           checkAndTriggerCombat(newState);
@@ -6613,4 +6650,76 @@ export function getMaxInfluenceActivations(player: PlayerState): number {
 
 export function getInfluenceColonyShipRefreshes(player: PlayerState): number {
   return player.faction.influenceColonyShipRefreshes ?? (player.faction.id === 'wardens_of_magellan' ? 1 : 2);
+}
+
+/**
+ * Finds a valid sequential ordering of sector claims for an Influence Action.
+ * In Eclipse: Second Dawn, influence modifications are executed one at a time,
+ * so claiming sector A can open a wormhole connection that allows claiming sector B.
+ */
+export function findValidClaimSequence(
+  claimedSectorIds: string[],
+  sectors: SectorTile[],
+  playerId: string,
+  abandonedSectorIds: string[] = [],
+  hasWormholeGen: boolean = false,
+  warpConduits?: WarpConduit[],
+  isDraco: boolean = false
+): string[] | null {
+  if (claimedSectorIds.length === 0) return [];
+
+  // Duplicates are not allowed
+  if (new Set(claimedSectorIds).size !== claimedSectorIds.length) {
+    return null;
+  }
+
+  // Verify all claimed sectors exist and are eligible on basic criteria
+  for (const secId of claimedSectorIds) {
+    const sec = sectors.find((s) => s.id === secId);
+    if (!sec) return null;
+    if (sec.isNebula || sec.isBlackHole || sec.isSupernovaExploded) return null;
+    if (sec.discOwner) return null;
+    const hasHostiles =
+      (!isDraco && sec.ancientsCount > 0) ||
+      sec.hasGCDS ||
+      sec.ships.some(
+        (s) => s.ownerId !== playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+      );
+    if (hasHostiles) return null;
+  }
+
+  const remaining = [...claimedSectorIds];
+  const sequence: string[] = [];
+  const currentControlled = new Set(
+    sectors
+      .filter((s) => s.discOwner === playerId && !abandonedSectorIds.includes(s.id))
+      .map((s) => s.id)
+  );
+
+  while (remaining.length > 0) {
+    const nextIdx = remaining.findIndex((secId) => {
+      const sec = sectors.find((s) => s.id === secId);
+      if (!sec) return false;
+      const hasShips = sec.ships.some((s) => s.ownerId === playerId);
+      if (hasShips) return true;
+      return sectors.some((other) => {
+        if (other.id === sec.id) return false;
+        const isFriendly =
+          currentControlled.has(other.id) ||
+          other.ships.some((s) => s.ownerId === playerId);
+        if (!isFriendly) return false;
+        return areSectorsConnected(other, sec, hasWormholeGen, warpConduits);
+      });
+    });
+
+    if (nextIdx === -1) {
+      return null;
+    }
+
+    const nextSecId = remaining.splice(nextIdx, 1)[0];
+    sequence.push(nextSecId);
+    currentControlled.add(nextSecId);
+  }
+
+  return sequence;
 }
