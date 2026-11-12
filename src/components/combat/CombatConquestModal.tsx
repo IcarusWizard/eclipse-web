@@ -15,6 +15,7 @@ import {
   Shield,
   Crosshair,
   Flame,
+  Sparkles,
 } from 'lucide-react';
 
 interface CombatConquestModalProps {
@@ -44,6 +45,17 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
     !isSpectator &&
     (currentSeat === 'all' ||
       (typeof currentSeat === 'number' && state.players[currentSeat]?.id === winner.id));
+
+  if (!canControl) {
+    return (
+      <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
+        <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
+        <span>
+          Waiting for <strong className="text-indigo-300">{winner.name}</strong> to decide whether to control Sector {sector.sectorNumber || sector.id}...
+        </span>
+      </div>
+    );
+  }
 
   const alreadyControls = sector.discOwner === winner.id;
   const hasDiscsAvailable = winner.influenceTrack.discsOnTrack > 0;

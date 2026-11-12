@@ -2077,7 +2077,7 @@ export const getPartTooltip = (p: ShipPart): string => {
   }
   if (p.driveSpeed) lines.push(`🚀 Drive Speed: ${p.driveSpeed}`);
   if (p.initiativeBonus !== 0) {
-    lines.push(`⚡ Initiative: ${p.initiativeBonus > 0 ? `+${p.initiativeBonus}` : p.initiativeBonus}`);
+    lines.push(`Initiative: ${p.initiativeBonus > 0 ? `+${p.initiativeBonus}` : p.initiativeBonus}`);
   }
   if (p.computerBonus > 0) lines.push(`🎯 Computer: +${p.computerBonus}`);
   if (p.shieldBonus > 0) lines.push(`🛡️ Shield: -${p.shieldBonus}`);

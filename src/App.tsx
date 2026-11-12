@@ -16,7 +16,7 @@ import {
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
-import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups } from './engine/rules/combatEngine';
+import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './engine/rules/combatEngine';
 import { getNebulaSubsectorForOuterEdge } from './engine/rules/galacticEvents';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X, Sparkles, Coins, Rocket, CheckCircle2, Check } from 'lucide-react';
@@ -44,6 +44,7 @@ import { FactionDraftModal } from './components/setup/FactionDraftModal';
 import { PulsarModal } from './components/actions/PulsarModal';
 import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
+import { ExploreSectorControlModal } from './components/actions/ExploreSectorControlModal';
 import { BlackHoleReturnModal } from './components/actions/BlackHoleReturnModal';
 import { FirstPassHintModal } from './components/actions/FirstPassHintModal';
 import { BlackHoleDelayedShip, getLegalBlackHoleReturnSectors } from './engine/rules/galacticEvents';
@@ -552,15 +553,7 @@ export const App: React.FC = () => {
             defenderId
           );
           const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
-          const isMissileStage = state.activeCombat.stage === 'missile';
-          const pendingMissileGroups = isMissileStage
-            ? groups.filter(
-                (g) => g.weapons.some((w) => w.isMissile) && !g.shipIds.every((id) => state.activeCombat!.missileFiredShipIds?.includes(id))
-              )
-            : [];
-          const activeGroup = isMissileStage
-            ? (pendingMissileGroups[0] || null)
-            : (groups.length > 0 ? groups[state.activeCombat.currentTurnIndex % groups.length] : null);
+          const activeGroup = getActiveCombatGroup(state.activeCombat, groups);
           if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
             combatDecisionPlayerId = activeGroup.ownerId;
           }
@@ -2328,7 +2321,10 @@ export const App: React.FC = () => {
       saveGameState(res.newState);
       persistTableToServer(res.newState).catch(() => {});
       setState(res.newState);
-      if (conf.actionType === 'EXPLORE' && conf.exploreTargetCoord && conf.exploreFromCoord) {
+      if (res.newState.pendingDiscovery) {
+        setPendingExploreCoords(null);
+        showToast('Reverted to discovery tile decision.');
+      } else if (conf.actionType === 'EXPLORE' && conf.exploreTargetCoord && conf.exploreFromCoord) {
         setPendingExploreCoords({ from: conf.exploreFromCoord, target: conf.exploreTargetCoord });
         showToast('Exploration reverted to tile decision.');
       } else {
@@ -2339,15 +2335,14 @@ export const App: React.FC = () => {
     }
   };
 
-  // Discovery choice flow
+  // Discovery choice flow (Step 1: Resolve Discovery Tile)
   const handleDiscoveryChoice = (
     keepForVictoryPoints: boolean,
     equipShipType?: ShipType,
     equipSlotIndex?: number,
     chosenTechId?: string,
     colonizeOrbitalResource?: 'money' | 'science',
-    chosenResource?: 'money' | 'science' | 'material',
-    claimInfluence?: boolean
+    chosenResource?: 'money' | 'science' | 'material'
   ) => {
     if (!state.pendingDiscovery) return;
     if (!canActForPlayer(state.pendingDiscovery.playerId)) {
@@ -2364,7 +2359,6 @@ export const App: React.FC = () => {
       chosenTechId,
       colonizeOrbitalResource,
       chosenResource,
-      claimInfluence,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -2380,6 +2374,48 @@ export const App: React.FC = () => {
       }
     } else {
       showToast(res.error || 'Failed to claim discovery.');
+    }
+  };
+
+  // Explore Sector Control flow (Step 2: Separate window to decide sector control)
+  const handleExploreControl = (claimInfluence: boolean) => {
+    if (!state.pendingExploreControl) return;
+    if (!canActForPlayer(state.pendingExploreControl.playerId)) {
+      showToast('It is not your turn to decide sector control!');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'EXPLORE_CONTROL',
+      playerId: state.pendingExploreControl.playerId,
+      sectorId: state.pendingExploreControl.sectorId,
+      claimInfluence,
+      requireConfirmation: true,
+    });
+    if (res.success) {
+      setState(res.newState);
+      if (claimInfluence) {
+        showToast('Influence Disc placed on sector!');
+      } else {
+        showToast('Sector left uncontrolled.');
+      }
+    } else {
+      showToast(res.error || 'Failed to resolve sector control.');
+    }
+  };
+
+  const handleBackToDiscoveryChoice = () => {
+    if (!state.pendingExploreControl?.discoverySnapshot) return;
+    try {
+      const restoredState: GameState = JSON.parse(state.pendingExploreControl.discoverySnapshot);
+      restoredState.pendingActionConfirmation = null;
+      lastStateFingerprintRef.current = getStateFingerprint(restoredState);
+      saveGameState(restoredState);
+      persistTableToServer(restoredState).catch(() => {});
+      setState(restoredState);
+      showToast('Returned to discovery tile decision.');
+    } catch (err) {
+      console.error('Failed to restore discovery snapshot', err);
+      showToast('Failed to return to discovery choice.');
     }
   };
 
@@ -2486,15 +2522,7 @@ export const App: React.FC = () => {
           defenderId
         );
         const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
-        const isMissileStage = state.activeCombat.stage === 'missile';
-        const pendingMissileGroups = isMissileStage
-          ? groups.filter(
-              (g) => g.weapons.some((w) => w.isMissile) && !g.shipIds.every((id) => state.activeCombat!.missileFiredShipIds?.includes(id))
-            )
-          : [];
-        const activeGroup = isMissileStage
-          ? (pendingMissileGroups[0] || null)
-          : (groups.length > 0 ? groups[state.activeCombat.currentTurnIndex % groups.length] : null);
+        const activeGroup = getActiveCombatGroup(state.activeCombat, groups);
         if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
           commandingPlayerId = activeGroup.ownerId;
         }
@@ -2604,15 +2632,7 @@ export const App: React.FC = () => {
             defenderId
           );
           const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
-          const isMissileStage = currentState.activeCombat.stage === 'missile';
-          const pendingMissileGroups = isMissileStage
-            ? groups.filter(
-                (g) => g.weapons.some((w) => w.isMissile) && !g.shipIds.every((id) => currentState.activeCombat!.missileFiredShipIds?.includes(id))
-              )
-            : [];
-          const activeGroup = isMissileStage
-            ? (pendingMissileGroups[0] || null)
-            : (groups.length > 0 ? groups[currentState.activeCombat.currentTurnIndex % groups.length] : null);
+          const activeGroup = getActiveCombatGroup(currentState.activeCombat, groups);
           if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
             commandingId = activeGroup.ownerId;
           }
@@ -3072,7 +3092,7 @@ export const App: React.FC = () => {
         </div>
 
         {/* Floating Sector Detail & Fleet Inspector (Top-Right) */}
-        {selectedSector && !isInfluenceOpen && (
+        {selectedSector && !isInfluenceOpen && !state.pendingExploreControl && !state.pendingDiscovery && (
           <div className="absolute top-4 right-4 z-20 max-h-[calc(100vh-140px)] overflow-y-auto scrollbar-thin pointer-events-auto">
             <SectorInspector
               sector={state.sectors.find((s) => s.id === selectedSector.id) || selectedSector}
@@ -3103,7 +3123,16 @@ export const App: React.FC = () => {
         )}
 
         {/* Action Bar (Bottom-Center) - Hidden during exploration, building, moving, and influence so command dock takes focus */}
-        {state.phase === 'ACTION_PHASE' && !pendingExploreCoords && !isBuildOpen && !isMoveOpen && !isInfluenceOpen && (
+        {state.phase === 'ACTION_PHASE' &&
+          !pendingExploreCoords &&
+          !state.pendingDiscovery &&
+          !state.pendingExploreControl &&
+          !state.pendingCombatConquest &&
+          !state.pendingReputationDraw &&
+          !state.pendingArtifactReward &&
+          !isBuildOpen &&
+          !isMoveOpen &&
+          !isInfluenceOpen && (
           <ActionBar
             activePlayer={activePlayer}
             players={state.players}
@@ -3475,12 +3504,25 @@ export const App: React.FC = () => {
       )}
 
       {!state.pendingReputationDraw && state.pendingCombatConquest && (
-        <CombatConquestModal
-          state={state}
-          conquest={state.pendingCombatConquest}
-          currentSeat={currentSeat}
-          onConfirm={handleCombatConquest}
-        />
+        canActForPlayer(state.pendingCombatConquest.winnerPlayerId) ? (
+          <CombatConquestModal
+            state={state}
+            conquest={state.pendingCombatConquest}
+            currentSeat={currentSeat}
+            onConfirm={handleCombatConquest}
+          />
+        ) : (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
+            <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
+            <span>
+              Waiting for{' '}
+              <strong className="text-indigo-300">
+                {state.players.find((p) => p.id === state.pendingCombatConquest!.winnerPlayerId)?.name || 'Commander'}
+              </strong>{' '}
+              to decide whether to control Sector {state.sectors.find((s) => s.id === state.pendingCombatConquest!.sectorId)?.sectorNumber || state.pendingCombatConquest.sectorId}...
+            </span>
+          </div>
+        )
       )}
 
       {!state.pendingReputationDraw && !state.pendingCombatConquest && state.pendingDiscovery && (
@@ -3509,6 +3551,17 @@ export const App: React.FC = () => {
             </span>
           </div>
         )
+      )}
+
+      {/* Step 2 of Explore with Discovery: Separate Window for Sector Control Decision */}
+      {!state.pendingReputationDraw && !state.pendingCombatConquest && !state.pendingDiscovery && state.pendingExploreControl && (
+        <ExploreSectorControlModal
+          state={state}
+          pendingControl={state.pendingExploreControl}
+          currentSeat={currentSeat}
+          onConfirm={handleExploreControl}
+          onBack={state.pendingExploreControl.discoverySnapshot ? handleBackToDiscoveryChoice : undefined}
+        />
       )}
 
       {state.pendingArtifactReward && (

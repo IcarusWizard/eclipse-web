@@ -1004,6 +1004,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             // Combat status & Conquest status (Bug 105)
             const isConquestSector = state.pendingCombatConquest?.sectorId === sector.id;
             const isCombatSector = state.activeCombat?.sectorId === sector.id || isConquestSector;
+            // Explore sector control decision highlight
+            const isExploreControlSector = state.pendingExploreControl?.sectorId === sector.id;
             // Recent action highlight (Bug 87: other players see highlights about what player just did)
             const isActionHighlight = !!(state.lastConfirmedAction?.sectorIds?.includes(sector.id));
             // Staged for abandonment in bankruptcy plan (Bug 111)
@@ -1013,6 +1015,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? isConquestSector
                 ? 'rgba(245, 158, 11, 0.22)'
                 : 'rgba(225, 29, 72, 0.25)'
+              : isExploreControlSector
+              ? 'rgba(6, 182, 212, 0.28)'
               : sector.isSupernovaExploded
               ? 'rgba(239, 68, 68, 0.22)'
               : sector.isSupernova
@@ -1037,6 +1041,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? isConquestSector
                 ? '#f59e0b'
                 : '#f43f5e'
+              : isExploreControlSector
+              ? '#06b6d4'
               : sector.isSupernovaExploded
               ? '#ef4444'
               : sector.isSupernova
@@ -1059,7 +1065,21 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? '#cbd5e1'
               : '#334155';
 
-            let hexStrokeWidth = isCombatSector ? '4.5' : isActionHighlight ? '3.5' : isSelected ? '3' : isStagedAbandon ? '3' : owner ? '2.5' : isCenter ? '2.2' : '1.5';
+            let hexStrokeWidth = isCombatSector
+              ? '4.5'
+              : isExploreControlSector
+              ? '4.5'
+              : isActionHighlight
+              ? '3.5'
+              : isSelected
+              ? '3'
+              : isStagedAbandon
+              ? '3'
+              : owner
+              ? '2.5'
+              : isCenter
+              ? '2.2'
+              : '1.5';
             let hexStrokeDasharray: string | undefined = isStagedAbandon ? '4 3' : undefined;
 
             if (buildMode) {
@@ -1186,6 +1206,16 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     points={getHexCornerPoints(x, y, HEX_RADIUS + 4)}
                     fill="none"
                     stroke={isConquestSector ? '#f59e0b' : '#f43f5e'}
+                    strokeWidth="3.5"
+                    strokeDasharray="6 3"
+                    className="animate-pulse pointer-events-none"
+                  />
+                )}
+                {isExploreControlSector && !isCombatSector && (
+                  <polygon
+                    points={getHexCornerPoints(x, y, HEX_RADIUS + 4)}
+                    fill="rgba(6, 182, 212, 0.18)"
+                    stroke="#06b6d4"
                     strokeWidth="3.5"
                     strokeDasharray="6 3"
                     className="animate-pulse pointer-events-none"

@@ -4367,16 +4367,64 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(discChoiceRes.newState.pendingDiscovery).toBeNull();
         // 2 VP tile recorded
         expect(discChoiceRes.newState.players[0]!.keptDiscoveryTiles.length).toBe(1);
-        // Action confirmation is now set with canRevert: true (Bug 100: allowed to revert discovery choice before confirming)
-        expect(discChoiceRes.newState.pendingActionConfirmation).not.toBeNull();
-        expect(discChoiceRes.newState.pendingActionConfirmation?.actionType).toBe('EXPLORE');
-        expect(discChoiceRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
-        expect(discChoiceRes.newState.pendingActionConfirmation?.description).toContain('resolved discovery');
+        // Sequential Flow: pendingExploreControl is set for Window 2
+        expect(discChoiceRes.newState.pendingExploreControl).not.toBeNull();
+        expect(discChoiceRes.newState.pendingExploreControl?.sectorId).toBe(exploreRes.newState.pendingDiscovery!.sectorId);
+
+        // Window 2: Player 1 decides sector control in separate step
+        const controlRes = executeAction(discChoiceRes.newState, {
+          type: 'EXPLORE_CONTROL',
+          playerId: p1.id,
+          sectorId: discChoiceRes.newState.pendingExploreControl!.sectorId,
+          claimInfluence: false,
+          requireConfirmation: true,
+        });
+
+        expect(controlRes.success).toBe(true);
+        expect(controlRes.newState.pendingExploreControl).toBeNull();
+        expect(controlRes.newState.pendingActionConfirmation).not.toBeNull();
+        expect(controlRes.newState.pendingActionConfirmation?.actionType).toBe('EXPLORE');
+        expect(controlRes.newState.pendingActionConfirmation?.description).toContain('resolved discovery');
+        expect(controlRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
+        expect(controlRes.newState.pendingActionConfirmation?.snapshot).toBeDefined();
         // Still Player 1's turn pending confirmation
-        expect(discChoiceRes.newState.activePlayerIndex).toBe(0);
+        expect(controlRes.newState.activePlayerIndex).toBe(0);
+
+        // 2b. Reversible Explore with Discovery: Player changes mind before Confirm & End Turn!
+        const revertRes = executeAction(controlRes.newState, {
+          type: 'REVERT_TURN_ACTION',
+          playerId: p1.id,
+        });
+        expect(revertRes.success).toBe(true);
+        expect(revertRes.newState.pendingDiscovery).not.toBeNull();
+        expect(revertRes.newState.pendingDiscovery?.sectorId).toBe(exploreRes.newState.pendingDiscovery!.sectorId);
+        expect(revertRes.newState.players[0]!.keptDiscoveryTiles.length).toBe(0);
+        expect(revertRes.newState.pendingActionConfirmation).toBeNull();
+
+        // 2c. Player makes second choice, transitioning to Step 2 (control), and then can also use discoverySnapshot directly
+        const secondChoiceRes = executeAction(revertRes.newState, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: exploreRes.newState.pendingDiscovery!.sectorId,
+          keepForVictoryPoints: true,
+          requireConfirmation: true,
+        });
+        expect(secondChoiceRes.success).toBe(true);
+        expect(secondChoiceRes.newState.pendingExploreControl?.discoverySnapshot).toBeDefined();
+
+        // Step 2 control decision
+        const finalControlRes = executeAction(secondChoiceRes.newState, {
+          type: 'EXPLORE_CONTROL',
+          playerId: p1.id,
+          sectorId: secondChoiceRes.newState.pendingExploreControl!.sectorId,
+          claimInfluence: false,
+          requireConfirmation: true,
+        });
+        expect(finalControlRes.success).toBe(true);
+        expect(finalControlRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
 
         // 3. Confirming turn action cleanly finalizes and advances to Player 2
-        const confirmRes = executeAction(discChoiceRes.newState, {
+        const confirmRes = executeAction(finalControlRes.newState, {
           type: 'CONFIRM_TURN_ACTION',
           playerId: p1.id,
         });
@@ -16102,10 +16150,9 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
             onConfirm: () => {},
           })
         );
-        expect(conquestSpectatorHtml).toContain('Spectator Mode (Observing Conquest by Terran Directorate)');
         expect(conquestSpectatorHtml).toContain('Waiting for');
         expect(conquestSpectatorHtml).toContain('Terran Directorate');
-        expect(conquestSpectatorHtml).toContain('disabled=""');
+        expect(conquestSpectatorHtml).toContain('to decide whether to control Sector');
 
         // 5. FactionDraftModal spectator rendering
         game.phase = 'DRAFT_PHASE';
@@ -18119,8 +18166,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(exploredState.pendingDiscovery).toBeDefined();
         expect(exploredState.pendingDiscovery?.fromExplore).toBe(true);
 
-        // DiscoveryChoiceModal: if user does NOT control the sector and leaves claimInfluence false,
-        // orbital colonization is disabled and warning is shown
+        // DiscoveryChoiceModal: renders the Discovery Tile resolution screen without combined sector control
         const uncontrolledHtml = renderToString(
           React.createElement(DiscoveryChoiceModal, {
             discovery: ancientOrbitalTile,
@@ -18131,9 +18177,21 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
             onChoice: () => {},
           })
         );
-        expect(uncontrolledHtml).toContain('Sector Control Decision');
-        expect(uncontrolledHtml).toContain('Control Sector (-1 Influence Disc)');
-        expect(uncontrolledHtml).toContain('Leave Uncontrolled');
+        expect(uncontrolledHtml).toContain('Ancient Orbital Habitat');
+        expect(uncontrolledHtml).toContain('will be placed in this sector. You will decide whether to control this sector in the next step');
+
+        // ExploreSectorControlModal: renders the distinct, dedicated Sector Control Decision window
+        const { ExploreSectorControlModal } = await import('../../components/actions/ExploreSectorControlModal');
+        const controlModalHtml = renderToString(
+          React.createElement(ExploreSectorControlModal, {
+            state: exploredState,
+            pendingControl: { sectorId: placedSector.id, playerId: p1.id },
+            onConfirm: () => {},
+          })
+        );
+        expect(controlModalHtml).toContain('Sector Control Decision');
+        expect(controlModalHtml).toContain('Control Sector');
+        expect(controlModalHtml).toContain('Leave Uncontrolled');
 
         // Bug 205: Engine strictly prevents colonizing ancient orbital if player chooses not to control
         const resolvedNoControl = executeAction(exploredState, {
@@ -23636,6 +23694,295 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const { findValidClaimSequence: findSeq } = await import('../rules/gameReducer');
         const unlockedSeq = findSeq([sec104.id, sec271.id], [homeSec, sec104, sec271], p1.id);
         expect(unlockedSeq).toEqual([sec104.id, sec271.id]);
+      });
+
+      test('163. verifies fixes for Playtest Bugs 1, 2, 3, 4, 5 (Build sector default, sequential pass display, init icon, conquest waiting screen, and combat turn order)', async () => {
+        const React = (await import('react')).default;
+        const { renderToString } = await import('react-dom/server');
+
+        // -------------------------------------------------------------
+        // Bug 1: BuildModal defaults new item's sector to previous slot's sector
+        // -------------------------------------------------------------
+        const { BuildModal } = await import('../../components/actions/BuildModal');
+        const game = createInitialGame(2);
+        const p1 = game.players[0]!;
+        const secHome = game.sectors.find((s) => s.discOwner === p1.id)!;
+        const secOutpost: SectorTile = {
+          id: 'sec_outpost_104',
+          sectorNumber: 104,
+          ring: 1,
+          coord: { q: 1, r: -1 },
+          rotation: 0,
+          planets: [],
+          ships: [],
+          discOwner: p1.id,
+          hasWormhole: [true, true, false, false, false, false],
+        };
+        game.sectors.push(secOutpost);
+
+        // When slots has an item built in sec_outpost_104, adding a slot defaults to sec_outpost_104
+        let capturedSlots: any[] = [];
+        const initialSlots = [
+          { sectorId: secOutpost.id, itemType: 'interceptor' as const },
+        ];
+        const buildHtml = renderToString(
+          React.createElement(BuildModal, {
+            player: p1,
+            sectors: [secHome, secOutpost],
+            eligibleSectors: [secHome, secOutpost],
+            slots: initialSlots,
+            activeSlotIndex: 0,
+            onChangeSlots: (newSlots: any) => { capturedSlots = newSlots; },
+            onSelectSlotIndex: () => {},
+            onClose: () => {},
+            onBuild: () => {},
+          })
+        );
+        expect(buildHtml).toContain('Sector <!-- -->104');
+
+        // -------------------------------------------------------------
+        // Bug 2: Explore Discovery sequential flow (Discovery choice first, then Sector Control in separate window)
+        // -------------------------------------------------------------
+        const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+        const { ExploreSectorControlModal } = await import('../../components/actions/ExploreSectorControlModal');
+
+        const testDiscoveryTile: DiscoveryTile = {
+          id: 'disc_ion_cannon',
+          name: 'Ion Cannon',
+          shipPartId: 'ion_cannon',
+          description: 'Ship part upgrade',
+        };
+
+        const secExplore2 = {
+          id: 'sec_explore_seq_2',
+          sectorNumber: 205,
+          coord: { q: 1, r: -1 },
+          ring: 2 as const,
+          rotation: 0,
+          planets: [],
+          ships: [],
+          hasWormhole: [true, true, false, false, false, false],
+        };
+        game.sectors.push(secExplore2);
+
+        // Window 1: Discovery Choice Modal strictly shows Discovery Tile options, NOT sector control buttons
+        const discModalHtml = renderToString(
+          React.createElement(DiscoveryChoiceModal, {
+            discovery: testDiscoveryTile,
+            player: p1,
+            sectors: game.sectors,
+            sectorId: secExplore2.id,
+            fromExplore: true,
+            onChoice: () => {},
+          })
+        );
+        expect(discModalHtml).toContain('Ion Cannon');
+        expect(discModalHtml).not.toContain('Sector Control Decision');
+
+        // Window 2: Explore Sector Control Modal prompts commander for Influence Disc placement
+        const exploreControlModalHtml = renderToString(
+          React.createElement(ExploreSectorControlModal, {
+            state: game,
+            pendingControl: { sectorId: secExplore2.id, playerId: p1.id },
+            onConfirm: () => {},
+          })
+        );
+        expect(exploreControlModalHtml).toContain('Sector Control Decision');
+        expect(exploreControlModalHtml).toContain('205');
+        expect(exploreControlModalHtml).toContain('Control Sector');
+        expect(exploreControlModalHtml).toContain('Leave Uncontrolled');
+
+        // Engine execution: resolving DISCOVERY_CHOICE transitions to pendingExploreControl
+        const stateWithPendingDisc: GameState = {
+          ...game,
+          pendingDiscovery: {
+            sectorId: secExplore2.id,
+            discovery: testDiscoveryTile,
+            playerId: p1.id,
+            fromExplore: true,
+          },
+        };
+        const resStep1 = executeAction(stateWithPendingDisc, {
+          type: 'DISCOVERY_CHOICE',
+          playerId: p1.id,
+          sectorId: secExplore2.id,
+          keepForVictoryPoints: true,
+        });
+        expect(resStep1.success).toBe(true);
+        expect(resStep1.newState.pendingDiscovery).toBeNull();
+        expect(resStep1.newState.pendingExploreControl).not.toBeNull();
+        expect(resStep1.newState.pendingExploreControl?.sectorId).toBe(secExplore2.id);
+
+        // Step 2: EXPLORE_CONTROL places influence disc and finalizes explore
+        const initialDiscs = p1.influenceTrack.discsOnTrack;
+        const resStep2 = executeAction(resStep1.newState, {
+          type: 'EXPLORE_CONTROL',
+          playerId: p1.id,
+          sectorId: secExplore2.id,
+          claimInfluence: true,
+        });
+        expect(resStep2.success).toBe(true);
+        expect(resStep2.newState.pendingExploreControl).toBeNull();
+        const finalSec = resStep2.newState.sectors.find((s) => s.id === secExplore2.id)!;
+        expect(finalSec.discOwner).toBe(p1.id);
+        expect(resStep2.newState.players[0]!.influenceTrack.discsOnTrack).toBe(initialDiscs - 1);
+
+        // -------------------------------------------------------------
+        // Bug 3: Initiative hover details must NOT use lightning symbol
+        // -------------------------------------------------------------
+        const { getPartTooltip } = await import('../../components/common/PhysicalTileIconography');
+        const tachyonDrive = SHIP_PARTS.tachyon_drive;
+        const driveTooltip = getPartTooltip(tachyonDrive);
+        // Power consumed uses lightning
+        expect(driveTooltip).toContain('⚡ Power Consumed: -3');
+        // Initiative bonus does NOT use lightning
+        expect(driveTooltip).toContain('Initiative: +3');
+        expect(driveTooltip).not.toContain('⚡ Initiative:');
+
+        // -------------------------------------------------------------
+        // Bug 4: Combat Conquest window visible only to winner
+        // -------------------------------------------------------------
+        const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+        // Winner view (currentSeat matches winner): renders conquest interaction modal
+        const winnerConquestHtml = renderToString(
+          React.createElement(CombatConquestModal, {
+            state: game,
+            conquest: {
+              sectorId: secHome.id,
+              winnerPlayerId: p1.id,
+              canClaimInfluence: true,
+            },
+            currentSeat: 0, // Player 1 is seat 0
+            onConfirm: () => {},
+          })
+        );
+        expect(winnerConquestHtml).toContain('SECTOR CONQUEST');
+        expect(winnerConquestHtml).toContain('Confirm Conquest');
+
+        // Non-winner view (currentSeat is opponent seat 1): renders waiting banner only
+        const opponentConquestHtml = renderToString(
+          React.createElement(CombatConquestModal, {
+            state: game,
+            conquest: {
+              sectorId: secHome.id,
+              winnerPlayerId: p1.id,
+              canClaimInfluence: true,
+            },
+            currentSeat: 1, // Player 2 is seat 1
+            onConfirm: () => {},
+          })
+        );
+        expect(opponentConquestHtml).not.toContain('SECTOR CONQUEST');
+        expect(opponentConquestHtml).not.toContain('Claim Sector Control');
+        expect(opponentConquestHtml).toContain('Waiting for');
+        expect(opponentConquestHtml).toContain(p1.name);
+        expect(opponentConquestHtml).toContain('to decide whether to control Sector');
+
+        // -------------------------------------------------------------
+        // Bug 5: Combat initiative progression when a ship is destroyed during combat
+        // (Scenario from Round 8 Table 481: Orion Int [init 5] + Orion Cru [init 4] vs Mech Cru [init 2])
+        // -------------------------------------------------------------
+        const { getActiveCombatGroup, getCombatShipTypeGroups, executeCombatStep } = await import('../rules/combatEngine');
+
+        const orionIntShip = {
+          id: 'orion_int_1',
+          ownerId: 'player_2',
+          type: 'interceptor',
+          initiative: 5,
+          maxHull: 1,
+          currentDamage: 0,
+          computerBonus: 0,
+          shieldBonus: 1,
+          weapons: [{ color: 'orange', damage: 2, count: 1 }],
+        };
+        const orionCruShip = {
+          id: 'orion_cru_1',
+          ownerId: 'player_2',
+          type: 'cruiser',
+          initiative: 4,
+          maxHull: 2,
+          currentDamage: 0,
+          computerBonus: 1,
+          shieldBonus: 1,
+          weapons: [{ color: 'orange', damage: 2, count: 2 }],
+        };
+        const mechCruShip = {
+          id: 'mech_cru_1',
+          ownerId: 'player_1',
+          type: 'cruiser',
+          initiative: 2,
+          maxHull: 3,
+          currentDamage: 0,
+          computerBonus: 2,
+          shieldBonus: 0,
+          weapons: [{ color: 'blue', damage: 3, count: 1 }],
+        };
+
+        const combatUnits = [orionIntShip, orionCruShip, mechCruShip];
+        const combatState: CombatState = {
+          sectorId: 'sector_109',
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          roundActedGroupKeys: [],
+          lastRolls: [],
+          retreatDeclared: {},
+          missileFiredShipIds: [],
+        };
+
+        // Round 1, Turn 1: groups are [Orion Int (5), Orion Cru (4), Mech Cru (2)]
+        const groupsR1T1 = getCombatShipTypeGroups(combatUnits);
+        expect(groupsR1T1.map(g => g.groupKey)).toEqual(['player_2_interceptor', 'player_2_cruiser', 'player_1_cruiser']);
+        const activeT1 = getActiveCombatGroup(combatState, groupsR1T1);
+        expect(activeT1?.groupKey).toBe('player_2_interceptor');
+
+        // Turn 1 resolves: Orion Interceptor acts
+        combatState.roundActedGroupKeys = ['player_2_interceptor'];
+        combatState.currentTurnIndex += 1;
+
+        // Round 1, Turn 2: Orion Cruiser (4) acts next
+        const activeT2 = getActiveCombatGroup(combatState, groupsR1T1);
+        expect(activeT2?.groupKey).toBe('player_2_cruiser');
+
+        // Turn 2 resolves: Orion Cruiser acts
+        combatState.roundActedGroupKeys = ['player_2_interceptor', 'player_2_cruiser'];
+        combatState.currentTurnIndex += 1;
+
+        // Round 1, Turn 3: Mech Cruiser (2) acts next
+        const activeT3 = getActiveCombatGroup(combatState, groupsR1T1);
+        expect(activeT3?.groupKey).toBe('player_1_cruiser');
+
+        // Turn 3 resolves: Mech Cruiser attacks and DESTROYS Orion Interceptor!
+        orionIntShip.currentDamage = orionIntShip.maxHull; // Orion Interceptor destroyed!
+        combatState.roundActedGroupKeys = ['player_2_interceptor', 'player_2_cruiser', 'player_1_cruiser'];
+        combatState.currentTurnIndex += 1;
+
+        // Now: Surviving units are Orion Cruiser (4) and Mech Cruiser (2).
+        // Both already acted in Round 1.
+        // Therefore, Round 1 is complete! A new Engagement Round (Round 2) MUST begin!
+        // When executeCombatStep runs or getActiveCombatGroup is checked:
+        const survivingUnits = combatUnits.filter(u => u.currentDamage < u.maxHull);
+        const groupsR2 = getCombatShipTypeGroups(survivingUnits);
+        expect(groupsR2.map(g => g.groupKey)).toEqual(['player_2_cruiser', 'player_1_cruiser']);
+
+        // In Round 2, who acts first?
+        // ORION CRUISER (Initiative 4) MUST ACT FIRST, NOT Mechanema Cruiser!
+        // Step execution transitions to Round 2:
+        const stepResult = executeCombatStep(
+          combatUnits,
+          combatState,
+          undefined,
+          undefined,
+          true // autoAssign
+        );
+        // Round number advanced to at least 2 (new engagement round began)
+        expect(combatState.roundNumber).toBeGreaterThanOrEqual(2);
+        // Active group that fired in this step was Orion Cruiser (initiative 4)!
+        expect(combatState.lastRolls[0]?.shipOwner).toBe('player_2');
+        expect(stepResult.rolls[0]?.shipOwner).toBe('player_2');
+        // If combat is still ongoing, RoundActedGroupKeys now contains Orion Cruiser; if Mech Cruiser was destroyed, round ended
+        expect(combatState.roundActedGroupKeys).toEqual(stepResult.isCombatOver ? [] : ['player_2_cruiser']);
       });
     });
   });

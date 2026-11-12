@@ -278,9 +278,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
           break;
         }
       }
+      const lastSlotSectorId = slots[slots.length - 1]?.sectorId;
+      const defaultSectorId =
+        lastSlotSectorId && eligibleSectors.some((s) => s.id === lastSlotSectorId)
+          ? lastSlotSectorId
+          : eligibleSectors[0]?.id || '';
       const newSlots = [
         ...slots,
-        { sectorId: eligibleSectors[0]?.id || '', itemType: defaultType },
+        { sectorId: defaultSectorId, itemType: defaultType },
       ];
       onChangeSlots(newSlots);
       onSelectSlotIndex(newSlots.length - 1);

@@ -22,6 +22,7 @@ import { getPlayerShortName, getPlayerDisplayName, playerHasWormholeGenerator, c
 import {
   X,
   Zap,
+  Timer,
   Heart,
   Navigation,
   Crosshair,
@@ -1494,7 +1495,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               {/* Init */}
                               <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
                                 <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
-                                  <Zap className="w-2.5 h-2.5 text-indigo-400" />
+                                  <Timer className="w-2.5 h-2.5 text-indigo-400" />
                                   <span>Init</span>
                                 </div>
                                 <div className="text-xs font-bold text-indigo-300 mt-0.5">

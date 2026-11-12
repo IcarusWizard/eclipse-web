@@ -351,6 +351,35 @@ export function getCombatShipTypeGroups(
   return groups;
 }
 
+export function getActiveCombatGroup(
+  combat: CombatState,
+  groups: CombatShipGroup[]
+): CombatShipGroup | null {
+  if (combat.stage === 'resolved' || groups.length === 0) {
+    return null;
+  }
+  if (combat.pendingDamageAssignment) {
+    const key = `${combat.pendingDamageAssignment.attackerOwnerId}_${combat.pendingDamageAssignment.attackerShipType}`;
+    const found = groups.find((g) => g.groupKey === key);
+    if (found) return found;
+  }
+  if (combat.stage === 'missile') {
+    const pendingMissileGroups = groups.filter(
+      (g) =>
+        g.weapons.some((w) => w.isMissile) &&
+        !g.shipIds.every((id) => combat.missileFiredShipIds?.includes(id))
+    );
+    return pendingMissileGroups[0] || null;
+  }
+  // Regular stage
+  const actedKeys = combat.roundActedGroupKeys || [];
+  const pendingGroups = groups.filter((g) => !actedKeys.includes(g.groupKey));
+  if (pendingGroups.length > 0) {
+    return pendingGroups[0];
+  }
+  return groups[0] || null;
+}
+
 export function autoAssignSalvoDamage(
   rolls: CombatRoll[],
   activeGroup: CombatShipGroup,
@@ -589,6 +618,7 @@ export function executeCombatStep(
         activeCombat.stage = 'regular';
         activeCombat.roundNumber = 1;
         activeCombat.currentTurnIndex = -1;
+        activeCombat.roundActedGroupKeys = [];
       }
       return {
         updatedUnits: units,
@@ -607,10 +637,19 @@ export function executeCombatStep(
         };
       }
 
+      activeCombat.roundActedGroupKeys = activeCombat.roundActedGroupKeys || [];
+      const key = `${pendingSalvo.attackerOwnerId}_${pendingSalvo.attackerShipType}`;
+      if (!activeCombat.roundActedGroupKeys.includes(key)) {
+        activeCombat.roundActedGroupKeys.push(key);
+      }
+
       const groups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
-      const unitIndex = activeCombat.currentTurnIndex % (groups.length || 1);
-      if (unitIndex + 1 >= groups.length) {
+      const nextPending = groups.filter(
+        (g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey)
+      );
+      if (nextPending.length === 0) {
         activeCombat.roundNumber += 1;
+        activeCombat.roundActedGroupKeys = [];
         for (const u of remainingAlive) {
           if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
             u.currentDamage = Math.max(0, u.currentDamage - 1);
@@ -647,6 +686,7 @@ export function executeCombatStep(
       activeCombat.stage = 'regular';
       activeCombat.roundNumber = 1;
       activeCombat.currentTurnIndex = 0;
+      activeCombat.roundActedGroupKeys = [];
     } else {
       const activeGroup = pendingMissileGroups[0]!;
       for (const sid of activeGroup.shipIds) {
@@ -751,6 +791,7 @@ export function executeCombatStep(
         activeCombat.stage = 'regular';
         activeCombat.roundNumber = 1;
         activeCombat.currentTurnIndex = -1;
+        activeCombat.roundActedGroupKeys = [];
       }
 
       return {
@@ -791,8 +832,20 @@ export function executeCombatStep(
     };
   }
 
-  const groupIndex = activeCombat.currentTurnIndex % groups.length;
-  const activeGroup = groups[groupIndex];
+  activeCombat.roundActedGroupKeys = activeCombat.roundActedGroupKeys || [];
+  let pendingGroups = groups.filter((g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey));
+  if (pendingGroups.length === 0) {
+    activeCombat.roundNumber += 1;
+    activeCombat.roundActedGroupKeys = [];
+    for (const u of aliveUnits) {
+      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
+        u.currentDamage = Math.max(0, u.currentDamage - 1);
+      }
+    }
+    pendingGroups = groups;
+  }
+
+  const activeGroup = pendingGroups[0];
 
   if (!activeGroup) {
     return {
@@ -821,6 +874,11 @@ export function executeCombatStep(
       if (!activeCombat.retreatAttemptedPlayerIds.includes(activeGroup.ownerId)) {
         activeCombat.retreatAttemptedPlayerIds.push(activeGroup.ownerId);
       }
+    }
+
+    activeCombat.roundActedGroupKeys = activeCombat.roundActedGroupKeys || [];
+    if (!activeCombat.roundActedGroupKeys.includes(activeGroup.groupKey)) {
+      activeCombat.roundActedGroupKeys.push(activeGroup.groupKey);
     }
 
     return {
@@ -863,6 +921,11 @@ export function executeCombatStep(
   // Choose eligible enemy target
   const enemyTargets = aliveUnits.filter((u) => u.ownerId !== activeGroup.ownerId);
   if (enemyTargets.length === 0) {
+    activeCombat.roundActedGroupKeys = activeCombat.roundActedGroupKeys || [];
+    if (!activeCombat.roundActedGroupKeys.includes(activeGroup.groupKey)) {
+      activeCombat.roundActedGroupKeys.push(activeGroup.groupKey);
+    }
+
     return {
       updatedUnits: units,
       rolls: [],
@@ -932,11 +995,23 @@ export function executeCombatStep(
 
   // Auto-assign salvo damage
   autoAssignSalvoDamage(salvoRolls, activeGroup, enemyTargets, activeCombat, units);
+  activeCombat.lastRolls = salvoRolls;
+
+  activeCombat.roundActedGroupKeys = activeCombat.roundActedGroupKeys || [];
+  if (!activeCombat.roundActedGroupKeys.includes(activeGroup.groupKey)) {
+    activeCombat.roundActedGroupKeys.push(activeGroup.groupKey);
+  }
 
   // Check round completion
-  if (groupIndex + 1 >= groups.length) {
+  const survivingAlive = aliveUnits.filter((u) => u.currentDamage < u.maxHull);
+  const remainingGroups = getCombatShipTypeGroups(survivingAlive, effectiveDefenderId);
+  const remainingPending = remainingGroups.filter(
+    (g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey)
+  );
+  if (remainingPending.length === 0) {
     activeCombat.roundNumber += 1;
-    for (const u of aliveUnits) {
+    activeCombat.roundActedGroupKeys = [];
+    for (const u of survivingAlive) {
       if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
         u.currentDamage = Math.max(0, u.currentDamage - 1);
       }

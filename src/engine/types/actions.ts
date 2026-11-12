@@ -20,6 +20,7 @@ export type ActionType =
   | 'RESOLVE_COMBAT_STEP'
   | 'END_ROUND'
   | 'DISCOVERY_CHOICE'
+  | 'EXPLORE_CONTROL'
   | 'COMBAT_CONQUEST'
   | 'ALLOCATE_ARTIFACT_REWARD'
   | 'ABANDON_SECTOR_BANKRUPTCY'
@@ -151,6 +152,12 @@ export interface DiscoveryChoiceAction extends BaseAction {
   colonizeOrbitalResource?: 'money' | 'science'; // For Ancient Orbital discovery when colonizing with ready colony ship
   chosenResource?: 'money' | 'science' | 'material'; // For +3 Money +3 Resource discovery tile
   claimInfluence?: boolean; // For Explore action: decide whether to place an Influence Disc to control sector after seeing discovery tile (Bug 204)
+}
+
+export interface ExploreControlAction extends BaseAction {
+  type: 'EXPLORE_CONTROL';
+  sectorId: string;
+  claimInfluence: boolean;
 }
 
 export interface DiplomacyExchangeAction extends BaseAction {
@@ -317,6 +324,7 @@ export type GameAction =
   | TradeAction
   | PassAction
   | DiscoveryChoiceAction
+  | ExploreControlAction
   | DiplomacyExchangeAction
   | ProposeDiplomacyAction
   | RespondDiplomacyAction

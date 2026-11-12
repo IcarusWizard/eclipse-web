@@ -59,6 +59,7 @@ export interface CombatState {
     initiative: number;
   }[];
   currentTurnIndex: number;
+  roundActedGroupKeys?: string[];
   lastRolls: CombatRoll[];
   retreatDeclared: Record<string, string>; // shipId -> destinationSectorId
   retreatAttemptedPlayerIds?: string[];
@@ -96,6 +97,12 @@ export interface PendingDiscovery {
   discovery: DiscoveryTile;
   playerId: string;
   fromExplore?: boolean;
+}
+
+export interface PendingExploreControl {
+  sectorId: string;
+  playerId: string;
+  discoverySnapshot?: string;
 }
 
 export interface BombardmentRoll {
@@ -238,6 +245,7 @@ export interface GameState {
   pendingExplore: PendingExplore | null;
   pendingExploreActivations?: number; // for multi-activation explore (e.g. Planta)
   pendingDiscovery: PendingDiscovery | null;
+  pendingExploreControl?: PendingExploreControl | null;
   pendingCombatConquest: PendingCombatConquest | null;
   pendingArtifactReward?: PendingArtifactReward | null;
   pendingBankruptcy?: PendingBankruptcy | null;

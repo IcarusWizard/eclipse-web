@@ -35,7 +35,7 @@ import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack } from './economyEngine';
-import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups } from './combatEngine';
+import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import {
@@ -733,6 +733,24 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return {
         valid: false,
         error: 'Must finish or cancel pending explore activations before taking another action or passing.',
+      };
+    }
+  }
+
+  // Pending discovery or explore sector control: must resolve exploration before taking another action or passing
+  if ((state.pendingDiscovery || state.pendingExploreControl) && state.phase === 'ACTION_PHASE') {
+    if (
+      action.type === 'EXPLORE' ||
+      action.type === 'BUILD' ||
+      action.type === 'UPGRADE' ||
+      action.type === 'MOVE' ||
+      action.type === 'RESEARCH' ||
+      action.type === 'INFLUENCE' ||
+      action.type === 'PASS'
+    ) {
+      return {
+        valid: false,
+        error: 'Must resolve current exploration (discovery tile & sector control) before taking another action.',
       };
     }
   }
@@ -1816,6 +1834,23 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'EXPLORE_CONTROL': {
+      if (!state.pendingExploreControl) {
+        return { valid: false, error: 'No explore sector control decision pending.' };
+      }
+      if (state.pendingExploreControl.playerId !== action.playerId) {
+        return { valid: false, error: 'Only the exploring player can make this choice.' };
+      }
+      const sector = state.sectors.find((s) => s.id === action.sectorId);
+      if (!sector) return { valid: false, error: 'Sector not found.' };
+      if (action.claimInfluence && sector.discOwner !== action.playerId) {
+        if (player.influenceTrack.discsOnTrack <= 0) {
+          return { valid: false, error: 'No influence discs available on track to control this sector.' };
+        }
+      }
+      return { valid: true };
+    }
+
     case 'COMBAT_CONQUEST': {
       if (!state.pendingCombatConquest) {
         return { valid: false, error: 'No combat conquest decision pending.' };
@@ -1937,17 +1972,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (aliveUnits.length > 0) {
         const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
         if (groups.length > 0) {
-          const isMissileStage = state.activeCombat.stage === 'missile';
-          const pendingMissileGroups = isMissileStage
-            ? groups.filter(
-                (g) =>
-                  g.weapons.some((w) => w.isMissile) &&
-                  !g.shipIds.every((id) => state.activeCombat!.missileFiredShipIds?.includes(id))
-              )
-            : [];
-          const activeGroup = isMissileStage
-            ? (pendingMissileGroups[0] || null)
-            : groups[state.activeCombat.currentTurnIndex % groups.length];
+          const activeGroup = getActiveCombatGroup(state.activeCombat, groups);
 
           if (activeGroup) {
             const isPlayerShip = state.players.some((p) => p.id === activeGroup.ownerId);
@@ -3709,6 +3734,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           };
         }
       }
+      const wasFromExplore = Boolean(state.pendingDiscovery.fromExplore);
       const sector = newState.sectors.find((s) => s.id === newState.pendingDiscovery!.sectorId);
       if (sector) {
         sector.discoveryClaimed = true;
@@ -3914,6 +3940,23 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         addLog(`${player.name} claimed Discovery Reward: ${disc.name} (${disc.description})!`);
       }
       newState.pendingDiscovery = null;
+
+      // Bug: Two-step explore for sectors with discovery tile:
+      // Step 1 was Discovery Choice. Step 2 is Sector Control decision.
+      if (typeof action.claimInfluence !== 'boolean' && wasFromExplore && sector && !sector.discOwner && (!sector.ancientsCount || sector.ancientsCount === 0 || player.faction.id === 'descendants_of_draco')) {
+        if (player.influenceTrack.discsOnTrack > 0) {
+          const discoverySnapshot = snapshotJson || JSON.stringify({ ...state, pendingActionConfirmation: null });
+          newState.pendingExploreControl = {
+            sectorId: sector.id,
+            playerId: player.id,
+            discoverySnapshot,
+          };
+          return { success: true, newState };
+        } else {
+          addLog(`${player.name} has no Influence Discs remaining on track to control Sector ${sector.sectorNumber || sector.id}.`);
+        }
+      }
+
       // If there are other sectors claimed by this player with unclaimed discovery tiles, trigger the next one
       const nextUnclaimedSec = newState.sectors.find(
         (s) => s.discOwner === player.id && s.discoveryTile && !s.discoveryClaimed && (!s.ancientsCount || s.ancientsCount === 0)
@@ -3933,6 +3976,49 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         return { success: true, newState };
       }
       break;
+    }
+
+    case 'EXPLORE_CONTROL': {
+      if (!newState.pendingExploreControl || newState.pendingExploreControl.playerId !== player.id) {
+        return { success: false, newState: state, error: 'No explore sector control decision pending for this player.' };
+      }
+      const sector = newState.sectors.find((s) => s.id === action.sectorId);
+      if (!sector) {
+        return { success: false, newState: state, error: 'Sector not found.' };
+      }
+
+      if (action.claimInfluence && !sector.isNebula && !sector.isBlackHole) {
+        if (!sector.discOwner && player.influenceTrack.discsOnTrack > 0) {
+          player.influenceTrack.discsOnTrack -= 1;
+          sector.discOwner = player.id;
+          if (sector.isPulsar) {
+            sector.pulsarSlot = 'move';
+            if (!newState.galacticEvents) newState.galacticEvents = createGalacticEventsState();
+            newState.galacticEvents.pulsars[sector.id] = { currentSlot: 'move', activatedThisRound: false };
+          }
+          addLog(`${player.name} placed an Influence Disc on Sector ${sector.sectorNumber || sector.id} to take control!`);
+        }
+      } else {
+        addLog(`${player.name} chose not to control Sector ${sector.sectorNumber || sector.id}.`);
+      }
+
+      const discoverySnapshot = state.pendingExploreControl.discoverySnapshot;
+      newState.pendingExploreControl = null;
+
+      if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
+        return { success: true, newState };
+      }
+
+      newState.pendingActionConfirmation = {
+        actionType: 'EXPLORE',
+        playerId: player.id,
+        description: 'Explored sector & resolved discovery',
+        canRevert: true,
+        snapshot: discoverySnapshot || snapshotJson || JSON.stringify({ ...state, pendingActionConfirmation: null }),
+        actionPayload: action,
+      };
+
+      return { success: true, newState };
     }
 
     case 'COMBAT_CONQUEST': {
@@ -4668,6 +4754,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} upgraded ship blueprints`;
       } else if (conf.actionType === 'INFLUENCE') {
         highlightSummary = `${actingPlayer ? actingPlayer.name : 'Commander'} refreshed colony ships & adjusted influence`;
+
       }
 
       newState.lastConfirmedAction = {
@@ -5062,6 +5149,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       // Discovery tile choice pending: do not advance turn or prompt confirmation yet!
       return { success: true, newState };
     }
+    if (newState.pendingExploreControl) {
+      // Explore sector control decision pending: do not advance turn or prompt confirmation yet!
+      return { success: true, newState };
+    }
 
     if (action.requireConfirmation) {
       const canRevert = action.type !== 'FINISH_EXPLORE';
@@ -5100,7 +5191,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         description = `Traded resources at treasury`;
       } else if (action.type === 'EXPLORE' || action.type === 'FINISH_EXPLORE') {
         description = `Explored sector hexes`;
-      } else if (action.type === 'DISCOVERY_CHOICE') {
+      } else if (action.type === 'DISCOVERY_CHOICE' || action.type === 'EXPLORE_CONTROL') {
         description = `Explored sector & resolved discovery`;
       } else if (action.type === 'PASS') {
         description = `Passed turn for this round`;
@@ -5109,7 +5200,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       const exploreAct = action.type === 'EXPLORE' ? (action as ExploreAction) : undefined;
 
       newState.pendingActionConfirmation = {
-        actionType: action.type === 'DISCOVERY_CHOICE' ? 'EXPLORE' : action.type,
+        actionType: (action.type === 'DISCOVERY_CHOICE' || action.type === 'EXPLORE_CONTROL') ? 'EXPLORE' : action.type,
         playerId: action.playerId,
         description,
         canRevert,
@@ -5665,8 +5756,8 @@ export function computePinningState(
 }
 
 export function checkAndTriggerCombat(state: GameState): void {
-  // If a player still has a pending conquest, discovery, or reputation tile decision, wait for resolution
-  if (state.pendingCombatConquest || state.pendingDiscovery || state.pendingReputationDraw || state.activeCombat) {
+  // If a player still has a pending conquest, discovery, sector control, or reputation tile decision, wait for resolution
+  if (state.pendingCombatConquest || state.pendingDiscovery || state.pendingExploreControl || state.pendingReputationDraw || state.activeCombat) {
     return;
   }
 
@@ -5831,6 +5922,7 @@ export function checkAndTriggerCombat(state: GameState): void {
       lastRolls: [],
       retreatDeclared: {},
       missileFiredShipIds: [],
+      roundActedGroupKeys: [],
     };
     state.phase = 'COMBAT_PHASE';
     return;

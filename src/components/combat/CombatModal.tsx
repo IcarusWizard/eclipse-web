@@ -7,6 +7,7 @@ import {
   sortUnitsByInitiative,
   getSectorDefenderOwnerId,
   getCombatShipTypeGroups,
+  getActiveCombatGroup,
   CombatUnit,
 } from '../../engine/rules/combatEngine';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
@@ -213,9 +214,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       )
     : [];
 
-  const activeGroup = isMissileStage
-    ? (pendingMissileGroups[0] || null)
-    : (groups.length > 0 ? groups[combat.currentTurnIndex % groups.length] : null);
+  const activeGroup = getActiveCombatGroup(combat, groups);
 
   const pendingSalvo = combat.pendingDamageAssignment;
 
