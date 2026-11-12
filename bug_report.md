@@ -433,3 +433,8 @@
     - Added dependency pruning in `toggleClaim` and `toggleAbandon` in `InfluenceModal.tsx` so that deselecting or abandoning a sector automatically deselects any dependent downstream claims.
     - Passed `warpConduits={state.warpedUniverse?.conduits}` from [`App.tsx`](file:///home/xyz/eclipse-web/src/App.tsx#L3396) into `InfluenceModal`.
     - Added unit test `162.` in [`engine.test.ts`](file:///home/xyz/eclipse-web/src/engine/__tests__/engine.test.ts#L23476) verifying sequential claiming, reverse-order sorting, dependency pruning, multiple chained discoveries, and modal rendering. All 231 tests pass and production build succeeds.
+- [ ] when add more items for the build action, the new item should by default place in the sector where the previous item is built, not default on the home system (Round 6, ACTION_PHASE, Player: Hydran Progress, Table #793)
+- [ ] Display the actions one by one (place the disc, accept the bonus, etc), not all at once (Round 7, ACTION_PHASE, Player: Orion Hegemony, Table #793)
+- [ ] in the hover details over the parts, init shouldn't use the lightning symbol (Round 3, ACTION_PHASE, Player: Orion Hegemony, Table #481)
+- [ ] after the combat, only the winner should see the window that ask if he want to control the sector, the other only see waiting for the player to decide whether to control the sector <number> (Round 4, ACTION_PHASE, Player: Mechanema, Table #481)
+- [ ] the order of the combat seems problematic, after mech roll dice to distroy the int, orion's ship still have 4 init, so orion's ship should roll first before mech roll once more. (Round 8, COMBAT_PHASE, Player: Mechanema, Table #481)
