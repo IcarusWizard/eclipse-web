@@ -1,4 +1,4 @@
-import { GameState, ReplayStep } from '../types/state';
+import { GameState, ReplayStep } from '../types/state.ts';
 
 /**
  * Creates a clean JSON snapshot of the game state, stripping replaySteps,
@@ -29,10 +29,17 @@ export function createCleanSnapshot(state: GameState): string {
 export function isStepKeyframe(
   state: GameState,
   previousState?: GameState,
-  stepIndex: number = 0
+  stepIndex: number = 0,
+  actionType?: string
 ): boolean {
   // 1. Initial setup or draft start (Step 0) is always a Keyframe
-  if (stepIndex === 0) return true;
+  if (stepIndex === 0) {
+    if (!previousState) return true;
+    if (actionType === 'GAME_SETUP' || actionType === 'DRAFT_INITIALIZED') return true;
+    if (state.round === 1 && state.phase === 'DRAFT_PHASE' && (!state.replaySteps || state.replaySteps.length <= 1)) return true;
+    // If previousState is provided and in the same round, stepIndex 0 was only a local slice or missing history; don't force full keyframe
+    if (previousState && state.round === previousState.round) return false;
+  }
 
   // 2. Start of each new round
   if (previousState && state.round > previousState.round) return true;
@@ -223,7 +230,7 @@ export function commitReplayStep(
 
   const actor = actorPlayerId ? state.players?.find((p) => p.id === actorPlayerId) : undefined;
   const stepIndex = state.replaySteps.length;
-  const isKeyframe = isStepKeyframe(state, previousState, stepIndex);
+  const isKeyframe = isStepKeyframe(state, previousState, stepIndex, actionType);
 
   const step: ReplayStep = {
     stepIndex,
@@ -263,73 +270,90 @@ export function commitReplayStep(
 }
 
 /**
- * Compacts a legacy replay history (where full snapshots were stored on every step)
- * into the lightweight Keyframe + Delta architecture.
+ * Compacts replay steps into the lightweight Keyframe + Delta architecture.
+ * Keyframes are preserved ONLY at:
+ * 1. Step 0 (Game setup / draft initialization)
+ * 2. Start of each new Round (whenever round increments)
+ * 3. Final game conclusion (GAME_OVER phase)
+ * All other intermediate steps store a minimal structural delta against the preceding state.
  */
 export function compactReplaySteps(steps: ReplayStep[]): ReplayStep[] {
   if (!Array.isArray(steps) || steps.length === 0) return [];
   const compacted: ReplayStep[] = [];
-  let lastRound = 0;
 
-  for (let i = 0; i < steps.length; i++) {
+  let currentState: GameState;
+  try {
+    currentState = steps[0].snapshot
+      ? JSON.parse(steps[0].snapshot)
+      : resolveStepState(steps, 0);
+  } catch {
+    return steps;
+  }
+
+  compacted.push({
+    stepIndex: 0,
+    timestamp: steps[0].timestamp,
+    round: steps[0].round,
+    phase: steps[0].phase,
+    actionType: steps[0].actionType,
+    summary: steps[0].summary,
+    actorPlayerId: steps[0].actorPlayerId,
+    actorPlayerName: steps[0].actorPlayerName,
+    isKeyframe: true,
+    snapshot: createCleanSnapshot(currentState),
+    actionData: steps[0].actionData,
+  });
+
+  for (let i = 1; i < steps.length; i++) {
     const step = steps[i];
-    if (!step.snapshot) {
-      // Already a delta or non-snapshot step
-      compacted.push(step);
-      continue;
+    let nextState: GameState;
+    if (step.snapshot) {
+      try {
+        nextState = JSON.parse(step.snapshot);
+      } catch {
+        nextState = resolveStepState(steps, i);
+      }
+    } else if (step.delta) {
+      nextState = applyStateDelta(currentState, step.delta);
+    } else {
+      nextState = resolveStepState(steps, i);
     }
 
-    let parsedSnap: any = null;
-    try {
-      parsedSnap = JSON.parse(step.snapshot);
-    } catch {
-      compacted.push(step);
-      continue;
-    }
-
-    const isRoundStart = step.round > lastRound || i === 0;
-    const isGameOver = parsedSnap.phase === 'GAME_OVER' || i === steps.length - 1;
-    const isKeyframe = isRoundStart || isGameOver;
-
-    if (isRoundStart) {
-      lastRound = step.round;
-    }
+    const isRoundStart = nextState.round > currentState.round;
+    const isGameOverTransition = nextState.phase === 'GAME_OVER' && currentState.phase !== 'GAME_OVER';
+    const isKeyframe = isRoundStart || isGameOverTransition;
 
     if (isKeyframe) {
       compacted.push({
-        ...step,
+        stepIndex: i,
+        timestamp: step.timestamp,
+        round: step.round,
+        phase: step.phase,
+        actionType: step.actionType,
+        summary: step.summary,
+        actorPlayerId: step.actorPlayerId,
+        actorPlayerName: step.actorPlayerName,
         isKeyframe: true,
+        snapshot: createCleanSnapshot(nextState),
+        actionData: step.actionData,
       });
     } else {
-      // Convert to delta against previous step's snapshot
-      const prevStep = steps[i - 1];
-      let delta: any = undefined;
-      if (prevStep?.snapshot) {
-        try {
-          const prevSnap = JSON.parse(prevStep.snapshot);
-          delta = computeStateDelta(prevSnap, parsedSnap);
-        } catch {}
-      }
-
-      if (delta !== undefined) {
-        compacted.push({
-          stepIndex: step.stepIndex,
-          timestamp: step.timestamp,
-          round: step.round,
-          phase: step.phase,
-          actionType: step.actionType,
-          summary: step.summary,
-          actorPlayerId: step.actorPlayerId,
-          actorPlayerName: step.actorPlayerName,
-          isKeyframe: false,
-          delta,
-          actionData: step.actionData,
-        });
-      } else {
-        // Fallback keep snapshot if delta could not be computed
-        compacted.push({ ...step, isKeyframe: true });
-      }
+      const delta = computeStateDelta(currentState, nextState) || {};
+      compacted.push({
+        stepIndex: i,
+        timestamp: step.timestamp,
+        round: step.round,
+        phase: step.phase,
+        actionType: step.actionType,
+        summary: step.summary,
+        actorPlayerId: step.actorPlayerId,
+        actorPlayerName: step.actorPlayerName,
+        isKeyframe: false,
+        delta,
+        actionData: step.actionData,
+      });
     }
+    currentState = nextState;
   }
 
   return compacted;

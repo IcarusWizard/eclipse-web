@@ -1,6 +1,6 @@
 import { GameState } from '../types/state';
 import { TableMember, UserSession } from '../types/user';
-import { isReplayAvailable } from './replay';
+import { isReplayAvailable, compactReplaySteps } from './replay';
 
 export interface SavedTableSummary {
   id: string;
@@ -188,6 +188,11 @@ export async function persistTableToServer(state: GameState): Promise<boolean> {
   if (!state || !state.id || state.isLocalGame) return true;
   if (typeof fetch === 'undefined') return false;
   try {
+    if (Array.isArray(state.replaySteps) && state.replaySteps.length > 0) {
+      state.replaySteps = compactReplaySteps(state.replaySteps);
+      (state as any).hasReplay = isReplayAvailable(state);
+      (state as any).replayStepsCount = state.replaySteps.length;
+    }
     const body = JSON.stringify(state);
     const useKeepalive = body.length <= 64000;
     const res = await fetch(resolveApiUrl(`/api/tables/${state.id}`), {
@@ -299,11 +304,17 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
                   merged.push({ ...step, stepIndex: merged.length });
                 }
               }
-              state.replaySteps = merged;
+              state.replaySteps = compactReplaySteps(merged);
             }
           }
         }
       } catch {}
+    }
+
+    if (Array.isArray(state.replaySteps) && state.replaySteps.length > 0) {
+      state.replaySteps = compactReplaySteps(state.replaySteps);
+      (state as any).hasReplay = isReplayAvailable(state);
+      (state as any).replayStepsCount = state.replaySteps.length;
     }
 
     const fullServerPayloadJson = JSON.stringify(state);

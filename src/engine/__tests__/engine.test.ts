@@ -23984,6 +23984,171 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // If combat is still ongoing, RoundActedGroupKeys now contains Orion Cruiser; if Mech Cruiser was destroyed, round ended
         expect(combatState.roundActedGroupKeys).toEqual(stepResult.isCombatOver ? [] : ['player_2_cruiser']);
       });
+
+      test('164. verifies compact table JSON architecture: exact snapshots only at Step 0, Round start, and Game Over, with actions & state deltas for all intermediate steps, robust compactReplaySteps delta chaining, and server table file persistence', async () => {
+        const {
+          compactReplaySteps,
+          resolveStepState,
+          commitReplayStep,
+          isStepKeyframe,
+          createCleanSnapshot,
+          computeStateDelta,
+        } = await import('../rules/replay');
+        const { createInitialGame } = await import('../rules/setup');
+        const { executeAction } = await import('../rules/gameReducer');
+
+        // 1. Verify isStepKeyframe does not treat mid-game actions as keyframes when client has stripped history (stepIndex = 0)
+        const game = createInitialGame(2, ['terran', 'orion']);
+        const p1 = game.players[0];
+        const p2 = game.players[1];
+
+        // Normal step 0 is keyframe
+        expect(isStepKeyframe(game, undefined, 0, 'DRAFT_INITIALIZED')).toBe(true);
+
+        // When a multiplayer client receives state with stripped replay history (stepIndex === 0)
+        // but previousState is provided in the same round, isStepKeyframe must NOT force a keyframe!
+        const r1 = executeAction(game, { type: 'PASS', playerId: p1.id });
+        expect(isStepKeyframe(r1.newState, game, 0, 'PASS')).toBe(false);
+
+        // 2. Verify commitReplayStep creates compact delta for intermediate action
+        const mockStateWithEmptyReplay = { ...r1.newState, replaySteps: [] };
+        commitReplayStep(mockStateWithEmptyReplay, 'PASS', 'Player passed', p1.id, game);
+        expect(mockStateWithEmptyReplay.replaySteps).toHaveLength(1);
+        const committedStep = mockStateWithEmptyReplay.replaySteps[0];
+        expect(committedStep.isKeyframe).toBe(false);
+        expect(committedStep.delta).toBeDefined();
+        expect(committedStep.snapshot).toBeUndefined();
+
+        // 3. Verify compactReplaySteps on a complex chain with mixed deltas and snapshots
+        const step0State = game;
+        const step1State = r1.newState;
+        const r2 = executeAction(step1State, { type: 'PASS', playerId: p2.id });
+        const step2State = r2.newState; // Round 2 started!
+
+        // Create mock legacy replay steps: step 0 (setup), step 1 (pass, delta), step 2 (pass, uncompacted snapshot in round 1), step 3 (round 2 start)
+        const mixedSteps: any[] = [
+          {
+            stepIndex: 0,
+            timestamp: 1000,
+            round: 1,
+            phase: 'ACTION_PHASE',
+            actionType: 'GAME_SETUP',
+            summary: 'Initial setup',
+            isKeyframe: true,
+            snapshot: createCleanSnapshot(step0State),
+          },
+          {
+            stepIndex: 1,
+            timestamp: 1001,
+            round: 1,
+            phase: 'ACTION_PHASE',
+            actionType: 'PASS',
+            summary: 'Pass step 1',
+            isKeyframe: false,
+            delta: computeStateDelta(step0State, step1State),
+          },
+          {
+            stepIndex: 2,
+            timestamp: 1002,
+            round: 1,
+            phase: 'ACTION_PHASE',
+            actionType: 'EXPLORE',
+            summary: 'Explore step 2 with redundant full snapshot',
+            isKeyframe: true,
+            snapshot: createCleanSnapshot(step1State), // redundant snapshot in round 1
+          },
+          {
+            stepIndex: 3,
+            timestamp: 1003,
+            round: 2,
+            phase: 'ACTION_PHASE',
+            actionType: 'ROUND_STARTED',
+            summary: 'Round 2 start',
+            isKeyframe: true,
+            snapshot: createCleanSnapshot(step2State),
+          },
+          {
+            stepIndex: 4,
+            timestamp: 1004,
+            round: 2,
+            phase: 'GAME_OVER',
+            actionType: 'GAME_OVER',
+            summary: 'Game over transition',
+            isKeyframe: true,
+            snapshot: createCleanSnapshot({ ...step2State, phase: 'GAME_OVER' as any }),
+          },
+          {
+            stepIndex: 5,
+            timestamp: 1005,
+            round: 2,
+            phase: 'GAME_OVER',
+            actionType: 'CHAT',
+            summary: 'Post game chat',
+            isKeyframe: true,
+            snapshot: createCleanSnapshot({ ...step2State, phase: 'GAME_OVER' as any }),
+          },
+        ];
+
+        const compacted = compactReplaySteps(mixedSteps);
+        expect(compacted).toHaveLength(6);
+        // Step 0: Keyframe
+        expect(compacted[0].isKeyframe).toBe(true);
+        expect(compacted[0].snapshot).toBeDefined();
+
+        // Step 1: Delta
+        expect(compacted[1].isKeyframe).toBe(false);
+        expect(compacted[1].delta).toBeDefined();
+        expect(compacted[1].snapshot).toBeUndefined();
+
+        // Step 2: Redundant snapshot in round 1 converted to Delta even though step 1 was a Delta!
+        expect(compacted[2].isKeyframe).toBe(false);
+        expect(compacted[2].delta).toBeDefined();
+        expect(compacted[2].snapshot).toBeUndefined();
+
+        // Step 3: Round 2 start -> Keyframe
+        expect(compacted[3].isKeyframe).toBe(true);
+        expect(compacted[3].snapshot).toBeDefined();
+
+        // Step 4: Game Over transition -> Keyframe
+        expect(compacted[4].isKeyframe).toBe(true);
+        expect(compacted[4].snapshot).toBeDefined();
+
+        // Step 5: Post-game step in GAME_OVER -> Delta (does not duplicate full snapshot!)
+        expect(compacted[5].isKeyframe).toBe(false);
+        expect(compacted[5].delta).toBeDefined();
+        expect(compacted[5].snapshot).toBeUndefined();
+
+        // 4. Verify resolving compacted steps produces exact states
+        const resolvedStep0 = resolveStepState(compacted, 0);
+        expect(resolvedStep0.round).toBe(1);
+        const resolvedStep1 = resolveStepState(compacted, 1);
+        expect(resolvedStep1.passedPlayerIds).toContain(p1.id);
+        const resolvedStep3 = resolveStepState(compacted, 3);
+        expect(resolvedStep3.round).toBe(2);
+
+        // 5. Verify galaxy-481.json on disk is compact (< 1MB) and has exactly round keyframes
+        const fs = await import('fs');
+        const path = await import('path');
+        const g481Path = path.resolve(process.cwd(), 'server_data', 'tables', 'galaxy-481.json');
+        if (fs.existsSync(g481Path)) {
+          const stats = fs.statSync(g481Path);
+          expect(stats.size).toBeLessThan(1024 * 1024); // Was 7.3 MB, now ~857 KB!
+
+          const g481Data = JSON.parse(fs.readFileSync(g481Path, 'utf-8'));
+          const steps = g481Data.replaySteps || [];
+          expect(steps.length).toBe(143);
+          const keyframes = steps.filter((s: any) => s.isKeyframe);
+          const deltas = steps.filter((s: any) => s.delta);
+          expect(keyframes.length).toBe(9); // Only 8 rounds + game over
+          expect(deltas.length).toBe(134);
+
+          // All 143 steps resolve without error
+          const step0 = resolveStepState(steps, 0);
+          expect(step0.phase).toBe('DRAFT_PHASE');
+          const lastStep = resolveStepState(steps, 142);
+          expect(lastStep.phase).toBe('GAME_OVER');
+        }
+      });
     });
   });
 });

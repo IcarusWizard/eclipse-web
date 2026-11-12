@@ -6,6 +6,7 @@ import path from 'path';
 import fs from 'fs';
 import { formatBugReportLine } from './src/engine/rules/bugReport.ts';
 import { generateSalt, hashPasswordSync } from './src/engine/rules/passwordUtils.ts';
+import { compactReplaySteps, isReplayAvailable } from './src/engine/rules/replay.ts';
 
 function bugReportPlugin(): Plugin {
   const handler = (req: any, res: any, next: any) => {
@@ -263,6 +264,18 @@ function tableStoragePlugin(): Plugin {
     if (!fs.existsSync(USERS_DIR)) {
       fs.mkdirSync(USERS_DIR, { recursive: true });
     }
+  }
+
+  function saveTableFile(filePath: string, tableData: any) {
+    if (Array.isArray(tableData.replaySteps) && tableData.replaySteps.length > 0) {
+      tableData.replaySteps = compactReplaySteps(tableData.replaySteps);
+      tableData.hasReplay = isReplayAvailable(tableData);
+      tableData.replayStepsCount = tableData.replaySteps.length;
+    }
+    if (Array.isArray(tableData.members)) {
+      tableData.members = tableData.members.filter((m: any) => m && m.seat !== 'spectator');
+    }
+    fs.writeFileSync(filePath, JSON.stringify(tableData), 'utf-8');
   }
 
   function getAdminHash(): { salt: string; passwordHash: string } | null {
@@ -917,7 +930,7 @@ function tableStoragePlugin(): Plugin {
 
             tableData.savedAt = Date.now();
             const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
-            fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
+            saveTableFile(targetPath, tableData);
 
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
@@ -1012,7 +1025,7 @@ function tableStoragePlugin(): Plugin {
                 tableData.members.splice(existingIdx, 1);
                 tableData.savedAt = Date.now();
                 const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
-                fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
+                saveTableFile(targetPath, tableData);
               }
               res.statusCode = 200;
               res.setHeader('Content-Type', 'application/json');
@@ -1069,7 +1082,7 @@ function tableStoragePlugin(): Plugin {
             tableData.members = tableData.members.filter((m: any) => m && m.seat !== 'spectator');
             tableData.savedAt = Date.now();
             const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
-            fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
+            saveTableFile(targetPath, tableData);
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: true, members: tableData.members }));
@@ -1149,7 +1162,7 @@ function tableStoragePlugin(): Plugin {
             tableData.savedAt = Date.now();
 
             const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
-            fs.writeFileSync(targetPath, JSON.stringify(tableData), 'utf-8');
+            saveTableFile(targetPath, tableData);
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: true, members: tableData.members }));
@@ -1411,10 +1424,7 @@ function tableStoragePlugin(): Plugin {
                 }
               } catch {}
             }
-            if (Array.isArray(data.members)) {
-              data.members = data.members.filter((m: any) => m && m.seat !== 'spectator');
-            }
-            fs.writeFileSync(filePath, JSON.stringify(data), 'utf-8');
+            saveTableFile(filePath, data);
 
             // BGA-style Turn Reminder Trigger
             if (
