@@ -24,6 +24,7 @@ export interface CombatUnit {
     isMissile?: boolean;
   }[];
   hasMorphShield?: boolean;
+  hasAntimatterSplitter?: boolean;
 }
 
 export function buildCombatUnitsForSector(
@@ -78,6 +79,9 @@ export function buildCombatUnitsForSector(
       }
 
       const hasMorphShield = allParts.some((s) => s?.id === 'morph_shield' || s?.morphShield);
+      const hasAntimatterSplitter = Boolean(
+        player.techTrack?.researched?.some((t) => t.id === 'antimatter_splitter')
+      );
 
       units.push({
         id: ship.id,
@@ -90,6 +94,7 @@ export function buildCombatUnitsForSector(
         shieldBonus: stats.shieldBonus,
         weapons,
         hasMorphShield,
+        hasAntimatterSplitter,
       });
     }
   }
@@ -298,6 +303,7 @@ export interface CombatShipGroup {
   shieldBonus: number;
   weapons: CombatUnit['weapons'];
   hasMorphShield?: boolean;
+  hasAntimatterSplitter?: boolean;
 }
 
 export function getCombatShipTypeGroups(
@@ -321,6 +327,7 @@ export function getCombatShipTypeGroups(
         shieldBonus: u.shieldBonus,
         weapons: u.weapons.map((w) => ({ ...w })),
         hasMorphShield: u.hasMorphShield,
+        hasAntimatterSplitter: u.hasAntimatterSplitter,
       });
     } else {
       const g = groupMap.get(key)!;
@@ -330,6 +337,7 @@ export function getCombatShipTypeGroups(
         g.weapons.push({ ...w });
       }
       if (u.hasMorphShield) g.hasMorphShield = true;
+      if (u.hasAntimatterSplitter) g.hasAntimatterSplitter = true;
     }
   }
 
@@ -380,6 +388,73 @@ export function getActiveCombatGroup(
   return groups[0] || null;
 }
 
+function canRollHitUnit(
+  dieColor: CombatRoll['dieColor'],
+  rawRoll: number,
+  damage: number,
+  computerBonus: number,
+  target: CombatUnit
+): { isHit: boolean; modified: number } {
+  if (dieColor === 'purple') {
+    return { isHit: damage > 0, modified: rawRoll };
+  }
+  const modified = rawRoll + computerBonus - target.shieldBonus;
+  if (rawRoll === 6) return { isHit: true, modified };
+  if (rawRoll === 1) return { isHit: false, modified };
+  return { isHit: modified >= 6, modified };
+}
+
+function sortCombatTargetCandidates(pool: CombatUnit[], damageToConsider: number): CombatUnit[] {
+  return [...pool].sort((a, b) => {
+    const hpA = a.maxHull - a.currentDamage;
+    const hpB = b.maxHull - b.currentDamage;
+    const rankA = SHIP_SIZE_RANK[a.type] ?? 0;
+    const rankB = SHIP_SIZE_RANK[b.type] ?? 0;
+    const canKillA = hpA <= damageToConsider;
+    const canKillB = hpB <= damageToConsider;
+
+    // Priority 1: if damage can destroy a ship, destroy a ship!
+    if (canKillA !== canKillB) {
+      return canKillA ? -1 : 1;
+    }
+
+    // Priority 2: if both can be destroyed (or neither), target largest ship
+    if (rankB !== rankA) {
+      return rankB - rankA;
+    }
+
+    // Priority 3: tie-break with lowest remaining HP
+    return hpA - hpB;
+  });
+}
+
+function recordDestroyedShip(activeCombat: CombatState, target: CombatUnit, killerId: string): void {
+  if (target.currentDamage < target.maxHull) return;
+  activeCombat.destroyedShips = activeCombat.destroyedShips || [];
+  if (!activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
+    activeCombat.destroyedShips.push({
+      shipId: target.id,
+      type: target.type,
+      ownerId: target.ownerId,
+      killerId,
+    });
+  }
+}
+
+export function isAntimatterSplitterRoll(
+  hasAntimatterSplitter: boolean | undefined,
+  roll: { dieColor: string; damage: number; isMissile?: boolean },
+  salvoIsMissile?: boolean
+): boolean {
+  return Boolean(
+    hasAntimatterSplitter &&
+      roll.dieColor === 'red' &&
+      !salvoIsMissile &&
+      !roll.isMissile &&
+      roll.damage >= 2
+  );
+}
+
 export function autoAssignSalvoDamage(
   rolls: CombatRoll[],
   activeGroup: CombatShipGroup,
@@ -387,13 +462,9 @@ export function autoAssignSalvoDamage(
   activeCombat: CombatState,
   allUnits: CombatUnit[]
 ): void {
-  const isNpc = !activeGroup.ownerId.startsWith('player_');
-
   for (const r of rolls) {
-    if (r.dieColor === 'purple') {
-      if (r.selfDamage && r.selfDamage > 0) {
-        applyRiftSelfDamage(allUnits, activeGroup.ownerId, r.selfDamage, activeCombat);
-      }
+    if (r.dieColor === 'purple' && r.selfDamage && r.selfDamage > 0) {
+      applyRiftSelfDamage(allUnits, activeGroup.ownerId, r.selfDamage, activeCombat);
     }
 
     const aliveTargets = enemyTargets.filter((u) => u.currentDamage < u.maxHull);
@@ -404,70 +475,66 @@ export function autoAssignSalvoDamage(
       continue;
     }
 
-    const canHit = (cand: CombatUnit) => {
-      if (r.dieColor === 'purple') return r.damage > 0;
-      if (r.roll === 6) return true;
-      if (r.roll === 1) return false;
-      return r.roll + activeGroup.computerBonus - cand.shieldBonus >= 6;
-    };
+    const canHit = (cand: CombatUnit) =>
+      canRollHitUnit(r.dieColor, r.roll, r.damage, activeGroup.computerBonus, cand).isHit;
 
     const validHitTargets = aliveTargets.filter(canHit);
-    const targetPool = validHitTargets.length > 0 ? validHitTargets : aliveTargets;
 
-    // Sort target candidates: destroy a ship if possible, otherwise hit largest ship
-    const candidates = [...targetPool].sort((a, b) => {
-      const hpA = a.maxHull - a.currentDamage;
-      const hpB = b.maxHull - b.currentDamage;
-      const rankA = SHIP_SIZE_RANK[a.type] ?? 0;
-      const rankB = SHIP_SIZE_RANK[b.type] ?? 0;
-      const canKillA = hpA <= r.damage;
-      const canKillB = hpB <= r.damage;
+    // Antimatter Splitter (official Second Dawn rule):
+    // Allows dividing Antimatter Cannon damage (red cannon die) freely over valid hit targets.
+    if (
+      isAntimatterSplitterRoll(activeGroup.hasAntimatterSplitter, r, Boolean(r.isMissile)) &&
+      validHitTargets.length > 0
+    ) {
+      let remDmg = r.damage;
+      const splitAssignments: { targetShipId: string; damage: number }[] = [];
 
-      // Priority 1: if damage can destroy a ship, destroy a ship!
-      if (canKillA !== canKillB) {
-        return canKillA ? -1 : 1;
+      while (remDmg > 0) {
+        const currentValid = enemyTargets.filter(
+          (u) => u.currentDamage < u.maxHull && canHit(u)
+        );
+        if (currentValid.length === 0) break;
+
+        const chosen = sortCombatTargetCandidates(currentValid, remDmg)[0]!;
+        const needed = chosen.maxHull - chosen.currentDamage;
+        const applied = Math.min(remDmg, needed);
+        chosen.currentDamage += applied;
+        remDmg -= applied;
+        splitAssignments.push({ targetShipId: chosen.id, damage: applied });
+        recordDestroyedShip(activeCombat, chosen, activeGroup.ownerId);
       }
 
-      // Priority 2: if both can be destroyed (or neither), target largest ship
-      if (rankB !== rankA) {
-        return rankB - rankA;
-      }
-
-      // Priority 3: tie-break with lowest remaining HP
-      return hpA - hpB;
-    });
-
-    const chosenTarget = candidates[0]!;
-
-    r.targetShipId = chosenTarget.id;
-    if (r.dieColor === 'purple') {
-      r.isHit = r.damage > 0;
-      r.modifiedRoll = r.roll;
-      if (r.isHit) {
-        chosenTarget.currentDamage += r.damage;
-      }
-    } else {
-      const modified = r.roll + activeGroup.computerBonus - chosenTarget.shieldBonus;
-      r.modifiedRoll = modified;
-      if (r.roll === 6) r.isHit = true;
-      else if (r.roll === 1) r.isHit = false;
-      else r.isHit = modified >= 6;
-
-      if (r.isHit) {
-        chosenTarget.currentDamage += r.damage;
-      }
+      const firstTarget =
+        enemyTargets.find((u) => u.id === splitAssignments[0]?.targetShipId) || validHitTargets[0]!;
+      r.splitAssignments = splitAssignments;
+      r.targetShipId = firstTarget.id;
+      r.modifiedRoll = canRollHitUnit(
+        r.dieColor,
+        r.roll,
+        r.damage,
+        activeGroup.computerBonus,
+        firstTarget
+      ).modified;
+      r.isHit = splitAssignments.length > 0;
+      continue;
     }
 
-    if (chosenTarget.currentDamage >= chosenTarget.maxHull) {
-      activeCombat.destroyedShips = activeCombat.destroyedShips || [];
-      if (!activeCombat.destroyedShips.some((d) => d.shipId === chosenTarget!.id)) {
-        activeCombat.destroyedShips.push({
-          shipId: chosenTarget.id,
-          type: chosenTarget.type,
-          ownerId: chosenTarget.ownerId,
-          killerId: activeGroup.ownerId,
-        });
-      }
+    const targetPool = validHitTargets.length > 0 ? validHitTargets : aliveTargets;
+    const chosenTarget = sortCombatTargetCandidates(targetPool, r.damage)[0]!;
+
+    r.targetShipId = chosenTarget.id;
+    const hitCheck = canRollHitUnit(
+      r.dieColor,
+      r.roll,
+      r.damage,
+      activeGroup.computerBonus,
+      chosenTarget
+    );
+    r.modifiedRoll = hitCheck.modified;
+    r.isHit = hitCheck.isHit;
+    if (r.isHit) {
+      chosenTarget.currentDamage += r.damage;
+      recordDestroyedShip(activeCombat, chosenTarget, activeGroup.ownerId);
     }
   }
 }
@@ -484,58 +551,100 @@ export function applyManualDamageAssignments(
   for (let idx = 0; idx < pendingSalvo.rolls.length; idx++) {
     const roll = { ...pendingSalvo.rolls[idx]! };
     const assign = assignments.find((a) => a.rollIndex === idx);
-    const targetShipId = assign?.targetShipId;
-    const target = (targetShipId ? enemyTargets.find((u) => u.id === targetShipId) : null) || enemyTargets[0] || null;
 
-    if (roll.dieColor === 'purple') {
-      if (roll.selfDamage && roll.selfDamage > 0) {
-        applyRiftSelfDamage(allUnits, pendingSalvo.attackerOwnerId, roll.selfDamage, activeCombat);
-      }
-      if (target) {
-        roll.targetShipId = target.id;
-        roll.isHit = roll.damage > 0;
-        if (roll.isHit) {
-          target.currentDamage += roll.damage;
-          if (target.currentDamage >= target.maxHull) {
-            activeCombat.destroyedShips = activeCombat.destroyedShips || [];
-            if (!activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
-              activeCombat.destroyedShips.push({
-                shipId: target.id,
-                type: target.type,
-                ownerId: target.ownerId,
-                killerId: pendingSalvo.attackerOwnerId,
-              });
-            }
-          }
-        }
-      }
-    } else {
-      if (target) {
-        roll.targetShipId = target.id;
-        const modified = roll.roll + pendingSalvo.computerBonus - target.shieldBonus;
-        roll.modifiedRoll = modified;
-        if (roll.roll === 6) roll.isHit = true;
-        else if (roll.roll === 1) roll.isHit = false;
-        else roll.isHit = modified >= 6;
+    if (roll.dieColor === 'purple' && roll.selfDamage && roll.selfDamage > 0) {
+      applyRiftSelfDamage(allUnits, pendingSalvo.attackerOwnerId, roll.selfDamage, activeCombat);
+    }
 
-        if (roll.isHit) {
-          target.currentDamage += roll.damage;
-          if (target.currentDamage >= target.maxHull) {
-            activeCombat.destroyedShips = activeCombat.destroyedShips || [];
-            if (!activeCombat.destroyedShips.some((d) => d.shipId === target.id)) {
-              activeCombat.destroyedShips.push({
-                shipId: target.id,
-                type: target.type,
-                ownerId: target.ownerId,
-                killerId: pendingSalvo.attackerOwnerId,
-              });
-            }
-          }
+    if (
+      isAntimatterSplitterRoll(pendingSalvo.hasAntimatterSplitter, roll, pendingSalvo.isMissile) &&
+      assign?.splitAssignments &&
+      assign.splitAssignments.length > 0
+    ) {
+      let remainingBudget = roll.damage;
+      const appliedSplits: { targetShipId: string; damage: number }[] = [];
+
+      for (const req of assign.splitAssignments) {
+        if (remainingBudget <= 0) break;
+        const reqDmg = Math.floor(req.damage || 0);
+        if (reqDmg <= 0) continue;
+
+        const target = enemyTargets.find((u) => u.id === req.targetShipId);
+        if (!target) continue;
+
+        const hitCheck = canRollHitUnit(
+          roll.dieColor,
+          roll.roll,
+          roll.damage,
+          pendingSalvo.computerBonus,
+          target
+        );
+        if (!hitCheck.isHit) continue;
+
+        const alloc = Math.min(reqDmg, remainingBudget);
+        if (alloc <= 0) continue;
+
+        target.currentDamage += alloc;
+        remainingBudget -= alloc;
+        const existing = appliedSplits.find((s) => s.targetShipId === target.id);
+        if (existing) {
+          existing.damage += alloc;
+        } else {
+          appliedSplits.push({ targetShipId: target.id, damage: alloc });
         }
+        recordDestroyedShip(activeCombat, target, pendingSalvo.attackerOwnerId);
+      }
+
+      roll.splitAssignments = appliedSplits;
+      if (appliedSplits.length > 0) {
+        const firstTarget = enemyTargets.find((u) => u.id === appliedSplits[0]!.targetShipId)!;
+        roll.targetShipId = firstTarget.id;
+        roll.modifiedRoll = canRollHitUnit(
+          roll.dieColor,
+          roll.roll,
+          roll.damage,
+          pendingSalvo.computerBonus,
+          firstTarget
+        ).modified;
+        roll.isHit = true;
       } else {
+        const fallbackTarget =
+          (assign.targetShipId ? enemyTargets.find((u) => u.id === assign.targetShipId) : null) ||
+          enemyTargets[0] ||
+          null;
+        roll.targetShipId = fallbackTarget?.id;
+        roll.modifiedRoll = fallbackTarget
+          ? canRollHitUnit(roll.dieColor, roll.roll, roll.damage, pendingSalvo.computerBonus, fallbackTarget).modified
+          : roll.roll;
         roll.isHit = false;
       }
+
+      resultRolls.push(roll);
+      continue;
     }
+
+    const targetShipId = assign?.targetShipId;
+    const target = (targetShipId ? enemyTargets.find((u) => u.id === targetShipId) : null) || enemyTargets[0] || null;
+    if (target) {
+      roll.targetShipId = target.id;
+      const hitCheck = canRollHitUnit(
+        roll.dieColor,
+        roll.roll,
+        roll.damage,
+        pendingSalvo.computerBonus,
+        target
+      );
+      roll.modifiedRoll = hitCheck.modified;
+      roll.isHit = hitCheck.isHit;
+
+      if (roll.isHit) {
+        target.currentDamage += roll.damage;
+        recordDestroyedShip(activeCombat, target, pendingSalvo.attackerOwnerId);
+      }
+    } else {
+      roll.isHit = false;
+    }
+
     resultRolls.push(roll);
   }
 
@@ -726,6 +835,7 @@ export function executeCombatStep(
                 damage: res.targetDamage,
                 selfDamage: res.selfDamage,
                 symbol: res.symbol,
+                isMissile: true,
               });
             } else {
               const raw = rollD6();
@@ -741,6 +851,7 @@ export function executeCombatStep(
                 modifiedRoll: raw + activeGroup.computerBonus,
                 isHit,
                 damage: weapon.damage,
+                isMissile: true,
               });
             }
           }
@@ -757,6 +868,7 @@ export function executeCombatStep(
           computerBonus: activeGroup.computerBonus,
           rolls: salvoRolls,
           isMissile: true,
+          hasAntimatterSplitter: activeGroup.hasAntimatterSplitter,
         };
         activeCombat.lastRolls = salvoRolls;
         return {
@@ -952,6 +1064,7 @@ export function executeCombatStep(
             damage: res.targetDamage,
             selfDamage: res.selfDamage,
             symbol: res.symbol,
+            isMissile: false,
           });
         } else {
           const raw = rollD6();
@@ -967,6 +1080,7 @@ export function executeCombatStep(
             modifiedRoll: raw + activeGroup.computerBonus,
             isHit,
             damage: weapon.damage,
+            isMissile: false,
           });
         }
       }
@@ -983,6 +1097,7 @@ export function executeCombatStep(
       computerBonus: activeGroup.computerBonus,
       rolls: salvoRolls,
       isMissile: false,
+      hasAntimatterSplitter: activeGroup.hasAntimatterSplitter,
     };
     activeCombat.lastRolls = salvoRolls;
     return {

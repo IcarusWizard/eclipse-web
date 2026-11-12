@@ -24149,6 +24149,249 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           expect(lastStep.phase).toBe('GAME_OVER');
         }
       });
+
+      test('165. verifies in-game Antimatter Splitter (auto and manual splitting, shield checks, cannon-only scope) and Draco non-NPC attacker order in loadBattleFromSector', async () => {
+        const { ALL_RARE_TECHS } = await import('../rules/techData');
+        const { assignSalvoDamageToTargets, loadBattleFromSector } = await import('../rules/combatSimulator');
+
+        const splitterTech = ALL_RARE_TECHS.find((t) => t.id === 'antimatter_splitter')!;
+        expect(splitterTech).toBeDefined();
+
+        // 1. Setup 2 players: Attacker (with Antimatter Splitter + Antimatter Cannon dreadnought) vs Defender (interceptors + shielded cruiser)
+        const state = createInitialGame(2, ['terran_federation', 'orion_hegemony']);
+        const p1 = state.players[0]!;
+        const p2 = state.players[1]!;
+
+        p1.techTrack.researched.push(splitterTech);
+        p1.blueprints.dreadnought.slots = [
+          SHIP_PARTS.antimatter_cannon,
+          SHIP_PARTS.positron_computer, // +2 comp
+          SHIP_PARTS.fusion_source,
+          SHIP_PARTS.nuclear_drive,
+          null,
+          null,
+          null,
+          null,
+        ];
+
+        // Interceptor has 0 shield (1 HP), Cruiser has Flux Shield (-3 shield, 3 HP)
+        p2.blueprints.interceptor.slots = [
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_drive,
+          SHIP_PARTS.ion_cannon,
+          null,
+        ];
+        p2.blueprints.cruiser.slots = [
+          SHIP_PARTS.flux_shield, // -3 shield
+          SHIP_PARTS.improved_hull, // +2 hull => 3 HP total
+          SHIP_PARTS.fusion_source,
+          SHIP_PARTS.nuclear_drive,
+          SHIP_PARTS.ion_cannon,
+          null,
+        ];
+
+        const sec = state.sectors.find((s) => s.discOwner === p2.id)!;
+        sec.ships = [
+          { id: 'att_dread_1', ownerId: p1.id, type: 'dreadnought', damage: 0 },
+          { id: 'def_int_1', ownerId: p2.id, type: 'interceptor', damage: 0 },
+          { id: 'def_int_2', ownerId: p2.id, type: 'interceptor', damage: 0 },
+          { id: 'def_cru_1', ownerId: p2.id, type: 'cruiser', damage: 0 },
+        ];
+        sec.discOwner = p2.id;
+        sec.playerEntryOrder = [p2.id, p1.id];
+
+        // 2. Verify buildCombatUnitsForSector & getCombatShipTypeGroups propagate hasAntimatterSplitter
+        const units = buildCombatUnitsForSector(sec, state.players);
+        const groups = getCombatShipTypeGroups(units, p2.id);
+        const attGroup = groups.find((g) => g.ownerId === p1.id)!;
+        const enemyTargets = units.filter((u) => u.ownerId === p2.id);
+        expect(attGroup.hasAntimatterSplitter).toBe(true);
+
+        // 3. Auto-assign Antimatter Cannon roll = 4:
+        //    +2 comp = 6 vs Interceptors (0 shield -> HIT!)
+        //    +2 comp - 3 shield = 3 vs Cruiser (-3 shield -> SHIELDED / MISS!)
+        //    So 4 dmg kills both Interceptors (1+1 = 2 dmg) and MUST NOT hit shielded Cruiser!
+        const combatStateMock: any = {
+          sectorId: sec.id,
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          lastRolls: [],
+          retreatDeclared: {},
+          destroyedShips: [],
+        };
+        const rolls: any[] = [
+          {
+            shipId: 'att_dread_1',
+            shipOwner: p1.id,
+            dieColor: 'red',
+            roll: 4,
+            modifiedRoll: 6,
+            isHit: true,
+            damage: 4,
+            isMissile: false,
+          },
+        ];
+
+        autoAssignSalvoDamage(rolls, attGroup, enemyTargets, combatStateMock, units);
+        expect(rolls[0].isHit).toBe(true);
+        expect(rolls[0].splitAssignments).toHaveLength(2);
+        expect(enemyTargets.find((u) => u.id === 'def_int_1')!.currentDamage).toBe(1);
+        expect(enemyTargets.find((u) => u.id === 'def_int_2')!.currentDamage).toBe(1);
+        expect(enemyTargets.find((u) => u.id === 'def_cru_1')!.currentDamage).toBe(0);
+        expect(combatStateMock.destroyedShips.map((d: any) => d.shipId)).toEqual(['def_int_1', 'def_int_2']);
+
+        // 4. With roll = 6 (natural 6 always hits even Flux Shield), auto-assign splits 4 dmg to destroy Cruiser (3 HP) + 1 Interceptor (1 HP)
+        const units2 = buildCombatUnitsForSector(sec, state.players);
+        const attGroup2 = getCombatShipTypeGroups(units2, p2.id).find((g) => g.ownerId === p1.id)!;
+        const enemies2 = units2.filter((u) => u.ownerId === p2.id);
+        const combatStateMock2: any = { ...combatStateMock, destroyedShips: [] };
+        const nat6Roll: any[] = [
+          {
+            shipId: 'att_dread_1',
+            shipOwner: p1.id,
+            dieColor: 'red',
+            roll: 6,
+            modifiedRoll: 8,
+            isHit: true,
+            damage: 4,
+            isMissile: false,
+          },
+        ];
+        autoAssignSalvoDamage(nat6Roll, attGroup2, enemies2, combatStateMock2, units2);
+        expect(enemies2.find((u) => u.id === 'def_cru_1')!.currentDamage).toBe(3);
+        const killedInts = ['def_int_1', 'def_int_2'].filter(
+          (id) => enemies2.find((u) => u.id === id)!.currentDamage === 1
+        );
+        expect(killedInts).toHaveLength(1);
+        expect(combatStateMock2.destroyedShips).toHaveLength(2);
+
+        // 5. Cannon-only rule: Antimatter Missile (isMissile: true) and Orange Plasma Cannon (2 dmg) do NOT split!
+        const unitsNonCannon = buildCombatUnitsForSector(sec, state.players);
+        const attNonCannon = getCombatShipTypeGroups(unitsNonCannon, p2.id).find((g) => g.ownerId === p1.id)!;
+        const enemiesNonCannon = unitsNonCannon.filter((u) => u.ownerId === p2.id);
+        const combatNonCannon: any = { ...combatStateMock, destroyedShips: [] };
+        autoAssignSalvoDamage(
+          [
+            {
+              shipId: 'att_dread_1',
+              shipOwner: p1.id,
+              dieColor: 'orange',
+              roll: 6,
+              modifiedRoll: 8,
+              isHit: true,
+              damage: 2,
+              isMissile: false,
+            },
+            {
+              shipId: 'att_dread_1',
+              shipOwner: p1.id,
+              dieColor: 'red',
+              roll: 6,
+              modifiedRoll: 8,
+              isHit: true,
+              damage: 4,
+              isMissile: true,
+            },
+          ],
+          attNonCannon,
+          enemiesNonCannon,
+          combatNonCannon,
+          unitsNonCannon
+        );
+        // Each roll assigns all damage to a single target without splitting excess:
+        // - 2-dmg orange kills def_int_1 (overkill lost, def_int_2 undamaged)
+        // - 4-dmg red missile kills def_cru_1 (overkill lost, def_int_2 undamaged)
+        expect(enemiesNonCannon.find((u) => u.id === 'def_int_1')!.currentDamage).toBe(2);
+        expect(enemiesNonCannon.find((u) => u.id === 'def_cru_1')!.currentDamage).toBe(4);
+        expect(enemiesNonCannon.find((u) => u.id === 'def_int_2')!.currentDamage).toBe(0);
+
+        // Simulator assignSalvoDamageToTargets also enforces cannon-only Antimatter Splitter
+        const simUnits = buildCombatUnitsForSector(sec, state.players);
+        const simEnemies = simUnits.filter((u) => u.ownerId === p2.id);
+        assignSalvoDamageToTargets(
+          [{ rawRoll: 6, damage: 2, dieColor: 'orange', isHit: true, isMissile: false }],
+          2,
+          simEnemies.filter((u) => u.type === 'interceptor'),
+          simUnits,
+          p1.id,
+          true
+        );
+        // Only ONE 1-HP interceptor is destroyed by a 2-dmg orange Plasma Cannon die
+        const deadSimInts = simEnemies.filter((u) => u.type === 'interceptor' && u.currentDamage >= u.maxHull);
+        expect(deadSimInts).toHaveLength(1);
+
+        // 6. Manual damage allocation with Antimatter Splitter (respects shields & caps budget at 4 dmg)
+        const unitsManual = buildCombatUnitsForSector(sec, state.players);
+        const enemiesManual = unitsManual.filter((u) => u.ownerId === p2.id);
+        const pendingSalvo: any = {
+          attackerOwnerId: p1.id,
+          attackerShipType: 'dreadnought',
+          attackerShipIds: ['att_dread_1'],
+          computerBonus: 2,
+          isMissile: false,
+          hasAntimatterSplitter: true,
+          rolls: [
+            {
+              shipId: 'att_dread_1',
+              shipOwner: p1.id,
+              dieColor: 'red',
+              roll: 4,
+              modifiedRoll: 6,
+              isHit: true,
+              damage: 4,
+              isMissile: false,
+            },
+          ],
+        };
+        const manualCombat: any = { ...combatStateMock, destroyedShips: [] };
+        const applied = applyManualDamageAssignments(
+          [
+            {
+              rollIndex: 0,
+              targetShipId: 'def_int_1',
+              splitAssignments: [
+                { targetShipId: 'def_cru_1', damage: 2 }, // Roll 4+2-3=3 < 6 -> blocked by Flux Shield, ignored!
+                { targetShipId: 'def_int_1', damage: 1 },
+                { targetShipId: 'def_int_2', damage: 1 },
+              ],
+            },
+          ],
+          pendingSalvo,
+          enemiesManual,
+          manualCombat,
+          unitsManual
+        );
+        expect(applied[0].isHit).toBe(true);
+        expect(applied[0].splitAssignments).toEqual([
+          { targetShipId: 'def_int_1', damage: 1 },
+          { targetShipId: 'def_int_2', damage: 1 },
+        ]);
+        expect(enemiesManual.find((u) => u.id === 'def_cru_1')!.currentDamage).toBe(0);
+        expect(enemiesManual.find((u) => u.id === 'def_int_1')!.currentDamage).toBe(1);
+        expect(enemiesManual.find((u) => u.id === 'def_int_2')!.currentDamage).toBe(1);
+
+        // 7. Bug 8: Non-NPC sector with Draco entering AFTER another player makes Draco Attacker (matches checkAndTriggerCombat)
+        const dracoState = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+        const draco = dracoState.players.find((p) => p.faction.id === 'descendants_of_draco')!;
+        const terran = dracoState.players.find((p) => p.id !== draco.id)!;
+        const neutralSec = dracoState.sectors.find((s) => !s.discOwner && !s.isCenter && !s.hasGCDS)!;
+        neutralSec.explored = true;
+        neutralSec.discOwner = undefined;
+        neutralSec.ancientsCount = 0;
+        neutralSec.hasGCDS = false;
+        neutralSec.ships = [
+          { id: 't_int', ownerId: terran.id, type: 'interceptor', damage: 0 },
+          { id: 'd_int', ownerId: draco.id, type: 'interceptor', damage: 0 },
+        ];
+        neutralSec.playerEntryOrder = [terran.id, draco.id];
+
+        const loaded = loadBattleFromSector(dracoState, neutralSec.id);
+        expect(loaded).not.toBeNull();
+        expect(loaded!.attacker.factionId).toBe('descendants_of_draco');
+        expect(loaded!.defender.factionId).toBe(terran.faction.id);
+      });
     });
   });
 });

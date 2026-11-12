@@ -24,6 +24,7 @@ import {
   rollPurpleDie,
   getCombatShipTypeGroups,
   applyRiftSelfDamage,
+  isAntimatterSplitterRoll,
 } from './combatEngine';
 
 export const SIMULATOR_TARGET_PRIORITY: Record<string, number> = {
@@ -298,6 +299,7 @@ export function assignSalvoDamageToTargets(
     dieColor: string;
     isHit: boolean;
     selfDamage?: number;
+    isMissile?: boolean;
   }[],
   computerBonus: number,
   enemyTargets: CombatUnit[],
@@ -350,8 +352,8 @@ export function assignSalvoDamageToTargets(
       });
     };
 
-    // If Antimatter Splitter is active and damage is 2 or higher (multi-damage cannon or antimatter)
-    if (hasSplitter && r.damage >= 2) {
+    // Antimatter Splitter applies strictly to Antimatter Cannons (non-missile red 4-dmg dice)
+    if (isAntimatterSplitterRoll(hasSplitter, r, r.isMissile)) {
       let remDmg = r.damage;
       while (remDmg > 0) {
         const currentValid = enemyTargets.filter(
@@ -416,6 +418,7 @@ export function simulateEngagement(
       dieColor: string;
       isHit: boolean;
       selfDamage?: number;
+      isMissile?: boolean;
     }[] = [];
 
     for (const ship of group.ships) {
@@ -431,6 +434,7 @@ export function simulateEngagement(
               dieColor: 'purple',
               isHit: p.isHit,
               selfDamage: p.selfDamage,
+              isMissile: true,
             });
           } else {
             const raw = rollD6();
@@ -443,6 +447,7 @@ export function simulateEngagement(
               damage: w.damage,
               dieColor: w.color,
               isHit,
+              isMissile: true,
             });
           }
         }
@@ -542,6 +547,7 @@ export function simulateEngagement(
         dieColor: string;
         isHit: boolean;
         selfDamage?: number;
+        isMissile?: boolean;
       }[] = [];
 
       for (const ship of group.ships) {
@@ -557,6 +563,7 @@ export function simulateEngagement(
                 dieColor: 'purple',
                 isHit: p.isHit,
                 selfDamage: p.selfDamage,
+                isMissile: false,
               });
             } else {
               const raw = rollD6();
@@ -569,6 +576,7 @@ export function simulateEngagement(
                 damage: w.damage,
                 dieColor: w.color,
                 isHit,
+                isMissile: false,
               });
             }
           }
@@ -1316,35 +1324,43 @@ export function loadBattleFromSector(
   const dracoPlayerInSector = gameState.players.find(
     (p) => p.faction.id === 'descendants_of_draco' && distinctOwners.includes(p.id)
   );
+  const hasNpcShips = hasAncients || hasGuardian || hasGcds;
 
   const orderedOwners: string[] = [];
 
-  // 1. NPCs (Ancients, Guardian, GCDS) are always considered the original occupants
-  for (const npc of ['ancient', 'guardian', 'gcds']) {
-    if (distinctOwners.includes(npc) && !orderedOwners.includes(npc)) {
-      orderedOwners.push(npc);
+  if (dracoPlayerInSector && hasNpcShips) {
+    // NPCs and original discOwner are placed first; Draco is placed right after them (ahead of entrants)
+    // so that when combat pairs from the end in reverse entry order, invaders fight Draco before NPCs.
+    for (const npc of ['ancient', 'guardian', 'gcds']) {
+      if (distinctOwners.includes(npc) && !orderedOwners.includes(npc)) {
+        orderedOwners.push(npc);
+      }
+    }
+    if (sector.discOwner && distinctOwners.includes(sector.discOwner) && !orderedOwners.includes(sector.discOwner)) {
+      orderedOwners.push(sector.discOwner);
+    }
+    if (!orderedOwners.includes(dracoPlayerInSector.id)) {
+      orderedOwners.push(dracoPlayerInSector.id);
+    }
+  } else {
+    if (sector.discOwner && distinctOwners.includes(sector.discOwner) && !orderedOwners.includes(sector.discOwner)) {
+      orderedOwners.push(sector.discOwner);
+    }
+    for (const npc of ['ancient', 'guardian', 'gcds']) {
+      if (distinctOwners.includes(npc) && !orderedOwners.includes(npc)) {
+        orderedOwners.push(npc);
+      }
     }
   }
 
-  // 2. Original sector discOwner (if present with ships)
-  if (sector.discOwner && distinctOwners.includes(sector.discOwner) && !orderedOwners.includes(sector.discOwner)) {
-    orderedOwners.push(sector.discOwner);
-  }
-
-  // 3. For Draco in an NPC sector, Draco must be placed after NPCs and discOwner
-  // so that when defenders are reversed, Draco is fought first (Draco faction ability)
-  if (dracoPlayerInSector && !orderedOwners.includes(dracoPlayerInSector.id)) {
-    orderedOwners.push(dracoPlayerInSector.id);
-  }
-
-  // 4. Other distinct owners not in playerEntryOrder
+  // Other distinct owners not in playerEntryOrder
   for (const o of distinctOwners) {
     if (!orderedOwners.includes(o) && !(sector.playerEntryOrder || []).includes(o)) {
       orderedOwners.push(o);
     }
   }
 
-  // 5. Entrants in sector playerEntryOrder
+  // Entrants in sector playerEntryOrder
   for (const o of (sector.playerEntryOrder || [])) {
     if (distinctOwners.includes(o) && !orderedOwners.includes(o)) {
       orderedOwners.push(o);

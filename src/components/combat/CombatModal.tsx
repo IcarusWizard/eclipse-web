@@ -8,6 +8,8 @@ import {
   getSectorDefenderOwnerId,
   getCombatShipTypeGroups,
   getActiveCombatGroup,
+  isAntimatterSplitterRoll,
+  SHIP_SIZE_RANK,
   CombatUnit,
 } from '../../engine/rules/combatEngine';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
@@ -253,13 +255,92 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     return aliveUnits.filter((u) => u.ownerId !== pendingSalvo.attackerOwnerId);
   }, [pendingSalvo, aliveUnits]);
 
+  const pendingAttackerPlayer = pendingSalvo
+    ? state.players.find((p) => p.id === pendingSalvo.attackerOwnerId)
+    : null;
+  const hasPendingSplitter = Boolean(
+    pendingSalvo?.hasAntimatterSplitter ||
+      pendingAttackerPlayer?.techTrack?.researched?.some((t) => t.id === 'antimatter_splitter')
+  );
+
   const [selectedTargets, setSelectedTargets] = useState<Record<number, string>>({});
+  const [selectedSplits, setSelectedSplits] = useState<Record<number, Record<string, number>>>({});
   const prevSalvoKeyRef = React.useRef<string | null>(null);
+
+  const computeOptimalAllocations = React.useCallback(() => {
+    if (!pendingSalvo) {
+      return {
+        defaults: {} as Record<number, string>,
+        splits: {} as Record<number, Record<string, number>>,
+      };
+    }
+
+    const defaults: Record<number, string> = {};
+    const splits: Record<number, Record<string, number>> = {};
+    const mockTargets = eligibleEnemyTargets.map((u) => ({ ...u }));
+
+    const canHitTarget = (roll: CombatRoll, target: CombatUnit) => {
+      if (roll.dieColor === 'purple') return (roll.damage || 0) > 0;
+      if (roll.roll === 6) return true;
+      if (roll.roll === 1) return false;
+      return roll.roll + pendingSalvo.computerBonus - target.shieldBonus >= 6;
+    };
+
+    const sortCandidates = (pool: CombatUnit[], dmgToConsider: number) =>
+      [...pool].sort((a, b) => {
+        const hpA = a.maxHull - a.currentDamage;
+        const hpB = b.maxHull - b.currentDamage;
+        const canKillA = hpA <= dmgToConsider;
+        const canKillB = hpB <= dmgToConsider;
+        if (canKillA !== canKillB) return canKillA ? -1 : 1;
+        const rankA = SHIP_SIZE_RANK[a.type] ?? 0;
+        const rankB = SHIP_SIZE_RANK[b.type] ?? 0;
+        if (rankB !== rankA) return rankB - rankA;
+        return hpA - hpB;
+      });
+
+    pendingSalvo.rolls.forEach((r, idx) => {
+      const alive = mockTargets.filter((t) => t.currentDamage < t.maxHull);
+      const validHits = alive.filter((t) => canHitTarget(r, t));
+
+      if (isAntimatterSplitterRoll(hasPendingSplitter, r, pendingSalvo.isMissile) && validHits.length > 0) {
+        let remDmg = r.damage;
+        const rollSplits: Record<string, number> = {};
+        while (remDmg > 0) {
+          const currentValid = mockTargets.filter(
+            (t) => t.currentDamage < t.maxHull && canHitTarget(r, t)
+          );
+          if (currentValid.length === 0) break;
+          const chosen = sortCandidates(currentValid, remDmg)[0]!;
+          const needed = chosen.maxHull - chosen.currentDamage;
+          const applied = Math.min(remDmg, needed);
+          chosen.currentDamage += applied;
+          remDmg -= applied;
+          rollSplits[chosen.id] = (rollSplits[chosen.id] || 0) + applied;
+        }
+        splits[idx] = rollSplits;
+        defaults[idx] = Object.keys(rollSplits)[0] || validHits[0]?.id || '';
+        return;
+      }
+
+      const pool = validHits.length > 0 ? validHits : alive.length > 0 ? alive : mockTargets;
+      const chosen = sortCandidates(pool, r.damage)[0] || eligibleEnemyTargets[0];
+      if (chosen) {
+        defaults[idx] = chosen.id;
+        if (canHitTarget(r, chosen)) {
+          chosen.currentDamage += r.damage;
+        }
+      }
+    });
+
+    return { defaults, splits };
+  }, [pendingSalvo, eligibleEnemyTargets, hasPendingSplitter]);
 
   useEffect(() => {
     if (!pendingSalvo) {
       prevSalvoKeyRef.current = null;
       setSelectedTargets({});
+      setSelectedSplits({});
       return;
     }
 
@@ -269,64 +350,61 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     }
     prevSalvoKeyRef.current = salvoKey;
 
-    const defaults: Record<number, string> = {};
-    const mockTargets = eligibleEnemyTargets.map((u) => ({ ...u }));
-    pendingSalvo.rolls.forEach((r, idx) => {
-      const alive = mockTargets.filter((t) => t.currentDamage < t.maxHull);
-      const pool = alive.length > 0 ? alive : mockTargets;
-      const sorted = [...pool].sort((a, b) => {
-        const hpA = a.maxHull - a.currentDamage;
-        const hpB = b.maxHull - b.currentDamage;
-        return hpA - hpB;
-      });
-      const chosen = sorted[0] || eligibleEnemyTargets[0];
-      if (chosen) {
-        defaults[idx] = chosen.id;
-        const hit =
-          r.dieColor === 'purple'
-            ? (r.damage || 0) > 0
-            : r.roll === 6 || (r.roll !== 1 && r.roll + pendingSalvo.computerBonus - chosen.shieldBonus >= 6);
-        if (hit) {
-          chosen.currentDamage += r.damage;
-        }
-      }
-    });
+    const { defaults, splits } = computeOptimalAllocations();
     setSelectedTargets(defaults);
-  }, [pendingSalvo, eligibleEnemyTargets]);
+    setSelectedSplits(splits);
+  }, [pendingSalvo, computeOptimalAllocations]);
 
   const handleAutoFillAssignments = () => {
     if (!pendingSalvo) return;
-    const defaults: Record<number, string> = {};
-    const mockTargets = eligibleEnemyTargets.map((u) => ({ ...u }));
-    pendingSalvo.rolls.forEach((r, idx) => {
-      const alive = mockTargets.filter((t) => t.currentDamage < t.maxHull);
-      const pool = alive.length > 0 ? alive : mockTargets;
-      const sorted = [...pool].sort((a, b) => {
-        const hpA = a.maxHull - a.currentDamage;
-        const hpB = b.maxHull - b.currentDamage;
-        return hpA - hpB;
-      });
-      const chosen = sorted[0] || eligibleEnemyTargets[0];
-      if (chosen) {
-        defaults[idx] = chosen.id;
-        const hit =
-          r.dieColor === 'purple'
-            ? (r.damage || 0) > 0
-            : r.roll === 6 || (r.roll !== 1 && r.roll + pendingSalvo.computerBonus - chosen.shieldBonus >= 6);
-        if (hit) {
-          chosen.currentDamage += r.damage;
-        }
-      }
-    });
+    const { defaults, splits } = computeOptimalAllocations();
     setSelectedTargets(defaults);
+    setSelectedSplits(splits);
+  };
+
+  const handleAdjustSplitDamage = (
+    rollIdx: number,
+    targetShipId: string,
+    delta: number,
+    maxDamage: number
+  ) => {
+    setSelectedSplits((prev) => {
+      const curRollSplits = { ...(prev[rollIdx] || {}) };
+      const curVal = curRollSplits[targetShipId] || 0;
+      const totalOther = Object.entries(curRollSplits).reduce(
+        (sum, [id, dmg]) => (id === targetShipId ? sum : sum + dmg),
+        0
+      );
+      const maxForTarget = Math.max(0, maxDamage - totalOther);
+      const nextVal = Math.max(0, Math.min(maxForTarget, curVal + delta));
+      if (nextVal === 0) {
+        delete curRollSplits[targetShipId];
+      } else {
+        curRollSplits[targetShipId] = nextVal;
+      }
+      return { ...prev, [rollIdx]: curRollSplits };
+    });
   };
 
   const handleConfirmDamage = () => {
     if (!pendingSalvo) return;
-    const assignments: CombatDamageAssignment[] = pendingSalvo.rolls.map((r, idx) => ({
-      rollIndex: idx,
-      targetShipId: selectedTargets[idx] || eligibleEnemyTargets[0]?.id || '',
-    }));
+    const assignments: CombatDamageAssignment[] = pendingSalvo.rolls.map((r, idx) => {
+      if (isAntimatterSplitterRoll(hasPendingSplitter, r, pendingSalvo.isMissile)) {
+        const rollSplits = selectedSplits[idx] || {};
+        const splitAssignments = Object.entries(rollSplits)
+          .filter(([, dmg]) => dmg > 0)
+          .map(([targetShipId, damage]) => ({ targetShipId, damage }));
+        return {
+          rollIndex: idx,
+          targetShipId: splitAssignments[0]?.targetShipId || selectedTargets[idx] || eligibleEnemyTargets[0]?.id || '',
+          splitAssignments,
+        };
+      }
+      return {
+        rollIndex: idx,
+        targetShipId: selectedTargets[idx] || eligibleEnemyTargets[0]?.id || '',
+      };
+    });
     onStepCombat(undefined, undefined, undefined, undefined, autoAssignDamage, assignments);
   };
 
@@ -765,7 +843,18 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   const isPurple = roll.dieColor === 'purple' || (roll as any).diceColor === 'purple' || (roll as any).color === 'purple';
                   const shieldBonus = targetUnit?.shieldBonus || 0;
                   const modified = isPurple ? roll.roll : roll.roll + pendingSalvo.computerBonus - shieldBonus;
-                  const isHit = isPurple
+                  const isSplitCapable = isAntimatterSplitterRoll(hasPendingSplitter, roll, pendingSalvo.isMissile);
+                  const splitHitTargets = isSplitCapable
+                    ? eligibleEnemyTargets.filter(
+                        (eu) => roll.roll === 6 || (roll.roll !== 1 && roll.roll + pendingSalvo.computerBonus - eu.shieldBonus >= 6)
+                      )
+                    : [];
+                  const isSplitActive = isSplitCapable && splitHitTargets.length > 0;
+                  const rollSplits = selectedSplits[idx] || {};
+                  const totalSplitAssigned = Object.values(rollSplits).reduce((s, d) => s + d, 0);
+                  const isHit = isSplitActive
+                    ? true
+                    : isPurple
                     ? (roll.damage || 0) > 0
                     : roll.roll === 6 || (roll.roll !== 1 && modified >= 6);
 
@@ -842,43 +931,125 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         </span>
                       </div>
 
-                      {/* Target Dropdown */}
-                      <div className="flex flex-col gap-1">
-                        <label className="text-[10px] font-bold text-slate-400 uppercase">
-                          Target Vessel:
-                        </label>
-                        <select
-                          value={targetId}
-                          disabled={!canCommandActiveShip}
-                          onChange={(e) =>
-                            setSelectedTargets((prev) => ({ ...prev, [idx]: e.target.value }))
-                          }
-                          className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-cyan-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
-                        >
-                          {eligibleEnemyTargets.map((eu) => {
-                            const pOwner = state.players.find((p) => p.id === eu.ownerId);
-                            const ownerName = pOwner ? getPlayerDisplayName(pOwner, { short: true }) : eu.ownerId.toUpperCase();
-                            const remHp = Math.max(0, eu.maxHull - eu.currentDamage);
-                            const sameTypeShips = eligibleEnemyTargets.filter(
-                              (t) => t.ownerId === eu.ownerId && t.type === eu.type
-                            );
-                            const shipNum = sameTypeShips.length > 1
-                              ? ` #${sameTypeShips.findIndex((t) => t.id === eu.id) + 1}`
-                              : '';
-                            return (
-                              <option key={eu.id} value={eu.id}>
-                                {ownerName} {eu.type.toUpperCase()}{shipNum} (HP: {remHp}/{eu.maxHull}, Shield: -{eu.shieldBonus})
-                              </option>
-                            );
-                          })}
-                        </select>
-                      </div>
+                      {/* Target Allocation: Split Steppers (Antimatter Splitter) OR Single Target Dropdown */}
+                      {isSplitActive ? (
+                        <div className="flex flex-col gap-1.5">
+                          <div className="flex items-center justify-between text-[10px] font-bold uppercase">
+                            <span className="text-rose-300">
+                              Antimatter Splitter
+                            </span>
+                            <span className="font-mono text-cyan-300">
+                              {totalSplitAssigned} / {roll.damage} Dmg assigned
+                            </span>
+                          </div>
+                          <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
+                            {eligibleEnemyTargets.map((eu) => {
+                              const pOwner = state.players.find((p) => p.id === eu.ownerId);
+                              const ownerName = pOwner ? getPlayerDisplayName(pOwner, { short: true }) : eu.ownerId.toUpperCase();
+                              const remHp = Math.max(0, eu.maxHull - eu.currentDamage);
+                              const sameTypeShips = eligibleEnemyTargets.filter(
+                                (t) => t.ownerId === eu.ownerId && t.type === eu.type
+                              );
+                              const shipNum = sameTypeShips.length > 1
+                                ? ` #${sameTypeShips.findIndex((t) => t.id === eu.id) + 1}`
+                                : '';
+                              const canHitEu =
+                                roll.roll === 6 ||
+                                (roll.roll !== 1 && roll.roll + pendingSalvo.computerBonus - eu.shieldBonus >= 6);
+                              const assignedToEu = rollSplits[eu.id] || 0;
+                              const remBudget = Math.max(0, roll.damage - totalSplitAssigned);
+
+                              return (
+                                <div
+                                  key={eu.id}
+                                  className={`flex items-center justify-between gap-2 px-2 py-1 rounded border text-[11px] ${
+                                    canHitEu
+                                      ? assignedToEu > 0
+                                        ? 'bg-rose-950/30 border-rose-500/60 text-slate-100'
+                                        : 'bg-slate-950/90 border-slate-800 text-slate-300'
+                                      : 'bg-slate-950/50 border-slate-800/60 text-slate-500 opacity-60'
+                                  }`}
+                                >
+                                  <div className="truncate">
+                                    <span className="font-bold">
+                                      {ownerName} {eu.type.toUpperCase()}{shipNum}
+                                    </span>{' '}
+                                    <span className="text-[10px] text-slate-400 font-mono">
+                                      (HP {remHp}/{eu.maxHull}, Sh -{eu.shieldBonus})
+                                    </span>
+                                  </div>
+                                  {canHitEu ? (
+                                    <div className="flex items-center gap-1 shrink-0">
+                                      <button
+                                        type="button"
+                                        disabled={!canCommandActiveShip || assignedToEu <= 0}
+                                        onClick={() => handleAdjustSplitDamage(idx, eu.id, -1, roll.damage)}
+                                        className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-200 font-bold flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+                                      >
+                                        -
+                                      </button>
+                                      <span className="w-5 text-center font-mono font-bold text-rose-300">
+                                        {assignedToEu}
+                                      </span>
+                                      <button
+                                        type="button"
+                                        disabled={!canCommandActiveShip || remBudget <= 0}
+                                        onClick={() => handleAdjustSplitDamage(idx, eu.id, 1, roll.damage)}
+                                        className="w-5 h-5 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 text-slate-200 font-bold flex items-center justify-center cursor-pointer disabled:cursor-not-allowed"
+                                      >
+                                        +
+                                      </button>
+                                    </div>
+                                  ) : (
+                                    <span className="text-[10px] font-bold uppercase text-slate-500 shrink-0">
+                                      Shielded
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          <label className="text-[10px] font-bold text-slate-400 uppercase">
+                            Target Vessel:
+                          </label>
+                          <select
+                            value={targetId}
+                            disabled={!canCommandActiveShip}
+                            onChange={(e) =>
+                              setSelectedTargets((prev) => ({ ...prev, [idx]: e.target.value }))
+                            }
+                            className="bg-slate-950 border border-slate-700 text-slate-200 text-xs rounded px-2 py-1.5 focus:outline-none focus:border-cyan-500 cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed"
+                          >
+                            {eligibleEnemyTargets.map((eu) => {
+                              const pOwner = state.players.find((p) => p.id === eu.ownerId);
+                              const ownerName = pOwner ? getPlayerDisplayName(pOwner, { short: true }) : eu.ownerId.toUpperCase();
+                              const remHp = Math.max(0, eu.maxHull - eu.currentDamage);
+                              const sameTypeShips = eligibleEnemyTargets.filter(
+                                (t) => t.ownerId === eu.ownerId && t.type === eu.type
+                              );
+                              const shipNum = sameTypeShips.length > 1
+                                ? ` #${sameTypeShips.findIndex((t) => t.id === eu.id) + 1}`
+                                : '';
+                              return (
+                                <option key={eu.id} value={eu.id}>
+                                  {ownerName} {eu.type.toUpperCase()}{shipNum} (HP: {remHp}/{eu.maxHull}, Shield: -{eu.shieldBonus})
+                                </option>
+                              );
+                            })}
+                          </select>
+                        </div>
+                      )}
 
                       {/* Math Summary & Lyra Reroll */}
                       <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-800/80">
                         <span>
                           {isPurple
                             ? `Rift: ${roll.damage} target dmg`
+                            : isSplitActive
+                            ? `Roll ${roll.roll} + ${pendingSalvo.computerBonus} (split across hit targets)`
                             : `Roll ${roll.roll} + ${pendingSalvo.computerBonus} - ${shieldBonus} = ${modified}`}
                         </span>
 
@@ -1020,7 +1191,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                             'NO DAMAGE'
                           )
                         ) : roll.isHit ? (
-                          `HIT (+${roll.damage} dmg)`
+                          roll.splitAssignments && roll.splitAssignments.length > 1 ? (
+                            `HIT (Split ${roll.splitAssignments.map((s) => s.damage).join('+')})`
+                          ) : (
+                            `HIT (+${roll.damage} dmg)`
+                          )
                         ) : (
                           'MISS'
                         )}

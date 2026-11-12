@@ -2514,6 +2514,7 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
     targetRoll.isHit = newIsHit;
     targetRoll.damage = newDmg;
   }
+  delete targetRoll.splitAssignments;
 
   if (state.activeCombat.pendingDamageAssignment) {
     if (state.activeCombat.pendingDamageAssignment.rolls[rollIndex]) {

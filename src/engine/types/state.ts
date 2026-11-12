@@ -30,11 +30,20 @@ export interface CombatRoll {
   selfDamage?: number;
   symbol?: string;
   targetShipId?: string;
+  isMissile?: boolean;
+  splitAssignments?: {
+    targetShipId: string;
+    damage: number;
+  }[];
 }
 
 export interface CombatDamageAssignment {
   rollIndex: number;
   targetShipId: string;
+  splitAssignments?: {
+    targetShipId: string;
+    damage: number;
+  }[];
 }
 
 export interface PendingDamageAssignment {
@@ -44,6 +53,7 @@ export interface PendingDamageAssignment {
   computerBonus: number;
   rolls: CombatRoll[];
   isMissile: boolean;
+  hasAntimatterSplitter?: boolean;
 }
 
 export interface CombatState {
