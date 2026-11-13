@@ -2403,22 +2403,6 @@ export const App: React.FC = () => {
     }
   };
 
-  const handleBackToDiscoveryChoice = () => {
-    if (!state.pendingExploreControl?.discoverySnapshot) return;
-    try {
-      const restoredState: GameState = JSON.parse(state.pendingExploreControl.discoverySnapshot);
-      restoredState.pendingActionConfirmation = null;
-      lastStateFingerprintRef.current = getStateFingerprint(restoredState);
-      saveGameState(restoredState);
-      persistTableToServer(restoredState).catch(() => {});
-      setState(restoredState);
-      showToast('Returned to discovery tile decision.');
-    } catch (err) {
-      console.error('Failed to restore discovery snapshot', err);
-      showToast('Failed to return to discovery choice.');
-    }
-  };
-
   // Influence flow (Claim / Abandon sector control)
   const handleExecuteInfluence = (
     claimSectors: string[],
@@ -3560,7 +3544,6 @@ export const App: React.FC = () => {
           pendingControl={state.pendingExploreControl}
           currentSeat={currentSeat}
           onConfirm={handleExploreControl}
-          onBack={state.pendingExploreControl.discoverySnapshot ? handleBackToDiscoveryChoice : undefined}
         />
       )}
 
