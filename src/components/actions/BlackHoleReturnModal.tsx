@@ -3,6 +3,8 @@ import { BlackHoleDelayedShip } from '../../engine/rules/galacticEvents';
 import { SectorTile } from '../../engine/types/galaxy';
 import { PlayerState } from '../../engine/types/player';
 import { Radio, Sparkles, X, ArrowRight, ShieldCheck, Rocket, MapPin } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateShipType } from '../../i18n/catalogTranslations';
 
 interface BlackHoleReturnModalProps {
   player: PlayerState;
@@ -27,6 +29,7 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
   onDeclineThisRound,
   onClose,
 }) => {
+  const { language, l } = useLanguage();
   // Default to player's controlled sector if among legal sectors, or first legal sector
   const defaultSectorId =
     legalSectors.find((s) => s.discOwner === player.id)?.id || legalSectors[0]?.id || '';
@@ -75,20 +78,20 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
           </div>
           <div>
             <h2 className="text-xs font-bold text-slate-100 font-display flex items-center gap-1.5 uppercase">
-              BLACK HOLE SHIP RETURN
+              {l('BLACK HOLE SHIP RETURN', '黑洞飞船返回')}
               <span className="text-[10px] font-semibold px-1.5 py-0.2 rounded bg-indigo-950 border border-indigo-700 text-indigo-300">
                 R{currentRound}
               </span>
             </h2>
             <p className="text-[10px] text-slate-400">
-              Spacetime transit complete for Sector {ship.blackHoleSectorNumber}.
+              {l(`Spacetime transit complete for Sector ${ship.blackHoleSectorNumber}.`, `星区 ${ship.blackHoleSectorNumber} 时空跃迁完成。`)}
             </p>
           </div>
         </div>
         <button
           onClick={handleDecline}
           className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
-          title="Close / Decide Later"
+          title={l('Close / Decide Later', '关闭 / 稍后决定')}
         >
           <X className="w-4 h-4" />
         </button>
@@ -104,19 +107,19 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
             </div>
             <div>
               <div className="text-[10px] font-bold text-indigo-300 uppercase tracking-wider">
-                Returning Vessel
+                {l('Returning Vessel', '返回舰船')}
               </div>
               <div className="text-xs font-black text-slate-100">
-                {player.name} &bull; {ship.shipType.toUpperCase()}
+                {player.name} &bull; {translateShipType(ship.shipType, language)}
               </div>
             </div>
           </div>
           <div className="text-right">
             <span className="text-[9px] uppercase font-bold text-slate-400 tracking-wider block">
-              Origin
+              {l('Origin', '来源星区')}
             </span>
             <span className="text-[11px] font-mono font-bold text-indigo-300">
-              Sector {ship.blackHoleSectorNumber}
+              {l(`Sector ${ship.blackHoleSectorNumber}`, `星区 ${ship.blackHoleSectorNumber}`)}
             </span>
           </div>
         </div>
@@ -125,7 +128,7 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
         <div className="bg-indigo-950/30 border border-indigo-800/40 rounded-lg p-2 flex items-center gap-2 text-[10.5px] text-indigo-200">
           <MapPin className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
           <span>
-            Click a highlighted sector on the map or select from the legal destinations below.
+            {l('Click a highlighted sector on the map or select from the legal destinations below.', '点击星图上的高亮星区，或在下方合法目的地中选择。')}
           </span>
         </div>
 
@@ -133,16 +136,16 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
           <div className="flex items-center justify-between mb-1.5">
             <span className="text-[11px] font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1">
               <Radio className="w-3 h-3 text-indigo-400" />
-              Destination ({legalSectors.length} legal)
+              {l(`Destination (${legalSectors.length} legal)`, `目标星区（${legalSectors.length} 个可选）`)}
             </span>
             <span className="text-[9.5px] text-slate-400 font-mono">
-              {ship.blackHoleSectorNumber === 396 ? 'Inner (Ring I)' : 'Empty Zone Adjacent'}
+              {ship.blackHoleSectorNumber === 396 ? l('Inner (Ring I)', '内环（第 I 环）') : l('Empty Zone Adjacent', '空星域相邻')}
             </span>
           </div>
 
           {legalSectors.length === 0 ? (
             <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-3 text-center text-[11px] text-rose-400">
-              No legal destination sectors currently available.
+              {l('No legal destination sectors currently available.', '当前没有可用的合法返回星区。')}
             </div>
           ) : (
             <div className="space-y-1.5 max-h-48 overflow-y-auto pr-1">
@@ -163,23 +166,23 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
                   >
                     <div>
                       <div className="font-bold text-[11px] text-slate-200 flex items-center gap-1.5">
-                        <span>Sector {sec.sectorNumber}</span>
+                        <span>{l(`Sector ${sec.sectorNumber}`, `星区 ${sec.sectorNumber}`)}</span>
                         <span className="text-slate-400 font-normal">({sec.name})</span>
-                        <span className="text-[9px] text-slate-500 font-mono">Ring {sec.ring}</span>
+                        <span className="text-[9px] text-slate-500 font-mono">{l(`Ring ${sec.ring}`, `第 ${sec.ring} 环`)}</span>
                       </div>
                       <div className="text-[10px] text-slate-400 mt-0.5 flex items-center gap-1.5">
                         {isControlled && (
                           <span className="text-emerald-400 flex items-center gap-0.5 font-semibold">
-                            <ShieldCheck className="w-2.5 h-2.5" /> Controlled
+                            <ShieldCheck className="w-2.5 h-2.5" /> {l('Controlled', '已控制')}
                           </span>
                         )}
                         {hasFriendlyShips && (
                           <span className="text-cyan-400">
-                            {sec.ships.filter((s) => s.ownerId === player.id).length} ship(s)
+                            {sec.ships.filter((s) => s.ownerId === player.id).length} {l('ship(s)', '艘船')}
                           </span>
                         )}
                         {!isControlled && !hasFriendlyShips && (
-                          <span className="text-slate-500">Unoccupied</span>
+                          <span className="text-slate-500">{l('Unoccupied', '未占领')}</span>
                         )}
                       </div>
                     </div>
@@ -209,9 +212,9 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
           type="button"
           onClick={handleDecline}
           className="px-3 py-1.5 rounded-xl text-[11px] font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors cursor-pointer border border-slate-800"
-          title="Decline return for this round. Will ask again in the next round."
+          title={l('Decline return for this round. Will ask again in the next round.', '本轮暂不返回，下一轮将再次询问。')}
         >
-          Not This Round
+          {l('Not This Round', '本轮暂不返回')}
         </button>
         <button
           type="button"
@@ -219,7 +222,7 @@ export const BlackHoleReturnModal: React.FC<BlackHoleReturnModalProps> = ({
           onClick={handleConfirm}
           className="flex items-center gap-1 px-4 py-1.5 rounded-xl text-[11px] font-bold tracking-wider uppercase bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-slate-950 transition-all shadow-md shadow-indigo-950/60 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
         >
-          <span>Return to Sec {selectedSector?.sectorNumber || ''}</span>
+          <span>{l(`Return to Sec ${selectedSector?.sectorNumber || ''}`, `返回星区 ${selectedSector?.sectorNumber || ''}`)}</span>
           <ArrowRight className="w-3 h-3" />
         </button>
       </div>

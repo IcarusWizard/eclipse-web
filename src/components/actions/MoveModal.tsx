@@ -18,6 +18,8 @@ import {
   ShieldAlert,
   Sparkles,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateShipType, translatePartName } from '../../i18n/catalogTranslations';
 
 export interface MoveStepPayload {
   shipId: string;
@@ -82,6 +84,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   onClose,
   pulsarSectorId,
 }) => {
+  const { language, l } = useLanguage();
   const isPulsarActive = Boolean(pulsarSectorId);
   const maxMoves = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxMoveActivations(player));
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
@@ -97,13 +100,14 @@ export const MoveModal: React.FC<MoveModalProps> = ({
       currentBlueprint?.slots.some((p) => p && (p.id === 'jump_drive' || p.isJumpDrive))
   );
   const enginePart = currentBlueprint?.slots.find((p) => p && p.category === 'drive');
+  const translatedEngineName = enginePart ? translatePartName(enginePart.id, enginePart.name, language) : '';
   const engineName = enginePart
     ? currentShipHasJumpDrive && enginePart.id !== 'jump_drive'
-      ? `${enginePart.name} + Jump Drive`
-      : enginePart.name
+      ? `${translatedEngineName} + ${translatePartName('jump_drive', 'Jump Drive', language)}`
+      : translatedEngineName
     : currentShipHasJumpDrive
-    ? 'Jump Drive'
-    : 'No Engine';
+    ? translatePartName('jump_drive', 'Jump Drive', language)
+    : l('No Engine', '无引擎');
 
   // Group planned moves by activation index
   const activationGroups = useMemo(() => {
@@ -191,14 +195,14 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
               <div>
-                <span className="font-bold">🌟 Pulsar Movement Activation</span>
+                <span className="font-bold">🌟 {l('Pulsar Movement Activation', '脉冲星移动激活')}</span>
                 <span className="text-cyan-300/80 text-[11px] block">
-                  1 Free Ship Movement activation. No Influence Disc will be deducted from your track.
+                  {l('1 Free Ship Movement activation. No Influence Disc will be deducted from your track.', '获得 1 次免费飞船移动激活，不消耗影响力轨上的圆盘。')}
                 </span>
               </div>
             </div>
             <span className="px-2 py-0.5 rounded bg-cyan-900 text-cyan-200 font-mono text-[10px] font-bold uppercase border border-cyan-700">
-              1 Ship Limit
+              {l('1 Ship Limit', '限 1 艘飞船')}
             </span>
           </div>
         )}
@@ -212,22 +216,22 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             <div>
               <div className="flex items-center gap-2 flex-wrap">
                 <span className="text-xs font-black tracking-wide text-slate-200 uppercase font-display">
-                  FLEET MANEUVERS & MOVEMENT
+                  {l('FLEET MANEUVERS & MOVEMENT', '舰队机动与移动')}
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 font-mono font-bold">
-                  {distinctActivationsCount} / {maxMoves} Activations
+                  {distinctActivationsCount} / {maxMoves}{l(' Activations', ' 次激活')}
                 </span>
                 <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono">
-                  {plannedMoves.length} {plannedMoves.length === 1 ? 'Step' : 'Steps'}
+                  {plannedMoves.length} {l(plannedMoves.length === 1 ? 'Step' : 'Steps', '步')}
                 </span>
                 {hasImprovedLogistics && (
                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">
-                    Logistics +1
+                    {l('Logistics +1', '后勤 +1')}
                   </span>
                 )}
               </div>
               <p className="text-[10.5px] text-cyan-400/90 font-medium mt-0.5">
-                Each activation allows 1 ship to move up to its engine Drive Speed. Hostile sectors pin ships immediately.
+                {l('Each activation allows 1 ship to move up to its engine Drive Speed. Hostile sectors pin ships immediately.', '每次激活可移动 1 艘飞船，距离不超过其引擎航速。进入敌对星区会立即被牵制。')}
               </p>
             </div>
           </div>
@@ -235,7 +239,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
           <button
             onClick={onClose}
             className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-100 transition-colors"
-            title="Close (Esc)"
+            title={l('Close (Esc)', '关闭 (Esc)')}
           >
             <X className="w-4 h-4" />
           </button>
@@ -244,7 +248,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         {/* Content */}
         {playerShips.length === 0 ? (
           <div className="p-3 bg-slate-950/80 border border-slate-800 rounded-xl text-slate-400 text-xs text-center">
-            No active ships deployed in the galaxy! Build ships using the Build action first.
+            {l('No active ships deployed in the galaxy! Build ships using the Build action first.', '银河系中尚无已部署飞船！请先执行建造行动。')}
           </div>
         ) : (
           <div className="space-y-2.5 max-h-[55vh] overflow-y-auto pr-0.5">
@@ -252,8 +256,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             {activationGroups.length > 0 && (
               <div className="space-y-1.5">
                 <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider flex items-center justify-between">
-                  <span>Planned Activations Queue:</span>
-                  <span className="text-slate-500 font-normal">Click trash to undo activation</span>
+                  <span>{l('Planned Activations Queue:', '已规划的移动队列：')}</span>
+                  <span className="text-slate-500 font-normal">{l('Click trash to undo activation', '点击垃圾桶图标撤销该次激活')}</span>
                 </div>
                 <div className="space-y-1.5 max-h-36 overflow-y-auto pr-1">
                   {activationGroups.map(([actIdx, moves]) => {
@@ -269,10 +273,10 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                             {actIdx + 1}
                           </span>
                           <span className="font-bold text-[11px] text-slate-200 uppercase shrink-0">
-                            {firstMove.shipType}
+                            {translateShipType(firstMove.shipType, language)}
                           </span>
                           <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 border border-cyan-800 text-cyan-300 font-mono font-bold shrink-0">
-                            {moves.length}/{shipDrive} MP
+                            {moves.length}/{shipDrive} {l('MP', '移动力')}
                           </span>
                           <div className="flex items-center gap-1.5 text-[11px] text-slate-300 flex-wrap">
                             {moves.map((m, sIdx) => (
@@ -281,14 +285,14 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                                 <span className="font-mono bg-slate-900/90 px-1.5 py-0.5 rounded border border-slate-800">
                                   {m.fromSectorId === m.toSectorId && m.targetSubsector ? (
                                     <>
-                                      Sector {m.fromSectorNumber}{m.fromSubsector ? ` Sub ${m.fromSubsector}` : ''}{' '}
-                                      <strong className="text-indigo-300">(➔ Sub {m.targetSubsector})</strong>
+                                      {l(`Sector ${m.fromSectorNumber}`, `星区 ${m.fromSectorNumber}`)}{m.fromSubsector ? ` ${l(`Sub ${m.fromSubsector}`, `子区 ${m.fromSubsector}`)}` : ''}{' '}
+                                      <strong className="text-indigo-300">(➔ {l(`Sub ${m.targetSubsector}`, `子区 ${m.targetSubsector}`)})</strong>
                                     </>
                                   ) : (
                                     <>
-                                      Sector {m.fromSectorNumber}{m.fromSubsector ? ` Sub ${m.fromSubsector}` : ''} ➔{' '}
+                                      {l(`Sector ${m.fromSectorNumber}`, `星区 ${m.fromSectorNumber}`)}{m.fromSubsector ? ` ${l(`Sub ${m.fromSubsector}`, `子区 ${m.fromSubsector}`)}` : ''} ➔{' '}
                                       <strong className="text-cyan-300">
-                                        Sector {m.toSectorNumber}{m.targetSubsector ? ` Sub ${m.targetSubsector}` : ''}
+                                        {l(`Sector ${m.toSectorNumber}`, `星区 ${m.toSectorNumber}`)}{m.targetSubsector ? ` ${l(`Sub ${m.targetSubsector}`, `子区 ${m.targetSubsector}`)}` : ''}
                                       </strong>
                                     </>
                                   )}
@@ -304,7 +308,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                             onRemoveMove(firstIndex);
                           }}
                           className="p-1 hover:bg-rose-950 text-slate-500 hover:text-rose-400 rounded transition-colors shrink-0"
-                          title="Undo this activation"
+                          title={l('Undo this activation', '撤销此次激活')}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -322,18 +326,18 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 <div className="flex items-center justify-between gap-2 flex-wrap text-xs">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Activation #{activeActivationIndex + 1}:
+                      {l(`Activation #${activeActivationIndex + 1}:`, `第 ${activeActivationIndex + 1} 次激活：`)}
                     </span>
                     <span className="px-2 py-0.5 rounded bg-cyan-950/70 border border-cyan-700/80 text-cyan-300 font-bold text-xs font-mono uppercase">
-                      {currentShipObj?.type} (Sector {currentSimSector?.sectorNumber}
-                      {currentSimSector?.isNebula ? ` Sub ${currentShipSubsector ?? 1}` : ''})
+                      {currentShipObj ? translateShipType(currentShipObj.type, language) : ''} ({l(`Sector ${currentSimSector?.sectorNumber}`, `星区 ${currentSimSector?.sectorNumber}`)}
+                      {currentSimSector?.isNebula ? ` ${l(`Sub ${currentShipSubsector ?? 1}`, `子区 ${currentShipSubsector ?? 1}`)}` : ''})
                     </span>
                     <span className="px-2 py-0.5 rounded bg-indigo-950/70 border border-indigo-700/60 text-indigo-300 text-[11px] font-mono">
-                      {engineName} (Speed {currentShipDriveSpeed})
+                      {engineName} ({l(`Speed ${currentShipDriveSpeed}`, `航速 ${currentShipDriveSpeed}`)})
                     </span>
                     {movePointsUsedInCurrentActivation > 0 && (
                       <span className="px-2 py-0.5 rounded bg-amber-950/70 border border-amber-700/70 text-amber-300 font-bold text-[11px] font-mono">
-                        {movePointsUsedInCurrentActivation} / {currentShipDriveSpeed} MP Used
+                        {movePointsUsedInCurrentActivation} / {currentShipDriveSpeed} {l('MP Used', '移动力已用')}
                       </span>
                     )}
                   </div>
@@ -345,10 +349,10 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                         type="button"
                         onClick={onFinishActivation}
                         className="px-2.5 py-1 rounded-lg bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
-                        title="End this ship's movement and proceed to next activation"
+                        title={l("End this ship's movement and proceed to next activation", '结束当前飞船移动并进入下一次激活')}
                       >
                         <FastForward className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>Finish Activation ({currentShipDriveSpeed - movePointsUsedInCurrentActivation} MP Left)</span>
+                        <span>{l(`Finish Activation (${currentShipDriveSpeed - movePointsUsedInCurrentActivation} MP Left)`, `结束本次激活（余 ${currentShipDriveSpeed - movePointsUsedInCurrentActivation} 步）`)}</span>
                       </button>
                     )}
                 </div>
@@ -357,7 +361,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 {playerShips.length > 1 && (
                   <div className="flex items-center gap-1.5 flex-wrap pt-0.5">
                     <span className="text-[10px] text-slate-500 font-semibold uppercase tracking-wider">
-                      Fleet:
+                      {l('Fleet:', '舰队：')}
                     </span>
                     {playerShips.map((item) => {
                       const isSel = item.ship.id === selectedShipId;
@@ -385,18 +389,18 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                           }`}
                           title={
                             pinned
-                              ? 'Ship is pinned by hostile forces and cannot move'
+                              ? l('Ship is pinned by hostile forces and cannot move', '飞船被敌方牵制，无法移动')
                               : isStarbase
-                              ? 'Starbases have Drive Speed 0 and cannot move'
-                              : `Select ${item.ship.type} (Speed ${shipSpeed})`
+                              ? l('Starbases have Drive Speed 0 and cannot move', '星际基地航速为 0，无法移动')
+                              : l(`Select ${item.ship.type} (Speed ${shipSpeed})`, `选择${translateShipType(item.ship.type, language)}（航速 ${shipSpeed}）`)
                           }
                         >
                           <span>
-                            {item.ship.type.slice(0, 3).toUpperCase()} (Sector {sim?.sectorNumber}
-                            {sim?.isNebula ? ` Sub ${getShipSubsector(item.ship.id, item.ship.subsector, sim)}` : ''})
+                            {language === 'zh' ? translateShipType(item.ship.type, language) : item.ship.type.slice(0, 3).toUpperCase()} ({l(`Sector ${sim?.sectorNumber}`, `星区 ${sim?.sectorNumber}`)}
+                            {sim?.isNebula ? ` ${l(`Sub ${getShipSubsector(item.ship.id, item.ship.subsector, sim)}`, `子区 ${getShipSubsector(item.ship.id, item.ship.subsector, sim)}`)}` : ''})
                           </span>
-                          {pinned && <span className="text-[8px] text-rose-400 font-bold">PINNED</span>}
-                          {isStarbase && <span className="text-[8px] text-slate-400">0 DRIVE</span>}
+                          {pinned && <span className="text-[8px] text-rose-400 font-bold">{l('PINNED', '牵制')}</span>}
+                          {isStarbase && <span className="text-[8px] text-slate-400">{l('0 DRIVE', '无引擎')}</span>}
                         </button>
                       );
                     })}
@@ -406,17 +410,17 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 {/* Connected Destinations Quick Bar */}
                 <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-900/80">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
-                    Step Destination:
+                    {l('Step Destination:', '下一步目的地：')}
                   </span>
                   {isSelectedShipPinned ? (
                     <div className="text-[11px] text-rose-400 flex items-center gap-1.5 font-medium">
                       <ShieldAlert className="w-3.5 h-3.5" />
-                      <span>This fleet is pinned by hostile forces and cannot move further!</span>
+                      <span>{l('This fleet is pinned by hostile forces and cannot move further!', '该舰队已被敌方牵制，无法继续移动！')}</span>
                     </div>
                   ) : currentShipDriveSpeed <= 0 && !currentShipHasJumpDrive ? (
                     <div className="text-[11px] text-amber-400 flex items-center gap-1.5 font-medium">
                       <CircleAlert className="w-3.5 h-3.5" />
-                      <span>This unit has Drive Speed 0 and cannot move.</span>
+                      <span>{l('This unit has Drive Speed 0 and cannot move.', '该单位航速为 0，无法移动。')}</span>
                     </div>
                   ) : connectedDestinations.length > 0 ? (
                     <div className="flex items-center gap-1.5 flex-wrap">
@@ -439,16 +443,16 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                           >
                             <ArrowRight className="w-3 h-3 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
                             <span>
-                              Sector {sec.sectorNumber}
-                              {nebulaTargetSub ? ` Sub ${nebulaTargetSub}` : ''}{' '}
-                              ({sec.name || `Ring ${sec.ring}`})
+                              {l(`Sector ${sec.sectorNumber}`, `星区 ${sec.sectorNumber}`)}
+                              {nebulaTargetSub ? ` ${l(`Sub ${nebulaTargetSub}`, `子区 ${nebulaTargetSub}`)}` : ''}{' '}
+                              ({sec.name || l(`Ring ${sec.ring}`, `第 ${sec.ring} 环`)})
                               {nebulaTargetSub && (
-                                <span className="text-cyan-300 font-normal ml-1">➔ Sub {nebulaTargetSub}</span>
+                                <span className="text-cyan-300 font-normal ml-1">{l('➔ Sub ', '➔ 子区 ')}{nebulaTargetSub}</span>
                               )}
                             </span>
                             {!hasWormhole && (
                               <span className="text-[9px] px-1 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono">
-                                Jump ⚡
+                                {l('Jump ⚡', '跳跃 ⚡')}
                               </span>
                             )}
                           </button>
@@ -458,7 +462,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                   ) : (
                     <div className="text-[11px] text-amber-400 flex items-center gap-1.5">
                       <CircleAlert className="w-3.5 h-3.5" />
-                      <span>No connected wormholes aligned or movement step limit reached!</span>
+                      <span>{l('No connected wormholes aligned or movement step limit reached!', '无相连虫洞或已达移动步数上限！')}</span>
                     </div>
                   )}
                 </div>
@@ -467,7 +471,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 {currentSimSector?.isNebula && !isSelectedShipPinned && (
                   <div className="flex items-center gap-1.5 flex-wrap pt-1.5 border-t border-slate-900/80">
                     <span className="text-[11px] font-bold text-indigo-300 uppercase tracking-wider shrink-0">
-                      Nebula Subsector Shift (1 MP):
+                      {l('Nebula Subsector Shift (1 MP):', '星云子区移动（1 移动力）：')}
                     </span>
                     {([1, 2, 3] as const)
                       .filter((sub) => sub !== (currentShipSubsector ?? 1))
@@ -479,7 +483,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                           className="px-2.5 py-1 rounded-lg bg-indigo-950/70 hover:bg-indigo-900/90 border border-indigo-700/80 text-indigo-300 text-xs font-bold flex items-center gap-1.5 transition-all group shadow-sm cursor-pointer"
                         >
                           <ArrowRight className="w-3 h-3 text-indigo-400 group-hover:translate-x-0.5 transition-transform" />
-                          <span>Shift to Sector {currentSimSector.sectorNumber} Sub {sub}</span>
+                          <span>{l(`Shift to Sector ${currentSimSector.sectorNumber} Sub ${sub}`, `移至星区 ${currentSimSector.sectorNumber} 子区 ${sub}`)}</span>
                         </button>
                       ))}
                   </div>
@@ -488,7 +492,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             ) : (
               <div className="p-3 rounded-xl bg-emerald-950/40 border border-emerald-800/60 text-emerald-300 text-xs font-bold flex items-center gap-2">
                 <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-                <span>All {maxMoves} Move activations planned ({plannedMoves.length} steps)! Ready to execute maneuvers.</span>
+                <span>{l(`All ${maxMoves} Move activations planned (${plannedMoves.length} steps)! Ready to execute maneuvers.`, `全部 ${maxMoves} 次移动激活已规划完成（共 ${plannedMoves.length} 步）！可以执行机动。`)}</span>
               </div>
             )}
           </div>
@@ -497,12 +501,12 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-slate-800/80 pt-2.5">
           <div className="text-xs text-slate-400">
-            Activations to execute:{' '}
+            {l('Activations to execute:', '即将执行的激活：')}{' '}
             <strong className="text-cyan-300 font-bold">
               {distinctActivationsCount} / {maxMoves}
             </strong>{' '}
             <span className="text-slate-500">
-              ({plannedMoves.length} {plannedMoves.length === 1 ? 'total step' : 'total steps'})
+              ({plannedMoves.length} {l(plannedMoves.length === 1 ? 'total step' : 'total steps', '总步数')})
             </span>
           </div>
 
@@ -512,24 +516,24 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 type="button"
                 onClick={onClearMoves}
                 className="px-2.5 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-medium border border-slate-800 flex items-center gap-1 transition-colors"
-                title="Reset all planned moves"
+                title={l('Reset all planned moves', '清空所有已规划移动')}
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Clear</span>
+                <span>{l('Clear', '清空')}</span>
               </button>
             )}
             <button
               onClick={onClose}
               className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
             >
-              Cancel
+              {l('Cancel', '取消')}
             </button>
             <button
               disabled={!canExecute}
               onClick={handleTriggerMove}
               className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all"
             >
-              Execute {plannedMoves.length} {plannedMoves.length === 1 ? 'Step' : 'Steps'} (Enter)
+              {l(`Execute ${plannedMoves.length} ${plannedMoves.length === 1 ? 'Step' : 'Steps'} (Enter)`, `执行 ${plannedMoves.length} 步移动 (Enter)`)}
             </button>
           </div>
         </div>
@@ -546,16 +550,16 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-amber-300 font-display">
-                Unused Move Activation
+                {l('Unused Move Activation', '尚有未使用的移动激活')}
               </h3>
               <p className="text-xs text-slate-400">
-                You have {maxMoves - distinctActivationsCount} unused Move activation{maxMoves - distinctActivationsCount > 1 ? 's' : ''} remaining ({distinctActivationsCount} of {maxMoves} used).
+                {l(`You have ${maxMoves - distinctActivationsCount} unused Move activation${maxMoves - distinctActivationsCount > 1 ? 's' : ''} remaining (${distinctActivationsCount} of ${maxMoves} used).`, `你还有 ${maxMoves - distinctActivationsCount} 次未使用的移动机会（已用 ${distinctActivationsCount}/${maxMoves}）。`)}
               </p>
             </div>
           </div>
 
           <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-300">
-            Are you sure you want to execute only {distinctActivationsCount} move{distinctActivationsCount > 1 ? 's' : ''} and give up the extra activation?
+            {l(`Are you sure you want to execute only ${distinctActivationsCount} move${distinctActivationsCount > 1 ? 's' : ''} and give up the extra activation?`, `确定只执行 ${distinctActivationsCount} 次移动并放弃剩余移动机会吗？`)}
           </div>
 
           <div className="flex items-center justify-end gap-2.5 pt-1">
@@ -564,7 +568,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
               onClick={() => setShowUnusedWarning(false)}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shadow cursor-pointer"
             >
-              Keep Moving (Plan More)
+              {l('Keep Moving (Plan More)', '继续规划更多移动')}
             </button>
             <button
               type="button"
@@ -583,7 +587,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
               }}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"
             >
-              Confirm & Execute {plannedMoves.length} Step{plannedMoves.length > 1 ? 's' : ''}
+              {l(`Confirm & Execute ${plannedMoves.length} Step${plannedMoves.length > 1 ? 's' : ''}`, `确认并执行 ${plannedMoves.length} 步`)}
             </button>
           </div>
         </div>

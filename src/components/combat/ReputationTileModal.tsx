@@ -5,6 +5,7 @@ import {
   getMaxReputationTilesForPlayer,
   getPlayerReputationTrackSlots,
 } from '../../engine/rules/setup';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface ReputationTileModalProps {
   state: GameState;
@@ -17,6 +18,7 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
   pendingDraw,
   onClaimTile,
 }) => {
+  const { l } = useLanguage();
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const player = state.players.find((p) => p.id === pendingDraw.playerId);
   const sector = state.sectors.find((s) => s.id === pendingDraw.sectorId);
@@ -77,19 +79,22 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
         <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-amber-500 rounded-full shadow-2xl backdrop-blur-md text-white">
           <Trophy className="w-4 h-4 text-amber-400" />
           <span className="font-bold text-xs sm:text-sm tracking-wide text-amber-300 font-display">
-            REPUTATION DRAW: SECTOR {sector?.sectorNumber || 'Unknown'} ({player.name})
+            {l(
+              `REPUTATION DRAW: SECTOR ${sector?.sectorNumber || 'Unknown'} (${player.name})`,
+              `声望板块抽取：星区 ${sector?.sectorNumber || '未知'} (${player.name})`
+            )}
           </span>
           <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950 border border-amber-800 text-amber-300">
-            {pendingDraw.drawnTiles.length} DRAWN
+            {l(`${pendingDraw.drawnTiles.length} DRAWN`, `已抽 ${pendingDraw.drawnTiles.length} 枚`)}
           </span>
           <div className="h-4 w-px bg-slate-800" />
           <button
             onClick={() => setIsMinimized(false)}
             className="px-3.5 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-full text-xs font-bold transition-all shadow-md shadow-amber-950/50 flex items-center gap-1.5 cursor-pointer"
-            title="Return to reputation selection"
+            title={l('Return to reputation selection', '返回声望板块选择')}
           >
             <Maximize2 className="w-3.5 h-3.5" />
-            <span>Select Tile</span>
+            <span>{l('Select Tile', '选择板块')}</span>
           </button>
         </div>
       </div>
@@ -108,25 +113,28 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-amber-300 font-display">
-                REPUTATION TILE DRAW
+                {l('REPUTATION TILE DRAW', '声望板块抽取')}
               </h2>
               <p className="text-xs text-slate-400">
-                Battle rewards in Sector {sector?.sectorNumber || 'Unknown'} for{' '}
+                {l('Battle rewards in Sector ', '星区 ')}
+                {sector?.sectorNumber || l('Unknown', '未知')}
+                {l(' for ', ' 的战斗奖励（玩家：')}
                 <strong className="text-slate-200">{player.name}</strong>
+                {l('', '）')}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800 text-amber-300">
-              {pendingDraw.drawnTiles.length} Drawn
+              {l(`${pendingDraw.drawnTiles.length} Drawn`, `已抽 ${pendingDraw.drawnTiles.length} 枚`)}
             </span>
             <button
               onClick={() => setIsMinimized(true)}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-sm cursor-pointer"
-              title="Minimize to inspect map"
+              title={l('Minimize to inspect map', '最小化以查看地图')}
             >
               <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
-              <span>View Map</span>
+              <span>{l('View Map', '查看地图')}</span>
             </button>
           </div>
         </div>
@@ -136,10 +144,13 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
           {/* Rules Explanation Banner */}
           <div className="bg-amber-950/20 border border-amber-900/40 rounded-xl p-3 text-xs text-slate-300 space-y-1">
             <p className="font-semibold text-amber-300">
-              Select up to ONE tile to place on your Reputation Track:
+              {l('Select up to ONE tile to place on your Reputation Track:', '最多选择 1 枚声望板块放置到你的声望轨：')}
             </p>
             <p className="text-[11px] text-slate-400 leading-relaxed">
-              Earned for participating in fleet combat and destroying enemy vessels. Unselected tiles will be returned to the Reputation Bag.
+              {l(
+                'Earned for participating in fleet combat and destroying enemy vessels. Unselected tiles will be returned to the Reputation Bag.',
+                '因参与舰队战斗及击毁敌舰而获得。未选择的板块将放回声望袋。'
+              )}
             </p>
           </div>
 
@@ -147,10 +158,10 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
             <div className="bg-emerald-950/40 border border-emerald-500/40 rounded-xl p-2.5 text-xs text-emerald-200 flex items-center justify-between">
               <span className="font-semibold flex items-center gap-1.5">
                 <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                Community Balance: Draw Cap
+                {l('Community Balance: Draw Cap', '社区平衡变体：抽取上限')}
               </span>
               <span className="font-mono text-[11px] bg-emerald-900/60 border border-emerald-700/60 text-emerald-300 px-2 py-0.5 rounded font-bold">
-                Max {pendingDraw.drawnTiles.length} VP
+                {l(`Max ${pendingDraw.drawnTiles.length} VP`, `最多 ${pendingDraw.drawnTiles.length} 枚`)}
               </span>
             </div>
           )}
@@ -158,7 +169,7 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
           {/* Drawn Tiles Options */}
           <div>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
-              Drawn Reputation Tiles (Choose 1)
+              {l('Drawn Reputation Tiles (Choose 1)', '抽到的声望板块（选择 1 枚）')}
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {pendingDraw.drawnTiles.map((vp, idx) => {
@@ -178,11 +189,11 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
                       {vp} VP
                     </span>
                     <span className="text-[10px] uppercase font-mono text-slate-400">
-                      Reputation Tile
+                      {l('Reputation Tile', '声望板块')}
                     </span>
                     {isSelected && (
                       <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 uppercase tracking-tight">
-                        Selected
+                        {l('Selected', '已选择')}
                       </span>
                     )}
                   </button>
@@ -200,8 +211,8 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
                 }`}
               >
                 <X className="w-6 h-6 text-slate-400" />
-                <span className="text-xs font-bold text-slate-300">Decline All</span>
-                <span className="text-[9px] text-slate-500">Keep nothing</span>
+                <span className="text-xs font-bold text-slate-300">{l('Decline All', '全部放弃')}</span>
+                <span className="text-[9px] text-slate-500">{l('Keep nothing', '不保留任何板块')}</span>
               </button>
             </div>
           </div>
@@ -210,13 +221,16 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
           <div className="bg-slate-950/70 border border-slate-800/90 rounded-xl p-4 space-y-3">
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-slate-300 flex items-center gap-1.5">
-                <Shield className="w-4 h-4 text-cyan-400" /> Current Reputation Track
+                <Shield className="w-4 h-4 text-cyan-400" /> {l('Current Reputation Track', '当前声望轨')}
               </span>
               <span className="font-mono text-slate-400">
-                Rep Capacity: <strong className="text-amber-300">{player.reputationTiles.length}</strong> / {maxRepTiles}
+                {l('Rep Capacity:', '声望容量：')} <strong className="text-amber-300">{player.reputationTiles.length}</strong> / {maxRepTiles}
                 {(player.ambassadorTiles?.length || 0) > 0 && (
                   <span className="text-indigo-400 ml-1.5 font-sans font-semibold">
-                    ({player.ambassadorTiles.length} Ambassador{player.ambassadorTiles.length > 1 ? 's' : ''})
+                    {l(
+                      `(${player.ambassadorTiles.length} Ambassador${player.ambassadorTiles.length > 1 ? 's' : ''})`,
+                      `(${player.ambassadorTiles.length} 枚大使)`
+                    )}
                   </span>
                 )}
               </span>
@@ -251,10 +265,10 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
                       <span>#{slot.slotIndex + 1}</span>
                       <span className="text-[8px] uppercase font-bold text-slate-400">
                         {slot.slotType === 'amb_only'
-                          ? 'Amb Only'
+                          ? l('Amb Only', '仅限大使')
                           : slot.slotType === 'rep_only'
-                          ? 'Rep Only'
-                          : 'Amb / Rep'}
+                          ? l('Rep Only', '仅限声望')
+                          : l('Amb / Rep', '大使/声望')}
                       </span>
                     </div>
 
@@ -270,7 +284,7 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
                           </span>
                         </div>
                         <span className="text-[9px] font-black text-indigo-400 font-mono">
-                          +1 VP Amb
+                          {l('+1 VP Amb', '+1 VP 大使')}
                         </span>
                       </div>
                     ) : isReputation ? (
@@ -280,21 +294,21 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
                         </span>
                       </div>
                     ) : (
-                      <span className="text-[10px] text-slate-600 italic my-auto">Empty</span>
+                      <span className="text-[10px] text-slate-600 italic my-auto">{l('Empty', '空位')}</span>
                     )}
 
                     <div className="w-full flex justify-center min-h-[14px]">
                       {isSelectedToReplace ? (
                         <span className="text-[8px] font-black uppercase tracking-tighter px-1.5 py-0.5 rounded bg-rose-500 text-white shadow">
-                          Replace
+                          {l('Replace', '替换')}
                         </span>
                       ) : isAmbassador ? (
                         <span className="text-[7.5px] font-semibold text-indigo-400/90 uppercase tracking-tight">
-                          Pact (Locked)
+                          {l('Pact (Locked)', '盟约（锁定）')}
                         </span>
                       ) : isTrackFull && isReputation ? (
                         <span className="text-[7.5px] text-slate-400">
-                          Click to swap
+                          {l('Click to swap', '点击替换')}
                         </span>
                       ) : null}
                     </div>
@@ -305,7 +319,10 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
 
             {isTrackFull && selectedIndex !== null && (
               <p className="text-[11px] text-amber-400/90 italic">
-                * Your reputation capacity is reached. Click one of your existing reputation tiles above to replace it (ambassador pacts cannot be replaced), or decline the drawn tile.
+                {l(
+                  '* Your reputation capacity is reached. Click one of your existing reputation tiles above to replace it (ambassador pacts cannot be replaced), or decline the drawn tile.',
+                  '* 你的声望容量已满。点击上方一枚现有声望板块进行替换（大使盟约不可替换），或放弃本次抽取的板块。'
+                )}
               </p>
             )}
           </div>
@@ -318,7 +335,7 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
             onClick={() => onClaimTile(undefined, undefined)}
             className="px-4 py-2 rounded-lg text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800 border border-slate-800 transition cursor-pointer"
           >
-            Decline & Return All
+            {l('Decline & Return All', '全部放弃并放回')}
           </button>
 
           <button
@@ -327,7 +344,7 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
             className="flex items-center gap-2 px-5 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-lg shadow-amber-950 transition cursor-pointer"
           >
             <CheckCircle2 className="w-4 h-4" />
-            {selectedIndex !== null ? 'Confirm Reputation Tile' : 'Decline All Tiles'}
+            {selectedIndex !== null ? l('Confirm Reputation Tile', '确认选取声望板块') : l('Decline All Tiles', '放弃所有板块')}
           </button>
         </div>
       </div>

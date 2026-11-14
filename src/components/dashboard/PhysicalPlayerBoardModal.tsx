@@ -47,6 +47,16 @@ import {
   Handshake,
 } from 'lucide-react';
 import { areSectorsConnected } from '../../engine/rules/hexMath';
+import { useLanguage } from '../../i18n/LanguageContext';
+import {
+  translateFactionName,
+  translateFactionTrait,
+  translateResourceType,
+  translateShipType,
+  translateTechCategory,
+  translateTechDesc,
+  translateTechName,
+} from '../../i18n/catalogTranslations';
 
 interface PhysicalPlayerBoardModalProps {
   player: PlayerState;
@@ -83,6 +93,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   activeExpansions,
   initialTab = 'all',
 }) => {
+  const { language, l } = useLanguage();
   const [activeTab, setActiveTab] = useState<'all' | 'tracks' | 'reputation' | 'tech' | 'blueprints'>(initialTab);
   const [selectedTech, setSelectedTech] = useState<Technology | null>(null);
 
@@ -144,7 +155,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
         <button
           onClick={onClose}
           className="absolute top-3 right-3 sm:top-3.5 sm:right-4 z-30 p-2 bg-slate-800/90 hover:bg-slate-700 text-slate-300 hover:text-white rounded-xl transition-all border border-slate-700 shadow-lg hover:shadow-cyan-950/50 cursor-pointer"
-          title="Close Physical Player Board (Esc / P)"
+          title={l('Close Physical Player Board (Esc / P)', '关闭实体玩家面板 (Esc / P)')}
         >
           <X className="w-5 h-5" />
         </button>
@@ -164,24 +175,27 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   {getPlayerDisplayName(player)}
                 </h1>
                 <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-slate-800 text-cyan-300 border border-slate-700 uppercase font-bold">
-                  {player.faction.isHuman ? 'Terran Faction' : 'Alien Faction'}
+                  {player.faction.isHuman ? l('Terran Faction', '人类种族') : l('Alien Faction', '外星种族')}
                 </span>
                 {isActive && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/50 animate-pulse">
-                    ● Active Commander
+                    {l('● Active Commander', '● 当前行动指挥官')}
                   </span>
                 )}
                 {player.hasPassed && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-amber-950 text-amber-300 border border-amber-800 uppercase">
-                    Passed
+                    {l('Passed', '已过')}
                   </span>
                 )}
               </div>
               <div className="text-xs text-slate-400 flex items-center gap-2">
-                <span>{player.faction.traitDescription}</span>
+                <span>{translateFactionTrait(player.faction.id, player.faction.traitDescription, language)}</span>
                 <span className="text-slate-600">•</span>
                 <span className="text-slate-400">
-                  {player.influenceTrack.discsOnTrack} Discs on Track / {player.influenceTrack.totalDiscs} Total
+                  {l(
+                    `${player.influenceTrack.discsOnTrack} Discs on Track / ${player.influenceTrack.totalDiscs} Total`,
+                    `轨道圆片 ${player.influenceTrack.discsOnTrack} / 共 ${player.influenceTrack.totalDiscs}`
+                  )}
                 </span>
               </div>
             </div>
@@ -191,7 +205,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
           <div className="flex items-center gap-2">
             <div className="flex items-center gap-1 bg-slate-900 border border-slate-800 rounded-lg p-1 text-xs">
               <span className="text-[11px] text-slate-400 px-1.5 font-semibold flex items-center gap-1">
-                <Users className="w-3.5 h-3.5 text-slate-400" /> Player Board:
+                <Users className="w-3.5 h-3.5 text-slate-400" /> {l('Player Board:', '玩家面板:')}
               </span>
               {players.map((p) => (
                 <button
@@ -217,14 +231,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
               <select
                 value={activeTab}
                 onChange={(e) => setActiveTab(e.target.value as any)}
-                aria-label="View Mode Tab"
+                aria-label={l('View Mode Tab', '视图模式标签')}
                 className="bg-slate-900 border border-slate-800 text-slate-200 text-xs rounded-lg px-2 py-1.5 font-bold focus:outline-none focus:ring-1 focus:ring-cyan-500"
               >
-                <option value="all">Full Mat</option>
-                <option value="tracks">Upkeep & Discs</option>
-                <option value="reputation">Rep & Discovery</option>
-                <option value="tech">Tech Rows</option>
-                <option value="blueprints">Ship Blueprints</option>
+                <option value="all">{l('Full Mat', '完整面板')}</option>
+                <option value="tracks">{l('Upkeep & Discs', '维护费与圆片')}</option>
+                <option value="reputation">{l('Rep & Discovery', '声望与探索')}</option>
+                <option value="tech">{l('Tech Rows', '科技轨道')}</option>
+                <option value="blueprints">{l('Ship Blueprints', '飞船蓝图')}</option>
               </select>
             </div>
 
@@ -236,7 +250,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   activeTab === 'all' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Full Mat
+                {l('Full Mat', '完整面板')}
               </button>
               <button
                 onClick={() => setActiveTab('tracks')}
@@ -244,7 +258,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   activeTab === 'tracks' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Upkeep & Discs
+                {l('Upkeep & Discs', '维护费与圆片')}
               </button>
               <button
                 onClick={() => setActiveTab('reputation')}
@@ -252,7 +266,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   activeTab === 'reputation' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Rep & Discovery
+                {l('Rep & Discovery', '声望与探索')}
               </button>
               <button
                 onClick={() => setActiveTab('tech')}
@@ -260,7 +274,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   activeTab === 'tech' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Tech Rows
+                {l('Tech Rows', '科技轨道')}
               </button>
               <button
                 onClick={() => setActiveTab('blueprints')}
@@ -268,7 +282,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   activeTab === 'blueprints' ? 'bg-cyan-600 text-white shadow' : 'text-slate-400 hover:text-slate-200'
                 }`}
               >
-                Ship Blueprints
+                {l('Ship Blueprints', '飞船蓝图')}
               </button>
             </div>
           </div>
@@ -290,10 +304,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <CircleDot className="w-5 h-5 text-cyan-400" />
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
-                      INFLUENCE DISC & UPKEEP TRACK
+                      {l('INFLUENCE DISC & UPKEEP TRACK', '影响力圆片与维护费轨道')}
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Discs on track cover upkeep costs. As discs are placed on actions or sectors, higher upkeep is uncovered.
+                      {l(
+                        'Discs on track cover upkeep costs. As discs are placed on actions or sectors, higher upkeep is uncovered.',
+                        '轨道上的圆片会遮盖维护费数字。当你将圆片置于行动或星区上时，更高的维护费将被露出来。'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -301,14 +318,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 {/* Colony Ships Status */}
                 <div className="flex items-center gap-2 bg-slate-900/90 border border-slate-800 rounded-lg px-3 py-1.5">
                   <Rocket className="w-4 h-4 text-indigo-400" />
-                  <span className="text-xs text-slate-300 font-semibold">Colony Ships:</span>
+                  <span className="text-xs text-slate-300 font-semibold">{l('Colony Ships:', '殖民船:')}</span>
                   <div className="flex items-center gap-1">
                     {Array.from({ length: player.colonyShips.total }).map((_, cIdx) => {
                       const isReady = cIdx < player.colonyShips.ready;
                       return (
                         <div
                           key={`cs_phy_${cIdx}`}
-                          title={isReady ? 'Colony Ship Ready' : 'Colony Ship Exhausted'}
+                          title={isReady ? l('Colony Ship Ready', '殖民船就绪') : l('Colony Ship Exhausted', '殖民船已使用')}
                           className={`w-4 h-5 rounded-sm border flex items-center justify-center text-[9px] font-black transition-all ${
                             isReady
                               ? 'bg-indigo-600/40 border-indigo-400 text-indigo-200 shadow-sm shadow-indigo-500/30'
@@ -321,45 +338,48 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     })}
                   </div>
                   <span className="text-xs font-mono font-bold text-indigo-300 ml-1">
-                    {player.colonyShips.ready}/{player.colonyShips.total} Ready
+                    {player.colonyShips.ready}/{player.colonyShips.total} {l('Ready', '就绪')}
                   </span>
 
                   {/* Magellan Scavenge Colony Ship Ability */}
                   {player.faction.id === 'wardens_of_magellan' && onConvertColonyShip && (
                     <div className="flex items-center gap-1.5 ml-2 pl-2 border-l border-slate-700">
                       <span className="text-[10px] text-purple-300 font-bold uppercase tracking-wider">
-                        Scavenge:
+                        {l('Scavenge:', '转化:')}
                       </span>
                       <button
                         onClick={() => onConvertColonyShip('money')}
                         disabled={player.colonyShips.ready <= 0 || !isActive}
                         className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors disabled:opacity-40"
-                        title="Convert 1 ready Colony Ship to 1 Money"
+                        title={l('Convert 1 ready Colony Ship to 1 Money', '将 1 艘就绪殖民船转化为 1 信用点')}
                       >
-                        +1 Money
+                        {l('+1 Money', '+1 信用点')}
                       </button>
                       <button
                         onClick={() => onConvertColonyShip('science')}
                         disabled={player.colonyShips.ready <= 0 || !isActive}
                         className="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/40 transition-colors disabled:opacity-40"
-                        title="Convert 1 ready Colony Ship to 1 Science"
+                        title={l('Convert 1 ready Colony Ship to 1 Science', '将 1 艘就绪殖民船转化为 1 科研')}
                       >
-                        +1 Sci
+                        {l('+1 Sci', '+1 科研')}
                       </button>
                       <button
                         onClick={() => onConvertColonyShip('materials')}
                         disabled={player.colonyShips.ready <= 0 || !isActive}
                         className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-700/20 hover:bg-amber-700/30 text-amber-200 border border-amber-700/40 transition-colors disabled:opacity-40"
-                        title="Convert 1 ready Colony Ship to 1 Material"
+                        title={l('Convert 1 ready Colony Ship to 1 Material', '将 1 艘就绪殖民船转化为 1 材料')}
                       >
-                        +1 Mat
+                        {l('+1 Mat', '+1 材料')}
                       </button>
                     </div>
                   )}
 
                   {player.faction.id === 'wardens_of_magellan' && (player.discoveryTilesUsedAsShipPartsCount || 0) > 0 && (
-                    <span className="text-[10px] text-purple-300 ml-2 font-mono" title="Discovery Tiles equipped as Ship Parts (+1 VP each at end of game)">
-                      ({player.discoveryTilesUsedAsShipPartsCount} Discovery Ship Parts: +{player.discoveryTilesUsedAsShipPartsCount} VP)
+                    <span className="text-[10px] text-purple-300 ml-2 font-mono" title={l('Discovery Tiles equipped as Ship Parts (+1 VP each at end of game)', '已装备为飞船部件的探索板块（终局每块 +1 VP）')}>
+                      {l(
+                        `(${player.discoveryTilesUsedAsShipPartsCount} Discovery Ship Parts: +${player.discoveryTilesUsedAsShipPartsCount} VP)`,
+                        `(${player.discoveryTilesUsedAsShipPartsCount} 块探索部件: +${player.discoveryTilesUsedAsShipPartsCount} VP)`
+                      )}
                     </span>
                   )}
                 </div>
@@ -371,11 +391,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <div className="flex items-center gap-2">
                     <Zap className="w-4 h-4 text-amber-400" />
                     <span className="text-xs font-bold uppercase tracking-wider text-amber-300 font-display">
-                      Action Cost & Upkeep Forecaster
+                      {l('Action Cost & Upkeep Forecaster', '行动花费与维护费预测器')}
                     </span>
                   </div>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    Current Credits: <strong className="text-yellow-300">{player.resources.money}</strong> | Money Income:{' '}
+                    {l('Current Credits:', '当前信用点:')} <strong className="text-yellow-300">{player.resources.money}</strong> | {l('Money Income:', '信用点收入:')}{' '}
                     <strong className="text-emerald-400">+{summary.income.money}</strong>
                   </span>
                 </div>
@@ -384,41 +404,41 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   {/* Current Upkeep */}
                   <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 flex flex-col justify-between">
                     <div className="text-slate-400 text-[11px] font-semibold flex items-center justify-between">
-                      <span>CURRENT UPKEEP</span>
-                      <span className="text-cyan-400 font-mono">{forecast.currentDiscs} Discs</span>
+                      <span>{l('CURRENT UPKEEP', '当前维护费')}</span>
+                      <span className="text-cyan-400 font-mono">{forecast.currentDiscs} {l('Discs', '圆片')}</span>
                     </div>
                     <div className="text-lg font-bold text-yellow-300 font-display mt-1">
-                      -{forecast.currentUpkeep} Credits
+                      -{forecast.currentUpkeep} {l('Credits', '信用点')}
                     </div>
                     <div className="text-[10px] text-slate-400 mt-1">
-                      Net: <span className={summary.netMoneyDelta >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                      {l('Net:', '净收支:')} <span className={summary.netMoneyDelta >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
                         {summary.netMoneyDelta >= 0 ? `+${summary.netMoneyDelta}` : summary.netMoneyDelta}
-                      </span> /round
+                      </span> {l('/round', '/回合')}
                     </div>
                   </div>
 
                   {/* Next 1 Action */}
                   <div className="bg-slate-950/80 border border-amber-500/40 rounded-lg p-2.5 flex flex-col justify-between ring-1 ring-amber-500/20">
                     <div className="text-amber-300 text-[11px] font-semibold flex items-center justify-between">
-                      <span>NEXT 1 ACTION</span>
-                      <span className="text-amber-400/80 font-mono">1 Disc Used</span>
+                      <span>{l('NEXT 1 ACTION', '下 1 次行动')}</span>
+                      <span className="text-amber-400/80 font-mono">{l('1 Disc Used', '消耗 1 圆片')}</span>
                     </div>
                     <div className="text-lg font-bold text-amber-300 font-display mt-1 flex items-baseline gap-1.5">
-                      <span>-{forecast.after1Action.upkeep} Credits</span>
+                      <span>-{forecast.after1Action.upkeep} {l('Credits', '信用点')}</span>
                       <span className="text-xs font-mono font-normal text-rose-400">
-                        (+{forecast.after1Action.costIncrease} cost)
+                        (+{forecast.after1Action.costIncrease} {l('cost', '增量')})
                       </span>
                     </div>
                     <div className="text-[10px] flex items-center justify-between mt-1">
                       <span className="text-slate-400">
-                        Net: <span className={forecast.after1Action.projectedNetMoneyDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                        {l('Net:', '净收支:')} <span className={forecast.after1Action.projectedNetMoneyDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                           {forecast.after1Action.projectedNetMoneyDelta >= 0 ? `+${forecast.after1Action.projectedNetMoneyDelta}` : forecast.after1Action.projectedNetMoneyDelta}
                         </span>
                       </span>
                       {forecast.after1Action.canAfford ? (
-                        <span className="text-emerald-400 text-[9px] font-bold">✓ Safe</span>
+                        <span className="text-emerald-400 text-[9px] font-bold">{l('✓ Safe', '✓ 安全')}</span>
                       ) : (
-                        <span className="text-rose-400 text-[9px] font-bold">⚠️ Deficit</span>
+                        <span className="text-rose-400 text-[9px] font-bold">{l('⚠️ Deficit', '⚠️ 赤字')}</span>
                       )}
                     </div>
                   </div>
@@ -427,26 +447,26 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <div className="bg-slate-950/80 border border-rose-500/50 rounded-lg p-2.5 flex flex-col justify-between ring-1 ring-rose-500/30 bg-rose-950/10">
                     <div className="text-rose-300 text-[11px] font-bold flex items-center justify-between">
                       <span className="flex items-center gap-1">
-                        <Sparkles className="w-3 h-3 text-rose-400" /> NEXT 2 ACTIONS
+                        <Sparkles className="w-3 h-3 text-rose-400" /> {l('NEXT 2 ACTIONS', '下 2 次行动')}
                       </span>
-                      <span className="text-rose-400/80 font-mono">2 Discs Used</span>
+                      <span className="text-rose-400/80 font-mono">{l('2 Discs Used', '消耗 2 圆片')}</span>
                     </div>
                     <div className="text-lg font-bold text-rose-300 font-display mt-1 flex items-baseline gap-1.5">
-                      <span>-{forecast.after2Actions.upkeep} Credits</span>
+                      <span>-{forecast.after2Actions.upkeep} {l('Credits', '信用点')}</span>
                       <span className="text-xs font-mono font-bold text-rose-400">
-                        (+{forecast.after2Actions.costIncrease} more)
+                        (+{forecast.after2Actions.costIncrease} {l('more', '增')})
                       </span>
                     </div>
                     <div className="text-[10px] flex items-center justify-between mt-1">
                       <span className="text-slate-400">
-                        Net: <span className={forecast.after2Actions.projectedNetMoneyDelta >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
+                        {l('Net:', '净收支:')} <span className={forecast.after2Actions.projectedNetMoneyDelta >= 0 ? 'text-emerald-400 font-bold' : 'text-rose-400 font-bold'}>
                           {forecast.after2Actions.projectedNetMoneyDelta >= 0 ? `+${forecast.after2Actions.projectedNetMoneyDelta}` : forecast.after2Actions.projectedNetMoneyDelta}
                         </span>
                       </span>
                       {forecast.after2Actions.canAfford ? (
-                        <span className="text-emerald-400 text-[9px] font-bold">✓ Safe</span>
+                        <span className="text-emerald-400 text-[9px] font-bold">{l('✓ Safe', '✓ 安全')}</span>
                       ) : (
-                        <span className="text-rose-400 text-[9px] font-bold">⚠️ Risk Bankruptcy</span>
+                        <span className="text-rose-400 text-[9px] font-bold">{l('⚠️ Risk Bankruptcy', '⚠️ 破产风险')}</span>
                       )}
                     </div>
                   </div>
@@ -454,25 +474,25 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   {/* Next 3 Actions */}
                   <div className="bg-slate-950/80 border border-slate-800 rounded-lg p-2.5 flex flex-col justify-between">
                     <div className="text-slate-400 text-[11px] font-semibold flex items-center justify-between">
-                      <span>NEXT 3 ACTIONS</span>
-                      <span className="text-slate-500 font-mono">3 Discs Used</span>
+                      <span>{l('NEXT 3 ACTIONS', '下 3 次行动')}</span>
+                      <span className="text-slate-500 font-mono">{l('3 Discs Used', '消耗 3 圆片')}</span>
                     </div>
                     <div className="text-lg font-bold text-slate-300 font-display mt-1 flex items-baseline gap-1.5">
-                      <span>-{forecast.after3Actions.upkeep} Credits</span>
+                      <span>-{forecast.after3Actions.upkeep} {l('Credits', '信用点')}</span>
                       <span className="text-xs font-mono text-slate-400">
-                        (+{forecast.after3Actions.costIncrease} more)
+                        (+{forecast.after3Actions.costIncrease} {l('more', '增')})
                       </span>
                     </div>
                     <div className="text-[10px] flex items-center justify-between mt-1">
                       <span className="text-slate-400">
-                        Net: <span className={forecast.after3Actions.projectedNetMoneyDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
+                        {l('Net:', '净收支:')} <span className={forecast.after3Actions.projectedNetMoneyDelta >= 0 ? 'text-emerald-400' : 'text-rose-400'}>
                           {forecast.after3Actions.projectedNetMoneyDelta >= 0 ? `+${forecast.after3Actions.projectedNetMoneyDelta}` : forecast.after3Actions.projectedNetMoneyDelta}
                         </span>
                       </span>
                       {forecast.after3Actions.canAfford ? (
-                        <span className="text-emerald-400 text-[9px] font-bold">✓ Safe</span>
+                        <span className="text-emerald-400 text-[9px] font-bold">{l('✓ Safe', '✓ 安全')}</span>
                       ) : (
-                        <span className="text-rose-400 text-[9px] font-bold">⚠️ Risk</span>
+                        <span className="text-rose-400 text-[9px] font-bold">{l('⚠️ Risk', '⚠️ 风险')}</span>
                       )}
                     </div>
                   </div>
@@ -483,10 +503,10 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
               <div className="space-y-2">
                 <div className="flex items-center justify-between text-xs text-slate-400">
                   <span className="font-semibold uppercase tracking-wider text-[11px] flex items-center gap-1.5">
-                    Physical Influence Track Slot Depressions
+                    {l('Physical Influence Track Slot Depressions', '实体影响力轨道圆片槽位')}
                   </span>
                   <span className="text-[10px] text-slate-500">
-                    Highest Uncovered Slot = Upkeep Owed During Upkeep Phase
+                    {l('Highest Uncovered Slot = Upkeep Owed During Upkeep Phase', '最左侧露出数字 = 维护阶段需支付的维护费')}
                   </span>
                 </div>
 
@@ -504,25 +524,26 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         <div
                           key={`track_slot_${slotIndex}`}
                           className="flex flex-col items-center gap-1 shrink-0"
-                          title={`Slot ${slotIndex} | Upkeep Cost: ${upkeepAtSlot} Credits ${
-                            isCovered ? '(Covered by Disc)' : '(Uncovered)'
-                          }`}
+                          title={l(
+                            `Slot ${slotIndex} | Upkeep Cost: ${upkeepAtSlot} Credits ${isCovered ? '(Covered by Disc)' : '(Uncovered)'}`,
+                            `槽位 ${slotIndex} | 维护费：${upkeepAtSlot} 信用点 ${isCovered ? '(已覆盖)' : '(已露出)'}`
+                          )}
                         >
                           {/* Top indicator tag */}
                           <div className="h-4 flex items-center justify-center">
                             {isCurrentUpkeepSlot && (
                               <span className="text-[9px] font-extrabold px-1.5 py-0.2 rounded bg-amber-500 text-slate-950 shadow animate-bounce">
-                                ACTIVE
+                                {l('ACTIVE', '当前')}
                               </span>
                             )}
                             {isNextActionSlot && (
                               <span className="text-[8.5px] font-bold text-amber-400 font-mono">
-                                +1 Act
+                                {l('+1 Act', '+1 行动')}
                               </span>
                             )}
                             {isNext2ActionsSlot && (
                               <span className="text-[8.5px] font-bold text-rose-400 font-mono">
-                                +2 Act
+                                {l('+2 Act', '+2 行动')}
                               </span>
                             )}
                           </div>
@@ -596,13 +617,16 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </div>
                     <div>
                       <div className="text-sm font-extrabold font-display text-rose-200 flex items-center gap-2">
-                        TRAITOR TILE IN POSSESSION
+                        {l('TRAITOR TILE IN POSSESSION', '持有背叛者板块')}
                         <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-900 border border-rose-700 text-rose-300">
-                          -2 VP Penalty
+                          {l('-2 VP Penalty', '-2 VP 惩罚')}
                         </span>
                       </div>
                       <p className="text-xs text-rose-300/90 mt-0.5">
-                        This commander entered allied territory, breaking diplomatic relations. Suffers a -2 VP endgame penalty and cannot establish new alliances while holding this tile.
+                        {l(
+                          'This commander entered allied territory, breaking diplomatic relations. Suffers a -2 VP endgame penalty and cannot establish new alliances while holding this tile.',
+                          '该指挥官侵入了盟友星区并打破了外交关系。持有此板块期间终局 -2 VP，且无法建立新的同盟。'
+                        )}
                       </p>
                     </div>
                   </div>
@@ -614,21 +638,24 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <Trophy className="w-5 h-5 text-amber-400" />
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
-                      REPUTATION TRACK ({player.faction.reputationSlots ?? 5} SLOTS)
+                      {l(`REPUTATION TRACK (${player.faction.reputationSlots ?? 5} SLOTS)`, `声望轨道 (${player.faction.reputationSlots ?? 5} 槽位)`)}
                       <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-950/60 border border-amber-600/60 text-amber-300">
-                        Total: {hideOpponentReputation
-                          ? `${player.ambassadorTiles?.length || 0} Amb VP + ? Rep VP`
+                        {l('Total:', '总计:')} {hideOpponentReputation
+                          ? l(`${player.ambassadorTiles?.length || 0} Amb VP + ? Rep VP`, `${player.ambassadorTiles?.length || 0} 大使 VP + ? 声望 VP`)
                           : `${(player.ambassadorTiles?.length || 0) + player.reputationTiles.reduce((a, b) => a + b, 0)} VP`}
                       </span>
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Track holds up to {player.faction.reputationSlots ?? 5} tiles. Slots accept Ambassador and/or Reputation tiles according to faction board specifications.
+                      {l(
+                        `Track holds up to ${player.faction.reputationSlots ?? 5} tiles. Slots accept Ambassador and/or Reputation tiles according to faction board specifications.`,
+                        `轨道最多可容纳 ${player.faction.reputationSlots ?? 5} 枚板块。各槽位依据种族面板规定接收大使及/或声望板块。`
+                      )}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2 text-xs font-mono text-slate-400">
-                  <span>Slots Filled:</span>
+                  <span>{l('Slots Filled:', '已填槽位:')}</span>
                   <span className="font-bold text-slate-200">
                     {(player.ambassadorTiles?.length || 0) + player.reputationTiles.length} / {player.faction.reputationSlots ?? 5}
                   </span>
@@ -663,27 +690,27 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           }`}
                         >
                           <div className="w-full flex items-center justify-between text-[10px] text-slate-500 font-mono">
-                            <span>Slot #{slot.slotIndex + 1}</span>
+                            <span>{l(`Slot #${slot.slotIndex + 1}`, `槽位 #${slot.slotIndex + 1}`)}</span>
                             {slot.slotType === 'amb_only' ? (
                               <span
                                 className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-purple-950/90 text-purple-300 border border-purple-700/60"
-                                title="This slot can only hold Ambassador Tiles"
+                                title={l('This slot can only hold Ambassador Tiles', '此槽位仅可放置大使板块')}
                               >
-                                Amb Only
+                                {l('Amb Only', '仅大使')}
                               </span>
                             ) : slot.slotType === 'both' ? (
                               <span
                                 className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-indigo-950/90 text-indigo-300 border border-indigo-700/60"
-                                title="This slot can hold either an Ambassador Tile or a Reputation Tile"
+                                title={l('This slot can hold either an Ambassador Tile or a Reputation Tile', '此槽位可放置大使或声望板块')}
                               >
-                                Amb / Rep
+                                {l('Amb / Rep', '大使/声望')}
                               </span>
                             ) : (
                               <span
                                 className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-slate-900 text-slate-400 border border-slate-800"
-                                title="This slot can only hold Reputation Tiles"
+                                title={l('This slot can only hold Reputation Tiles', '此槽位仅可放置声望板块')}
                               >
-                                Rep Only
+                                {l('Rep Only', '仅声望')}
                               </span>
                             )}
                           </div>
@@ -715,30 +742,30 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                 {hideOpponentReputation ? '? VP' : `+${repTile} VP`}
                               </span>
                               <span className="text-[10px] text-slate-400">
-                                {hideOpponentReputation ? 'Secret Tile' : `${repTile} Rep`}
+                                {hideOpponentReputation ? l('Secret Tile', '保密板块') : l(`${repTile} Rep`, `${repTile} 声望`)}
                               </span>
                             </div>
                           ) : (
                             <div className="flex flex-col items-center text-center">
                               <span className="text-xs text-slate-600 font-bold uppercase tracking-wider">
-                                Empty
+                                {l('Empty', '空槽')}
                               </span>
                               <span className="text-[9px] text-slate-600 mt-0.5">
                                 {slot.slotType === 'amb_only'
-                                  ? 'Ambassador Only'
+                                  ? l('Ambassador Only', '仅限大使')
                                   : slot.slotType === 'both'
-                                  ? 'Amb or Rep Tile'
-                                  : 'Rep Tile Only'}
+                                  ? l('Amb or Rep Tile', '大使或声望板块')
+                                  : l('Rep Tile Only', '仅限声望板块')}
                               </span>
                             </div>
                           )}
 
                           <div className="text-[9px] font-semibold text-slate-400">
                             {isAmbassadorSlot
-                              ? 'Ambassador'
+                              ? l('Ambassador', '大使')
                               : hasRepTile
-                              ? (hideOpponentReputation ? 'Secret Tile' : 'Reputation')
-                              : 'Available Slot'}
+                              ? (hideOpponentReputation ? l('Secret Tile', '保密板块') : l('Reputation', '声望'))
+                              : l('Available Slot', '可用槽位')}
                           </div>
                         </div>
                       );
@@ -753,21 +780,24 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <div>
                     <h3 className="text-xs font-bold uppercase tracking-wider text-indigo-300 flex items-center gap-1.5 font-display">
                       <Handshake className="w-4 h-4 text-indigo-400" />
-                      Diplomatic Relations & Ambassadors
+                      {l('Diplomatic Relations & Ambassadors', '外交关系与大使')}
                     </h3>
                     <p className="text-[11px] text-slate-400">
-                      Exchange ambassadors with connected species in games with 4+ players (+1 VP each). Moving into allied space or betraying breaks the alliance and claims the Traitor Tile (-2 VP).
+                      {l(
+                        'Exchange ambassadors with connected species in games with 4+ players (+1 VP each). Moving into allied space or betraying breaks the alliance and claims the Traitor Tile (-2 VP).',
+                        '在 4 人及以上对局中可与连通星区的玩家交换大使（双方各 +1 VP）。进入盟友领地或主动背叛将打破同盟并拿取背叛者板块 (-2 VP)。'
+                      )}
                     </p>
                   </div>
                   <div className="text-xs font-mono text-slate-400">
-                    Ambassadors: <strong className="text-indigo-300">{player.ambassadorTiles?.length || 0} / {player.faction.ambassadorSlots ?? 3}</strong>
+                    {l('Ambassadors:', '大使:')} <strong className="text-indigo-300">{player.ambassadorTiles?.length || 0} / {player.faction.ambassadorSlots ?? 3}</strong>
                   </div>
                 </div>
 
                 {players.length < 4 && (
                   <div className="text-xs text-amber-400/90 bg-amber-950/30 border border-amber-900/50 rounded-lg p-2.5 mb-3 flex items-center gap-2">
                     <Info className="w-4 h-4 shrink-0 text-amber-400" />
-                    <span>Diplomatic Relations (Ambassador Exchange) are only allowed in games with 4 or more players.</span>
+                    <span>{l('Diplomatic Relations (Ambassador Exchange) are only allowed in games with 4 or more players.', '外交关系（交换大使）仅在 4 名及以上玩家的游戏中启用。')}</span>
                   </div>
                 )}
 
@@ -780,7 +810,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       other.id
                     );
                     const canExchange = check.canExchange;
-                    const reason = isAllied ? 'Allied (+1 VP)' : (check.reason || 'Not eligible for diplomacy');
+                    const reason = isAllied ? l('Allied (+1 VP)', '已结盟 (+1 VP)') : (check.reason || l('Not eligible for diplomacy', '暂不可外交'));
+                    const otherFactionName = translateFactionName(other.faction.id, other.faction.name, language);
 
                     return (
                       <div
@@ -795,7 +826,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           <div className="w-3 h-3 rounded-full shrink-0 shadow" style={{ backgroundColor: other.color }} />
                           <div className="min-w-0">
                             <div className="text-xs font-bold truncate text-slate-100">{other.name}</div>
-                            <div className="text-[10px] text-slate-400 truncate">{other.faction.name}</div>
+                            <div className="text-[10px] text-slate-400 truncate">{otherFactionName}</div>
                           </div>
                         </div>
 
@@ -803,16 +834,19 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           {isAllied ? (
                             <div className="flex items-center gap-1.5 shrink-0">
                               <span className="px-2 py-1 rounded bg-indigo-900/80 text-indigo-300 text-[10px] font-bold border border-indigo-700/60 flex items-center gap-1 shrink-0">
-                                <Handshake className="w-3 h-3 text-indigo-400" /> Allied (+1 VP)
+                                <Handshake className="w-3 h-3 text-indigo-400" /> {l('Allied (+1 VP)', '已结盟 (+1 VP)')}
                               </span>
                               {onBetrayAlliance && (isActive || player.id === activePlayerId) && (
                                 <button
                                   type="button"
                                   onClick={() => onBetrayAlliance(other.id)}
                                   className="px-2 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-600/60 text-rose-300 hover:text-white font-bold text-[10px] uppercase tracking-wider transition shadow-sm hover:shadow cursor-pointer flex items-center gap-1 shrink-0"
-                                  title={`Betray alliance with ${other.name}, reclaim population cube, and take Traitor Tile (-2 VP)`}
+                                  title={l(
+                                    `Betray alliance with ${other.name}, reclaim population cube, and take Traitor Tile (-2 VP)`,
+                                    `背叛与 ${other.name} 的同盟，收回人口方块并拿取背叛者板块 (-2 VP)`
+                                  )}
                                 >
-                                  Betray
+                                  {l('Betray', '背叛')}
                                 </button>
                               )}
                             </div>
@@ -822,7 +856,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               onClick={() => onExchangeAmbassador(other.id)}
                               className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-[10px] uppercase tracking-wider transition shadow-sm hover:shadow cursor-pointer flex items-center gap-1 shrink-0"
                             >
-                              <Handshake className="w-3 h-3" /> Exchange (+1 VP)
+                              <Handshake className="w-3 h-3" /> {l('Exchange (+1 VP)', '交换大使 (+1 VP)')}
                             </button>
                           ) : (
                             <span className="text-[10px] text-slate-500 font-mono italic shrink-0" title={reason}>
@@ -842,14 +876,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-amber-400" />
                     <h3 className="text-xs font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
-                      KEPT DISCOVERY TILES FOR VICTORY POINTS
+                      {l('KEPT DISCOVERY TILES FOR VICTORY POINTS', '保留用于计分的探索板块')}
                       <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-600/70 text-amber-300">
-                        {player.keptDiscoveryTiles?.length || 0} Tiles (+{((player.keptDiscoveryTiles?.length || 0) * 2)} VP)
+                        {player.keptDiscoveryTiles?.length || 0} {l('Tiles', '枚')} (+{((player.keptDiscoveryTiles?.length || 0) * 2)} VP)
                       </span>
                     </h3>
                   </div>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    Official Rules: 2 VP per tile kept facedown on player board
+                    {l('Official Rules: 2 VP per tile kept facedown on player board', '标准规则：每块暗置保留在面板上的探索板块计 2 VP')}
                   </span>
                 </div>
 
@@ -865,7 +899,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             {tile.name}
                           </div>
                           <div className="text-[10px] text-slate-400 truncate">
-                            {tile.description || 'Ancient Artifact Cache'}
+                            {tile.description || l('Ancient Artifact Cache', '远古遗物宝库')}
                           </div>
                         </div>
                         <span className="text-xs font-mono font-bold text-amber-400 px-1.5 py-0.5 rounded bg-amber-900/50 border border-amber-700/60 shrink-0">
@@ -876,7 +910,10 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   </div>
                 ) : (
                   <div className="text-xs text-slate-500 italic py-1">
-                    No discovery tiles currently kept for Victory Points. When claiming Discovery Tiles, choose "Keep for 2 VP" to store them here.
+                    {l(
+                      'No discovery tiles currently kept for Victory Points. When claiming Discovery Tiles, choose "Keep for 2 VP" to store them here.',
+                      '当前尚未保留用于得分的探索板块。获得探索板块时选择「保留为 2 VP」即可存放在此处。'
+                    )}
                   </div>
                 )}
               </div>
@@ -894,24 +931,27 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <Cpu className="w-5 h-5 text-pink-400" />
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
-                      TECHNOLOGY TRACKS & ROWS
+                      {l('TECHNOLOGY TRACKS & ROWS', '科技轨道与排布')}
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Technologies are placed into rows from left to right. Each row provides progressive science discounts and end-game Victory Points.
+                      {l(
+                        'Technologies are placed into rows from left to right. Each row provides progressive science discounts and end-game Victory Points.',
+                        '科技从左向右依次放入对应科技行。每条轨道都会逐步提供科研折扣，并在终局提供胜利点。'
+                      )}
                     </p>
                   </div>
                 </div>
 
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-400 font-mono">
-                    Total Researched: <strong className="text-pink-300">{player.techTrack.researched.length}</strong>
+                    {l('Total Researched:', '已研发总数:')} <strong className="text-pink-300">{player.techTrack.researched.length}</strong>
                   </span>
                   <button
                     onClick={onOpenTechMarket}
                     className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-pink-950/50 hover:bg-pink-900/60 border border-pink-700/60 text-pink-300 text-xs font-bold transition-all shadow"
                   >
                     <Cpu className="w-3.5 h-3.5 text-pink-400" />
-                    <span>Open Tech Tray Market</span>
+                    <span>{l('Open Tech Tray Market', '打开科技市场')}</span>
                   </button>
                 </div>
               </div>
@@ -924,7 +964,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded bg-rose-500" />
                       <h3 className="text-xs font-bold uppercase tracking-wider text-rose-300 font-display flex items-center gap-1.5">
-                        <Crosshair className="w-3.5 h-3.5 text-rose-400" /> MILITARY TECH ROW ({techRows.military.count} Researched)
+                        <Crosshair className="w-3.5 h-3.5 text-rose-400" /> {l(`MILITARY TECH ROW (${techRows.military.count} Researched)`, `军事科技栏 (${techRows.military.count} 已研发)`)}
                       </h3>
                       {player.faction.id === 'wardens_of_magellan' && (
                         <span
@@ -935,17 +975,20 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           }`}
                           title={
                             !player.magellanDiscoveryResolved
-                              ? 'Facedown Relic Tile on Military Track. Reveals and resolves when 4th technology is placed on any track.'
-                              : 'Relic Tile resolved.'
+                              ? l(
+                                  'Facedown Relic Tile on Military Track. Reveals and resolves when 4th technology is placed on any track.',
+                                  '军事轨道上的暗置探索板块。当任意科技轨道放置第 4 项科技时翻开并结算。'
+                                )
+                              : l('Relic Tile resolved.', '探索板块已结算。')
                           }
                         >
-                          {!player.magellanDiscoveryResolved ? '🔮 Facedown Relic Tile (Unrevealed)' : '🔮 Relic Tile Resolved'}
+                          {!player.magellanDiscoveryResolved ? l('🔮 Facedown Relic Tile (Unrevealed)', '🔮 暗置探索板块（未翻开）') : l('🔮 Relic Tile Resolved', '🔮 探索板块已结算')}
                         </span>
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-xs font-mono">
                       <span className="text-slate-400">
-                        Next Discount: <strong className="text-rose-300">-{techRows.military.nextDiscount} Science</strong>
+                        {l('Next Discount:', '下格减免:')} <strong className="text-rose-300">-{techRows.military.nextDiscount} {l('Science', '科研')}</strong>
                       </span>
                       <span className="text-amber-400 font-bold">
                         {techRows.military.victoryPoints > 0 ? `+${techRows.military.victoryPoints} VP` : '0 VP'}
@@ -960,12 +1003,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
                       const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
+                      const tName = tech ? translateTechName(tech.id, tech.name, language) : '';
+                      const tDesc = tech ? translateTechDesc(tech.id, tech.description, language) : '';
 
                       return (
                         <div
                           key={`mil_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          title={tech ? `${tech.name}: ${tech.description}` : undefined}
+                          title={tech ? `${tName}: ${tDesc}` : undefined}
                           className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all relative ${
                             tech
                               ? 'bg-rose-950/40 border-rose-500/80 shadow-md ring-1 ring-rose-500/30 cursor-pointer hover:border-rose-400 group hover:z-50'
@@ -980,7 +1025,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             />
                           )}
                           <div className="flex items-center justify-between text-[10px]">
-                            <span className="font-mono text-slate-500 font-bold">Slot {sIdx + 1}</span>
+                            <span className="font-mono text-slate-500 font-bold">{l(`Slot ${sIdx + 1}`, `槽位 ${sIdx + 1}`)}</span>
                             {vpEarned > 0 && (
                               <span className="text-[9px] font-extrabold text-amber-400 bg-amber-950/60 px-1 rounded border border-amber-800">
                                 {vpEarned} VP
@@ -991,19 +1036,19 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           {tech ? (
                             <div className="flex flex-col justify-between h-full">
                               <span className="sr-only">
-                                {tech.name}: {tech.description}
+                                {tName}: {tDesc}
                               </span>
                               <div className="my-0.5">
                                 <TechTileIconography tech={tech} compact />
                               </div>
                               <div className="text-[8.5px] text-slate-400 font-mono">
-                                Base: {tech.baseCost} sci
+                                {l(`Base: ${tech.baseCost} sci`, `基础: ${tech.baseCost} 科研`)}
                               </div>
                             </div>
                           ) : (
                             <div className="text-center py-1">
                               <span className="text-[11px] font-mono font-bold text-slate-500">
-                                -{discount} Sci
+                                -{discount} {l('Sci', '科研')}
                               </span>
                             </div>
                           )}
@@ -1019,12 +1064,12 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded bg-emerald-500" />
                       <h3 className="text-xs font-bold uppercase tracking-wider text-emerald-300 font-display flex items-center gap-1.5">
-                        <Shield className="w-3.5 h-3.5 text-emerald-400" /> GRID TECH ROW ({techRows.grid.count} Researched)
+                        <Shield className="w-3.5 h-3.5 text-emerald-400" /> {l(`GRID TECH ROW (${techRows.grid.count} Researched)`, `网络科技栏 (${techRows.grid.count} 已研发)`)}
                       </h3>
                     </div>
                     <div className="flex items-center gap-3 text-xs font-mono">
                       <span className="text-slate-400">
-                        Next Discount: <strong className="text-emerald-300">-{techRows.grid.nextDiscount} Science</strong>
+                        {l('Next Discount:', '下格减免:')} <strong className="text-emerald-300">-{techRows.grid.nextDiscount} {l('Science', '科研')}</strong>
                       </span>
                       <span className="text-amber-400 font-bold">
                         {techRows.grid.victoryPoints > 0 ? `+${techRows.grid.victoryPoints} VP` : '0 VP'}
@@ -1039,12 +1084,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
                       const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
+                      const tName = tech ? translateTechName(tech.id, tech.name, language) : '';
+                      const tDesc = tech ? translateTechDesc(tech.id, tech.description, language) : '';
 
                       return (
                         <div
                           key={`grid_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          title={tech ? `${tech.name}: ${tech.description}` : undefined}
+                          title={tech ? `${tName}: ${tDesc}` : undefined}
                           className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all relative ${
                             tech
                               ? 'bg-emerald-950/40 border-emerald-500/80 shadow-md ring-1 ring-emerald-500/30 cursor-pointer hover:border-emerald-400 group hover:z-50'
@@ -1059,7 +1106,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             />
                           )}
                           <div className="flex items-center justify-between text-[10px]">
-                            <span className="font-mono text-slate-500 font-bold">Slot {sIdx + 1}</span>
+                            <span className="font-mono text-slate-500 font-bold">{l(`Slot ${sIdx + 1}`, `槽位 ${sIdx + 1}`)}</span>
                             {vpEarned > 0 && (
                               <span className="text-[9px] font-extrabold text-amber-400 bg-amber-950/60 px-1 rounded border border-amber-800">
                                 {vpEarned} VP
@@ -1070,19 +1117,19 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           {tech ? (
                             <div className="flex flex-col justify-between h-full">
                               <span className="sr-only">
-                                {tech.name}: {tech.description}
+                                {tName}: {tDesc}
                               </span>
                               <div className="my-0.5">
                                 <TechTileIconography tech={tech} compact />
                               </div>
                               <div className="text-[8.5px] text-slate-400 font-mono">
-                                Base: {tech.baseCost} sci
+                                {l(`Base: ${tech.baseCost} sci`, `基础: ${tech.baseCost} 科研`)}
                               </div>
                             </div>
                           ) : (
                             <div className="text-center py-1">
                               <span className="text-[11px] font-mono font-bold text-slate-500">
-                                -{discount} Sci
+                                -{discount} {l('Sci', '科研')}
                               </span>
                             </div>
                           )}
@@ -1098,12 +1145,12 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     <div className="flex items-center gap-2">
                       <div className="w-3 h-3 rounded bg-sky-500" />
                       <h3 className="text-xs font-bold uppercase tracking-wider text-sky-300 font-display flex items-center gap-1.5">
-                        <Cpu className="w-3.5 h-3.5 text-sky-400" /> NANO TECH ROW ({techRows.nano.count} Researched)
+                        <Cpu className="w-3.5 h-3.5 text-sky-400" /> {l(`NANO TECH ROW (${techRows.nano.count} Researched)`, `纳米科技栏 (${techRows.nano.count} 已研发)`)}
                       </h3>
                     </div>
                     <div className="flex items-center gap-3 text-xs font-mono">
                       <span className="text-slate-400">
-                        Next Discount: <strong className="text-sky-300">-{techRows.nano.nextDiscount} Science</strong>
+                        {l('Next Discount:', '下格减免:')} <strong className="text-sky-300">-{techRows.nano.nextDiscount} {l('Science', '科研')}</strong>
                       </span>
                       <span className="text-amber-400 font-bold">
                         {techRows.nano.victoryPoints > 0 ? `+${techRows.nano.victoryPoints} VP` : '0 VP'}
@@ -1118,12 +1165,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
                       const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
                       const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
+                      const tName = tech ? translateTechName(tech.id, tech.name, language) : '';
+                      const tDesc = tech ? translateTechDesc(tech.id, tech.description, language) : '';
 
                       return (
                         <div
                           key={`nano_slot_${sIdx}`}
                           onClick={() => tech && setSelectedTech(tech)}
-                          title={tech ? `${tech.name}: ${tech.description}` : undefined}
+                          title={tech ? `${tName}: ${tDesc}` : undefined}
                           className={`min-h-[76px] rounded-lg border p-2 flex flex-col justify-between transition-all relative ${
                             tech
                               ? 'bg-sky-950/40 border-sky-500/80 shadow-md ring-1 ring-sky-500/30 cursor-pointer hover:border-sky-400 group hover:z-50'
@@ -1138,7 +1187,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             />
                           )}
                           <div className="flex items-center justify-between text-[10px]">
-                            <span className="font-mono text-slate-500 font-bold">Slot {sIdx + 1}</span>
+                            <span className="font-mono text-slate-500 font-bold">{l(`Slot ${sIdx + 1}`, `槽位 ${sIdx + 1}`)}</span>
                             {vpEarned > 0 && (
                               <span className="text-[9px] font-extrabold text-amber-400 bg-amber-950/60 px-1 rounded border border-amber-800">
                                 {vpEarned} VP
@@ -1149,24 +1198,24 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                           {tech ? (
                             <div className="flex flex-col justify-between h-full">
                               <span className="sr-only">
-                                {tech.name}: {tech.description}
+                                {tName}: {tDesc}
                               </span>
                               <div className="my-0.5">
                                 <TechTileIconography tech={tech} compact />
                               </div>
                               <div className="text-[8.5px] text-slate-400 font-mono">
-                                Base: {tech.baseCost} sci
+                                {l(`Base: ${tech.baseCost} sci`, `基础: ${tech.baseCost} 科研`)}
                               </div>
                               {tech.id === 'artifact_key' && (
                                 <div className="text-[9px] text-sky-300 font-bold font-mono">
-                                  {controlledArtifactsCount} Artifacts Held
+                                  {controlledArtifactsCount} {l('Artifacts Held', '已持有遗物')}
                                 </div>
                               )}
                             </div>
                           ) : (
                             <div className="text-center py-1">
                               <span className="text-[11px] font-mono font-bold text-slate-500">
-                                -{discount} Sci
+                                -{discount} {l('Sci', '科研')}
                               </span>
                             </div>
                           )}
@@ -1180,14 +1229,17 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 {techRows.rare.length > 0 && (
                   <div className="bg-purple-950/20 border border-purple-900/60 rounded-xl p-3">
                     <div className="text-xs font-bold uppercase tracking-wider text-purple-300 font-display mb-2 flex items-center gap-1.5">
-                      <Sparkles className="w-3.5 h-3.5 text-purple-400" /> Researched Rare Technologies ({techRows.rare.length})
+                      <Sparkles className="w-3.5 h-3.5 text-purple-400" /> {l(`Researched Rare Technologies (${techRows.rare.length})`, `已研发稀有科技 (${techRows.rare.length})`)}
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {techRows.rare.map((rt) => (
+                      {techRows.rare.map((rt) => {
+                        const rName = translateTechName(rt.id, rt.name, language);
+                        const rDesc = translateTechDesc(rt.id, rt.description, language);
+                        return (
                         <div
                           key={rt.id}
                           onClick={() => setSelectedTech(rt)}
-                          title={`${rt.name}: ${rt.description}`}
+                          title={`${rName}: ${rDesc}`}
                           className="px-3 py-1.5 rounded-lg border border-purple-500/70 bg-purple-950/50 text-purple-200 text-xs font-semibold flex items-center gap-2 cursor-pointer hover:border-purple-400 shadow relative group hover:z-50"
                         >
                           <TechHoverTooltip
@@ -1195,14 +1247,15 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             horizontalPlacement="left-0"
                             verticalPlacement="bottom-[calc(100%+8px)]"
                           />
-                          <span>{rt.name}</span>
+                          <span>{rName}</span>
                           {rt.victoryPoints && rt.victoryPoints > 0 && (
                             <span className="text-[10px] font-bold text-amber-400 bg-amber-950 px-1 rounded border border-amber-800">
                               +{rt.victoryPoints} VP
                             </span>
                           )}
                         </div>
-                      ))}
+                        );
+                      })}
                     </div>
                   </div>
                 )}
@@ -1215,7 +1268,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     <div className="flex items-start justify-between gap-3 border-b border-slate-800 pb-3">
                       <div>
                         <div className="font-extrabold text-white text-base font-display flex items-center gap-2">
-                          {selectedTech.name}
+                          {translateTechName(selectedTech.id, selectedTech.name, language)}
                           <span className={`text-[10px] font-mono uppercase px-2 py-0.5 rounded border font-bold ${
                             selectedTech.category === 'military'
                               ? 'bg-rose-950/80 border-rose-600 text-rose-300'
@@ -1225,37 +1278,37 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               ? 'bg-sky-950/80 border-sky-600 text-sky-300'
                               : 'bg-purple-950/80 border-purple-600 text-purple-300'
                           }`}>
-                            {selectedTech.category} tech
+                            {l(`${selectedTech.category} tech`, `${translateTechCategory(selectedTech.category, language)}科技`)}
                           </span>
                         </div>
                         <div className="text-xs text-slate-400 font-mono mt-1">
-                          Base Cost: <strong className="text-pink-300">{selectedTech.baseCost} Science</strong> • Min Cost: <strong className="text-pink-300">{selectedTech.minCost} Science</strong>
+                          {l('Base Cost:', '基础花费:')} <strong className="text-pink-300">{selectedTech.baseCost} {l('Science', '科研')}</strong> • {l('Min Cost:', '最低花费:')} <strong className="text-pink-300">{selectedTech.minCost} {l('Science', '科研')}</strong>
                           {selectedTech.victoryPoints && selectedTech.victoryPoints > 0 ? ` • +${selectedTech.victoryPoints} VP` : ''}
                         </div>
                       </div>
                       <button
                         onClick={() => setSelectedTech(null)}
                         className="p-1.5 text-slate-400 hover:text-white bg-slate-800 hover:bg-slate-700 rounded-lg border border-slate-700 transition cursor-pointer"
-                        title="Close details (Esc)"
+                        title={l('Close details (Esc)', '关闭详情 (Esc)')}
                       >
                         <X className="w-4 h-4" />
                       </button>
                     </div>
 
                     <div className="text-xs text-slate-200 leading-relaxed bg-slate-950/60 p-3 rounded-xl border border-slate-800">
-                      {selectedTech.description}
+                      {translateTechDesc(selectedTech.id, selectedTech.description, language)}
                     </div>
 
                     {selectedTech.unlocksPartId && (
                       <div className="text-xs text-cyan-300 bg-cyan-950/40 border border-cyan-800/60 p-2.5 rounded-xl flex items-center gap-2">
                         <Wrench className="w-4 h-4 text-cyan-400 shrink-0" />
-                        <span>Unlocks ship component: <strong>{selectedTech.unlocksPartId.replace(/_/g, ' ').toUpperCase()}</strong></span>
+                        <span>{l('Unlocks ship component:', '解锁飞船部件:')} <strong>{selectedTech.unlocksPartId.replace(/_/g, ' ').toUpperCase()}</strong></span>
                       </div>
                     )}
                     {selectedTech.unlocksAbility && (
                       <div className="text-xs text-amber-300 bg-amber-950/40 border border-amber-800/60 p-2.5 rounded-xl flex items-center gap-2">
                         <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                        <span>Special Ability: <strong>{selectedTech.unlocksAbility.replace(/_/g, ' ').toUpperCase()}</strong></span>
+                        <span>{l('Special Ability:', '特殊能力:')} <strong>{selectedTech.unlocksAbility.replace(/_/g, ' ').toUpperCase()}</strong></span>
                       </div>
                     )}
 
@@ -1264,7 +1317,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         onClick={() => setSelectedTech(null)}
                         className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold border border-slate-700 transition cursor-pointer"
                       >
-                        Close
+                        {l('Close', '关闭')}
                       </button>
                     </div>
                   </div>
@@ -1283,16 +1336,19 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <Sparkles className="w-5 h-5 text-orange-400" />
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-orange-200 font-display flex items-center gap-2">
-                      SHRINE BOARD (9 Sacred Shrines)
+                      {l('SHRINE BOARD (9 Sacred Shrines)', '神龛面板 (9 座圣龛)')}
                     </h2>
                     <p className="text-xs text-slate-400">
-                      With each Research action, you may place one Shrine on an eligible planet slot in a controlled hex. Complete rows to unlock powerful spiritual bonuses.
+                      {l(
+                        'With each Research action, you may place one Shrine on an eligible planet slot in a controlled hex. Complete rows to unlock powerful spiritual bonuses.',
+                        '每次执行研发行动时，你可在己方控制星区符合条件的星球槽位建造 1 座神龛。完成一整行可解锁强力加成。'
+                      )}
                     </p>
                   </div>
                 </div>
                 <div className="flex items-center gap-3 text-xs font-mono">
                   <span className="text-orange-300 font-bold">
-                    {`${player.shrineBoard.slots.flat().filter((s) => s.built).length}/9 Shrines Built`}
+                    {`${player.shrineBoard.slots.flat().filter((s) => s.built).length}/9 ${l('Shrines Built', '已建神龛')}`}
                   </span>
                   <span className="text-amber-400 font-bold bg-amber-950/60 px-2 py-0.5 rounded border border-amber-800">
                     {`+${player.shrineBoard.slots.flat().filter((s) => s.built).length} VP`}
@@ -1306,14 +1362,14 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   const isCompleted = rowSlots.every((s) => s.built);
                   const rowBonusClaimed = player.shrineBoard?.rowBonusesClaimed[rIdx];
                   const rowTitles = [
-                    'Row 1 — Unlocks Permanent Wormhole Generator Ability',
-                    'Row 2 — Unlocks Free Discovery Tile (Sector 238 or +2 VP)',
-                    'Row 3 — Unlocks +1 Permanent Influence Disc',
+                    l('Row 1 — Unlocks Permanent Wormhole Generator Ability', '第 1 行 — 永久解锁虫洞发生器能力'),
+                    l('Row 2 — Unlocks Free Discovery Tile (Sector 238 or +2 VP)', '第 2 行 — 获得免费探索板块（星区 238 或 +2 VP）'),
+                    l('Row 3 — Unlocks +1 Permanent Influence Disc', '第 3 行 — 永久获得 +1 枚影响力圆片'),
                   ];
                   const bonusStatus = [
-                    player.hasWormholeGeneratorAbility ? 'UNLOCKED' : 'LOCKED',
-                    rowBonusClaimed ? 'CLAIMED' : 'LOCKED',
-                    player.lyraExtraDiscClaimed ? '+1 DISC GRANTED' : 'LOCKED',
+                    player.hasWormholeGeneratorAbility ? l('UNLOCKED', '已解锁') : l('LOCKED', '未解锁'),
+                    rowBonusClaimed ? l('CLAIMED', '已领取') : l('LOCKED', '未解锁'),
+                    player.lyraExtraDiscClaimed ? l('+1 DISC GRANTED', '已获得 +1 圆片') : l('LOCKED', '未解锁'),
                   ];
 
                   return (
@@ -1365,20 +1421,23 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                   <div className="flex items-center gap-1">
                                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400" />
                                     <span className="text-xs font-bold font-display text-orange-200">
-                                      Shrine {rIdx * 3 + cIdx + 1}
+                                      {l(`Shrine ${rIdx * 3 + cIdx + 1}`, `神龛 ${rIdx * 3 + cIdx + 1}`)}
                                     </span>
                                   </div>
                                   <span className="text-[10px] text-slate-400 font-mono">
-                                    {slot.sectorId ? `Sec ${slot.sectorId}` : 'Erected'}
+                                    {slot.sectorId ? l(`Sec ${slot.sectorId}`, `星区 ${slot.sectorId}`) : l('Erected', '已建造')}
                                   </span>
                                 </div>
                               ) : (
                                 <div className="flex flex-col items-center gap-0.5">
                                   <span className="text-xs font-bold font-mono">
-                                    {slot.costAmount} {slot.costResource.toUpperCase()}
+                                    {slot.costAmount} {language === 'zh' ? translateResourceType(slot.costResource, language) : slot.costResource.toUpperCase()}
                                   </span>
                                   <span className="text-[9px] text-slate-400">
-                                    Next to {slot.costResource} / gray planet
+                                    {l(
+                                      `Next to ${slot.costResource} / gray planet`,
+                                      `邻近 ${translateResourceType(slot.costResource, language)} / 灰色星球`
+                                    )}
                                   </span>
                                 </div>
                               )}
@@ -1404,10 +1463,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   <Rocket className="w-5 h-5 text-cyan-400" />
                   <div>
                     <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
-                      FLEET SHIP BLUEPRINTS
+                      {l('FLEET SHIP BLUEPRINTS', '舰队飞船蓝图')}
                     </h2>
                     <p className="text-xs text-slate-400">
-                      Modular ship loadouts, installed weapon systems, drives, shields, and damage capacity.
+                      {l(
+                        'Modular ship loadouts, installed weapon systems, drives, shields, and damage capacity.',
+                        '模块化飞船配置：已安装的武器系统、推进器、护盾及船体耐久。'
+                      )}
                     </p>
                   </div>
                 </div>
@@ -1417,7 +1479,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-cyan-950/60 hover:bg-cyan-900/80 border border-cyan-600/70 text-cyan-300 text-xs font-bold transition-all shadow"
                 >
                   <Wrench className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Open Ship Upgrade Designer</span>
+                  <span>{l('Open Ship Upgrade Designer', '打开飞船改装设计器')}</span>
                 </button>
               </div>
 
@@ -1426,6 +1488,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 {blueprintsWithStats.map((sc) => {
                   const bp = sc.blueprint;
                   const stats = sc.stats;
+                  const shipLabel = translateShipType(sc.type, language);
 
                   return (
                     <div
@@ -1437,23 +1500,23 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         <div className="flex items-center gap-2">
                           <Rocket className="w-4 h-4 text-cyan-400" />
                           <h3 className="text-sm font-bold text-slate-100 font-display uppercase tracking-wide">
-                            {sc.name}
+                            {language === 'zh' ? shipLabel : sc.name}
                           </h3>
                           <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                            Cost: {sc.baseCost} Mats
+                            {l(`Cost: ${sc.baseCost} Mats`, `造价: ${sc.baseCost} 材料`)}
                           </span>
                         </div>
 
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-mono text-slate-400">
-                            Supply: <strong className={sc.deployedCount >= sc.limit ? 'text-amber-400' : 'text-cyan-300'}>
+                            {l('Supply:', '库存:')} <strong className={sc.deployedCount >= sc.limit ? 'text-amber-400' : 'text-cyan-300'}>
                               {sc.deployedCount}
                             </strong> / {sc.limit}
                           </span>
                           <button
                             onClick={() => onOpenBlueprintEditor(sc.type)}
                             className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-300 transition-colors"
-                            title={`Upgrade ${sc.name}`}
+                            title={l(`Upgrade ${sc.name}`, `改装 ${shipLabel}`)}
                           >
                             <Wrench className="w-3.5 h-3.5" />
                           </button>
@@ -1466,8 +1529,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         {stats && (
                           <div className="w-full sm:w-36 lg:w-40 shrink-0 bg-slate-950/80 border border-slate-800/80 rounded-xl p-2.5 flex flex-col justify-between shadow-inner">
                             <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1.5 flex items-center justify-between border-b border-slate-800/60 pb-1 font-display">
-                              <span>Ship Stats</span>
-                              <span className="text-[8.5px] font-mono text-cyan-400 font-normal">Active</span>
+                              <span>{l('Ship Stats', '飞船属性')}</span>
+                              <span className="text-[8.5px] font-mono text-cyan-400 font-normal">{l('Active', '生效')}</span>
                             </div>
 
                             {/* Status grid (retains grid grid-cols-6 for compatibility with test 134) */}
@@ -1476,7 +1539,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
                                 <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
                                   <Heart className="w-2.5 h-2.5 text-rose-400" />
-                                  <span>HP</span>
+                                  <span>{l('HP', '耐久')}</span>
                                 </div>
                                 <div className="text-xs font-bold text-rose-300 mt-0.5">{stats.totalHull} HP</div>
                               </div>
@@ -1485,10 +1548,10 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
                                 <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
                                   <Navigation className="w-2.5 h-2.5 text-cyan-400" />
-                                  <span>Speed</span>
+                                  <span>{l('Speed', '航速')}</span>
                                 </div>
                                 <div className="text-xs font-bold text-cyan-300 mt-0.5">
-                                  {sc.type === 'starbase' ? 'Immobile' : `${stats.totalDriveSpeed} Hex`}
+                                  {sc.type === 'starbase' ? l('Immobile', '不可移动') : l(`${stats.totalDriveSpeed} Hex`, `${stats.totalDriveSpeed} 格`)}
                                 </div>
                               </div>
 
@@ -1496,7 +1559,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
                                 <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
                                   <Timer className="w-2.5 h-2.5 text-indigo-400" />
-                                  <span>Init</span>
+                                  <span>{l('Init', '先攻')}</span>
                                 </div>
                                 <div className="text-xs font-bold text-indigo-300 mt-0.5">
                                   {stats.totalInitiative >= 0 ? `+${stats.totalInitiative}` : stats.totalInitiative}
@@ -1510,7 +1573,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
                                 <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
                                   <Crosshair className="w-2.5 h-2.5 text-sky-400" />
-                                  <span>COMP</span>
+                                  <span>{l('COMP', '电脑')}</span>
                                 </div>
                                 <div className="text-xs font-bold text-sky-300 mt-0.5">
                                   {`+${stats.computerBonus}`}
@@ -1521,7 +1584,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
                                 <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
                                   <Shield className="w-2.5 h-2.5 text-teal-400" />
-                                  <span>Shield</span>
+                                  <span>{l('Shield', '护盾')}</span>
                                 </div>
                                 <div className="text-xs font-bold text-teal-300 mt-0.5">
                                   {`-${stats.shieldBonus}`}
@@ -1532,7 +1595,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                               <div className="bg-slate-900/80 p-1.5 rounded-lg border border-slate-800/60 flex flex-col justify-center">
                                 <div className="text-[9px] text-slate-500 uppercase font-sans flex items-center justify-center gap-0.5">
                                   <Zap className="w-2.5 h-2.5 text-amber-400" />
-                                  <span>Power</span>
+                                  <span>{l('Power', '能源')}</span>
                                 </div>
                                 <div
                                   className={`text-xs font-bold mt-0.5 ${
@@ -1590,14 +1653,22 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
                   <h2 className="text-sm sm:text-base font-bold text-slate-100 font-display flex items-center gap-2">
                     <Layers className="w-5 h-5 text-yellow-400" />
-                    POPULATION & RESOURCE PRODUCTION TRACKS
+                    {l('POPULATION & RESOURCE PRODUCTION TRACKS', '人口与资源产出轨道')}
                   </h2>
                   <span className="text-[11px] text-cyan-400 font-mono bg-cyan-950/40 border border-cyan-800/50 px-2 py-0.5 rounded">
-                    Official Board Rule: Left to right (2 → 28)
+                    {l('Official Board Rule: Left to right (2 → 28)', '官方版图规则：从左至右 (2 → 28)')}
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 mt-1">
-                  Cubes are placed on spaces from left to right. When colonizing a planet, you remove cubes from left to right to your sectors. The <strong className="text-slate-200">highest uncovered number</strong> is what you currently earn during Upkeep.
+                  {language === 'zh' ? (
+                    <>
+                      人口方块从左到右放置在轨道格中。殖民星球时，从左向右依次取走方块。当前<strong className="text-slate-200">最右侧露出的最高数字</strong>即为你维护阶段的产出值。
+                    </>
+                  ) : (
+                    <>
+                      Cubes are placed on spaces from left to right. When colonizing a planet, you remove cubes from left to right to your sectors. The <strong className="text-slate-200">highest uncovered number</strong> is what you currently earn during Upkeep.
+                    </>
+                  )}
                 </p>
               </div>
 
@@ -1607,23 +1678,23 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 <div className="bg-slate-900/90 border border-yellow-950/80 rounded-xl p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-yellow-400 flex items-center gap-1.5 font-display">
-                      <Coins className="w-4 h-4 text-yellow-400" /> MONEY TRACK
+                      <Coins className="w-4 h-4 text-yellow-400" /> {l('MONEY TRACK', '信用点轨道')}
                     </span>
                     <span className="font-mono text-yellow-300 font-bold">
-                      +{summary.income.money} Credits/rnd
+                      +{summary.income.money} {l('Credits/rnd', '信用点/回合')}
                     </span>
                   </div>
 
                   {/* Next-Cube Forecast Bar */}
                   <div className="bg-slate-950/60 rounded-lg px-2.5 py-1.5 border border-yellow-900/40 text-[11px] flex flex-wrap items-center justify-between gap-1">
-                    <span className="text-yellow-400 font-bold uppercase tracking-wider text-[10px]">Forecast:</span>
+                    <span className="text-yellow-400 font-bold uppercase tracking-wider text-[10px]">{l('Forecast:', '预测:')}</span>
                     <div className="flex items-center gap-2 font-mono text-[10px]">
                       <span className="text-slate-300">
-                        Active: <strong className="text-yellow-300">+{moneyForecast.currentIncome}</strong>
+                        {l('Active:', '当前:')} <strong className="text-yellow-300">+{moneyForecast.currentIncome}</strong>
                       </span>
                       <span className="text-slate-500">•</span>
                       <span className="text-yellow-200">
-                        Next: <strong className="text-yellow-300">+{moneyForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{moneyForecast.next1Cube.delta})</span>
+                        {l('Next:', '下格:')} <strong className="text-yellow-300">+{moneyForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{moneyForecast.next1Cube.delta})</span>
                       </span>
                       <span className="text-slate-500">•</span>
                       <span className="text-yellow-200">
@@ -1642,17 +1713,30 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       return (
                         <div
                           key={`money_space_${space.slotIndex}`}
-                          title={`Space ${space.value} Credits: ${
-                            isActive
-                              ? `Current Active Income (${space.value} Credits/rnd)`
-                              : isNext
-                              ? `Next Cube to colonize! Uncovering increases income from ${moneyForecast.currentIncome} to ${space.value} (+${moneyForecast.next1Cube.delta} delta)`
-                              : isNext2
-                              ? `Second Cube! Uncovering increases income to ${space.value} (+${moneyForecast.next2Cubes.delta} delta)`
-                              : hasCube
-                              ? `Covered by population cube (uncovers ${space.value} Credits)`
-                              : `Uncovered (already passed)`
-                          }`}
+                          title={l(
+                            `Space ${space.value} Credits: ${
+                              isActive
+                                ? `Current Active Income (${space.value} Credits/rnd)`
+                                : isNext
+                                ? `Next Cube to colonize! Uncovering increases income from ${moneyForecast.currentIncome} to ${space.value} (+${moneyForecast.next1Cube.delta} delta)`
+                                : isNext2
+                                ? `Second Cube! Uncovering increases income to ${space.value} (+${moneyForecast.next2Cubes.delta} delta)`
+                                : hasCube
+                                ? `Covered by population cube (uncovers ${space.value} Credits)`
+                                : `Uncovered (already passed)`
+                            }`,
+                            `${space.value} 信用点格：${
+                              isActive
+                                ? `当前生效产出（${space.value} 信用点/回合）`
+                                : isNext
+                                ? `下个殖民方块！移出后产出从 ${moneyForecast.currentIncome} 升至 ${space.value} (+${moneyForecast.next1Cube.delta})`
+                                : isNext2
+                                ? `第 2 个方块！移出后产出升至 ${space.value} (+${moneyForecast.next2Cubes.delta})`
+                                : hasCube
+                                ? `被人口方块覆盖（移出后产出 ${space.value} 信用点）`
+                                : `已露出（已超越）`
+                            }`
+                          )}
                           className={`h-16 rounded-lg border flex flex-col items-center justify-between p-1 relative transition-all ${
                             isActive
                               ? 'bg-yellow-950/60 border-yellow-400 shadow-lg shadow-yellow-950/60 ring-2 ring-yellow-400/80'
@@ -1693,11 +1777,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             {hasCube ? (
                               <div
                                 className="w-5 h-5 rounded-sm bg-yellow-500 border border-yellow-200 shadow-md transform hover:scale-110 transition-transform"
-                                title="Wooden Population Cube"
+                                title={l('Wooden Population Cube', '人口方块')}
                               />
                             ) : isActive ? (
                               <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-yellow-400 text-slate-950 uppercase tracking-tight shadow">
-                                ACTIVE
+                                {l('ACTIVE', '当前')}
                               </span>
                             ) : (
                               <span className="text-[10px] text-slate-600 font-mono">✓</span>
@@ -1714,7 +1798,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                   : 'text-slate-600'
                               }`}
                             >
-                              {isActive ? `${space.value}/rnd` : isNext ? 'Next cube' : hasCube ? 'Covered' : 'Empty'}
+                              {isActive
+                                ? l(`${space.value}/rnd`, `${space.value}/回合`)
+                                : isNext
+                                ? l('Next cube', '下个方块')
+                                : hasCube
+                                ? l('Covered', '已覆盖')
+                                : l('Empty', '空')}
                             </span>
                           </div>
                         </div>
@@ -1727,23 +1817,23 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 <div className="bg-slate-900/90 border border-pink-950/80 rounded-xl p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-pink-400 flex items-center gap-1.5 font-display">
-                      <FlaskConical className="w-4 h-4 text-pink-400" /> SCIENCE TRACK
+                      <FlaskConical className="w-4 h-4 text-pink-400" /> {l('SCIENCE TRACK', '科研轨道')}
                     </span>
                     <span className="font-mono text-pink-300 font-bold">
-                      +{summary.income.science} Sci/rnd
+                      +{summary.income.science} {l('Sci/rnd', '科研/回合')}
                     </span>
                   </div>
 
                   {/* Next-Cube Forecast Bar */}
                   <div className="bg-slate-950/60 rounded-lg px-2.5 py-1.5 border border-pink-900/40 text-[11px] flex flex-wrap items-center justify-between gap-1">
-                    <span className="text-pink-400 font-bold uppercase tracking-wider text-[10px]">Forecast:</span>
+                    <span className="text-pink-400 font-bold uppercase tracking-wider text-[10px]">{l('Forecast:', '预测:')}</span>
                     <div className="flex items-center gap-2 font-mono text-[10px]">
                       <span className="text-slate-300">
-                        Active: <strong className="text-pink-300">+{sciForecast.currentIncome}</strong>
+                        {l('Active:', '当前:')} <strong className="text-pink-300">+{sciForecast.currentIncome}</strong>
                       </span>
                       <span className="text-slate-500">•</span>
                       <span className="text-pink-200">
-                        Next: <strong className="text-pink-300">+{sciForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{sciForecast.next1Cube.delta})</span>
+                        {l('Next:', '下格:')} <strong className="text-pink-300">+{sciForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{sciForecast.next1Cube.delta})</span>
                       </span>
                       <span className="text-slate-500">•</span>
                       <span className="text-pink-200">
@@ -1762,17 +1852,30 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       return (
                         <div
                           key={`sci_space_${space.slotIndex}`}
-                          title={`Space ${space.value} Science: ${
-                            isActive
-                              ? `Current Active Income (${space.value} Science/rnd)`
-                              : isNext
-                              ? `Next Cube to colonize! Uncovering increases science from ${sciForecast.currentIncome} to ${space.value} (+${sciForecast.next1Cube.delta} delta)`
-                              : isNext2
-                              ? `Second Cube! Uncovering increases science to ${space.value} (+${sciForecast.next2Cubes.delta} delta)`
-                              : hasCube
-                              ? `Covered by population cube (uncovers ${space.value} Science)`
-                              : `Uncovered (already passed)`
-                          }`}
+                          title={l(
+                            `Space ${space.value} Science: ${
+                              isActive
+                                ? `Current Active Income (${space.value} Science/rnd)`
+                                : isNext
+                                ? `Next Cube to colonize! Uncovering increases science from ${sciForecast.currentIncome} to ${space.value} (+${sciForecast.next1Cube.delta} delta)`
+                                : isNext2
+                                ? `Second Cube! Uncovering increases science to ${space.value} (+${sciForecast.next2Cubes.delta} delta)`
+                                : hasCube
+                                ? `Covered by population cube (uncovers ${space.value} Science)`
+                                : `Uncovered (already passed)`
+                            }`,
+                            `${space.value} 科研格：${
+                              isActive
+                                ? `当前生效产出（${space.value} 科研/回合）`
+                                : isNext
+                                ? `下个殖民方块！移出后产出从 ${sciForecast.currentIncome} 升至 ${space.value} (+${sciForecast.next1Cube.delta})`
+                                : isNext2
+                                ? `第 2 个方块！移出后产出升至 ${space.value} (+${sciForecast.next2Cubes.delta})`
+                                : hasCube
+                                ? `被人口方块覆盖（移出后产出 ${space.value} 科研）`
+                                : `已露出（已超越）`
+                            }`
+                          )}
                           className={`h-16 rounded-lg border flex flex-col items-center justify-between p-1 relative transition-all ${
                             isActive
                               ? 'bg-pink-950/60 border-pink-400 shadow-lg shadow-pink-950/60 ring-2 ring-pink-400/80'
@@ -1813,11 +1916,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             {hasCube ? (
                               <div
                                 className="w-5 h-5 rounded-sm bg-pink-500 border border-pink-200 shadow-md transform hover:scale-110 transition-transform"
-                                title="Wooden Population Cube"
+                                title={l('Wooden Population Cube', '人口方块')}
                               />
                             ) : isActive ? (
                               <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-pink-400 text-slate-950 uppercase tracking-tight shadow">
-                                ACTIVE
+                                {l('ACTIVE', '当前')}
                               </span>
                             ) : (
                               <span className="text-[10px] text-slate-600 font-mono">✓</span>
@@ -1834,7 +1937,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                   : 'text-slate-600'
                               }`}
                             >
-                              {isActive ? `${space.value}/rnd` : isNext ? 'Next cube' : hasCube ? 'Covered' : 'Empty'}
+                              {isActive
+                                ? l(`${space.value}/rnd`, `${space.value}/回合`)
+                                : isNext
+                                ? l('Next cube', '下个方块')
+                                : hasCube
+                                ? l('Covered', '已覆盖')
+                                : l('Empty', '空')}
                             </span>
                           </div>
                         </div>
@@ -1847,23 +1956,23 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 <div className="bg-slate-900/90 border border-amber-950/80 rounded-xl p-3.5 space-y-2.5">
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-amber-500 flex items-center gap-1.5 font-display">
-                      <Hammer className="w-4 h-4 text-amber-500" /> MATERIALS TRACK
+                      <Hammer className="w-4 h-4 text-amber-500" /> {l('MATERIALS TRACK', '材料轨道')}
                     </span>
                     <span className="font-mono text-amber-400 font-bold">
-                      +{summary.income.materials} Mats/rnd
+                      +{summary.income.materials} {l('Mats/rnd', '材料/回合')}
                     </span>
                   </div>
 
                   {/* Next-Cube Forecast Bar */}
                   <div className="bg-slate-950/60 rounded-lg px-2.5 py-1.5 border border-amber-900/40 text-[11px] flex flex-wrap items-center justify-between gap-1">
-                    <span className="text-amber-500 font-bold uppercase tracking-wider text-[10px]">Forecast:</span>
+                    <span className="text-amber-500 font-bold uppercase tracking-wider text-[10px]">{l('Forecast:', '预测:')}</span>
                     <div className="flex items-center gap-2 font-mono text-[10px]">
                       <span className="text-slate-300">
-                        Active: <strong className="text-amber-400">+{matForecast.currentIncome}</strong>
+                        {l('Active:', '当前:')} <strong className="text-amber-400">+{matForecast.currentIncome}</strong>
                       </span>
                       <span className="text-slate-500">•</span>
                       <span className="text-amber-200">
-                        Next: <strong className="text-amber-400">+{matForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{matForecast.next1Cube.delta})</span>
+                        {l('Next:', '下格:')} <strong className="text-amber-400">+{matForecast.next1Cube.income}</strong> <span className="text-emerald-400">(+{matForecast.next1Cube.delta})</span>
                       </span>
                       <span className="text-slate-500">•</span>
                       <span className="text-amber-200">
@@ -1882,17 +1991,30 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       return (
                         <div
                           key={`mat_space_${space.slotIndex}`}
-                          title={`Space ${space.value} Materials: ${
-                            isActive
-                              ? `Current Active Income (${space.value} Materials/rnd)`
-                              : isNext
-                              ? `Next Cube to colonize! Uncovering increases materials from ${matForecast.currentIncome} to ${space.value} (+${matForecast.next1Cube.delta} delta)`
-                              : isNext2
-                              ? `Second Cube! Uncovering increases materials to ${space.value} (+${matForecast.next2Cubes.delta} delta)`
-                              : hasCube
-                              ? `Covered by population cube (uncovers ${space.value} Materials)`
-                              : `Uncovered (already passed)`
-                          }`}
+                          title={l(
+                            `Space ${space.value} Materials: ${
+                              isActive
+                                ? `Current Active Income (${space.value} Materials/rnd)`
+                                : isNext
+                                ? `Next Cube to colonize! Uncovering increases materials from ${matForecast.currentIncome} to ${space.value} (+${matForecast.next1Cube.delta} delta)`
+                                : isNext2
+                                ? `Second Cube! Uncovering increases materials to ${space.value} (+${matForecast.next2Cubes.delta} delta)`
+                                : hasCube
+                                ? `Covered by population cube (uncovers ${space.value} Materials)`
+                                : `Uncovered (already passed)`
+                            }`,
+                            `${space.value} 材料格：${
+                              isActive
+                                ? `当前生效产出（${space.value} 材料/回合）`
+                                : isNext
+                                ? `下个殖民方块！移出后产出从 ${matForecast.currentIncome} 升至 ${space.value} (+${matForecast.next1Cube.delta})`
+                                : isNext2
+                                ? `第 2 个方块！移出后产出升至 ${space.value} (+${matForecast.next2Cubes.delta})`
+                                : hasCube
+                                ? `被人口方块覆盖（移出后产出 ${space.value} 材料）`
+                                : `已露出（已超越）`
+                            }`
+                          )}
                           className={`h-16 rounded-lg border flex flex-col items-center justify-between p-1 relative transition-all ${
                             isActive
                               ? 'bg-amber-950/60 border-amber-400 shadow-lg shadow-amber-950/60 ring-2 ring-amber-400/80'
@@ -1933,11 +2055,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             {hasCube ? (
                               <div
                                 className="w-5 h-5 rounded-sm bg-amber-600 border border-amber-300 shadow-md transform hover:scale-110 transition-transform"
-                                title="Wooden Population Cube"
+                                title={l('Wooden Population Cube', '人口方块')}
                               />
                             ) : isActive ? (
                               <span className="text-[8px] font-black px-1.5 py-0.5 rounded bg-amber-400 text-slate-950 uppercase tracking-tight shadow">
-                                ACTIVE
+                                {l('ACTIVE', '当前')}
                               </span>
                             ) : (
                               <span className="text-[10px] text-slate-600 font-mono">✓</span>
@@ -1954,7 +2076,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                   : 'text-slate-600'
                               }`}
                             >
-                              {isActive ? `${space.value}/rnd` : isNext ? 'Next cube' : hasCube ? 'Covered' : 'Empty'}
+                              {isActive
+                                ? l(`${space.value}/rnd`, `${space.value}/回合`)
+                                : isNext
+                                ? l('Next cube', '下个方块')
+                                : hasCube
+                                ? l('Covered', '已覆盖')
+                                : l('Empty', '空')}
                             </span>
                           </div>
                         </div>
@@ -1974,24 +2102,33 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
         <div className="bg-slate-950 border-t border-slate-800 px-5 py-3 flex items-center justify-between text-xs text-slate-400 shrink-0">
           <div className="flex items-center gap-4">
             <span>
-              💰 Money: <strong className="text-yellow-300">{player.resources.money}</strong>
+              💰 {l('Money:', '信用点:')} <strong className="text-yellow-300">{player.resources.money}</strong>
             </span>
             <span>
-              🔬 Science: <strong className="text-pink-300">{player.resources.science}</strong>
+              🔬 {l('Science:', '科研:')} <strong className="text-pink-300">{player.resources.science}</strong>
             </span>
             <span>
-              ⚙️ Materials: <strong className="text-amber-400">{player.resources.materials}</strong>
+              ⚙️ {l('Materials:', '材料:')} <strong className="text-amber-400">{player.resources.materials}</strong>
             </span>
             <span className="hidden sm:inline text-slate-600">|</span>
             <span className="hidden sm:inline">
-              Upkeep Owed: <strong className="text-rose-400">-{forecast.currentUpkeep} Credits</strong>
+              {l('Upkeep Owed:', '需付维护费:')} <strong className="text-rose-400">-{forecast.currentUpkeep} {l('Credits', '信用点')}</strong>
             </span>
           </div>
 
           <div className="flex items-center gap-2">
             <span className="text-[11px] font-mono text-slate-500">
-              Press <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Esc</kbd> or{' '}
-              <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">P</kbd> to close
+              {language === 'zh' ? (
+                <>
+                  按 <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Esc</kbd> 或{' '}
+                  <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">P</kbd> 关闭
+                </>
+              ) : (
+                <>
+                  Press <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">Esc</kbd> or{' '}
+                  <kbd className="px-1 py-0.5 rounded bg-slate-800 border border-slate-700 text-slate-300">P</kbd> to close
+                </>
+              )}
             </span>
           </div>
         </div>

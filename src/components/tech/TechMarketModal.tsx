@@ -28,6 +28,14 @@ import {
 } from 'lucide-react';
 
 import { SectorTile } from '../../engine/types/galaxy';
+import { useLanguage } from '../../i18n/LanguageContext';
+import {
+  translateTechName,
+  translateTechDesc,
+  translateTechCategory,
+  translateGamePhase,
+  translateResourceType,
+} from '../../i18n/catalogTranslations';
 
 interface TechMarketModalProps {
   player: PlayerState;
@@ -61,6 +69,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   onResearchTech,
   onClose,
 }) => {
+  const { language, l } = useLanguage();
   const [viewMode, setViewMode] = useState<TrayViewMode>('all');
   const [selectedRareTrack, setSelectedRareTrack] = useState<Record<string, 'military' | 'grid' | 'nano'>>({});
   const [warpPortalSectorId, setWarpPortalSectorId] = useState<string>('');
@@ -300,7 +309,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     return (
       <div
         key={tech.id}
-        title={`${tech.name}: ${tech.description}`}
+        title={`${translateTechName(tech.id, tech.name, language)}: ${translateTechDesc(tech.id, tech.description, language)}`}
         className={`group relative hover:z-50 rounded-xl border flex flex-col justify-between p-3 transition-all ${
           isSelected
             ? 'ring-2 ring-cyan-400 bg-cyan-950/40 border-cyan-500 shadow-lg shadow-cyan-950/60'
@@ -318,25 +327,25 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           className={`hidden group-hover:block absolute ${horizontalPlacement} ${verticalPlacement} z-50 w-72 max-w-[calc(100vw-2rem)] p-3 bg-slate-950 border-2 border-amber-500/90 rounded-xl shadow-2xl shadow-black text-xs text-slate-100 pointer-events-none animate-in fade-in zoom-in-95 duration-150`}
         >
           <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 mb-1.5">
-            <span className="font-bold text-amber-300 text-sm font-display">{tech.name}</span>
+            <span className="font-bold text-amber-300 text-sm font-display">{translateTechName(tech.id, tech.name, language)}</span>
             <span className="text-[10px] text-cyan-300 font-mono font-bold uppercase px-1.5 py-0.5 rounded bg-slate-900 border border-slate-700">
-              {tech.category}
+              {translateTechCategory(tech.category, language)}
             </span>
           </div>
           <p className="text-slate-200 text-xs leading-relaxed mb-2 font-normal">
-            {tech.description}
+            {translateTechDesc(tech.id, tech.description, language)}
           </p>
           <div className="pt-1.5 border-t border-slate-800 flex items-center justify-between text-[10px] text-slate-400 font-mono">
             <span className="flex items-center gap-1">
-              Base Cost: {tech.baseCost}
+              {l('Base Cost:', '基础费用：')} {tech.baseCost}
               <FlaskConical className="w-3 h-3 text-pink-400 inline" />
             </span>
             <span className="flex items-center gap-1">
-              Min Cost: {tech.minCost}
+              {l('Min Cost:', '最低费用：')} {tech.minCost}
               <FlaskConical className="w-3 h-3 text-pink-400 inline" />
             </span>
             {tech.victoryPoints ? (
-              <span className="text-amber-400 font-bold">+{tech.victoryPoints} VP</span>
+              <span className="text-amber-400 font-bold">+{tech.victoryPoints} {l('VP', '分')}</span>
             ) : null}
           </div>
         </div>
@@ -345,7 +354,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         {isSelected && (
           <div className="absolute -top-2.5 -right-2 bg-gradient-to-r from-cyan-500 to-blue-500 text-slate-950 text-[10px] font-black px-2 py-0.5 rounded-full shadow-md z-10 flex items-center gap-1">
             <Check className="w-3 h-3 stroke-[3]" />
-            #{selectedIdx + 1} Selected
+            {l(`#${selectedIdx + 1} Selected`, `已选 #${selectedIdx + 1}`)}
           </div>
         )}
 
@@ -354,12 +363,12 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           <div className="flex items-center justify-between gap-1 mb-1.5 text-[10px] font-mono whitespace-nowrap">
             <div className="flex items-center gap-1.5">
               <span className="text-slate-400 font-bold uppercase tracking-wider shrink-0">
-                {tech.tier ? `Slot ${tech.tier}` : 'Rare Tech'}
+                {tech.tier ? l(`Slot ${tech.tier}`, `栏位 ${tech.tier}`) : l('Rare Tech', '稀有科技')}
               </span>
               {tech.victoryPoints && (
                 <span className="text-[10px] text-amber-400 font-sans font-bold flex items-center gap-0.5">
                   <Award className="w-3 h-3 text-amber-400" />
-                  +{tech.victoryPoints} VP
+                  +{tech.victoryPoints} {l('VP', '分')}
                 </span>
               )}
             </div>
@@ -368,7 +377,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             {stock > 0 ? (
               <span
                 className="px-1.5 py-0.5 rounded font-bold bg-amber-500/20 border border-amber-500/40 text-amber-300 text-[10px] flex items-center gap-1 shrink-0 whitespace-nowrap"
-                title={`${stock} available in Tech Tray`}
+                title={l(`${stock} available in Tech Tray`, `科技盘中剩余 ${stock} 个`)}
               >
                 <Package className="w-3 h-3 text-amber-400" />
                 <span>{`x${stock}`}</span>
@@ -376,15 +385,15 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             ) : (
               <span
                 className="px-1.5 py-0.5 rounded font-bold bg-slate-900/80 text-slate-500 border border-slate-800 text-[9px] shrink-0 whitespace-nowrap"
-                title="Out of stock in Tech Tray"
+                title={l('Out of stock in Tech Tray', '科技盘已空')}
               >
-                EMPTY
+                {l('EMPTY', '已空')}
               </span>
             )}
           </div>
 
           {/* Physical Tile Iconography Face (Second Dawn board game design, no text name on face) */}
-          <div className="my-1.5 cursor-help" title={`${tech.name}: ${tech.description}`}>
+          <div className="my-1.5 cursor-help" title={`${translateTechName(tech.id, tech.name, language)}: ${translateTechDesc(tech.id, tech.description, language)}`}>
             <TechTileIconography tech={tech} />
           </div>
 
@@ -393,7 +402,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             <div className="mb-2 px-2 py-1 rounded bg-sky-950/80 border border-sky-500/50 text-[10px] text-sky-200 flex items-center justify-between font-mono">
               <span className="text-sky-300 font-semibold flex items-center gap-1">
                 <Sparkles className="w-3 h-3 text-sky-400" />
-                Artifacts Held:
+                {l('Artifacts Held:', '持有遗迹：')}
               </span>
               <span className="font-bold text-sky-100 bg-sky-900/60 px-1.5 py-0.5 rounded border border-sky-600">
                 {controlledArtifactsCount}
@@ -405,10 +414,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           {otherPlayersWithTech.length > 0 && (
             <div
               className="mb-2 px-2 py-0.5 rounded bg-slate-900/90 border border-slate-700/60 text-[10px] flex items-center justify-between gap-1"
-              title={`Researched by: ${otherPlayersWithTech.map((p) => p.name).join(', ')}`}
+              title={l(`Researched by: ${otherPlayersWithTech.map((p) => p.name).join(', ')}`, `已研发玩家：${otherPlayersWithTech.map((p) => p.name).join(', ')}`)}
             >
               <span className="text-slate-400 font-medium">
-                {otherPlayersWithTech.length} {otherPlayersWithTech.length === 1 ? 'player has:' : 'players have:'}
+                {l(`${otherPlayersWithTech.length} ${otherPlayersWithTech.length === 1 ? 'player has:' : 'players have:'}`, `${otherPlayersWithTech.length} 名玩家已研发：`)}
               </span>
               <div className="flex items-center gap-1 shrink-0">
                 {otherPlayersWithTech.map((p) => (
@@ -426,7 +435,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           {/* Rare Tech Track Selector */}
           {tech.category === 'rare' && stock > 0 && !isOwned && (
             <div className="mb-2.5 p-1.5 rounded-lg bg-slate-950/60 border border-purple-900/40 text-[10px]">
-              <div className="text-slate-400 mb-1 font-semibold">Place on Track:</div>
+              <div className="text-slate-400 mb-1 font-semibold">{l('Place on Track:', '放置到科技轨：')}</div>
               <div className="grid grid-cols-3 gap-1">
                 {(['military', 'grid', 'nano'] as const).map((tr) => {
                   const trCount = getTrackCount(tr);
@@ -453,7 +462,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                           : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <div className="uppercase text-[9px]">{tr[0]} {isTrFull ? '(Full)' : `(${trCount}/7)`}</div>
+                      <div className="uppercase text-[9px]">{language === 'zh' ? translateTechCategory(tr, language) : tr[0]} {isTrFull ? l('(Full)', '(满)') : `(${trCount}/7)`}</div>
                       <div className="text-[10px] flex items-center justify-center gap-0.5">
                         <span>{costOnTr}</span>
                         <FlaskConical className="w-2.5 h-2.5 text-pink-400 inline" />
@@ -469,11 +478,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           {tech.id === 'warp_portal' && stock > 0 && !isOwned && (
             <div className="mb-2.5 p-1.5 rounded-lg bg-slate-950/60 border border-purple-900/40 text-[10px]">
               <div className="text-purple-300 mb-1 font-semibold flex items-center justify-between">
-                <span>Place Portal on Sector:</span>
-                <span className="text-[9px] text-purple-400 font-bold">+1 VP</span>
+                <span>{l('Place Portal on Sector:', '将传送门放置于星区：')}</span>
+                <span className="text-[9px] text-purple-400 font-bold">+1 {l('VP', '分')}</span>
               </div>
               {controlledSectors.length === 0 ? (
-                <div className="text-rose-400 italic text-[10px]">Must control a sector to place portal</div>
+                <div className="text-rose-400 italic text-[10px]">{l('Must control a sector to place portal', '必须控制至少一个星区才能放置传送门')}</div>
               ) : (
                 <select
                   value={warpPortalSectorId || controlledSectors[0]?.id}
@@ -482,7 +491,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 >
                   {controlledSectors.map((s) => (
                     <option key={s.id} value={s.id}>
-                      Sector {s.sectorNumber} (Ring {s.ring})
+                      {l(`Sector ${s.sectorNumber} (Ring ${s.ring})`, `星区 ${s.sectorNumber}（第 ${s.ring} 环）`)}
                     </option>
                   ))}
                 </select>
@@ -496,7 +505,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           {/* Row 1: Cost: <base> (MIN <min>) <beaker> */}
           <div className="flex items-center justify-between text-[10px] font-mono whitespace-nowrap">
             <div className="flex items-center gap-1">
-              <span className="text-slate-400 font-semibold uppercase">Cost:</span>
+              <span className="text-slate-400 font-semibold uppercase">{l('Cost:', '费用：')}</span>
               <span className="font-extrabold text-pink-400 font-mono text-[11px]">{discountedCost}</span>
               {tech.baseCost > discountedCost && (
                 <span className="text-[9px] text-slate-500 line-through font-mono">
@@ -504,7 +513,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 </span>
               )}
               <span className="text-slate-500 font-normal text-[9.5px]">
-                (MIN {tech.minCost})
+                {language === 'zh' ? `(最低 ${tech.minCost})` : <>(MIN {tech.minCost})</>}
               </span>
             </div>
             <FlaskConical className="w-3.5 h-3.5 text-pink-400 shrink-0" />
@@ -515,11 +524,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             {isOwned ? (
               <span className="w-full py-1 rounded-lg text-[10.5px] font-bold bg-emerald-950/80 border border-emerald-700/60 text-emerald-300 flex items-center justify-center gap-1">
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
-                Researched
+                {l('Researched', '已研发')}
               </span>
             ) : stock === 0 ? (
               <span className="w-full py-1 rounded text-[10.5px] text-slate-500 italic font-semibold flex items-center justify-center bg-slate-950/40 border border-slate-900">
-                Empty Slot
+                {l('Empty Slot', '空栏位')}
               </span>
             ) : isSelected ? (
               <button
@@ -527,7 +536,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 onClick={toggleSelect}
                 className="w-full py-1 rounded-lg text-xs font-bold bg-cyan-500 hover:bg-cyan-400 text-slate-950 shadow-md transition-all font-sans flex items-center justify-center gap-1 cursor-pointer"
               >
-                <X className="w-3 h-3" /> Deselect
+                <X className="w-3 h-3" /> {l('Deselect', '取消选择')}
               </button>
             ) : canResearch ? (
               maxResearch > 1 ? (
@@ -537,7 +546,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   disabled={selectedForResearch.length >= maxResearch}
                   className="w-full py-1 rounded-lg text-xs font-bold bg-cyan-950/80 hover:bg-cyan-900 border border-cyan-600/70 text-cyan-300 disabled:opacity-30 disabled:cursor-not-allowed shadow transition-all font-sans cursor-pointer flex items-center justify-center"
                 >
-                  Select
+                  {l('Select', '选择')}
                 </button>
               ) : (
                 <button
@@ -545,27 +554,27 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   onClick={() => onResearchTech(tech.id, chosenTrack, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined, shrinePlacement)}
                   disabled={isShrinePartiallySelected}
                   className="w-full py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-md shadow-pink-950/50 transition-all font-sans disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1"
-                  title={isShrinePartiallySelected ? "Select target planet for Shrine or deselect Shrine" : "Research technology"}
+                  title={isShrinePartiallySelected ? l('Select target planet for Shrine or deselect Shrine', '请为神殿选择目标星球，或取消选择神殿') : l('Research technology', '研发科技')}
                 >
-                  Research
+                  {l('Research', '研发')}
                 </button>
               )
             ) : isTrackFull ? (
               <span className="w-full py-1 rounded bg-amber-950/40 border border-amber-900/60 text-amber-400 font-bold text-[10px] flex items-center justify-center">
-                Track Full (7/7)
+                {l('Track Full (7/7)', '科技轨已满 (7/7)')}
               </span>
             ) : !canAfford ? (
               <div className="w-full py-0.5 rounded bg-rose-950/50 border border-rose-900/70 text-rose-300 font-bold text-[10px] flex items-center justify-center gap-1">
-                <span>Need {discountedCost - commander.resources.science}</span>
+                <span>{l(`Need ${discountedCost - commander.resources.science}`, `还缺 ${discountedCost - commander.resources.science}`)}</span>
                 <FlaskConical className="w-3 h-3 text-pink-400 inline shrink-0" />
               </div>
             ) : !hasActionDiscs ? (
               <span className="w-full py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 font-semibold text-[10px] flex items-center justify-center">
-                No Discs
+                {l('No Discs', '无可用圆盘')}
               </span>
             ) : (
               <span className="w-full py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 font-semibold text-[10px] flex items-center justify-center">
-                {currentSeat === 'spectator' ? 'Spectator Mode' : 'Not Your Turn'}
+                {currentSeat === 'spectator' ? l('Spectator Mode', '观战模式') : l('Not Your Turn', '非你的回合')}
               </span>
             )}
           </div>
@@ -587,14 +596,14 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-extrabold text-slate-100 font-display tracking-wider">
-                  PHYSICAL TECHNOLOGY TRAY
+                  {l('PHYSICAL TECHNOLOGY TRAY', '科技供应盘')}
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
-                  Eclipse: Second Dawn
+                  {l('Eclipse: Second Dawn', '星蚀：第二黎明')}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Compartmentalized plastic tray. Tiles are drawn from the cloth bag every round during Cleanup.
+                {l('Compartmentalized plastic tray. Tiles are drawn from the cloth bag every round during Cleanup.', '分格科技收纳盘。每轮清理阶段都会从布袋中抽取新的科技板块。')}
               </p>
             </div>
           </div>
@@ -604,22 +613,22 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             {currentSeat === 'spectator' && (
               <div className="flex items-center gap-1.5 bg-amber-950/80 border border-amber-600/80 px-3 py-1.5 rounded-xl text-xs text-amber-300 font-bold">
                 <Eye className="w-4 h-4 text-amber-400" />
-                <span>Spectator Mode (Observing)</span>
+                <span>{l('Spectator Mode (Observing)', '观战模式（旁观中）')}</span>
               </div>
             )}
             {/* Cloth Bag Counter */}
             <div
               className="flex items-center gap-2 bg-indigo-950/60 border border-indigo-800/80 px-3 py-1.5 rounded-xl text-xs text-indigo-300 font-bold"
-              title="Official Rule: Every Cleanup Phase, tiles are drawn until (N+3) regular tiles are drawn. Rare tiles do not count against the limit."
+              title={l('Official Rule: Every Cleanup Phase, tiles are drawn until (N+3) regular tiles are drawn. Rare tiles do not count against the limit.', '官方规则：每个清理阶段从布袋抽取板块，直到抽满 (N+3) 枚常规科技；稀有科技不计入该上限。')}
             >
               <Package className="w-4 h-4 text-indigo-400" />
-              <span>Cloth Bag: {techBagCount} tiles</span>
+              <span>{l(`Cloth Bag: ${techBagCount} tiles`, `科技布袋：${techBagCount} 枚`)}</span>
             </div>
 
             {/* Commander Science Balance */}
             <div className="flex items-center gap-2 bg-pink-950/70 border border-pink-700/80 px-3 py-1.5 rounded-xl text-xs text-pink-300 font-bold">
               <FlaskConical className="w-4 h-4 text-pink-400" />
-              <span>{commander.resources.science} Science</span>
+              <span>{l(`${commander.resources.science} Science`, `${commander.resources.science} 科研`)}</span>
             </div>
 
             <button
@@ -634,7 +643,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         {/* Player Switcher & Tech Track Discounts Status Banner */}
         <div className="bg-slate-900/60 px-5 py-2.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs shrink-0">
           <div className="flex items-center gap-2 flex-wrap">
-            <span className="font-bold text-slate-400">Viewing Commander:</span>
+            <span className="font-bold text-slate-400">{l('Viewing Commander:', '当前查看指挥官：')}</span>
             {players && players.length > 1 ? (
               <div className="flex items-center gap-1.5 flex-wrap">
                 {players.map((p, idx) => {
@@ -656,7 +665,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                     >
                       <span className="w-2.5 h-2.5 rounded-full border border-white/40" style={{ backgroundColor: p.color }} />
                       <span>{p.name}</span>
-                      {isSeat && <span className="text-[10px] text-indigo-200 font-mono font-normal">(You)</span>}
+                      {isSeat && <span className="text-[10px] text-indigo-200 font-mono font-normal">{l('(You)', '(你)')}</span>}
                     </button>
                   );
                 })}
@@ -666,7 +675,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             )}
             {phase && phase !== 'ACTION_PHASE' && (
               <span className="px-2 py-0.5 rounded bg-amber-950/70 border border-amber-700/60 text-amber-300 text-[10px] font-mono font-bold">
-                {phase.replace('_', ' ')} (Read-Only)
+                {translateGamePhase(phase, language)} ({l('Read-Only', '只读')})
               </span>
             )}
           </div>
@@ -675,19 +684,19 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             {/* Military Track Status */}
             <div className="flex items-center gap-1.5 text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-900/60">
               <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>Military: {commander.techTrack.militaryCount}/7 Researched</span>
+              <span>{l(`Military: ${commander.techTrack.militaryCount}/7 Researched`, `军事：${commander.techTrack.militaryCount}/7 已研发`)}</span>
             </div>
 
             {/* Grid Track Status */}
             <div className="flex items-center gap-1.5 text-emerald-300 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-900/60">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>Grid: {commander.techTrack.gridCount}/7 Researched</span>
+              <span>{l(`Grid: ${commander.techTrack.gridCount}/7 Researched`, `网络：${commander.techTrack.gridCount}/7 已研发`)}</span>
             </div>
 
             {/* Nano Track Status */}
             <div className="flex items-center gap-1.5 text-sky-300 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-900/60">
               <span className="w-2 h-2 rounded-full bg-sky-500" />
-              <span>Nano: {commander.techTrack.nanoCount}/7 Researched</span>
+              <span>{l(`Nano: ${commander.techTrack.nanoCount}/7 Researched`, `纳米：${commander.techTrack.nanoCount}/7 已研发`)}</span>
             </div>
           </div>
         </div>
@@ -695,11 +704,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
         {/* View Mode Tabs */}
         <div className="flex border-b border-slate-800 bg-slate-950 px-4 pt-2 gap-2 text-xs font-bold overflow-x-auto scrollbar-none [&::-webkit-scrollbar]:hidden shrink-0 sticky top-0 z-10">
           {[
-            { id: 'all', label: 'FULL TECH TRAY (ALL TRACKS)' },
-            { id: 'military', label: 'MILITARY TRACK (RED)' },
-            { id: 'grid', label: 'GRID TRACK (GREEN)' },
-            { id: 'nano', label: 'NANO TRACK (BLUE)' },
-            { id: 'rare', label: `RARE TECHS (${rareTechsInSupply.length} IN TRAY)` },
+            { id: 'all', label: l('FULL TECH TRAY (ALL TRACKS)', '完整科技盘（全轨道）') },
+            { id: 'military', label: l('MILITARY TRACK (RED)', '军事轨（红）') },
+            { id: 'grid', label: l('GRID TRACK (GREEN)', '网络轨（绿）') },
+            { id: 'nano', label: l('NANO TRACK (BLUE)', '纳米轨（蓝）') },
+            { id: 'rare', label: l(`RARE TECHS (${rareTechsInSupply.length} IN TRAY)`, `稀有科技（${rareTechsInSupply.length} 项在盘）`) },
           ].map((tab) => (
             <button
               key={tab.id}
@@ -724,11 +733,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm bg-rose-500" />
                   <h3 className="font-extrabold text-sm text-rose-300 font-display uppercase tracking-wider">
-                    Military Technologies (Track 1)
+                    {l('Military Technologies (Track 1)', '军事科技（第 1 轨）')}
                   </h3>
                 </div>
                 <span className="text-[11px] text-rose-400/80 font-mono">
-                  Slots 1-8 • Base Costs: 2, 4, 6, 8, 10, 12, 14, 16
+                  {l('Slots 1-8 • Base Costs: 2, 4, 6, 8, 10, 12, 14, 16', '栏位 1-8 • 基础费用：2, 4, 6, 8, 10, 12, 14, 16')}
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
@@ -744,11 +753,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm bg-emerald-500" />
                   <h3 className="font-extrabold text-sm text-emerald-300 font-display uppercase tracking-wider">
-                    Grid Technologies (Track 2)
+                    {l('Grid Technologies (Track 2)', '网络科技（第 2 轨）')}
                   </h3>
                 </div>
                 <span className="text-[11px] text-emerald-400/80 font-mono">
-                  Slots 1-8 • Base Costs: 2, 4, 6, 8, 10, 12, 14, 16
+                  {l('Slots 1-8 • Base Costs: 2, 4, 6, 8, 10, 12, 14, 16', '栏位 1-8 • 基础费用：2, 4, 6, 8, 10, 12, 14, 16')}
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
@@ -764,11 +773,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm bg-sky-500" />
                   <h3 className="font-extrabold text-sm text-sky-300 font-display uppercase tracking-wider">
-                    Nano Technologies (Track 3)
+                    {l('Nano Technologies (Track 3)', '纳米科技（第 3 轨）')}
                   </h3>
                 </div>
                 <span className="text-[11px] text-sky-400/80 font-mono">
-                  Slots 1-8 • Base Costs: 2, 4, 6, 8, 10, 12, 14, 16
+                  {l('Slots 1-8 • Base Costs: 2, 4, 6, 8, 10, 12, 14, 16', '栏位 1-8 • 基础费用：2, 4, 6, 8, 10, 12, 14, 16')}
                 </span>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2.5">
@@ -784,17 +793,17 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 <div className="flex items-center gap-2">
                   <div className="w-3 h-3 rounded-sm bg-purple-500" />
                   <h3 className="font-extrabold text-sm text-purple-300 font-display uppercase tracking-wider">
-                    Rare Technologies (Unique Tiles Drawn from Bag)
+                    {l('Rare Technologies (Unique Tiles Drawn from Bag)', '稀有科技（从布袋抽取的独特板块）')}
                   </h3>
                 </div>
                 <span className="text-[11px] text-purple-400/80 font-mono">
-                  16 Unique Techs • May be placed on ANY track (receives chosen track discount)
+                  {l('16 Unique Techs • May be placed on ANY track (receives chosen track discount)', '16 项独特科技 • 可置于任意科技轨并享受该轨折扣')}
                 </span>
               </div>
 
               {rareTechsInSupply.length === 0 ? (
                 <div className="text-center py-6 text-slate-500 text-xs italic bg-slate-950/40 rounded-xl border border-slate-900">
-                  No Rare Technologies currently in the Tech Tray. Rare tiles are drawn randomly from the cloth bag during game setup and round cleanups.
+                  {l('No Rare Technologies currently in the Tech Tray. Rare tiles are drawn randomly from the cloth bag during game setup and round cleanups.', '科技盘中当前没有稀有科技。稀有科技会在开局设置和每轮清理阶段随机从布袋抽出。')}
                 </div>
               ) : (
                 <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
@@ -812,7 +821,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-orange-400" />
                 <h4 className="text-xs font-bold text-orange-200 uppercase tracking-wider font-display">
-                  Enlightened of Lyra — Shrine Placement (Optional with this Research Action)
+                  {l('Enlightened of Lyra — Shrine Placement (Optional with this Research Action)', '天琴座启蒙者 — 建造神殿（本次研发行动可选）')}
                 </h4>
               </div>
               {selectedShrineSlot && (
@@ -823,23 +832,27 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   }}
                   className="text-[11px] text-slate-400 hover:text-white underline font-sans"
                 >
-                  Cancel Shrine Placement
+                  {l('Cancel Shrine Placement', '取消建造神殿')}
                 </button>
               )}
             </div>
 
             <p className="text-[11px] text-slate-400 mb-3">
-              With each Research action, you may also place one Shrine onto an eligible planet slot in a controlled hex (matching resource color or gray). Complete rows to unlock bonuses!
+              {l('With each Research action, you may also place one Shrine onto an eligible planet slot in a controlled hex (matching resource color or gray). Complete rows to unlock bonuses!', '每次执行研发行动时，你还可以在已控制星区的一个符合条件的星球格（同色或灰色）上放置一座神殿。填满整行即可解锁奖励！')}
             </p>
 
             {/* Shrine Slot Selector */}
             <div className="space-y-2">
               <div className="text-[11px] font-bold text-slate-300">
-                Step 1: Choose an unbuilt Shrine from your 3x3 board:
+                {l('Step 1: Choose an unbuilt Shrine from your 3x3 board:', '第 1 步：从你的 3x3 神殿面板中选择一座尚未建造的神殿：')}
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
                 {commander.shrineBoard.slots.map((rowSlots, rIdx) => {
-                  const rowNames = ['Row 1 (Wormhole Gen)', 'Row 2 (Discovery Tile)', 'Row 3 (+1 Disc)'];
+                  const rowNames = [
+                    l('Row 1 (Wormhole Gen)', '第 1 行（虫洞发生器）'),
+                    l('Row 2 (Discovery Tile)', '第 2 行（探索发现板块）'),
+                    l('Row 3 (+1 Disc)', '第 3 行（+1 圆盘）'),
+                  ];
                   return (
                     <div key={`lyra_shrine_row_${rIdx}`} className="bg-slate-900/90 border border-slate-800 rounded-lg p-2">
                       <div className="text-[10px] font-bold text-orange-300/80 mb-1.5">{rowNames[rIdx]}</div>
@@ -871,11 +884,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                               }`}
                             >
                               {slot.built ? (
-                                <span>Built ✓</span>
+                                <span>{l('Built ✓', '已建 ✓')}</span>
                               ) : (
                                 <>
                                   <span className="font-bold">{slot.costAmount}</span>
-                                  <span className="text-[9px] uppercase">{slot.costResource.slice(0, 3)}</span>
+                                  <span className="text-[9px] uppercase">{language === 'zh' ? translateResourceType(slot.costResource, language) : slot.costResource.slice(0, 3)}</span>
                                 </>
                               )}
                             </button>
@@ -893,18 +906,18 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               <div className="mt-3 pt-3 border-t border-orange-950/60 space-y-2">
                 <div className="text-[11px] font-bold text-slate-300 flex items-center justify-between">
                   <span>
-                    Step 2: Choose target planet slot in a controlled hex (Cost: {selectedShrine.costAmount} {selectedShrine.costResource}):
+                    {l(`Step 2: Choose target planet slot in a controlled hex (Cost: ${selectedShrine.costAmount} ${selectedShrine.costResource}):`, `第 2 步：选择已控制星区中的目标星球格（费用：${selectedShrine.costAmount} ${translateResourceType(selectedShrine.costResource, language)}）：`)}
                   </span>
                   {selectedPlanetTarget && (
                     <span className="text-emerald-400 font-bold">
-                      ✓ Ready to build Shrine on Sector {selectedPlanetTarget.sectorId}
+                      ✓ {l(`Ready to build Shrine on Sector ${selectedPlanetTarget.sectorId}`, `准备在星区 ${selectedPlanetTarget.sectorId} 建造神殿`)}
                     </span>
                   )}
                 </div>
 
                 {eligiblePlanetSlots.length === 0 ? (
                   <div className="text-xs text-rose-400 bg-rose-950/30 border border-rose-900/60 rounded-lg p-2.5">
-                    No eligible planet slots available for this shrine in your controlled sectors. The planet must match the shrine color ({selectedShrine.costResource}) or be gray/wildcard, and cannot already have a shrine.
+                    {l(`No eligible planet slots available for this shrine in your controlled sectors. The planet must match the shrine color (${selectedShrine.costResource}) or be gray/wildcard, and cannot already have a shrine.`, `你所控制的星区中没有符合此神殿条件的星球格。星球颜色必须与神殿费用（${translateResourceType(selectedShrine.costResource, language)}）一致或为灰色万能格，且尚未建有神殿。`)}
                   </div>
                 ) : (
                   <div className="flex flex-wrap gap-2">
@@ -929,12 +942,12 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                               : 'bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-200'
                           }`}
                         >
-                          <span>Sector {sec.sectorNumber || sec.id}</span>
+                          <span>{l(`Sector ${sec.sectorNumber || sec.id}`, `星区 ${sec.sectorNumber || sec.id}`)}</span>
                           <span className={`text-[10px] px-1.5 py-0.5 rounded border uppercase font-mono ${badgeClass}`}>
-                            {pl.resource}
+                            {pl.resource === 'any' ? l('Wild', '万能') : translateResourceType(pl.resource, language)}
                           </span>
                           {pl.isAdvanced && <span className="text-[10px]">★</span>}
-                          {pl.colonizedBy && <span className="text-[10px] text-emerald-400">(Colonized)</span>}
+                          {pl.colonizedBy && <span className="text-[10px] text-emerald-400">{l('(Colonized)', '(已殖民)')}</span>}
                         </button>
                       );
                     })}
@@ -954,14 +967,14 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-cyan-300 uppercase tracking-wide flex items-center gap-2">
-                  <span>Hydran Double Research Staging</span>
+                  <span>{l('Hydran Double Research Staging', '海德拉双重研发暂存区')}</span>
                   <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700 text-[10px] text-cyan-400 font-mono font-bold">
-                    {selectedForResearch.length} / {maxResearch} Selected
+                    {selectedForResearch.length} / {maxResearch} {l('Selected', '已选')}
                   </span>
                 </div>
                 <div className="text-[11px] text-slate-400">
                   {selectedForResearch.length === 0 ? (
-                    'Select up to 2 technologies to research concurrently for 1 Action Disc.'
+                    l('Select up to 2 technologies to research concurrently for 1 Action Disc.', '最多可选择 2 项科技，仅消耗 1 枚行动圆盘同时研发。')
                   ) : (
                     <div className="flex items-center gap-2 mt-1">
                       {stagedResearches.items.map((item, idx) => (
@@ -969,7 +982,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                           key={item.techId}
                           className="bg-slate-800 border border-slate-700 px-2 py-0.5 rounded text-slate-200 text-[11px] flex items-center gap-1"
                         >
-                          <strong className="text-cyan-400">#{idx + 1}</strong> {item.tech?.name}
+                          <strong className="text-cyan-400">#{idx + 1}</strong> {item.tech ? translateTechName(item.tech.id, item.tech.name, language) : item.techId}
                           <span className="text-pink-400 font-mono font-bold flex items-center gap-0.5">
                             ({item.cost}
                             <FlaskConical className="w-2.5 h-2.5 text-pink-400 inline" />)
@@ -992,11 +1005,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   }}
                   className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 border border-slate-700 transition-colors cursor-pointer"
                 >
-                  Clear Selection
+                  {l('Clear Selection', '清空选择')}
                 </button>
               )}
               <div className="text-right">
-                <div className="text-[10px] text-slate-400 uppercase font-semibold">Combined Cost</div>
+                <div className="text-[10px] text-slate-400 uppercase font-semibold">{l('Combined Cost', '合计费用')}</div>
                 <div className="text-sm font-mono font-black text-pink-400 flex items-center justify-end gap-1">
                   <span>{stagedResearches.totalScience}</span>
                   <FlaskConical className="w-4 h-4 text-pink-400" />
@@ -1028,17 +1041,17 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 {isActionPhase ? (
                   isCommanderTurn ? (
                     <span className="flex items-center gap-1">
-                      <span>Research Selected ({stagedResearches.totalScience}</span>
+                      <span>{l(`Research Selected (${stagedResearches.totalScience}`, `研发所选 (${stagedResearches.totalScience}`)}</span>
                       <FlaskConical className="w-3.5 h-3.5 inline text-slate-950" />
-                      <span>, 1 Disc)</span>
+                      <span>{l(', 1 Disc)', ', 1 圆盘)')}</span>
                     </span>
                   ) : currentSeat === 'spectator' ? (
-                    `Spectator Mode (Observing ${activePlayer?.name || 'Commander'})`
+                    l(`Spectator Mode (Observing ${activePlayer?.name || 'Commander'})`, `观战模式（正在旁观 ${activePlayer?.name || '指挥官'}）`)
                   ) : (
-                    `Waiting for ${activePlayer?.name || 'Commander'}...`
+                    l(`Waiting for ${activePlayer?.name || 'Commander'}...`, `正在等待 ${activePlayer?.name || '指挥官'}...`)
                   )
                 ) : (
-                  `Research Unavailable (${phase.replace('_', ' ')})`
+                  l(`Research Unavailable (${phase.replace('_', ' ')})`, `研发不可用（${translateGamePhase(phase, language)}）`)
                 )}
               </button>
             </div>
@@ -1050,7 +1063,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           <div className="text-slate-400 flex items-center gap-2">
             <HelpCircle className="w-4 h-4 text-cyan-400" />
             <span>
-              <strong>Official Eclipse Rule:</strong> Researched technologies immediately unlock ship parts, structures, and abilities. Costs are discounted based on existing technologies on the corresponding track.
+              <strong>{l('Official Eclipse Rule:', '星蚀官方规则：')}</strong> {l('Researched technologies immediately unlock ship parts, structures, and abilities. Costs are discounted based on existing technologies on the corresponding track.', '已研发的科技会立即解锁飞船部件、建筑与能力，费用会根据对应科技轨上已有科技数量获得减免。')}
             </span>
           </div>
 
@@ -1058,7 +1071,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             onClick={onClose}
             className="px-5 py-2 rounded-xl font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700"
           >
-            Close Tray
+            {l('Close Tray', '关闭科技盘')}
           </button>
         </div>
       </div>
@@ -1074,16 +1087,16 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-amber-300 font-display">
-                Unused Research Activation
+                {l('Unused Research Activation', '尚有未使用的研发次数')}
               </h3>
               <p className="text-xs text-slate-400">
-                You have {maxResearch - selectedForResearch.length} unused Research activation{maxResearch - selectedForResearch.length > 1 ? 's' : ''} remaining ({selectedForResearch.length} of {maxResearch} used).
+                {l(`You have ${maxResearch - selectedForResearch.length} unused Research activation${maxResearch - selectedForResearch.length > 1 ? 's' : ''} remaining (${selectedForResearch.length} of ${maxResearch} used).`, `你还有 ${maxResearch - selectedForResearch.length} 次未使用的研发激活（已用 ${selectedForResearch.length}/${maxResearch}）。`)}
               </p>
             </div>
           </div>
 
           <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-300">
-            Are you sure you want to research only {selectedForResearch.length} tech{selectedForResearch.length > 1 ? 's' : ''} and give up the extra activation?
+            {l(`Are you sure you want to research only ${selectedForResearch.length} tech${selectedForResearch.length > 1 ? 's' : ''} and give up the extra activation?`, `确定只研发这 ${selectedForResearch.length} 项科技并放弃额外的研发激活吗？`)}
           </div>
 
           <div className="flex items-center justify-end gap-2.5 pt-1">
@@ -1092,7 +1105,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               onClick={() => setShowUnusedWarning(false)}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shadow cursor-pointer"
             >
-              Keep Selecting (Add More)
+              {l('Keep Selecting (Add More)', '继续选择更多')}
             </button>
             <button
               type="button"
@@ -1104,7 +1117,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               }}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"
             >
-              Confirm & Research {selectedForResearch.length} Tech{selectedForResearch.length > 1 ? 's' : ''}
+              {l(`Confirm & Research ${selectedForResearch.length} Tech${selectedForResearch.length > 1 ? 's' : ''}`, `确认研发 ${selectedForResearch.length} 项科技`)}
             </button>
           </div>
         </div>

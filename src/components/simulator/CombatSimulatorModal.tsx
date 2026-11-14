@@ -14,6 +14,13 @@ import { ShipBlueprint, ShipPart } from '../../engine/types/blueprints';
 import { SHIP_PARTS } from '../../engine/rules/partData';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
+import { useLanguage, AppLanguage } from '../../i18n/LanguageContext';
+import {
+  translateFactionName,
+  translateNeutralBlueprintTitle,
+  translateShipType,
+  translatePartName,
+} from '../../i18n/catalogTranslations';
 import {
   ALL_FACTIONS,
   HUMAN_FACTIONS,
@@ -56,92 +63,92 @@ interface CombatSimulatorModalProps {
   gameState?: GameState | null;
 }
 
-const getPartGroups = (communityBalance: boolean) => [
+const getPartGroups = (communityBalance: boolean, language: AppLanguage = 'en') => [
   {
-    category: 'Cannons',
+    category: language === 'zh' ? '加农炮' : 'Cannons',
     parts: [
-      { id: 'ion_cannon', name: 'Ion Cannon (1🟡, 1⚡)' },
-      { id: 'plasma_cannon', name: 'Plasma Cannon (1🟠, 2⚡)' },
-      { id: 'soliton_cannon', name: 'Soliton Cannon (1🔵, 3⚡)' },
-      { id: 'antimatter_cannon', name: 'Antimatter Cannon (1🔴, 4⚡)' },
-      { id: 'ion_disruptor', name: 'Ion Disruptor (1🟡, +3 Init)' },
-      { id: 'ion_turret', name: 'Ion Turret (2🟡)' },
-      { id: 'plasma_turret', name: 'Plasma Turret (2🟠, 3⚡)' },
-      { id: 'soliton_charger', name: 'Soliton Charger (1🔵, 1⚡)' },
-      { id: 'rift_cannon', name: 'Rift Cannon (1🟣, 2⚡)' },
-      { id: 'rift_conductor', name: 'Rift Conductor (1🟣, +1❤️, 1⚡)' },
+      { id: 'ion_cannon', name: `${translatePartName('ion_cannon', 'Ion Cannon', language)} (1🟡, 1⚡)` },
+      { id: 'plasma_cannon', name: `${translatePartName('plasma_cannon', 'Plasma Cannon', language)} (1🟠, 2⚡)` },
+      { id: 'soliton_cannon', name: `${translatePartName('soliton_cannon', 'Soliton Cannon', language)} (1🔵, 3⚡)` },
+      { id: 'antimatter_cannon', name: `${translatePartName('antimatter_cannon', 'Antimatter Cannon', language)} (1🔴, 4⚡)` },
+      { id: 'ion_disruptor', name: `${translatePartName('ion_disruptor', 'Ion Disruptor', language)} (1🟡, +3 ${language === 'zh' ? '先攻' : 'Init'})` },
+      { id: 'ion_turret', name: `${translatePartName('ion_turret', 'Ion Turret', language)} (2🟡)` },
+      { id: 'plasma_turret', name: `${translatePartName('plasma_turret', 'Plasma Turret', language)} (2🟠, 3⚡)` },
+      { id: 'soliton_charger', name: `${translatePartName('soliton_charger', 'Soliton Charger', language)} (1🔵, 1⚡)` },
+      { id: 'rift_cannon', name: `${translatePartName('rift_cannon', 'Rift Cannon', language)} (1🟣, 2⚡)` },
+      { id: 'rift_conductor', name: `${translatePartName('rift_conductor', 'Rift Conductor', language)} (1🟣, +1❤️, 1⚡)` },
     ],
   },
   {
-    category: 'Missiles',
+    category: language === 'zh' ? '导弹' : 'Missiles',
     parts: [
-      { id: 'plasma_missile', name: 'Plasma Missile (2🟠, 1⚡)' },
-      { id: 'ion_missile', name: 'Ion Missile (3🟡)' },
-      { id: 'soliton_missile', name: 'Soliton Missile (1🔵, +1 Init)' },
-      { id: 'antimatter_missile', name: 'Antimatter Missile (1🔴)' },
-      { id: 'flux_missile', name: 'Flux Missile (2🟡, +1 Init)' },
+      { id: 'plasma_missile', name: `${translatePartName('plasma_missile', 'Plasma Missile', language)} (2🟠, 1⚡)` },
+      { id: 'ion_missile', name: `${translatePartName('ion_missile', 'Ion Missile', language)} (3🟡)` },
+      { id: 'soliton_missile', name: `${translatePartName('soliton_missile', 'Soliton Missile', language)} (1🔵, +1 ${language === 'zh' ? '先攻' : 'Init'})` },
+      { id: 'antimatter_missile', name: `${translatePartName('antimatter_missile', 'Antimatter Missile', language)} (1🔴)` },
+      { id: 'flux_missile', name: `${translatePartName('flux_missile', 'Flux Missile', language)} (2🟡, +1 ${language === 'zh' ? '先攻' : 'Init'})` },
     ],
   },
   {
-    category: 'Computers',
+    category: language === 'zh' ? '计算机' : 'Computers',
     parts: [
-      { id: 'electron_computer', name: 'Electron Computer (+1🎯)' },
-      { id: 'positron_computer', name: 'Positron Computer (+2🎯, 1⚡)' },
-      { id: 'gluon_computer', name: 'Gluon Computer (+3🎯, 2⚡)' },
-      { id: 'axion_computer', name: 'Axion Computer (+2🎯, +1 Init)' },
-      { id: 'sentient_hull', name: 'Sentient Hull (+1🎯, +1❤️)' },
+      { id: 'electron_computer', name: `${translatePartName('electron_computer', 'Electron Computer', language)} (+1🎯)` },
+      { id: 'positron_computer', name: `${translatePartName('positron_computer', 'Positron Computer', language)} (+2🎯, 1⚡)` },
+      { id: 'gluon_computer', name: `${translatePartName('gluon_computer', 'Gluon Computer', language)} (+3🎯, 2⚡)` },
+      { id: 'axion_computer', name: `${translatePartName('axion_computer', 'Axion Computer', language)} (+2🎯, +1 ${language === 'zh' ? '先攻' : 'Init'})` },
+      { id: 'sentient_hull', name: `${translatePartName('sentient_hull', 'Sentient Hull', language)} (+1🎯, +1❤️)` },
     ],
   },
   {
-    category: 'Shields',
+    category: language === 'zh' ? '护盾' : 'Shields',
     parts: [
-      { id: 'gauss_shield', name: 'Gauss Shield (-1🛡️)' },
+      { id: 'gauss_shield', name: `${translatePartName('gauss_shield', 'Gauss Shield', language)} (-1🛡️)` },
       {
         id: 'phase_shield',
         name: communityBalance
-          ? 'Phase Shield (-2🛡️, +1 Init, 1⚡)'
-          : 'Phase Shield (-2🛡️, 1⚡)',
+          ? `${translatePartName('phase_shield', 'Phase Shield', language)} (-2🛡️, +1 ${language === 'zh' ? '先攻' : 'Init'}, 1⚡)`
+          : `${translatePartName('phase_shield', 'Phase Shield', language)} (-2🛡️, 1⚡)`,
       },
-      { id: 'flux_shield', name: 'Flux Shield (-3🛡️, +1 Init, 2⚡)' },
-      { id: 'inversion_shield', name: 'Inversion Shield (-2🛡️, +2🔋)' },
-      { id: 'absorption_shield', name: 'Absorption Shield (-1🛡️, +4🔋)' },
-      { id: 'morph_shield', name: 'Morph Shield (-1🛡️, Heals 1/rnd)' },
+      { id: 'flux_shield', name: `${translatePartName('flux_shield', 'Flux Shield', language)} (-3🛡️, +1 ${language === 'zh' ? '先攻' : 'Init'}, 2⚡)` },
+      { id: 'inversion_shield', name: `${translatePartName('inversion_shield', 'Inversion Shield', language)} (-2🛡️, +2🔋)` },
+      { id: 'absorption_shield', name: `${translatePartName('absorption_shield', 'Absorption Shield', language)} (-1🛡️, +4🔋)` },
+      { id: 'morph_shield', name: `${translatePartName('morph_shield', 'Morph Shield', language)} (-1🛡️, ${language === 'zh' ? '每轮回复1' : 'Heals 1/rnd'})` },
     ],
   },
   {
-    category: 'Hulls',
+    category: language === 'zh' ? '船体' : 'Hulls',
     parts: [
-      { id: 'hull', name: 'Hull (+1❤️)' },
+      { id: 'hull', name: `${translatePartName('hull', 'Hull', language)} (+1❤️)` },
       {
         id: 'improved_hull',
         name: communityBalance
-          ? 'Improved Hull (+2❤️, -1 Init)'
-          : 'Improved Hull (+2❤️)',
+          ? `${translatePartName('improved_hull', 'Improved Hull', language)} (+2❤️, -1 ${language === 'zh' ? '先攻' : 'Init'})`
+          : `${translatePartName('improved_hull', 'Improved Hull', language)} (+2❤️)`,
       },
-      { id: 'shard_hull', name: 'Shard Hull (+3❤️)' },
-      { id: 'conifold_field', name: 'Conifold Field (+3❤️, 2⚡)' },
+      { id: 'shard_hull', name: `${translatePartName('shard_hull', 'Shard Hull', language)} (+3❤️)` },
+      { id: 'conifold_field', name: `${translatePartName('conifold_field', 'Conifold Field', language)} (+3❤️, 2⚡)` },
     ],
   },
   {
-    category: 'Drives',
+    category: language === 'zh' ? '引擎' : 'Drives',
     parts: [
-      { id: 'nuclear_drive', name: 'Nuclear Drive (1 Spd, +1 Init, 1⚡)' },
-      { id: 'fusion_drive', name: 'Fusion Drive (2 Spd, +2 Init, 2⚡)' },
-      { id: 'tachyon_drive', name: 'Tachyon Drive (3 Spd, +3 Init, 3⚡)' },
-      { id: 'transition_drive', name: 'Transition Drive (3 Spd, 0⚡)' },
-      { id: 'conformal_drive', name: 'Conformal Drive (4 Spd, +2 Init, 2⚡)' },
-      { id: 'nonlinear_drive', name: 'Nonlinear Drive (2 Spd, +2🔋)' },
-      { id: 'jump_drive', name: 'Jump Drive (Jump, 2⚡)' },
+      { id: 'nuclear_drive', name: `${translatePartName('nuclear_drive', 'Nuclear Drive', language)} (1 ${language === 'zh' ? '速' : 'Spd'}, +1 ${language === 'zh' ? '先攻' : 'Init'}, 1⚡)` },
+      { id: 'fusion_drive', name: `${translatePartName('fusion_drive', 'Fusion Drive', language)} (2 ${language === 'zh' ? '速' : 'Spd'}, +2 ${language === 'zh' ? '先攻' : 'Init'}, 2⚡)` },
+      { id: 'tachyon_drive', name: `${translatePartName('tachyon_drive', 'Tachyon Drive', language)} (3 ${language === 'zh' ? '速' : 'Spd'}, +3 ${language === 'zh' ? '先攻' : 'Init'}, 3⚡)` },
+      { id: 'transition_drive', name: `${translatePartName('transition_drive', 'Transition Drive', language)} (3 ${language === 'zh' ? '速' : 'Spd'}, 0⚡)` },
+      { id: 'conformal_drive', name: `${translatePartName('conformal_drive', 'Conformal Drive', language)} (4 ${language === 'zh' ? '速' : 'Spd'}, +2 ${language === 'zh' ? '先攻' : 'Init'}, 2⚡)` },
+      { id: 'nonlinear_drive', name: `${translatePartName('nonlinear_drive', 'Nonlinear Drive', language)} (2 ${language === 'zh' ? '速' : 'Spd'}, +2🔋)` },
+      { id: 'jump_drive', name: `${translatePartName('jump_drive', 'Jump Drive', language)} (${language === 'zh' ? '跳跃' : 'Jump'}, 2⚡)` },
     ],
   },
   {
-    category: 'Reactors / Power',
+    category: language === 'zh' ? '能源核心 / 反应堆' : 'Reactors / Power',
     parts: [
-      { id: 'nuclear_source', name: 'Nuclear Source (+3🔋)' },
-      { id: 'fusion_source', name: 'Fusion Source (+6🔋)' },
-      { id: 'tachyon_source', name: 'Tachyon Source (+9🔋)' },
-      { id: 'zero_point_source', name: 'Zero-Point Source (+12🔋)' },
-      { id: 'hypergrid_source', name: 'Hypergrid Source (+11🔋)' },
+      { id: 'nuclear_source', name: `${translatePartName('nuclear_source', 'Nuclear Source', language)} (+3🔋)` },
+      { id: 'fusion_source', name: `${translatePartName('fusion_source', 'Fusion Source', language)} (+6🔋)` },
+      { id: 'tachyon_source', name: `${translatePartName('tachyon_source', 'Tachyon Source', language)} (+9🔋)` },
+      { id: 'zero_point_source', name: `${translatePartName('zero_point_source', 'Zero-Point Source', language)} (+12🔋)` },
+      { id: 'hypergrid_source', name: `${translatePartName('hypergrid_source', 'Hypergrid Source', language)} (+11🔋)` },
     ],
   },
 ];
@@ -151,6 +158,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
   onClose,
   gameState,
 }) => {
+  const { l, language } = useLanguage();
   // Attacker configuration
   const [attacker, setAttacker] = useState<SimulatorSideConfig>(() =>
     createDefaultSimulatorSide('terran_federation')
@@ -210,9 +218,12 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       setSimulationResult(null);
       const secTile = gameState.sectors.find((s) => s.id === sectorId);
       const secNum = secTile?.sectorNumber || sectorId;
-      const subText = subsector ? ` (Nebula Subsector ${subsector})` : '';
+      const subText = subsector ? l(` (Nebula Subsector ${subsector})`, ` (星云子星区 ${subsector})`) : '';
       setToastMessage(
-        `Loaded battle from Sector #${secNum}${subText} with ${loaded.defenders.length} defender${loaded.defenders.length > 1 ? 's' : ''}!`
+        l(
+          `Loaded battle from Sector #${secNum}${subText} with ${loaded.defenders.length} defender${loaded.defenders.length > 1 ? 's' : ''}!`,
+          `已从星区 #${secNum}${subText}载入战斗（共 ${loaded.defenders.length} 个防守方）！`
+        )
       );
     }
   };
@@ -240,7 +251,8 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       blueprints: clonedBps,
       hasAntimatterSplitter: p.techTrack.researched.some((t) => t.id === 'antimatter_splitter'),
     }));
-    setToastMessage(`Loaded current blueprints from ${p.faction.name} for Attacker!`);
+    const fname = translateFactionName(p.faction.id, p.faction.name, language);
+    setToastMessage(l(`Loaded current blueprints from ${p.faction.name} for Attacker!`, `已为攻击方载入 ${fname} 的当前蓝图！`));
   };
 
   // Handle Player Blueprints Import for Defender (specific wave index)
@@ -271,7 +283,8 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       };
       return next;
     });
-    setToastMessage(`Loaded current blueprints from ${p.faction.name} for Defender #${(defIndex ?? 0) + 1}!`);
+    const fname = translateFactionName(p.faction.id, p.faction.name, language);
+    setToastMessage(l(`Loaded current blueprints from ${p.faction.name} for Defender #${(defIndex ?? 0) + 1}!`, `已为防守方 #${(defIndex ?? 0) + 1} 载入 ${fname} 的当前蓝图！`));
   };
 
   // Defender Management: Add Defender
@@ -282,7 +295,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
         isNpc: true,
       }),
     ]);
-    setToastMessage(`Added Defender #${defenders.length + 1} to wave sequence!`);
+    setToastMessage(l(`Added Defender #${defenders.length + 1} to wave sequence!`, `已将防守方 #${defenders.length + 1} 加入波次序列！`));
   };
 
   // Defender Management: Remove Defender
@@ -290,7 +303,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
     if (defenders.length <= 1) return;
     setDefenders((prev) => prev.filter((_, i) => i !== index));
     setSimulationResult(null);
-    setToastMessage(`Removed Defender #${index + 1}!`);
+    setToastMessage(l(`Removed Defender #${index + 1}!`, `已移除防守方 #${index + 1}！`));
   };
 
   // Defender Management: Reorder Defenders (Move Up / Down)
@@ -306,7 +319,10 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
     });
     setSimulationResult(null);
     setToastMessage(
-      `Moved Defender #${index + 1} ${direction === 'up' ? 'earlier' : 'later'} in wave sequence!`
+      l(
+        `Moved Defender #${index + 1} ${direction === 'up' ? 'earlier' : 'later'} in wave sequence!`,
+        `已将防守方 #${index + 1} 移至${direction === 'up' ? '更前' : '更后'}波次！`
+      )
     );
   };
 
@@ -323,7 +339,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       return targetDefender;
     });
     setSimulationResult(null);
-    setToastMessage(`Swapped Attacker with Defender #${defenderIndex + 1}!`);
+    setToastMessage(l(`Swapped Attacker with Defender #${defenderIndex + 1}!`, `已互换攻击方与防守方 #${defenderIndex + 1}！`));
   };
 
   const activeExpansions = useMemo(
@@ -352,7 +368,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
   // Run simulation
   const handleRunSimulation = () => {
     if (hasValidationErrors) {
-      setToastMessage('Please resolve illegal ship blueprint configurations before simulating.');
+      setToastMessage(l('Please resolve illegal ship blueprint configurations before simulating.', '请先修正非法的舰船蓝图配置再运行模拟。'));
       return;
     }
     setIsSimulating(true);
@@ -408,14 +424,14 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="font-display font-black text-base sm:text-lg tracking-wider uppercase text-slate-100">
-                  Combat Simulator
+                  {l('Combat Simulator', '战斗模拟器')}
                 </h2>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40">
-                  Monte Carlo 1,000 / 10,000
+                  {l('Monte Carlo 1,000 / 10,000', '蒙特卡洛 1,000 / 10,000 次')}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Simulate battles between customized fleets, alien species, and NPCs with official Eclipse combat rules
+                {l('Simulate battles between customized fleets, alien species, and NPCs with official Eclipse combat rules', '依照星蚀官方战斗规则，模拟自定义舰队、外星派系与中立单位之间的战斗胜率')}
               </p>
             </div>
           </div>
@@ -424,7 +440,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-              title="Close Simulator"
+              title={l('Close Simulator', '关闭模拟器')}
             >
               <X className="w-5 h-5" />
             </button>
@@ -437,14 +453,14 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
             <div className="flex items-center gap-2 text-indigo-300">
               <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
               <span className="font-bold uppercase tracking-wider text-[11px]">
-                In-Game Quick Load:
+                {l('In-Game Quick Load:', '对局数据快速载入：')}
               </span>
             </div>
 
             <div className="flex flex-wrap items-center gap-3">
               {/* Load Sector Battle Dropdown */}
               <div className="flex items-center gap-1.5">
-                <span className="text-slate-400">Sector Battle:</span>
+                <span className="text-slate-400">{l('Sector Battle:', '星区战斗：')}</span>
                 <select
                   defaultValue=""
                   onChange={(e) => {
@@ -456,7 +472,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                   className="bg-slate-900 border border-indigo-700/60 rounded px-2 py-1 text-indigo-200 text-xs font-semibold focus:outline-none focus:border-indigo-400"
                 >
                   <option value="" disabled>
-                    Choose a sector to simulate...
+                    {l('Choose a sector to simulate...', '选择要模拟的星区...')}
                   </option>
                   {pendingCombatSectors.map((s) => (
                     <option
@@ -471,7 +487,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
 
               {/* Attacker Blueprint Quick Loader */}
               <div className="flex items-center gap-1.5">
-                <span className="text-red-400 font-bold">Attacker BP:</span>
+                <span className="text-red-400 font-bold">{l('Attacker BP:', '攻方蓝图：')}</span>
                 <select
                   defaultValue=""
                   onChange={(e) => {
@@ -483,11 +499,11 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                   className="bg-slate-900 border border-red-700/60 rounded px-2 py-1 text-red-200 text-xs font-semibold focus:outline-none"
                 >
                   <option value="" disabled>
-                    Import player blueprints...
+                    {l('Import player blueprints...', '导入玩家蓝图...')}
                   </option>
                   {gameState.players.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.faction.name} ({p.name})
+                      {translateFactionName(p.faction.id, p.faction.name, language)} ({p.name})
                     </option>
                   ))}
                 </select>
@@ -495,17 +511,17 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
 
               {/* Defender Blueprint Quick Loader */}
               <div className="flex items-center gap-1.5">
-                <span className="text-cyan-400 font-bold">Defender BP:</span>
+                <span className="text-cyan-400 font-bold">{l('Defender BP:', '守方蓝图：')}</span>
                 {defenders.length > 1 && (
                   <select
                     value={targetDefenderIndexForBp}
                     onChange={(e) => setTargetDefenderIndexForBp(Number(e.target.value))}
                     className="bg-slate-900 border border-cyan-800/80 rounded px-1.5 py-1 text-cyan-300 text-xs font-semibold focus:outline-none"
-                    title="Select which defender wave to import blueprints into"
+                    title={l('Select which defender wave to import blueprints into', '选择要导入蓝图的防守方波次')}
                   >
                     {defenders.map((_, idx) => (
                       <option key={idx} value={idx}>
-                        Def #{idx + 1}
+                        {l(`Def #${idx + 1}`, `守方 #${idx + 1}`)}
                       </option>
                     ))}
                   </select>
@@ -521,11 +537,11 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                   className="bg-slate-900 border border-cyan-700/60 rounded px-2 py-1 text-cyan-200 text-xs font-semibold focus:outline-none"
                 >
                   <option value="" disabled>
-                    Import player blueprints...
+                    {l('Import player blueprints...', '导入玩家蓝图...')}
                   </option>
                   {gameState.players.map((p) => (
                     <option key={p.id} value={p.id}>
-                      {p.faction.name} ({p.name})
+                      {translateFactionName(p.faction.id, p.faction.name, language)} ({p.name})
                     </option>
                   ))}
                 </select>
@@ -573,7 +589,10 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                 <div className="flex items-center gap-2">
                   <Shield className="w-4 h-4 text-cyan-400" />
                   <span className="font-display font-black text-xs uppercase tracking-wider text-cyan-300">
-                    Defenders ({defenders.length} Wave{defenders.length > 1 ? 's' : ''})
+                    {l(
+                      `Defenders (${defenders.length} Wave${defenders.length > 1 ? 's' : ''})`,
+                      `防守方（${defenders.length} 个波次）`
+                    )}
                   </span>
                 </div>
                 <button
@@ -582,7 +601,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                   className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-cyan-900/60 hover:bg-cyan-800 border border-cyan-700 text-cyan-200 text-xs font-bold transition shadow cursor-pointer"
                 >
                   <Plus className="w-3.5 h-3.5 text-cyan-400" />
-                  <span>Add Defender</span>
+                  <span>{l('Add Defender', '添加防守方')}</span>
                 </button>
               </div>
 
@@ -623,7 +642,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
               <div className="p-3 bg-rose-950/50 border border-rose-800 rounded-xl text-rose-200 text-xs flex items-start gap-2.5 shadow-md">
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-rose-300">Cannot simulate battle with illegal ship blueprints:</span>
+                  <span className="font-bold text-rose-300">{l('Cannot simulate battle with illegal ship blueprints:', '无法模拟包含非法舰船蓝图的战斗：')}</span>
                   <ul className="list-disc list-inside mt-1 space-y-0.5 text-rose-300/90 font-mono text-[11px]">
                     {allValidationErrors.map((err, i) => (
                       <li key={i}>{err}</li>
@@ -637,7 +656,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
               <div className="flex flex-wrap items-center gap-4">
                 <div className="flex items-center gap-3">
                   <span className="text-xs uppercase tracking-wider font-bold text-slate-400">
-                    Simulation Iterations:
+                    {l('Simulation Iterations:', '模拟次数：')}
                   </span>
                   <div className="flex items-center bg-slate-950 rounded-xl p-1 border border-slate-800">
                     <button
@@ -649,7 +668,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      1,000 Times
+                      {l('1,000 Times', '1,000 次')}
                     </button>
                     <button
                       type="button"
@@ -660,7 +679,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      10,000 Times (High Precision)
+                      {l('10,000 Times (High Precision)', '10,000 次 (高精度)')}
                     </button>
                   </div>
                 </div>
@@ -672,7 +691,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                       ? 'bg-amber-950/40 border-amber-500/60 text-amber-200 shadow-sm'
                       : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200 hover:border-slate-700'
                   }`}
-                  title="Community Balance Expansion: Modifies Phase Shield (+1 Initiative) and Improved Hull (-1 Initiative)"
+                  title={l('Community Balance Expansion: Modifies Phase Shield (+1 Initiative) and Improved Hull (-1 Initiative)', '社区平衡补丁：修改相位护盾（+1 先攻）与改良船体（-1 先攻）')}
                 >
                   <input
                     type="checkbox"
@@ -686,10 +705,10 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                   <div className="flex items-center gap-1.5">
                     <Sparkles className={`w-3.5 h-3.5 ${includeCommunityBalance ? 'text-amber-400' : 'text-slate-500'}`} />
                     <span className="text-xs font-bold">
-                      Community Expansion
+                      {l('Community Expansion', '社区平衡扩展')}
                     </span>
                     <span className="text-[10px] text-amber-400/80 font-mono hidden sm:inline">
-                      (Phase Shield +1 Init, Improved Hull -1 Init)
+                      {l('(Phase Shield +1 Init, Improved Hull -1 Init)', '(相位护盾 +1 先攻, 改良船体 -1 先攻)')}
                     </span>
                   </div>
                 </label>
@@ -699,7 +718,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                 type="button"
                 onClick={handleRunSimulation}
                 disabled={isSimulating || hasValidationErrors}
-                title={hasValidationErrors ? 'Resolve illegal ship blueprints before simulating' : 'Run Monte Carlo Battle Simulation'}
+                title={hasValidationErrors ? l('Resolve illegal ship blueprints before simulating', '模拟前请先修复非法蓝图') : l('Run Monte Carlo Battle Simulation', '运行蒙特卡洛战斗模拟')}
                 className={`flex items-center gap-2.5 px-6 py-2.5 rounded-xl font-black text-sm tracking-wider uppercase transition-all transform active:scale-95 ${
                   hasValidationErrors
                     ? 'bg-slate-800 text-slate-500 border border-slate-700 cursor-not-allowed opacity-60 shadow-none'
@@ -707,7 +726,11 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                 }`}
               >
                 <Flame className="w-4 h-4 fill-current" />
-                <span>{isSimulating ? 'Simulating Battles...' : `Simulate Battle (${iterations.toLocaleString()} Runs)`}</span>
+                <span>
+                  {isSimulating
+                    ? l('Simulating Battles...', '正在模拟战斗...')
+                    : l(`Simulate Battle (${iterations.toLocaleString()} Runs)`, `开始模拟战斗 (${iterations.toLocaleString()} 次)`)}
+                </span>
               </button>
             </div>
 
@@ -764,10 +787,11 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
   onSwapWithAttacker,
   activeExpansions,
 }) => {
+  const { l, language } = useLanguage();
   const isAttacker = role === 'attacker';
   const roleColor = isAttacker ? 'red' : 'cyan';
   const isCommunityBalance = Boolean(activeExpansions?.includes('community_balance'));
-  const partGroups = useMemo(() => getPartGroups(isCommunityBalance), [isCommunityBalance]);
+  const partGroups = useMemo(() => getPartGroups(isCommunityBalance, language), [isCommunityBalance, language]);
   const [simSelectedSlotIndex, setSimSelectedSlotIndex] = useState<number>(0);
 
   // Handle faction or NPC selection change
@@ -900,13 +924,16 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
               }`}
             >
               {isAttacker
-                ? 'ATTACKER'
-                : `DEFENDER ${(totalDefenders && totalDefenders > 1) ? `#${(defenderIndex ?? 0) + 1} (Wave ${(defenderIndex ?? 0) + 1})` : ''}`}
+                ? l('ATTACKER', '攻击方')
+                : l(
+                    `DEFENDER ${(totalDefenders && totalDefenders > 1) ? `#${(defenderIndex ?? 0) + 1} (Wave ${(defenderIndex ?? 0) + 1})` : ''}`,
+                    `防守方 ${(totalDefenders && totalDefenders > 1) ? `#${(defenderIndex ?? 0) + 1} (第 ${(defenderIndex ?? 0) + 1} 波)` : ''}`
+                  )}
             </span>
             {!isAttacker && (
               <span className="text-[10px] text-cyan-400 font-mono flex items-center gap-1">
                 <Shield className="w-3 h-3 text-cyan-400" />
-                Wins ties
+                {l('Wins ties', '平手先攻胜出')}
               </span>
             )}
 
@@ -918,12 +945,12 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white border border-slate-700 text-[10px] font-bold flex items-center gap-1 transition cursor-pointer"
                 title={
                   isAttacker
-                    ? 'Swap Attacker with Defender #1'
-                    : `Swap Defender #${(defenderIndex ?? 0) + 1} with Attacker`
+                    ? l('Swap Attacker with Defender #1', '将攻击方与防守方 #1 互换')
+                    : l(`Swap Defender #${(defenderIndex ?? 0) + 1} with Attacker`, `将防守方 #${(defenderIndex ?? 0) + 1} 与攻击方互换`)
                 }
               >
                 <ArrowUpDown className="w-3 h-3 text-amber-400" />
-                <span>{isAttacker ? 'Swap with Def #1' : 'Swap Attacker'}</span>
+                <span>{isAttacker ? l('Swap with Def #1', '与守方#1互换') : l('Swap Attacker', '与攻方互换')}</span>
               </button>
             )}
 
@@ -934,7 +961,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                   onClick={onMoveUp}
                   disabled={defenderIndex === 0}
                   className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 border border-slate-700 transition cursor-pointer"
-                  title="Move Up (Fight earlier in wave sequence)"
+                  title={l('Move Up (Fight earlier in wave sequence)', '上移（在波次中更早迎战）')}
                 >
                   <ArrowUp className="w-3 h-3" />
                 </button>
@@ -943,7 +970,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                   onClick={onMoveDown}
                   disabled={defenderIndex === totalDefenders - 1}
                   className="p-1 rounded bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed text-slate-200 border border-slate-700 transition cursor-pointer"
-                  title="Move Down (Fight later in wave sequence)"
+                  title={l('Move Down (Fight later in wave sequence)', '下移（在波次中更晚迎战）')}
                 >
                   <ArrowDown className="w-3 h-3" />
                 </button>
@@ -951,7 +978,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                   type="button"
                   onClick={onRemove}
                   className="p-1 rounded bg-rose-950/60 hover:bg-rose-900 text-rose-300 border border-rose-800 transition cursor-pointer"
-                  title="Remove this defender"
+                  title={l('Remove this defender', '移除此防守方')}
                 >
                   <Trash2 className="w-3 h-3 text-rose-400" />
                 </button>
@@ -960,28 +987,28 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
           </div>
 
           <div className="flex items-center gap-2">
-            <label className="text-xs text-slate-400 font-bold">Faction / NPC:</label>
+            <label className="text-xs text-slate-400 font-bold">{l('Faction / NPC:', '派系 / 中立：')}</label>
             <select
               value={sideConfig.factionId}
               onChange={(e) => handleFactionChange(e.target.value)}
               className="bg-slate-900 border border-slate-700 text-xs font-bold rounded-lg px-2.5 py-1 text-white focus:outline-none"
             >
-              <optgroup label="NPCs (Non-Player Characters)">
-                <option value="ancient">Ancients (Ancient Cruiser)</option>
-                <option value="guardian">Guardian (Sector 100s)</option>
-                <option value="gcds">GCDS (Galactic Center 001)</option>
+              <optgroup label={l('NPCs (Non-Player Characters)', '中立非玩家单位 (NPC)')}>
+                <option value="ancient">{l('Ancients (Ancient Cruiser)', '远古巡洋舰 (Ancients)')}</option>
+                <option value="guardian">{l('Guardian (Sector 100s)', '星区守护者 (Guardian)')}</option>
+                <option value="gcds">{l('GCDS (Galactic Center 001)', '银河中心防卫系统 (GCDS)')}</option>
               </optgroup>
-              <optgroup label="Terran Factions">
+              <optgroup label={l('Terran Factions', '人类派系')}>
                 {HUMAN_FACTIONS.map((f) => (
                   <option key={f.id} value={f.id}>
-                    {f.name}
+                    {translateFactionName(f.id, f.name, language)}
                   </option>
                 ))}
               </optgroup>
-              <optgroup label="Alien Factions">
+              <optgroup label={l('Alien Factions', '外星派系')}>
                 {ALIEN_FACTIONS.map((f) => (
                   <option key={f.id} value={f.id}>
-                    {f.name}
+                    {translateFactionName(f.id, f.name, language)}
                   </option>
                 ))}
               </optgroup>
@@ -993,7 +1020,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
         {sideConfig.isNpc ? (
           <div className="bg-slate-900/90 rounded-xl p-3 border border-slate-800 space-y-2">
             <div className="flex items-center justify-between text-xs">
-              <span className="font-bold text-slate-300">NPC Blueprint Variant:</span>
+              <span className="font-bold text-slate-300">{l('NPC Blueprint Variant:', 'NPC 蓝图版本：')}</span>
               <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-lg border border-slate-800">
                 {(['default', 'advanced', 'expert'] as NeutralShipVariant[]).map((v) => (
                   <button
@@ -1006,7 +1033,11 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    {v === 'expert' ? 'Remnants' : v}
+                    {v === 'expert'
+                      ? l('Remnants', '遗迹 (Remnants)')
+                      : v === 'advanced'
+                      ? l('advanced', '进阶版')
+                      : l('default', '标准版')}
                   </button>
                 ))}
               </div>
@@ -1014,10 +1045,14 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
             {/* NPC Stats Summary */}
             {(() => {
               const npcType = sideConfig.factionId as NeutralShipType;
-              const bp = NEUTRAL_SHIP_BLUEPRINTS[npcType]?.[sideConfig.npcVariant || 'default'];
+              const npcVar = sideConfig.npcVariant || 'default';
+              const bp = NEUTRAL_SHIP_BLUEPRINTS[npcType]?.[npcVar];
+              const bpTitle = bp ? translateNeutralBlueprintTitle(npcType, npcVar, bp.name, language) : '';
               return (
                 <div className="text-xs text-slate-400 font-mono bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
-                  {bp?.summary || `${bp?.name}: Hull ${bp?.maxHull}, Init ${bp?.initiative}, Comp +${bp?.computerBonus}`}
+                  {language === 'zh' && bp
+                    ? `${bpTitle}: 船体 ${bp.maxHull}, 先攻 ${bp.initiative}, 计算机 +${bp.computerBonus}${bp.shieldBonus ? `, 护盾 -${bp.shieldBonus}` : ''}`
+                    : bp?.summary || `${bp?.name}: Hull ${bp?.maxHull}, Init ${bp?.initiative}, Comp +${bp?.computerBonus}`}
                 </div>
               );
             })()}
@@ -1031,10 +1066,10 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 onChange={handleToggleAntimatterSplitter}
                 className="w-4 h-4 rounded text-red-600 focus:ring-0 cursor-pointer bg-slate-950 border-slate-700"
               />
-              <span>Antimatter Splitter Tech</span>
+              <span>{l('Antimatter Splitter Tech', '反物质分裂器科技')}</span>
             </label>
             <span className="text-[10px] text-slate-400 font-mono">
-              (Splits weapon damage freely over enemy targets)
+              {l('(Splits weapon damage freely over enemy targets)', '(可自由拆分武器伤害至多个敌方目标)')}
             </span>
           </div>
         )}
@@ -1042,13 +1077,13 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
         {/* Fleet Ship Counts */}
         <div className="space-y-2">
           <span className="text-xs font-bold uppercase tracking-wider text-slate-400">
-            Fleet Composition (Ship Counts):
+            {l('Fleet Composition (Ship Counts):', '舰队配置（舰船数量）：')}
           </span>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
             {sideConfig.isNpc ? (
               <div className="col-span-2 sm:col-span-4 flex items-center justify-between bg-slate-900/90 border border-slate-800 rounded-xl p-2.5">
                 <span className="text-xs font-bold text-slate-200 capitalize">
-                  {sideConfig.factionId} Ships:
+                  {translateShipType(sideConfig.factionId, language)} {l('Ships:', '数量：')}
                 </span>
                 <div className="flex items-center gap-2">
                   <button
@@ -1079,7 +1114,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                     className="flex flex-col items-center bg-slate-900/80 border border-slate-800 rounded-xl p-2 text-center"
                   >
                     <span className="text-[11px] font-bold text-slate-300 capitalize">
-                      {st}
+                      {translateShipType(st, language)}
                     </span>
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <button
@@ -1129,7 +1164,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
-                      <span>{st}</span>
+                      <span>{translateShipType(st, language)}</span>
                       {count > 0 && (
                         <span className="text-[10px] font-mono opacity-80">({count})</span>
                       )}
@@ -1148,10 +1183,10 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 type="button"
                 onClick={onResetBlueprints}
                 className="text-[11px] font-bold text-slate-400 hover:text-amber-300 flex items-center gap-1 transition"
-                title="Reset to factory blueprints"
+                title={l('Reset to factory blueprints', '重置为初始蓝图')}
               >
                 <RotateCcw className="w-3 h-3" />
-                <span>Reset</span>
+                <span>{l('Reset', '重置')}</span>
               </button>
             </div>
 
@@ -1164,15 +1199,15 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 </span>
                 <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-amber-300 font-mono font-bold flex items-center gap-1">
                   <Zap className="w-3 h-3 text-amber-400" />
-                  {activeStats.totalInitiative} Init
+                  {activeStats.totalInitiative} {l('Init', '先攻')}
                 </span>
                 <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-yellow-300 font-mono font-bold flex items-center gap-1">
                   <Crosshair className="w-3 h-3 text-yellow-400" />
-                  +{activeStats.computerBonus} COMP
+                  +{activeStats.computerBonus} {l('COMP', '瞄准')}
                 </span>
                 <span className="px-2 py-0.5 rounded bg-slate-950 border border-slate-800 text-cyan-300 font-mono font-bold flex items-center gap-1">
                   <Shield className="w-3 h-3 text-cyan-400" />
-                  -{activeStats.shieldBonus} Shield
+                  -{activeStats.shieldBonus} {l('Shield', '护盾')}
                 </span>
                 <span
                   className={`px-2 py-0.5 rounded border font-mono font-bold flex items-center gap-1 ${
@@ -1180,10 +1215,10 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                       ? 'bg-slate-950 border-slate-800 text-indigo-300'
                       : 'bg-rose-950/60 border-rose-800 text-rose-300 animate-pulse'
                   }`}
-                  title="Drive Speed"
+                  title={l('Drive Speed', '航速')}
                 >
                   <Navigation className="w-3 h-3" />
-                  {activeStats.totalDriveSpeed} Speed
+                  {activeStats.totalDriveSpeed} {l('Speed', '航速')}
                 </span>
                 <span
                   className={`px-2 py-0.5 rounded border font-mono font-bold ${
@@ -1191,7 +1226,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                       ? 'bg-emerald-950/60 border-emerald-800 text-emerald-300'
                       : 'bg-rose-950/60 border-rose-800 text-rose-300 animate-pulse'
                   }`}
-                  title="Power Produced vs Consumed"
+                  title={l('Power Produced vs Consumed', '总供电 / 总耗电')}
                 >
                   {`⚡ +${activeStats.totalPowerProduced}/-${activeStats.totalPowerConsumed}`}
                 </span>
@@ -1203,7 +1238,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
               <div className="p-2.5 bg-rose-950/50 border border-rose-800 rounded-lg text-rose-200 text-xs flex items-start gap-2 shadow-sm">
                 <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0 mt-0.5" />
                 <div>
-                  <span className="font-bold text-rose-300">Illegal {activeBp.type.toUpperCase()} Blueprint:</span>
+                  <span className="font-bold text-rose-300">{l(`Illegal ${activeBp.type.toUpperCase()} Blueprint:`, `非法的 ${translateShipType(activeBp.type, 'zh')} 蓝图：`)}</span>
                   <ul className="list-disc list-inside mt-0.5 space-y-0.5 text-[11px] text-rose-200 font-mono">
                     {activeStats.errors.map((err, i) => (
                       <li key={i}>{err}</li>
@@ -1245,12 +1280,12 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 />
                 <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
                   <Zap className="w-3.5 h-3.5 text-amber-400" />
-                  Install Muon Source (+2🔋, +1 Init outside slot)
+                  {l('Install Muon Source (+2🔋, +1 Init outside slot)', '加装渺子源（+2🔋，+1 先攻，不占槽位）')}
                 </span>
               </label>
               {Boolean(activeBp.externalParts?.some((p) => p.id === 'muon_source')) && (
                 <span className="text-[10px] font-mono font-bold text-amber-400 bg-amber-950/80 border border-amber-600/60 px-2 py-0.5 rounded-full">
-                  OUTSIDE SLOT EQUIPPED
+                  {l('OUTSIDE SLOT EQUIPPED', '已挂载槽外配件')}
                 </span>
               )}
             </div>
@@ -1258,7 +1293,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
             {/* Quick-Equip Selector for Selected Square */}
             <div className="flex flex-wrap items-center gap-2 p-2 bg-slate-900/90 border border-slate-700/80 rounded-xl shadow-inner">
               <span className="text-[11px] font-bold text-slate-300">
-                Equip Component:
+                {l('Equip Component:', '装配配件：')}
               </span>
               <select
                 value={activeBp.slots[simSelectedSlotIndex]?.id || ''}
@@ -1267,7 +1302,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 }
                 className="flex-1 min-w-[180px] bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-medium"
               >
-                <option value="">(Empty Slot)</option>
+                <option value="">{l('(Empty Slot)', '(空槽位)')}</option>
                 {partGroups.map((g) => (
                   <optgroup key={g.category} label={g.category}>
                     {g.parts.map((p) => (
@@ -1283,10 +1318,10 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                   type="button"
                   onClick={() => handleSlotChange(activeBp.type, simSelectedSlotIndex, null)}
                   className="px-2 py-1 rounded-lg bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-300 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
-                  title="Clear component"
+                  title={l('Clear component', '清空配件')}
                 >
                   <Trash2 className="w-3.5 h-3.5" />
-                  <span>Clear</span>
+                  <span>{l('Clear', '清空')}</span>
                 </button>
               )}
             </div>
@@ -1365,10 +1400,11 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
   defenderNames,
   defenderName,
 }) => {
+  const { l } = useLanguage();
   const isMultiDefender = Boolean(defenderNames && defenderNames.length > 1);
-  const primaryDefenderName = defenderName || (defenderNames && defenderNames[0]) || 'Defender';
+  const primaryDefenderName = defenderName || (defenderNames && defenderNames[0]) || l('Defender', '防守方');
   const defenderDisplayLabel = isMultiDefender
-    ? `Defenders (${defenderNames!.join(' + ')})`
+    ? l(`Defenders (${defenderNames!.join(' + ')})`, `防守方 (${defenderNames!.join(' + ')})`)
     : primaryDefenderName;
 
   // Map participants with color palettes for the Win Rate Bar
@@ -1398,7 +1434,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
       {
         id: 'attacker',
         role: 'attacker' as const,
-        name: `Attacker (${attackerName})`,
+        name: l(`Attacker (${attackerName})`, `攻击方 (${attackerName})`),
         winRate: result.attackerWinRate,
         wins: result.attackerWins,
         isAlliance: false,
@@ -1409,7 +1445,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
       fallback.push({
         id: 'draw',
         role: 'draw' as const,
-        name: 'Draw',
+        name: l('Draw', '同归于尽'),
         winRate: result.drawRate,
         wins: result.draws,
         isAlliance: false,
@@ -1426,7 +1462,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
       palette: PARTICIPANT_PALETTES.defenders[0]!,
     });
     return fallback;
-  }, [result, attackerName, defenderDisplayLabel]);
+  }, [result, attackerName, defenderDisplayLabel, l]);
 
   // Parties for the Surviving Fleets breakdown (Attacker, Defender 1, Defender 2, etc.)
   const survivingParties = useMemo(() => {
@@ -1444,7 +1480,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
     }[] = [
       {
         id: 'attacker',
-        label: `Attacker (${attackerName})`,
+        label: l(`Attacker (${attackerName})`, `攻击方 (${attackerName})`),
         shortLabel: attackerName,
         wins: result.attackerWins,
         dotColor: 'bg-red-500',
@@ -1461,8 +1497,8 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
         const palette = PARTICIPANT_PALETTES.defenders[i % PARTICIPANT_PALETTES.defenders.length]!;
         const label =
           result.defendersBreakdown!.length > 1
-            ? `Defender ${i + 1} (${d.name})`
-            : `Defender (${d.name})`;
+            ? l(`Defender ${i + 1} (${d.name})`, `防守方 ${i + 1} (${d.name})`)
+            : l(`Defender (${d.name})`, `防守方 (${d.name})`);
 
         // Clean outcomes without redundant bracket prefix
         const outcomes =
@@ -1537,10 +1573,10 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
       <div className="bg-slate-950 rounded-xl p-4 border border-rose-800 space-y-3 animate-in fade-in duration-200">
         <div className="flex items-center gap-2 text-rose-400 font-bold text-sm">
           <AlertTriangle className="w-5 h-5 text-rose-500 shrink-0" />
-          <span>Simulation Halted: Illegal Blueprint Detected</span>
+          <span>{l('Simulation Halted: Illegal Blueprint Detected', '模拟中止：检测到非法舰船蓝图')}</span>
         </div>
         <p className="text-xs text-slate-300">
-          The battle simulation could not be executed because one or more participating ships violate Eclipse construction rules:
+          {l('The battle simulation could not be executed because one or more participating ships violate Eclipse construction rules:', '由于存在违反《星蚀》造舰规则的蓝图配置，战斗模拟未能执行：')}
         </p>
         <ul className="list-disc list-inside space-y-1 text-xs text-rose-300 font-mono bg-rose-950/40 p-3 rounded-lg border border-rose-900/60">
           {result.validationErrors.map((err, i) => (
@@ -1557,11 +1593,11 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
         <div className="flex items-center gap-2">
           <BarChart3 className="w-5 h-5 text-amber-400" />
           <h3 className="font-display font-black text-sm tracking-wider uppercase text-white">
-            Simulation Results ({result.iterations.toLocaleString()} Battles)
+            {l(`Simulation Results (${result.iterations.toLocaleString()} Battles)`, `模拟结果（共 ${result.iterations.toLocaleString()} 场战斗）`)}
           </h3>
         </div>
         <div className="text-xs font-mono text-slate-400">
-          Average Combat Duration: <span className="font-bold text-amber-300">{result.avgRounds} Rounds</span>
+          {l('Average Combat Duration:', '平均交火轮次：')} <span className="font-bold text-amber-300">{l(`${result.avgRounds} Rounds`, `${result.avgRounds} 轮`)}</span>
         </div>
       </div>
 
@@ -1588,7 +1624,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
             <div
               key={p.id}
               style={{ width: `${p.winRate}%` }}
-              title={`${p.name}: ${p.winRate}% (${p.wins.toLocaleString()} wins)`}
+              title={l(`${p.name}: ${p.winRate}% (${p.wins.toLocaleString()} wins)`, `${p.name}：${p.winRate}% (${p.wins.toLocaleString()} 胜)`)}
               className={`${p.palette.gradientClass} h-full transition-all duration-500 flex items-center justify-center text-[10px] font-mono font-black text-white shadow-sm overflow-hidden select-none`}
             >
               {p.winRate >= 8 ? `${p.winRate}%` : ''}
@@ -1602,10 +1638,10 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
             <div className="text-xs font-bold uppercase tracking-wider text-cyan-300 flex items-center justify-between">
               <span className="flex items-center gap-1.5">
                 <Shield className="w-4 h-4 text-cyan-400" />
-                <span>Wave Combat Sequence Breakdown:</span>
+                <span>{l('Wave Combat Sequence Breakdown:', '分波次战斗序列明细：')}</span>
               </span>
               <span className="text-[11px] font-mono text-slate-400">
-                Attacker must defeat all {result.defendersBreakdown.length} waves to win
+                {l(`Attacker must defeat all ${result.defendersBreakdown.length} waves to win`, `攻击方必须击败全部 ${result.defendersBreakdown.length} 波防守方才算获胜`)}
               </span>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
@@ -1625,7 +1661,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
                   >
                     <div className="flex items-center justify-between text-xs font-semibold text-slate-200">
                       <span className={`font-bold ${textClass}`}>
-                        Wave {i + 1}: {d.name}
+                        {l(`Wave ${i + 1}: ${d.name}`, `第 ${i + 1} 波：${d.name}`)}
                       </span>
                       <span className="text-[10px] font-mono text-slate-400">
                         #{i + 1}
@@ -1636,12 +1672,12 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
                         {d.winRate}%
                       </span>
                       <span className="text-[11px] font-mono text-slate-400">
-                        {d.wins.toLocaleString()} victories
+                        {l(`${d.wins.toLocaleString()} victories`, `${d.wins.toLocaleString()} 胜场`)}
                       </span>
                     </div>
                     {matchingParticipant?.isAlliance && (
                       <div className="mt-1 text-[10px] text-teal-400 font-medium flex items-center gap-1">
-                        <span>🕊️ Peaceful Allies (Defends with Draco / Ancients)</span>
+                        <span>🕊️ {l('Peaceful Allies (Defends with Draco / Ancients)', '和平盟友（与天龙/远古协同防守）')}</span>
                       </div>
                     )}
                   </div>
@@ -1670,7 +1706,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
               >
                 <span className={`w-2 h-2 rounded-full ${party.dotColor} shrink-0`} />
                 <span>
-                  {party.label} Fleets{' '}
+                  {party.label} {l('Fleets', '残余舰队')}{' '}
                   <span className="font-mono text-[11px] opacity-80">({party.wins.toLocaleString()})</span>
                 </span>
               </button>
@@ -1689,7 +1725,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
             >
               <span className="w-2 h-2 rounded-full bg-slate-400 shrink-0" />
               <span>
-                Draws{' '}
+                {l('Draws', '平局 / 同归于尽')}{' '}
                 <span className="font-mono text-[11px] opacity-80">({result.draws.toLocaleString()})</span>
               </span>
             </button>
@@ -1700,7 +1736,10 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
         <div className="max-h-56 overflow-y-auto space-y-2 pr-1">
           {activeResultsTab === 'draws' ? (
             <div className="p-3 text-xs text-slate-300 bg-slate-900/80 rounded-lg border border-slate-800">
-              Mutual destruction: Both fleets completely wiped out simultaneously in {result.draws.toLocaleString()} battles ({result.drawRate}%).
+              {l(
+                `Mutual destruction: Both fleets completely wiped out simultaneously in ${result.draws.toLocaleString()} battles (${result.drawRate}%).`,
+                `同归于尽：双方舰队在 ${result.draws.toLocaleString()} 场战斗（${result.drawRate}%）中同时全军覆没。`
+              )}
             </div>
           ) : (() => {
             const currentParty =
@@ -1709,7 +1748,7 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
             if (currentParty.survivingOutcomes.length === 0) {
               return (
                 <div className="text-xs text-slate-500 italic p-3 text-center">
-                  {currentParty.label} did not achieve any victories in this simulation.
+                  {l(`${currentParty.label} did not achieve any victories in this simulation.`, `${currentParty.label} 在本次模拟中未取得任何胜利。`)}
                 </div>
               );
             }
@@ -1724,9 +1763,9 @@ const SimulationResultsView: React.FC<SimulationResultsViewProps> = ({
                   <span className="font-bold text-white">{item.summary}</span>
                 </div>
                 <div className="flex items-center gap-3">
-                  <span className="font-mono text-slate-400">{item.count.toLocaleString()} times</span>
+                  <span className="font-mono text-slate-400">{item.count.toLocaleString()} {l('times', '次')}</span>
                   <span className={`px-2 py-0.5 rounded ${currentParty.badgeClass}`}>
-                    {item.percentage}% of all
+                    {item.percentage}% {l('of all', '占比')}
                   </span>
                 </div>
               </div>

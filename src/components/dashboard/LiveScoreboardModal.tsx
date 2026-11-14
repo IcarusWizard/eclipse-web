@@ -14,6 +14,8 @@ import {
   ChevronRight,
   Info,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateFactionName } from '../../i18n/catalogTranslations';
 
 interface LiveScoreboardModalProps {
   state: GameState;
@@ -28,6 +30,7 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
   onClose,
   onSelectPlayer,
 }) => {
+  const { l, language } = useLanguage();
   const { scores, leaderPlayerId } = computeCurrentScores(state);
 
   // Rank players by total VP descending
@@ -52,13 +55,16 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-extrabold text-white flex items-center gap-2 font-display">
-                <span>Live Galactic Standings & Victory Points</span>
+                <span>{l('Live Galactic Standings & Victory Points', '实时银河积分与排名')}</span>
                 <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-amber-950 border border-amber-700 text-amber-300">
-                  Round {state.round} / {state.maxRounds}
+                  {l(`Round ${state.round} / ${state.maxRounds}`, `第 ${state.round} / ${state.maxRounds} 轮`)}
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
-                Calculates current live scoring if the game were to conclude right now, per official Second Dawn rules.
+                {l(
+                  'Calculates current live scoring if the game were to conclude right now, per official Second Dawn rules.',
+                  '依据《星蚀：第二黎明》官方规则，实时计算当前若立刻结算的总分数。'
+                )}
               </p>
             </div>
           </div>
@@ -77,50 +83,56 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
             <table className="w-full text-left border-collapse text-xs">
               <thead>
                 <tr className="border-b border-slate-800 bg-slate-900/90 text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                  <th className="py-3 px-4 text-center w-14">Rank</th>
-                  <th className="py-3 px-4">Commander & Faction</th>
-                  <th className="py-3 px-3 text-center" title="Victory Points from Controlled Sectors & Rare Warp Portals (+1 VP)">
+                  <th className="py-3 px-4 text-center w-14">{l('Rank', '排名')}</th>
+                  <th className="py-3 px-4">{l('Commander & Faction', '指挥官与种族')}</th>
+                  <th
+                    className="py-3 px-3 text-center"
+                    title={l('Victory Points from Controlled Sectors & Rare Warp Portals (+1 VP)', '已控制星区及罕见跃迁门 (+1 VP) 的得分')}
+                  >
                     <div className="flex items-center justify-center gap-1">
                       <Globe2 className="w-3.5 h-3.5 text-cyan-400" />
-                      <span>Sectors</span>
+                      <span>{l('Sectors', '星区')}</span>
                     </div>
                   </th>
-                  <th className="py-3 px-3 text-center" title="3 VP per Monolith in controlled sectors">
+                  <th className="py-3 px-3 text-center" title={l('3 VP per Monolith in controlled sectors', '已控制星区内每座纪念碑 3 VP')}>
                     <div className="flex items-center justify-center gap-1">
                       <Building2 className="w-3.5 h-3.5 text-indigo-400" />
-                      <span>Monoliths</span>
+                      <span>{l('Monoliths', '纪念碑')}</span>
                     </div>
                   </th>
-                  <th className="py-3 px-3 text-center" title="Reputation Tiles placed on the track">
+                  <th className="py-3 px-3 text-center" title={l('Reputation Tiles placed on the track', '声望轨上放置的声望板块得分')}>
                     <div className="flex items-center justify-center gap-1">
                       <Award className="w-3.5 h-3.5 text-rose-400" />
-                      <span>Reputation</span>
+                      <span>{l('Reputation', '声望')}</span>
                     </div>
                   </th>
-                  <th className="py-3 px-3 text-center" title="Victory Points printed on Researched Techs">
+                  <th className="py-3 px-3 text-center" title={l('Victory Points printed on Researched Techs', '已研发科技自带的胜利分')}>
                     <div className="flex items-center justify-center gap-1">
                       <Cpu className="w-3.5 h-3.5 text-pink-400" />
-                      <span>Techs</span>
+                      <span>{l('Techs', '科技')}</span>
                     </div>
                   </th>
-                  <th className="py-3 px-3 text-center" title="1 VP per Ambassador Tile">
+                  <th className="py-3 px-3 text-center" title={l('1 VP per Ambassador Tile', '每枚大使板块 1 VP')}>
                     <div className="flex items-center justify-center gap-1">
                       <Users2 className="w-3.5 h-3.5 text-emerald-400" />
-                      <span>Ambass.</span>
+                      <span>{l('Ambass.', '大使')}</span>
                     </div>
                   </th>
-                  <th className="py-3 px-3 text-center" title="2 VP per Kept Discovery Tile & Discovery Warp Portals">
+                  <th className="py-3 px-3 text-center" title={l('2 VP per Kept Discovery Tile & Discovery Warp Portals', '每枚保留为分数的探索板块 2 VP 及探索跃迁门加分')}>
                     <div className="flex items-center justify-center gap-1">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      <span>Discoveries</span>
+                      <span>{l('Discoveries', '探索板块')}</span>
                     </div>
                   </th>
-                  <th className="py-3 px-3 text-center" title="Species-specific endgame bonuses (Planta sector VP, Draco Ancient VP)">
+                  <th
+                    className="py-3 px-3 text-center"
+                    title={l('Species-specific endgame bonuses (Planta sector VP, Draco Ancient VP)', '种族专属终局加分（植物人星区加分、天龙族远古船加分）')}
+                  >
                     <div className="flex items-center justify-center gap-1">
-                      <span>Species Trait</span>
+                      <span>{l('Species Trait', '种族特性')}</span>
                     </div>
                   </th>
-                  <th className="py-3 px-4 text-right font-black text-amber-400">Total VP</th>
+                  <th className="py-3 px-4 text-right font-black text-amber-400">{l('Total VP', '总分 VP')}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/80">
@@ -173,16 +185,18 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
                               <span>{player.name}</span>
                               {isLeader && (
                                 <span className="text-[10px] text-amber-400 font-semibold px-1.5 py-0.2 bg-amber-950/80 border border-amber-800 rounded">
-                                  Leader
+                                  {l('Leader', '领先')}
                                 </span>
                               )}
                               {Boolean(b.traitor && b.traitor < 0) && (
                                 <span className="text-[10px] text-rose-300 font-semibold px-1.5 py-0.2 bg-rose-950/80 border border-rose-800 rounded">
-                                  Traitor (-2 VP)
+                                  {l('Traitor (-2 VP)', '叛徒 (-2 VP)')}
                                 </span>
                               )}
                             </div>
-                            <div className="text-[11px] text-slate-400">{player.faction.name}</div>
+                            <div className="text-[11px] text-slate-400">
+                              {translateFactionName(player.faction.id, player.faction.name, language)}
+                            </div>
                           </div>
                         </div>
                       </td>
@@ -207,9 +221,15 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
                           player.reputationTiles.length > 0 ? (
                             <span
                               className="text-slate-400 bg-slate-900 px-1.5 py-0.5 rounded border border-slate-800 text-[11px]"
-                              title={`${player.reputationTiles.length} secret reputation tile(s)`}
+                              title={l(
+                                `${player.reputationTiles.length} secret reputation tile(s)`,
+                                `${player.reputationTiles.length} 枚暗置声望板块`
+                              )}
                             >
-                              ? ({player.reputationTiles.length} {player.reputationTiles.length === 1 ? 'tile' : 'tiles'})
+                              {l(
+                                `? (${player.reputationTiles.length} ${player.reputationTiles.length === 1 ? 'tile' : 'tiles'})`,
+                                `? (${player.reputationTiles.length} 枚)`
+                              )}
                             </span>
                           ) : (
                             '0'
@@ -264,7 +284,7 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
                         {isSecretReputation && player.reputationTiles.length > 0 ? (
                           <span
                             className="font-display font-black text-base text-amber-300 drop-shadow"
-                            title="Total known VP plus secret opponent reputation tiles"
+                            title={l('Total known VP plus secret opponent reputation tiles', '已知胜利分加上对手暗置声望板块分数')}
                           >
                             {b.total - b.reputation} + ? VP
                           </span>
@@ -285,32 +305,46 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
           <div className="bg-slate-900/60 border border-slate-800 rounded-xl p-4 space-y-2 text-xs">
             <div className="flex items-center gap-2 text-slate-300 font-bold uppercase tracking-wider text-[11px]">
               <Info className="w-4 h-4 text-cyan-400" />
-              <span>Eclipse: Second Dawn Official Scoring Breakdown</span>
+              <span>{l('Eclipse: Second Dawn Official Scoring Breakdown', '《星蚀：第二黎明》官方计分细则')}</span>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-slate-400 text-[11px] leading-relaxed">
               <div>
-                <strong className="text-slate-200">• Sectors:</strong> Sum of VP printed on controlled sectors (e.g., GCDS = 4 VP, Inner = 2-3 VP, Outer = 1-2 VP).
+                <strong className="text-slate-200">{l('• Sectors:', '• 星区：')}</strong>{' '}
+                {l(
+                  'Sum of VP printed on controlled sectors (e.g., GCDS = 4 VP, Inner = 2-3 VP, Outer = 1-2 VP).',
+                  '所有已控制星区板块上印刷的胜利分总和（如银河中心防御系统 = 4 VP，内环 = 2-3 VP，外环 = 1-2 VP）。'
+                )}
               </div>
               <div>
-                <strong className="text-slate-200">• Monoliths:</strong> Each built Monolith in a controlled sector yields 3 VP.
+                <strong className="text-slate-200">{l('• Monoliths:', '• 纪念碑：')}</strong>{' '}
+                {l('Each built Monolith in a controlled sector yields 3 VP.', '已控制星区内每座已建造的纪念碑提供 3 VP。')}
               </div>
               <div>
-                <strong className="text-slate-200">• Reputation:</strong> Sum of all Victory Point values on tiles placed on the Reputation Track.
+                <strong className="text-slate-200">{l('• Reputation:', '• 声望：')}</strong>{' '}
+                {l('Sum of all Victory Point values on tiles placed on the Reputation Track.', '声望轨上所有已放置声望板块的分值总和。')}
               </div>
               <div>
-                <strong className="text-slate-200">• Technologies:</strong> Researched technologies displaying a victory point crest icon (e.g. Advanced Labs +1 VP, Warp Portal, etc.).
+                <strong className="text-slate-200">{l('• Technologies:', '• 科技：')}</strong>{' '}
+                {l(
+                  'Researched technologies displaying a victory point crest icon (e.g. Advanced Labs +1 VP, Warp Portal, etc.).',
+                  '已研发且带有胜利分徽章图标的科技（例如高级实验室 +1 VP、跃迁门等）。'
+                )}
               </div>
               <div>
-                <strong className="text-slate-200">• Ambassadors:</strong> 1 VP per diplomatic ambassador tile received from other species.
+                <strong className="text-slate-200">{l('• Ambassadors:', '• 大使：')}</strong>{' '}
+                {l('1 VP per diplomatic ambassador tile received from other species.', '每从其他种族获得 1 枚外交大使板块记 1 VP。')}
               </div>
               <div>
-                <strong className="text-slate-200">• Kept Discoveries:</strong> 2 VP per Discovery tile flipped and claimed for victory points.
+                <strong className="text-slate-200">{l('• Kept Discoveries:', '• 保留的探索板块：')}</strong>{' '}
+                {l('2 VP per Discovery tile flipped and claimed for victory points.', '每枚翻面并作为胜利分保留的探索板块提供 2 VP。')}
               </div>
               <div>
-                <strong className="text-slate-200">• Planta Species Trait:</strong> +1 additional bonus VP for each sector controlled with an Influence Disc.
+                <strong className="text-slate-200">{l('• Planta Species Trait:', '• 植物人种族特性：')}</strong>{' '}
+                {l('+1 additional bonus VP for each sector controlled with an Influence Disc.', '每用影响力圆盘控制 1 个星区，额外获得 +1 VP。')}
               </div>
               <div>
-                <strong className="text-slate-200">• Draco Species Trait:</strong> +1 additional bonus VP for every Ancient ship surviving on the galaxy board.
+                <strong className="text-slate-200">{l('• Draco Species Trait:', '• 天龙族种族特性：')}</strong>{' '}
+                {l('+1 additional bonus VP for every Ancient ship surviving on the galaxy board.', '银河版图上每艘存活的远古舰船额外提供 +1 VP。')}
               </div>
             </div>
           </div>
@@ -319,13 +353,13 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
         {/* Modal Footer */}
         <div className="px-6 py-3.5 border-t border-slate-800 bg-slate-900/90 flex items-center justify-between text-xs">
           <span className="text-slate-400">
-            Click any player row to view their board and empire status.
+            {l('Click any player row to view their board and empire status.', '点击任意玩家行可查看其帝国版图与状态。')}
           </span>
           <button
             onClick={onClose}
             className="px-5 py-2 rounded-xl font-bold bg-slate-800 hover:bg-slate-700 text-slate-200 transition-colors border border-slate-700 font-sans"
           >
-            Close Standings
+            {l('Close Standings', '关闭积分榜')}
           </button>
         </div>
       </div>

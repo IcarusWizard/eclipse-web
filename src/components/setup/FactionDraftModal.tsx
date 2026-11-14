@@ -13,6 +13,11 @@ import {
   Shield,
   Zap,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import {
+  translateFactionName,
+  translateFactionTrait,
+} from '../../i18n/catalogTranslations';
 
 interface FactionDraftModalProps {
   state: GameState;
@@ -25,6 +30,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
   currentSeat = 'all',
   onDraftFaction,
 }) => {
+  const { language, l } = useLanguage();
   const draft = state.factionDraft;
   if (!draft) return null;
 
@@ -75,14 +81,17 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-indigo-300 font-display">
-                  OFFICIAL FACTION DRAFT
+                  {l('OFFICIAL FACTION DRAFT', '官方规则种族轮抽')}
                 </h2>
                 <span className="px-2 py-0.5 rounded bg-indigo-950 border border-indigo-700/60 text-indigo-300 text-[10px] font-mono font-bold">
-                  PICK #{draft.currentDraftIndex + 1} OF {draft.draftOrder.length}
+                  {l(`PICK #${draft.currentDraftIndex + 1} OF ${draft.draftOrder.length}`, `第 ${draft.currentDraftIndex + 1} / ${draft.draftOrder.length} 顺位`)}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Seating randomly assigned on Ring 2. Turn order runs clockwise; faction drafting runs counter-clockwise from the last player.
+                {l(
+                  'Seating randomly assigned on Ring 2. Turn order runs clockwise; faction drafting runs counter-clockwise from the last player.',
+                  '玩家二环母星位置已随机分配。行动顺序为顺时针，而种族挑选从最后一位玩家开始逆时针进行。'
+                )}
               </p>
             </div>
           </div>
@@ -91,8 +100,8 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
             {!isCurrentDrafter && (
               <span className="px-2.5 py-1 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
                 {currentSeat === 'spectator'
-                  ? `Spectator Mode (Observing Pick by ${currentDrafter.name})`
-                  : `Waiting for ${currentDrafter.name} to select...`}
+                  ? l(`Spectator Mode (Observing Pick by ${currentDrafter.name})`, `观战模式（正观看 ${currentDrafter.name} 挑选）`)
+                  : l(`Waiting for ${currentDrafter.name} to select...`, `等待 ${currentDrafter.name} 选择势力...`)}
               </span>
             )}
             <div className="px-3 py-1 rounded-xl bg-indigo-950/60 border border-indigo-600/60 flex items-center gap-2">
@@ -101,7 +110,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                 style={{ backgroundColor: currentDrafter.color }}
               />
               <span className="text-xs font-bold text-indigo-200">
-                Turn: <strong className="text-white">{currentDrafter.name}</strong>
+                {l('Turn:', '当前：')} <strong className="text-white">{currentDrafter.name}</strong>
               </span>
             </div>
           </div>
@@ -112,10 +121,10 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center justify-between">
             <span className="flex items-center gap-1.5">
               <Users className="w-3.5 h-3.5 text-indigo-400" />
-              Table Seating & Drafting Sequence
+              {l('Table Seating & Drafting Sequence', '席位与轮抽顺序')}
             </span>
             <span className="text-slate-500">
-              Clockwise Turn Order ➔ Counter-Clockwise Faction Draft
+              {l('Clockwise Turn Order ➔ Counter-Clockwise Faction Draft', '顺时针行动 ➔ 逆时针选族')}
             </span>
           </div>
 
@@ -156,7 +165,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                     </div>
                     {isCurrent && (
                       <span className="animate-pulse text-[9px] px-1 py-0.2 bg-indigo-500 text-slate-950 font-black rounded">
-                        NOW
+                        {l('NOW', '当前')}
                       </span>
                     )}
                     {hasDrafted && (
@@ -166,28 +175,28 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
 
                   <div className="space-y-0.5 text-[10px] font-mono text-slate-400">
                     <div className="flex justify-between">
-                      <span>Seat:</span>
-                      <strong className="text-slate-300">Pos {pos + 1}</strong>
+                      <span>{l('Seat:', '席位：')}</span>
+                      <strong className="text-slate-300">{l(`Pos ${pos + 1}`, `位置 ${pos + 1}`)}</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span>Turn:</span>
-                      <strong className="text-cyan-300">#{turnOrderNum} in Turn</strong>
+                      <span>{l('Turn:', '行动序：')}</span>
+                      <strong className="text-cyan-300">#{turnOrderNum}</strong>
                     </div>
                     <div className="flex justify-between">
-                      <span>Draft:</span>
-                      <strong className="text-amber-300">Pick #{draftIdx + 1}</strong>
+                      <span>{l('Draft:', '选族序：')}</span>
+                      <strong className="text-amber-300">#{draftIdx + 1}</strong>
                     </div>
                   </div>
 
                   <div className="mt-1 pt-1 border-t border-slate-800/80 text-[10px] font-medium truncate">
                     {draftedFaction ? (
                       <span className="text-emerald-300 font-bold truncate block">
-                        {draftedFaction.name}
+                        {translateFactionName(draftedFaction.id, draftedFaction.name, language)}
                       </span>
                     ) : isCurrent ? (
-                      <span className="text-indigo-300 font-bold italic">Choosing...</span>
+                      <span className="text-indigo-300 font-bold italic">{l('Choosing...', '挑选势力中...')}</span>
                     ) : (
-                      <span className="text-slate-500 italic">Waiting...</span>
+                      <span className="text-slate-500 italic">{l('Waiting...', '等待中...')}</span>
                     )}
                   </div>
                 </div>
@@ -208,7 +217,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              All Factions ({availableFactions.length})
+              {l(`All Factions (${availableFactions.length})`, `全部势力 (${availableFactions.length})`)}
             </button>
             <button
               type="button"
@@ -219,7 +228,10 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Alien Factions ({availableFactions.filter((f) => !f.isHuman).length})
+              {l(
+                `Alien Factions (${availableFactions.filter((f) => !f.isHuman).length})`,
+                `异星种族 (${availableFactions.filter((f) => !f.isHuman).length})`
+              )}
             </button>
             <button
               type="button"
@@ -230,12 +242,15 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                   : 'text-slate-400 hover:text-slate-200'
               }`}
             >
-              Terran / Human ({availableFactions.filter((f) => f.isHuman).length})
+              {l(
+                `Terran / Human (${availableFactions.filter((f) => f.isHuman).length})`,
+                `人类势力 (${availableFactions.filter((f) => f.isHuman).length})`
+              )}
             </button>
           </div>
 
           <span className="text-xs text-slate-400">
-            Available to draft:{' '}
+            {l('Available to draft:', '剩余可选：')}{' '}
             <strong className="text-indigo-300 font-bold">{draft.availableFactionIds.length}</strong>
           </span>
         </div>
@@ -257,6 +272,8 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                       areFactionsConflictingColor(p.faction.id, f.id)
                   )
                 : null;
+
+              const fName = translateFactionName(f.id, f.name, language);
 
               return (
                 <div
@@ -281,7 +298,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                           className="w-3.5 h-3.5 rounded-full border border-white/30 shrink-0"
                           style={{ backgroundColor: f.defaultColor }}
                         />
-                        <h3 className="font-bold text-sm text-slate-100">{f.name}</h3>
+                        <h3 className="font-bold text-sm text-slate-100">{fName}</h3>
                       </div>
                       <span
                         className={`text-[9.5px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
@@ -290,33 +307,33 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                             : 'bg-sky-950/80 border-sky-700 text-sky-300'
                         }`}
                       >
-                        {!f.isHuman ? 'Alien' : 'Terran'}
+                        {!f.isHuman ? l('Alien', '异星') : l('Terran', '人类')}
                       </span>
                     </div>
 
                     <p className="text-[11px] text-slate-400 leading-snug mb-3">
-                      {f.traitDescription}
+                      {translateFactionTrait(f.id, f.traitDescription, language)}
                     </p>
 
                     <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-900/90 p-2 rounded-xl border border-slate-800/80 font-mono mb-2">
                       <div>
-                        <span className="text-slate-500 block">Starting Discs:</span>
+                        <span className="text-slate-500 block">{l('Starting Discs:', '初始圆盘：')}</span>
                         <strong className="text-slate-200">{f.startingDiscs}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-500 block">Colony Ships:</span>
+                        <span className="text-slate-500 block">{l('Colony Ships:', '殖民船：')}</span>
                         <strong className="text-slate-200">{f.startingColonyShips}</strong>
                       </div>
                       <div>
-                        <span className="text-slate-500 block">Resources:</span>
+                        <span className="text-slate-500 block">{l('Resources:', '初始资源：')}</span>
                         <span className="text-slate-300">
-                          {f.startingResources.money}M / {f.startingResources.science}S / {f.startingResources.materials}Mat
+                          {f.startingResources.money}{l('M', '金')} / {f.startingResources.science}{l('S', '科')} / {f.startingResources.materials}{l('Mat', '材')}
                         </span>
                       </div>
                       <div>
-                        <span className="text-slate-500 block">Starting Tech:</span>
+                        <span className="text-slate-500 block">{l('Starting Tech:', '初始科技：')}</span>
                         <span className="text-slate-300 truncate block">
-                          {f.startingTechIds?.length || 0} Technologies
+                          {f.startingTechIds?.length || 0} {l('Technologies', '项科技')}
                         </span>
                       </div>
                     </div>
@@ -340,25 +357,28 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                           {isSelected ? (
                             <>
                               <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>Selected for Pick</span>
+                              <span>{l('Selected for Pick', '已预选')}</span>
                             </>
                           ) : (
-                            <span>Select {f.shortName || f.name}</span>
+                            <span>{l(`Select ${f.shortName || f.name}`, `选择 ${fName}`)}</span>
                           )}
                         </button>
                       ) : (
                         <span className="text-[11px] text-slate-500 font-medium italic flex items-center gap-1.5 w-full justify-center py-1">
-                          Available to Draft
+                          {l('Available to Draft', '可选中')}
                         </span>
                       )
                     ) : (
                       <span className="text-[11px] text-slate-500 font-medium italic flex items-center gap-1.5 w-full justify-center py-1">
                         <Lock className="w-3 h-3" />
                         {draftedByPlayer
-                          ? `Drafted by ${draftedByPlayer.name}`
+                          ? l(`Drafted by ${draftedByPlayer.name}`, `已被 ${draftedByPlayer.name} 选中`)
                           : conflictingPlayer
-                          ? `Color Taken (${conflictingPlayer.faction.name})`
-                          : 'Unavailable'}
+                          ? l(
+                              `Color Taken (${conflictingPlayer.faction.name})`,
+                              `阵营颜色冲突 (${translateFactionName(conflictingPlayer.faction.id, conflictingPlayer.faction.name, language)})`
+                            )
+                          : l('Unavailable', '不可选')}
                       </span>
                     )}
                   </div>
@@ -371,11 +391,13 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950">
           <div className="text-xs text-slate-400">
-            Selected Pick for <strong className="text-white">{currentDrafter.name}</strong>:{' '}
+            {l('Selected Pick for', '当前选择属于')} <strong className="text-white">{currentDrafter.name}</strong>:{' '}
             {selectedFaction ? (
-              <span className="text-indigo-300 font-bold ml-1">{selectedFaction.name}</span>
+              <span className="text-indigo-300 font-bold ml-1">
+                {translateFactionName(selectedFaction.id, selectedFaction.name, language)}
+              </span>
             ) : (
-              <span className="text-amber-400 italic ml-1">None selected</span>
+              <span className="text-amber-400 italic ml-1">{l('None selected', '尚未选择')}</span>
             )}
           </div>
 
@@ -387,11 +409,16 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           >
             {isCurrentDrafter ? (
               <>
-                <span>Confirm Draft Pick ({selectedFaction?.shortName || selectedFaction?.name})</span>
+                <span>
+                  {l(
+                    `Confirm Draft Pick (${selectedFaction?.shortName || selectedFaction?.name})`,
+                    `确认选择 (${selectedFaction ? translateFactionName(selectedFaction.id, selectedFaction.name, language) : ''})`
+                  )}
+                </span>
                 <ArrowRight className="w-4 h-4" />
               </>
             ) : (
-              <span>Waiting for {currentDrafter.name} to choose...</span>
+              <span>{l(`Waiting for ${currentDrafter.name} to choose...`, `等待 ${currentDrafter.name} 做出选择...`)}</span>
             )}
           </button>
         </div>

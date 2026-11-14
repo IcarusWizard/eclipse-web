@@ -1,6 +1,8 @@
 import React, { useState, useMemo } from 'react';
 import { GameLogEntry } from '../../engine/types/state';
 import { ScrollText, ChevronDown, ChevronUp, Maximize2, Minimize2, Swords, Coins, Sparkles, Activity } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateChronicleMessage } from '../../i18n/chronicleTranslator';
 
 interface GameLogDrawerProps {
   logs: GameLogEntry[];
@@ -17,6 +19,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
   initialLastCheckedCount,
   viewerPlayerId,
 }) => {
+  const { language, l } = useLanguage();
   const [isOpen, setIsOpen] = useState<boolean>(initialOpen);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [activeFilter, setActiveFilter] = useState<FilterType>('all');
@@ -87,7 +90,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
             <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5 uppercase font-display">
-              <ScrollText className="w-4 h-4 text-cyan-400" /> Galaxy Chronicle & Event Log
+              <ScrollText className="w-4 h-4 text-cyan-400" /> {l('Galaxy Chronicle & Event Log', '银河编年史与行动日志')}
             </span>
             <div className="flex items-center gap-1.5">
               {highlightedLogIds.size > 0 && (
@@ -95,16 +98,16 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                   type="button"
                   onClick={() => setHighlightCount(0)}
                   className="px-1.5 py-0.5 rounded text-[10px] bg-red-950/60 hover:bg-red-900/70 border border-red-700/60 text-red-300 font-bold transition cursor-pointer"
-                  title="Clear New Event Highlights"
+                  title={l('Clear New Event Highlights', '清除新事件高亮')}
                 >
-                  Clear !
+                  {l('Clear !', '清除高亮')}
                 </button>
               )}
               <button
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
-                title={isExpanded ? 'Compress Drawer' : 'Expand Drawer'}
+                title={isExpanded ? l('Compress Drawer', '收起面板') : l('Expand Drawer', '展开面板')}
               >
                 {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
               </button>
@@ -116,7 +119,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                   setIsOpen(false);
                 }}
                 className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition"
-                title="Close Drawer"
+                title={l('Close Drawer', '关闭日志')}
               >
                 <ChevronDown className="w-3.5 h-3.5" />
               </button>
@@ -134,7 +137,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                   : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              All ({counts.all})
+              {l(`All (${counts.all})`, `全部 (${counts.all})`)}
             </button>
             <button
               type="button"
@@ -145,7 +148,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                   : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              <Activity className="w-3 h-3" /> Actions ({counts.action})
+              <Activity className="w-3 h-3" /> {l(`Actions (${counts.action})`, `行动 (${counts.action})`)}
             </button>
             <button
               type="button"
@@ -156,7 +159,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                   : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              <Swords className="w-3 h-3" /> Combat ({counts.combat})
+              <Swords className="w-3 h-3" /> {l(`Combat (${counts.combat})`, `战斗 (${counts.combat})`)}
             </button>
             <button
               type="button"
@@ -167,7 +170,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                   : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              <Coins className="w-3 h-3" /> Economy ({counts.economy})
+              <Coins className="w-3 h-3" /> {l(`Economy (${counts.economy})`, `经济 (${counts.economy})`)}
             </button>
             <button
               type="button"
@@ -178,7 +181,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                   : 'bg-slate-900/60 text-slate-400 hover:text-slate-200 border border-transparent'
               }`}
             >
-              <Sparkles className="w-3 h-3" /> System ({counts.system})
+              <Sparkles className="w-3 h-3" /> {l(`System (${counts.system})`, `系统 (${counts.system})`)}
             </button>
           </div>
 
@@ -186,7 +189,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
           <div className="flex-1 overflow-y-auto space-y-2 pr-1 text-xs">
             {filteredLogs.length === 0 ? (
               <div className="h-full flex items-center justify-center text-[11px] text-slate-500 italic">
-                No events recorded for this category yet.
+                {l('No events recorded for this category yet.', '该分类下暂无事件记录。')}
               </div>
             ) : (
               filteredLogs.map((log) => {
@@ -210,14 +213,14 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                     <div className="flex items-center justify-between text-[9px] text-slate-400 font-mono mb-1">
                       <div className="flex items-center gap-1.5">
                         <span className="bg-slate-800/80 px-1.5 py-0.5 rounded font-bold text-slate-300">
-                          RND {log.round}
+                          {l(`RND ${log.round}`, `第 ${log.round} 轮`)}
                         </span>
                         {isNew && (
                           <span
                             data-testid="chronicle-new-tag"
                             className="px-1.5 py-0.2 rounded bg-red-600 text-white font-bold text-[8px] uppercase tracking-wider animate-pulse flex items-center gap-0.5"
                           >
-                            <span>!</span> NEW
+                            <span>!</span> {l('NEW', '新')}
                           </span>
                         )}
                       </div>
@@ -234,10 +237,18 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                             : 'text-cyan-400'
                         }`}
                       >
-                        {log.type}
+                        {log.type === 'combat'
+                          ? l('combat', '战斗')
+                          : log.type === 'economy'
+                          ? l('economy', '经济')
+                          : log.type === 'system'
+                          ? l('system', '系统')
+                          : log.type === 'action'
+                          ? l('action', '行动')
+                          : log.type}
                       </span>
                     </div>
-                    <div className="break-words">{log.message}</div>
+                    <div className="break-words">{translateChronicleMessage(log.message, language)}</div>
                   </div>
                 );
               })
@@ -253,12 +264,12 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
         className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold shadow-lg transition-all cursor-pointer relative"
       >
         <ScrollText className="w-4 h-4 text-cyan-400" />
-        <span>Chronicle ({logs.length})</span>
+        <span>{l(`Chronicle (${logs.length})`, `编年史 (${logs.length})`)}</span>
         {unreadCount > 0 && !isOpen && (
           <span
             data-testid="chronicle-unread-badge"
             className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-red-600 text-white text-[10px] font-black tracking-wide shadow-md shadow-red-600/50 animate-pulse"
-            title={`${unreadCount} new events since last check`}
+            title={l(`${unreadCount} new events since last check`, `自上次查看后新增 ${unreadCount} 条事件`)}
           >
             <span className="text-red-200">!</span>
             <span>{unreadCount}</span>

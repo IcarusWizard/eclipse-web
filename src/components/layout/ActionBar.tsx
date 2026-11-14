@@ -1,6 +1,7 @@
 import React from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { PendingActionConfirmation } from '../../engine/types/state';
+import { translateActionDescription } from '../../i18n/chronicleTranslator';
 import {
   Compass,
   Cpu,
@@ -27,6 +28,7 @@ import {
   getMaxInfluenceActivations,
   getPlayerDisplayName,
 } from '../../engine/rules/gameReducer';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface ActionBarProps {
   activePlayer: PlayerState;
@@ -93,6 +95,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   onTogglePassInAdvance,
   canTogglePassInAdvance = true,
 }) => {
+  const { language, l } = useLanguage();
   const actorPlayer =
     (players && pendingConfirmation?.playerId
       ? players.find((p) => p.id === pendingConfirmation.playerId)
@@ -116,14 +119,14 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               style={{ backgroundColor: activePlayer.color }}
             />
             <div className="flex flex-col text-left">
-              <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">Action Taken</span>
+              <span className="text-[9px] text-slate-400 uppercase tracking-widest font-semibold">{l('Action Taken', '已执行行动')}</span>
               <span className="font-bold text-slate-100 leading-none">{getPlayerDisplayName(activePlayer)}</span>
             </div>
           </div>
           {/* Action Completed badge on mobile */}
           <div className="md:hidden">
             <span className="text-[10px] uppercase font-bold text-emerald-400 tracking-wider flex items-center gap-1">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> Done
+              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {l('Done', '已完成')}
             </span>
           </div>
         </div>
@@ -131,23 +134,26 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         {/* Action Summary */}
         <div className="flex flex-col text-left w-full md:w-auto md:pr-3 md:border-r md:border-slate-800 max-w-full md:max-w-sm">
           <span className="hidden md:flex text-[10px] uppercase font-bold text-emerald-400 tracking-wider items-center gap-1">
-            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> Action Completed
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" /> {l('Action Completed', '行动已完成')}
           </span>
-          <span className="text-xs font-semibold text-slate-200 truncate" title={pendingConfirmation.description}>
-            {pendingConfirmation.description}
+          <span className="text-xs font-semibold text-slate-200 truncate" title={translateActionDescription(pendingConfirmation.description, language)}>
+            {translateActionDescription(pendingConfirmation.description, language)}
           </span>
           {pendingConfirmation.actionType === 'EXPLORE' && activePlayer.colonyShips.ready > 0 && (
             <span className="text-[10px] text-cyan-300 font-medium flex items-center gap-1 mt-0.5">
               <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
-              You can click population slot on the sector to colonize!
+              {l('You can click population slot on the sector to colonize!', '可点击星区行星人口槽进行殖民！')}
             </span>
           )}
           {pendingConfirmation.actionType === 'INFLUENCE' && (
             <span className="text-[10px] text-cyan-300 font-medium flex items-center gap-1 mt-0.5">
               <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
               {pendingConfirmation.influenceRefreshesRemaining && pendingConfirmation.influenceRefreshesRemaining > 0
-                ? `You may colonize hex planets (${pendingConfirmation.influenceRefreshesRemaining} flip-back refresh available)!`
-                : 'You may colonize hex planets before confirming!'}
+                ? l(
+                    `You may colonize hex planets (${pendingConfirmation.influenceRefreshesRemaining} flip-back refresh available)!`,
+                    `可在确认前进行行星殖民（可翻回刷新 ${pendingConfirmation.influenceRefreshesRemaining} 艘殖民船）！`
+                  )
+                : l('You may colonize hex planets before confirming!', '可在确认结束回合前对星区行星殖民！')}
             </span>
           )}
 
@@ -161,14 +167,14 @@ export const ActionBar: React.FC<ActionBarProps> = ({
                 type="button"
                 onClick={onRevertAction}
                 className="flex-1 md:flex-initial flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-rose-950/80 hover:bg-rose-900 text-rose-300 hover:text-white font-bold text-xs uppercase tracking-wider border border-rose-800/80 transition shadow cursor-pointer"
-                title="Undo action and reset turn"
+                title={l('Undo action and reset turn', '撤销本次行动并重置回合')}
               >
                 <Undo2 className="w-3.5 h-3.5 shrink-0" />
-                <span>Revert</span>
+                <span>{l('Revert', '撤销')}</span>
               </button>
             ) : (
               <span className="flex-1 md:flex-initial px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 text-[11px] text-slate-400 flex items-center justify-center gap-1 text-center">
-                <Lock className="w-3 h-3 text-slate-500 shrink-0" /> Non-Reversible
+                <Lock className="w-3 h-3 text-slate-500 shrink-0" /> {l('Non-Reversible', '不可撤销')}
               </span>
             )}
 
@@ -176,10 +182,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               type="button"
               onClick={onConfirmAction}
               className="flex-1 md:flex-initial flex items-center justify-center gap-1.5 px-4 md:px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs uppercase tracking-wider transition shadow-lg shadow-emerald-950/80 cursor-pointer"
-              title="Finalize action and pass turn to next player"
+              title={l('Finalize action and pass turn to next player', '确认行动并结束本回合')}
             >
               <Check className="w-4 h-4 shrink-0" />
-              <span>Confirm & End Turn</span>
+              <span>{l('Confirm & End Turn', '确认并结束回合')}</span>
             </button>
           </div>
         ) : (
@@ -187,8 +193,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse shrink-0" />
             <span className="truncate">
               {isSpectator
-                ? `Observing: Waiting for ${activePlayer.name} to confirm or revert...`
-                : `Waiting for ${activePlayer.name} to confirm or revert...`}
+                ? l(`Observing: Waiting for ${activePlayer.name} to confirm or revert...`, `观战中：等待 ${activePlayer.name} 确认或撤销...`)
+                : l(`Waiting for ${activePlayer.name} to confirm or revert...`, `等待 ${activePlayer.name} 确认或撤销...`)}
             </span>
           </div>
         )}
@@ -226,18 +232,18 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             {getPlayerDisplayName(activePlayer, { short: true })}
           </span>
           <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 uppercase font-semibold">
-            {hasPassed ? 'Reaction' : 'Active'}
+            {hasPassed ? l('Reaction', '反应回合') : l('Active', '行动中')}
           </span>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {isSpectator ? (
             <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
-              👁️ Spectator Mode (Observing)
+              {l('👁️ Spectator Mode (Observing)', '👁️ 观战模式')}
             </span>
           ) : isTurnGated ? (
             <div className="flex items-center gap-1.5">
               <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                ⏳ Opponent's Turn
+                {l("⏳ Opponent's Turn", '⏳ 对手回合中')}
               </span>
               {onTogglePassInAdvance && !hasPassed && (
                 <button
@@ -246,8 +252,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
                   onClick={onTogglePassInAdvance}
                   title={
                     passInAdvance
-                      ? "Pass in Advance is ON: you will automatically pass when your turn arrives (Click to revert/cancel)"
-                      : "Enable Pass in Advance: automatically pass your turn when it becomes your turn"
+                      ? l("Pass in Advance is ON: you will automatically pass when your turn arrives (Click to revert/cancel)", "提前跳过已开启：轮到你的回合时将自动跳过（点击取消）")
+                      : l("Enable Pass in Advance: automatically pass your turn when it becomes your turn", "开启提前跳过：轮到你的回合时自动跳过")
                   }
                   className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
                     passInAdvance
@@ -256,9 +262,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
                   }`}
                 >
                   <CircleOff className={`w-3 h-3 ${passInAdvance ? 'text-purple-400' : 'text-slate-400'}`} />
-                  <span className="hidden sm:inline">Pass in Advance:</span>
+                  <span className="hidden sm:inline">{l('Pass in Advance:', '提前跳过:')}</span>
                   <span className={passInAdvance ? 'text-purple-300 font-black' : 'text-slate-400 font-bold'}>
-                    {passInAdvance ? 'ON (Revert)' : 'OFF'}
+                    {passInAdvance ? l('ON (Revert)', '开 (撤销)') : l('OFF', '关')}
                   </span>
                 </button>
               )}
@@ -266,7 +272,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           ) : null}
           <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-bold text-cyan-300">
             <CircleDot className="w-3 h-3 text-cyan-400" />
-            <span>{activePlayer.influenceTrack.discsOnTrack} Discs</span>
+            <span>{activePlayer.influenceTrack.discsOnTrack} {l('Discs', '圆盘')}</span>
           </div>
 
           {/* Auto-Pass Reactions Toggle */}
@@ -277,10 +283,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               onClick={onToggleAutoPass}
               title={
                 isInvaded
-                  ? "Hostile invasion detected! Auto-pass is paused"
+                  ? l("Hostile invasion detected! Auto-pass is paused", "检测到敌军入侵！自动跳过反应已暂停")
                   : autoPassReactions
-                  ? "Auto-Pass Reactions is ON (click to turn OFF)"
-                  : "Auto-Pass Reactions is OFF (click to turn ON)"
+                  ? l("Auto-Pass Reactions is ON (click to turn OFF)", "自动跳过反应已开启（点击关闭）")
+                  : l("Auto-Pass Reactions is OFF (click to turn ON)", "自动跳过反应已关闭（点击开启）")
               }
               className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
                 isInvaded
@@ -291,9 +297,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               }`}
             >
               <Zap className={`w-3 h-3 ${autoPassReactions ? 'text-amber-400 fill-amber-400' : 'text-slate-500'}`} />
-              <span className="hidden sm:inline">Auto-Pass:</span>
+              <span className="hidden sm:inline">{l('Auto-Pass:', '自动跳过:')}</span>
               <span className={isInvaded ? 'text-rose-400 font-black' : autoPassReactions ? 'text-emerald-400 font-black' : 'text-slate-500'}>
-                {isInvaded ? 'PAUSED' : autoPassReactions ? 'ON' : 'OFF'}
+                {isInvaded ? l('PAUSED', '暂停') : autoPassReactions ? l('ON', '开') : l('OFF', '关')}
               </span>
             </button>
           )}
@@ -302,7 +308,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           {delayedBlackHoleShips.length > 0 && (
             <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-500/40 text-[10px] font-bold text-indigo-300">
               <span className="text-indigo-400">🌀</span>
-              <span className="hidden sm:inline">Black Hole:</span>
+              <span className="hidden sm:inline">{l('Black Hole:', '黑洞:')}</span>
               {delayedBlackHoleShips.map((ds) => {
                 const canRet = currentRound !== undefined && currentRound >= ds.returnRound;
                 const isMine = !isSpectator && ds.ownerId === activePlayer.id;
@@ -319,7 +325,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
                         ? 'bg-indigo-500 text-slate-950 cursor-pointer animate-pulse font-black shadow'
                         : 'bg-slate-900 text-slate-300'
                     }`}
-                    title={`${ds.shipType.toUpperCase()} in Black Hole ${ds.blackHoleSectorNumber}. Returns Round ${ds.returnRound}${canRet && isMine ? ' (Click to Return Now)' : ''}`}
+                    title={l(
+                      `${ds.shipType.toUpperCase()} in Black Hole ${ds.blackHoleSectorNumber}. Returns Round ${ds.returnRound}${canRet && isMine ? ' (Click to Return Now)' : ''}`,
+                      `${ds.shipType.toUpperCase()} 位于黑洞星区 ${ds.blackHoleSectorNumber}，第 ${ds.returnRound} 回合返回${canRet && isMine ? '（点击立即返回）' : ''}`
+                    )}
                   >
                     {ds.shipType.slice(0, 3).toUpperCase()} &rarr; R{ds.returnRound}
                     {canRet && isMine && ' ⚡'}
@@ -348,11 +357,14 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           title={
             isExploreMode
               ? hasPendingExplore
-                ? 'Cancel Explore & finish turn'
-                : 'Cancel Explore Target'
+                ? l('Cancel Explore & finish turn', '取消探索并结束回合')
+                : l('Cancel Explore Target', '取消探索目标')
               : hasPendingExplore
-              ? 'Finish Explore action & end turn'
-              : `Explore (EXP) - Discover new sectors (${maxExplore} activation)`
+              ? l('Finish Explore action & end turn', '完成探索并结束回合')
+              : l(
+                  `Explore (EXP) - Discover new sectors (${maxExplore} activation)`,
+                  `探索 (EXP) - 发现新星区 (${maxExplore} 次激活)`
+                )
           }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             isExploreMode
@@ -363,7 +375,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           }`}
         >
           <Compass className="w-4 h-4 shrink-0" />
-          <span className="leading-tight">{isExploreMode ? 'Cancel' : hasPendingExplore ? 'Finish' : 'EXP'}</span>
+          <span className="leading-tight">
+            {isExploreMode ? l('Cancel', '取消') : hasPendingExplore ? l('Finish', '完成') : l('EXP', '探索')}
+          </span>
           {!isExploreMode ? (
             <span className="text-[8.5px] opacity-80 leading-none">
               ({hasPendingExplore ? pendingExploreActivations : maxExplore})
@@ -377,7 +391,10 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           disabled={!canActNormal}
           onClick={onOpenResearch}
-          title={`Research (RES) - Acquire technologies (${maxResearch} activation)`}
+          title={l(
+            `Research (RES) - Acquire technologies (${maxResearch} activation)`,
+            `研发 (RES) - 获取科技 (${maxResearch} 次激活)`
+          )}
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             canActNormal
               ? 'bg-slate-900 hover:bg-slate-800 text-pink-400 border border-slate-800 hover:scale-105'
@@ -385,7 +402,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           }`}
         >
           <Cpu className="w-4 h-4 shrink-0" />
-          <span className="leading-tight">RES</span>
+          <span className="leading-tight">{l('RES', '研发')}</span>
           <span className="text-[8.5px] opacity-80 leading-none">({maxResearch})</span>
         </button>
 
@@ -393,7 +410,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           disabled={!canActNormal && !canActReaction}
           onClick={onOpenUpgrade}
-          title={hasPassed ? 'Reaction Upgrade (UPG) - 1 ship component' : `Upgrade (UPG) - Up to ${maxUpgrade} ship component upgrades`}
+          title={
+            hasPassed
+              ? l('Reaction Upgrade (UPG) - 1 ship component', '反应升级 (UPG) - 1 个飞船部件')
+              : l(`Upgrade (UPG) - Up to ${maxUpgrade} ship component upgrades`, `升级 (UPG) - 最多升级 ${maxUpgrade} 个飞船部件`)
+          }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             canActNormal || canActReaction
               ? 'bg-slate-900 hover:bg-slate-800 text-indigo-400 border border-slate-800 hover:scale-105'
@@ -401,7 +422,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           }`}
         >
           <Wrench className="w-4 h-4 shrink-0" />
-          <span className="leading-tight">UPG</span>
+          <span className="leading-tight">{l('UPG', '升级')}</span>
           <span className="text-[8.5px] opacity-80 leading-none">({maxUpgrade})</span>
         </button>
 
@@ -409,7 +430,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           disabled={!canActNormal && !canActReaction}
           onClick={onOpenBuild}
-          title={hasPassed ? 'Reaction Build (BLD) - 1 ship or structure' : `Build (BLD) - Up to ${maxBuild} ships or structures`}
+          title={
+            hasPassed
+              ? l('Reaction Build (BLD) - 1 ship or structure', '反应建造 (BLD) - 1 个飞船或建筑')
+              : l(`Build (BLD) - Up to ${maxBuild} ships or structures`, `建造 (BLD) - 最多建造 ${maxBuild} 个飞船或建筑`)
+          }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             canActNormal || canActReaction
               ? 'bg-slate-900 hover:bg-slate-800 text-amber-400 border border-slate-800 hover:scale-105'
@@ -417,7 +442,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           }`}
         >
           <Hammer className="w-4 h-4 shrink-0" />
-          <span className="leading-tight">BLD</span>
+          <span className="leading-tight">{l('BLD', '建造')}</span>
           <span className="text-[8.5px] opacity-80 leading-none">({maxBuild})</span>
         </button>
 
@@ -425,7 +450,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           disabled={!canActNormal && !canActReaction}
           onClick={onOpenMove}
-          title={hasPassed ? 'Reaction Move (MOV) - 1 ship movement' : `Move (MOV) - Up to ${maxMoves} ship movements`}
+          title={
+            hasPassed
+              ? l('Reaction Move (MOV) - 1 ship movement', '反应移动 (MOV) - 1 次飞船移动')
+              : l(`Move (MOV) - Up to ${maxMoves} ship movements`, `移动 (MOV) - 最多 ${maxMoves} 次飞船移动`)
+          }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             canActNormal || canActReaction
               ? 'bg-slate-900 hover:bg-slate-800 text-cyan-300 border border-slate-800 hover:scale-105'
@@ -433,7 +462,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           }`}
         >
           <Rocket className="w-4 h-4 shrink-0" />
-          <span className="leading-tight">MOV</span>
+          <span className="leading-tight">{l('MOV', '移动')}</span>
           <span className="text-[8.5px] opacity-80 leading-none">({maxMoves})</span>
         </button>
 
@@ -441,7 +470,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           disabled={!canActNormal}
           onClick={onOpenInfluence}
-          title={`Influence (INF) - Up to ${maxInfluence} disc actions`}
+          title={l(`Influence (INF) - Up to ${maxInfluence} disc actions`, `扩张 (INF) - 最多 ${maxInfluence} 次影响力圆盘操作`)}
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             canActNormal
               ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 hover:scale-105'
@@ -449,7 +478,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           }`}
         >
           <CircleDot className="w-4 h-4 shrink-0 text-cyan-400" />
-          <span className="leading-tight">INF</span>
+          <span className="leading-tight">{l('INF', '扩张')}</span>
           <span className="text-[8.5px] opacity-80 leading-none">({maxInfluence})</span>
         </button>
 
@@ -458,12 +487,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <button
             type="button"
             onClick={onOpenPulsar}
-            title="Activate Pulsar Sector (Free Action without taking an Influence Disc)"
+            title={l(
+              'Activate Pulsar Sector (Free Action without taking an Influence Disc)',
+              '激活脉冲星星区（免费行动，不消耗影响力圆盘）'
+            )}
             className="flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer bg-gradient-to-b from-cyan-950 to-slate-900 border-2 border-cyan-400 text-cyan-200 animate-pulse hover:scale-105 min-w-[44px] sm:min-w-[52px]"
           >
             <Sparkles className="w-4 h-4 shrink-0 text-cyan-300" />
-            <span className="leading-tight">PULSAR</span>
-            <span className="text-[8.5px] text-cyan-400 font-mono leading-none">FREE</span>
+            <span className="leading-tight">{l('PULSAR', '脉冲星')}</span>
+            <span className="text-[8.5px] text-cyan-400 font-mono leading-none">{l('FREE', '免费')}</span>
           </button>
         )}
 
@@ -472,12 +504,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <button
             type="button"
             onClick={() => onOpenBlackHoleReturn(readyBlackHoleShip)}
-            title={`Return ${readyBlackHoleShip.shipType.toUpperCase()} from Black Hole to board (Round ${currentRound})`}
+            title={l(
+              `Return ${readyBlackHoleShip.shipType.toUpperCase()} from Black Hole to board (Round ${currentRound})`,
+              `从黑洞将 ${readyBlackHoleShip.shipType.toUpperCase()} 返回至版图（第 ${currentRound} 回合）`
+            )}
             className="flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer bg-gradient-to-b from-indigo-950 to-slate-900 border-2 border-indigo-400 text-indigo-200 animate-pulse hover:scale-105 min-w-[44px] sm:min-w-[52px]"
           >
             <Sparkles className="w-4 h-4 shrink-0 text-indigo-300 animate-spin" />
-            <span className="leading-tight">RETURN</span>
-            <span className="text-[8.5px] text-indigo-400 font-mono leading-none">FREE</span>
+            <span className="leading-tight">{l('RETURN', '归位')}</span>
+            <span className="text-[8.5px] text-indigo-400 font-mono leading-none">{l('FREE', '免费')}</span>
           </button>
         )}
 
@@ -488,8 +523,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             onClick={onTogglePassInAdvance}
             title={
               passInAdvance
-                ? 'Pass in Advance is active: click to revert/cancel'
-                : 'Pass in Advance: automatically pass when it becomes your turn'
+                ? l('Pass in Advance is active: click to revert/cancel', '已开启预先跳过：点击可取消')
+                : l('Pass in Advance: automatically pass when it becomes your turn', '预先跳过：轮到你时自动跳过回合')
             }
             className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer min-w-[44px] sm:min-w-[52px] ${
               passInAdvance
@@ -498,9 +533,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             }`}
           >
             <CircleOff className={`w-4 h-4 shrink-0 ${passInAdvance ? 'text-purple-400 animate-pulse' : ''}`} />
-            <span className="leading-tight">PASS</span>
+            <span className="leading-tight">{l('PASS', '跳过')}</span>
             <span className={`text-[8.5px] font-mono font-bold leading-none ${passInAdvance ? 'text-purple-300' : 'text-slate-400'}`}>
-              {passInAdvance ? 'ADV: ON' : 'ADV: OFF'}
+              {passInAdvance ? l('ADV: ON', '预跳: 开') : l('ADV: OFF', '预跳: 关')}
             </span>
           </button>
         ) : (
@@ -509,12 +544,15 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             onClick={onPass}
             title={
               hasPendingExplore
-                ? 'Must finish exploration before passing'
+                ? l('Must finish exploration before passing', '必须先完成探索才能跳过')
                 : hasPassed
-                ? 'Pass reaction turn'
+                ? l('Pass reaction turn', '跳过反应回合')
                 : isTurnOrderVariant && nextPassTileNum
-                ? `Pass turn (claims Next Turn Order Tile #${nextPassTileNum}${nextPassTileNum === 1 ? ' & +2 Credits bonus' : ''})`
-                : 'Pass turn (receive 2 Credits for 1st pass)'
+                ? l(
+                    `Pass turn (claims Next Turn Order Tile #${nextPassTileNum}${nextPassTileNum === 1 ? ' & +2 Credits bonus' : ''})`,
+                    `跳过回合（获取下回合顺位板块 #${nextPassTileNum}${nextPassTileNum === 1 ? ' 及 +2 信用点奖励' : ''}）`
+                  )
+                : l('Pass turn (receive 2 Credits for 1st pass)', '跳过回合（首位跳过获 2 信用点）')
             }
             className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
               canPass
@@ -523,7 +561,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             }`}
           >
             <CircleOff className="w-4 h-4 shrink-0" />
-            <span className="leading-tight">PASS</span>
+            <span className="leading-tight">{l('PASS', '跳过')}</span>
             {isTurnOrderVariant && nextPassTileNum && !hasPassed ? (
               <span className="text-[8.5px] text-purple-400 font-mono font-bold leading-none">
                 #{nextPassTileNum}

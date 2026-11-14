@@ -11,6 +11,7 @@ import {
   ArrowRight,
   Disc,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export interface PulsarModalProps {
   sector: SectorTile;
@@ -34,7 +35,13 @@ export const PulsarModal: React.FC<PulsarModalProps> = ({
   onSelectAction,
   onClose,
 }) => {
+  const { l } = useLanguage();
   const currentSlot = sector.pulsarSlot || 'move';
+  const slotLabels: Record<'move' | 'build' | 'upgrade', string> = {
+    move: l('MOVE', '移动'),
+    build: l('BUILD', '建造'),
+    upgrade: l('UPGRADE', '升级'),
+  };
   const availableSlots: ('move' | 'build' | 'upgrade')[] = (['move', 'build', 'upgrade'] as const).filter(
     (slot) => slot !== currentSlot
   );
@@ -52,30 +59,36 @@ export const PulsarModal: React.FC<PulsarModalProps> = ({
     }
   > = {
     build: {
-      title: 'CONSTRUCTION',
-      actionName: 'Build Action (1 Item)',
-      description:
+      title: l('CONSTRUCTION', '建造行动'),
+      actionName: l('Build Action (1 Item)', '建造（1 项）'),
+      description: l(
         'Construct 1 ship, orbital, or monolith in any sector under your influence.',
+        '在任意受你控制的星区建造 1 艘飞船、轨道站或方尖碑。'
+      ),
       icon: <Hammer className="w-6 h-6 text-amber-400" />,
       color: 'from-amber-950/40 via-amber-900/20 to-slate-900',
       badgeColor: 'bg-amber-500/20 text-amber-300 border-amber-500/40',
       hoverBorder: 'hover:border-amber-500/80 hover:shadow-amber-500/20',
     },
     upgrade: {
-      title: 'SHIP UPGRADE',
-      actionName: 'Upgrade Action (1 Slot)',
-      description:
+      title: l('SHIP UPGRADE', '飞船升级'),
+      actionName: l('Upgrade Action (1 Slot)', '升级（1 槽位）'),
+      description: l(
         'Modify 1 component on your ship blueprints using available technologies or discoveries.',
+        '使用已解锁的科技或探索发现部件改装飞船蓝图上的 1 个槽位。'
+      ),
       icon: <Wrench className="w-6 h-6 text-indigo-400" />,
       color: 'from-indigo-950/40 via-indigo-900/20 to-slate-900',
       badgeColor: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/40',
       hoverBorder: 'hover:border-indigo-500/80 hover:shadow-indigo-500/20',
     },
     move: {
-      title: 'FLEET MANEUVER',
-      actionName: 'Move Action (1 Sector)',
-      description:
+      title: l('FLEET MANEUVER', '舰队机动'),
+      actionName: l('Move Action (1 Sector)', '移动（1 艘飞船）'),
+      description: l(
         'Move ships using 1 sector activation along valid wormhole connections.',
+        '沿有效虫洞连接执行 1 次飞船移动激活。'
+      ),
       icon: <Rocket className="w-6 h-6 text-cyan-400" />,
       color: 'from-cyan-950/40 via-cyan-900/20 to-slate-900',
       badgeColor: 'bg-cyan-500/20 text-cyan-300 border-cyan-500/40',
@@ -94,10 +107,10 @@ export const PulsarModal: React.FC<PulsarModalProps> = ({
             </div>
             <div>
               <h2 className="text-lg font-black tracking-wide text-cyan-300 font-display flex items-center gap-2">
-                PULSAR ANOMALY ACTIVATION
+                {l('PULSAR ANOMALY ACTIVATION', '脉冲星异常激活')}
               </h2>
               <p className="text-xs text-slate-400">
-                Sector {sector.id} &bull; Galactic Events
+                {l(`Sector ${sector.id} • Galactic Events`, `星区 ${sector.id} • 银河事件`)}
               </p>
             </div>
           </div>
@@ -116,25 +129,32 @@ export const PulsarModal: React.FC<PulsarModalProps> = ({
               <Disc className="w-5 h-5 text-indigo-400 shrink-0" />
               <div>
                 <span className="text-[11px] uppercase tracking-wider text-slate-400 block font-semibold">
-                  Current Sector Disc Slot
+                  {l('Current Sector Disc Slot', '当前星区圆盘位置')}
                 </span>
                 <span className="text-sm font-bold text-white uppercase font-mono">
-                  {currentSlot}
+                  {slotLabels[currentSlot]}
                 </span>
               </div>
             </div>
             <div className="text-right">
               <span className="text-[10px] uppercase tracking-wider text-slate-500 block font-semibold">
-                Rule
+                {l('Rule', '规则')}
               </span>
               <span className="text-xs text-cyan-300 font-medium">
-                1 Activation &bull; 0 Discs Placed
+                {l('1 Activation • 0 Discs Placed', '1 次激活 • 0 圆盘消耗')}
               </span>
             </div>
           </div>
 
           <p className="text-xs text-slate-300 leading-relaxed">
-            Shift the pulsar disc from <span className="font-bold text-white uppercase font-mono">{currentSlot}</span> to one of the two available slots below. This initiates the standard action interface with <span className="font-bold text-cyan-300">1 free activation</span> without placing an Influence Disc from your track:
+            {l('Shift the pulsar disc from ', '将脉冲星圆盘从 ')}
+            <span className="font-bold text-white uppercase font-mono">{slotLabels[currentSlot]}</span>
+            {l(
+              ' to one of the two available slots below. This initiates the standard action interface with ',
+              ' 移至下方两个可用行动位之一。这将以 '
+            )}
+            <span className="font-bold text-cyan-300">{l('1 free activation', '1 次免费激活')}</span>
+            {l(' without placing an Influence Disc from your track:', ' 打开标准行动界面，且不从你的影响力轨扣除圆盘：')}
           </p>
 
           {/* Action Choice Cards */}
@@ -169,7 +189,7 @@ export const PulsarModal: React.FC<PulsarModalProps> = ({
                   </div>
 
                   <div className="flex items-center gap-1 text-slate-400 group-hover:text-cyan-300 font-semibold text-xs shrink-0 transition-colors">
-                    <span>Select</span>
+                    <span>{l('Select', '选择')}</span>
                     <ArrowRight className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" />
                   </div>
                 </button>
@@ -180,12 +200,12 @@ export const PulsarModal: React.FC<PulsarModalProps> = ({
 
         {/* Footer */}
         <div className="p-4 border-t border-slate-800 bg-slate-950/60 flex items-center justify-between text-xs text-slate-400">
-          <span>Can only be activated once per round per Pulsar</span>
+          <span>{l('Can only be activated once per round per Pulsar', '每个脉冲星每轮只能激活一次')}</span>
           <button
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-semibold transition-colors"
           >
-            Cancel
+            {l('Cancel', '取消')}
           </button>
         </div>
       </div>

@@ -31,6 +31,8 @@ import {
   Bell,
   Save,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageSwitcher } from '../common/LanguageSwitcher';
 
 interface UserLoginModalProps {
   currentUser: UserSession;
@@ -43,6 +45,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
   onUserChanged,
   onClose,
 }) => {
+  const { l } = useLanguage();
   const [activeTab, setActiveTab] = useState<'guest' | 'user' | 'admin'>(
     currentUser.role === 'admin'
       ? 'admin'
@@ -167,11 +170,11 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
     clearFeedback();
     const cleanUser = userName.trim();
     if (!cleanUser) {
-      setErrorMessage('Please enter your Commander username.');
+      setErrorMessage(l('Please enter your Commander username.', '请输入指挥官用户名。'));
       return;
     }
     if (!userPassword) {
-      setErrorMessage('Please enter your password.');
+      setErrorMessage(l('Please enter your password.', '请输入密码。'));
       return;
     }
 
@@ -183,7 +186,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
       onUserChanged(res.user);
       onClose();
     } else {
-      setErrorMessage(res.error || 'Login failed. Please check your username and password.');
+      setErrorMessage(res.error || l('Login failed. Please check your username and password.', '登录失败，请检查用户名与密码。'));
     }
   };
 
@@ -195,15 +198,15 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
     const cleanName = regDisplayName.trim() || cleanUser;
 
     if (!cleanUser || cleanUser.length < 2) {
-      setErrorMessage('Username must be at least 2 characters long.');
+      setErrorMessage(l('Username must be at least 2 characters long.', '用户名至少需要 2 个字符。'));
       return;
     }
     if (!regPassword || regPassword.length < 3) {
-      setErrorMessage('Password must be at least 3 characters long.');
+      setErrorMessage(l('Password must be at least 3 characters long.', '密码至少需要 3 个字符。'));
       return;
     }
     if (regPassword !== regConfirmPassword) {
-      setErrorMessage('Passwords do not match.');
+      setErrorMessage(l('Passwords do not match.', '两次输入的密码不一致。'));
       return;
     }
 
@@ -365,32 +368,35 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
     <div className="fixed inset-0 z-50 bg-black/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5">
       <div className="bg-slate-950 border border-slate-800 rounded-2xl w-full max-w-lg shadow-2xl flex flex-col max-h-[92vh] overflow-hidden text-slate-100 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="px-5 py-4 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between shrink-0">
-          <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 shadow">
+        <div className="px-5 py-4 border-b border-slate-800 bg-slate-900/80 flex items-center justify-between shrink-0 gap-2">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="w-9 h-9 rounded-xl bg-cyan-500/20 border border-cyan-400 flex items-center justify-center text-cyan-300 shadow shrink-0">
               <User className="w-5 h-5" />
             </div>
-            <div>
-              <h2 className="text-sm font-extrabold text-white font-display uppercase tracking-wider">
-                User Identity & Access
+            <div className="min-w-0">
+              <h2 className="text-sm font-extrabold text-white font-display uppercase tracking-wider truncate">
+                {l('User Identity & Access', '用户身份与账号管理')}
               </h2>
-              <p className="text-[11px] text-slate-400">
-                Register, login, or manage commanders and galaxy tables
+              <p className="text-[11px] text-slate-400 truncate">
+                {l('Register, login, or manage commanders and galaxy tables', '注册、登录或管理指挥官账号与牌桌')}
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-          >
-            <X className="w-4 h-4" />
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <LanguageSwitcher compact />
+            <button
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
         </div>
 
         {/* Current Active User Banner */}
         <div className="px-5 py-3 bg-slate-900/40 border-b border-slate-800/80 flex items-center justify-between gap-3 text-xs shrink-0">
           <div className="flex items-center gap-2 min-w-0">
-            <span className="text-slate-400 text-[11px]">Current:</span>
+            <span className="text-slate-400 text-[11px]">{l('Current:', '当前：')}</span>
             <span className="font-bold text-white truncate">{currentUser.username}</span>
             <span
               className={`px-1.5 py-0.5 rounded text-[10px] font-mono font-bold uppercase tracking-wider ${
@@ -409,10 +415,10 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             type="button"
             onClick={handleLogout}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] text-slate-400 hover:text-rose-300 hover:bg-slate-800/60 transition cursor-pointer"
-            title="Reset to a new guest session"
+            title={l('Reset to a new guest session', '重置为新的游客会话')}
           >
             <LogOut className="w-3.5 h-3.5" />
-            <span>Switch / Reset</span>
+            <span>{l('Switch / Reset', '切换 / 重置')}</span>
           </button>
         </div>
 
@@ -428,7 +434,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>Guest</span>
+            <span>{l('Guest', '游客')}</span>
           </button>
 
           <button
@@ -441,7 +447,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             }`}
           >
             <User className="w-3.5 h-3.5" />
-            <span>Commander</span>
+            <span>{l('Commander', '指挥官')}</span>
           </button>
 
           <button
@@ -454,7 +460,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             }`}
           >
             <Shield className="w-3.5 h-3.5" />
-            <span>Admin</span>
+            <span>{l('Admin', '管理员')}</span>
           </button>
         </div>
 
@@ -480,31 +486,39 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
             <form onSubmit={handleGuestSubmit} className="space-y-4">
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-amber-300 mb-1.5">
-                  Temporary Guest Nickname
+                  {l('Temporary Guest Nickname', '临时游客昵称')}
                 </label>
                 <input
                   type="text"
                   value={guestName}
                   onChange={(e) => setGuestName(e.target.value)}
-                  placeholder="e.g. Guest-5821"
+                  placeholder={l('e.g. Guest-5821', '如 Guest-5821')}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-amber-300 focus:outline-none focus:border-amber-400 transition"
                   required
                 />
                 <p className="text-[11px] text-slate-400 mt-1.5">
-                  Play immediately without a password. Tables you join or create will be attached to your session.
+                  {l(
+                    'Play immediately without a password. Tables you join or create will be attached to your session.',
+                    '无需密码即可立即畅玩。本地游玩与观战记录将绑定至当前会话。'
+                  )}
                 </p>
               </div>
 
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-amber-300 mb-1.5 flex items-center gap-1.5">
                   <Mail className="w-3.5 h-3.5 text-amber-400" />
-                  <span>Notification Email <span className="text-slate-500 font-normal lowercase">(optional for turn alerts)</span></span>
+                  <span>
+                    {l('Notification Email', '提醒邮箱')}{' '}
+                    <span className="text-slate-500 font-normal lowercase">
+                      {l('(optional for turn alerts)', '（可选，用于回合提醒）')}
+                    </span>
+                  </span>
                 </label>
                 <input
                   type="email"
                   value={guestEmail}
                   onChange={(e) => setGuestEmail(e.target.value)}
-                  placeholder="e.g. your-email@gmail.com"
+                  placeholder={l('e.g. your-email@gmail.com', '例如 your-email@example.com')}
                   className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-amber-400 transition"
                 />
               </div>
@@ -519,7 +533,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                     className="mt-0.5 rounded border-slate-700 bg-slate-900 text-amber-500 focus:ring-amber-500 cursor-pointer"
                   />
                   <label htmlFor="guestEmailNotifications" className="text-xs text-slate-300 cursor-pointer select-none">
-                    Send me email turn reminders when I am offline (BGA-style)
+                    {l('Send me email turn reminders when I am offline (BGA-style)', '当我离线且轮到我行动时发送邮件提醒')}
                   </label>
                 </div>
               )}
@@ -529,7 +543,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                 className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-amber-500 hover:bg-amber-400 text-slate-950 transition shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Continue as Guest</span>
+                <span>{l('Continue as Guest', '以游客身份继续')}</span>
               </button>
             </form>
           )}
@@ -552,7 +566,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                         </div>
                       </div>
                       <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-600 text-cyan-300 text-[10px] font-mono font-bold uppercase tracking-wider">
-                        Authenticated
+                        {l('Authenticated', '已认证')}
                       </span>
                     </div>
                   </div>
@@ -562,20 +576,20 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                     <div className="flex items-center gap-2 pb-1.5 border-b border-slate-800">
                       <Bell className="w-4 h-4 text-cyan-400" />
                       <h3 className="text-xs font-bold text-white uppercase tracking-wider">
-                        Turn Reminders & Notifications
+                        {l('Turn Reminders & Notifications', '回合邮件提醒与通知设置')}
                       </h3>
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5 flex items-center gap-1.5">
                         <Mail className="w-3.5 h-3.5 text-cyan-400" />
-                        <span>Notification Email</span>
+                        <span>{l('Notification Email', '通知邮箱')}</span>
                       </label>
                       <input
                         type="email"
                         value={profileEmail}
                         onChange={(e) => setProfileEmail(e.target.value)}
-                        placeholder="e.g. commander@example.com"
+                        placeholder={l('e.g. commander@example.com', '例如 commander@example.com')}
                         className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition"
                       />
                     </div>
@@ -589,12 +603,15 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                         className="mt-0.5 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500 cursor-pointer"
                       />
                       <label htmlFor="profileEmailNotifications" className="text-xs text-slate-300 cursor-pointer select-none">
-                        Send email reminders when it is my turn and I am offline (BGA-style)
+                        {l('Send email reminders when it is my turn and I am offline (BGA-style)', '离线时轮到我行动发送邮件提醒')}
                       </label>
                     </div>
 
                     <p className="text-[11px] text-slate-400">
-                      When active, Eclipse High Command will dispatch an automated email with a direct cockpit join link whenever it is your turn to take action and your tab has been idle for more than 45 seconds.
+                      {l(
+                        'When active, Eclipse High Command will dispatch an automated email with a direct cockpit join link whenever it is your turn to take action and your tab has been idle for more than 45 seconds.',
+                        '开启后，若轮到你行动且页面空闲超过 45 秒，系统将自动发送包含直达牌桌链接的提醒邮件。'
+                      )}
                     </p>
 
                     <button
@@ -603,13 +620,13 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                       className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       <Save className="w-4 h-4" />
-                      <span>{isSubmitting ? 'Saving...' : 'Save Notification Preferences'}</span>
+                      <span>{isSubmitting ? l('Saving...', '保存中...') : l('Save Notification Preferences', '保存提醒偏好')}</span>
                     </button>
                   </form>
 
                   {/* Switch commander option */}
                   <div className="pt-2 flex justify-between items-center text-xs text-slate-400">
-                    <span>Need to use a different account?</span>
+                    <span>{l('Need to use a different account?', '需要切换其他账号？')}</span>
                     <button
                       type="button"
                       onClick={() => {
@@ -618,7 +635,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                       }}
                       className="text-cyan-400 hover:text-cyan-300 underline underline-offset-4 cursor-pointer"
                     >
-                      Switch Commander Account
+                      {l('Switch Commander Account', '切换指挥官账号')}
                     </button>
                   </div>
                 </div>
@@ -627,7 +644,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                   {currentUser.role === 'user' && isSwitchingCommander && (
                     <div className="flex justify-between items-center pb-1">
                       <span className="text-xs text-slate-400">
-                        Switching from <strong className="text-white">{currentUser.username}</strong>
+                        {l('Switching from', '正在从')} <strong className="text-white">{currentUser.username}</strong> {l('', '切换')}
                       </span>
                       <button
                         type="button"
@@ -637,7 +654,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                         }}
                         className="text-xs text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
                       >
-                        ← Back to My Account
+                        {l('← Back to My Account', '← 返回当前账号')}
                       </button>
                     </div>
                   )}
@@ -657,7 +674,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                       }`}
                     >
                       <LogIn className="w-3.5 h-3.5" />
-                      <span>Login</span>
+                      <span>{l('Login', '登录')}</span>
                     </button>
                     <button
                       type="button"
@@ -672,7 +689,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                       }`}
                     >
                       <UserPlus className="w-3.5 h-3.5" />
-                      <span>Register</span>
+                      <span>{l('Register', '注册')}</span>
                     </button>
                   </div>
 
@@ -681,13 +698,13 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                     <form onSubmit={handleCommanderLoginSubmit} className="space-y-3.5">
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                          Commander Username
+                          {l('Commander Username', '指挥官用户名')}
                         </label>
                         <input
                           type="text"
                           value={userName}
                           onChange={(e) => setUserName(e.target.value)}
-                          placeholder="e.g. Commander Alice"
+                          placeholder={l('e.g. Commander Alice', '例如 Alice')}
                           className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
                           required
                           autoFocus
@@ -696,14 +713,14 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
 
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                          Password
+                          {l('Password', '密码')}
                         </label>
                         <div className="relative">
                           <input
                             type="password"
                             value={userPassword}
                             onChange={(e) => setUserPassword(e.target.value)}
-                            placeholder="Enter your password..."
+                            placeholder={l('Enter your password...', '输入密码...')}
                             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
                             required
                           />
@@ -712,7 +729,10 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                       </div>
 
                       <p className="text-[11px] text-slate-400">
-                        Log in with your encrypted credentials to rejoin your galaxy tables across sessions and devices.
+                        {l(
+                          'Log in with your encrypted credentials to rejoin your galaxy tables across sessions and devices.',
+                          '登录即可在不同设备与会话之间同步并重连你的星图对局。'
+                        )}
                       </p>
 
                       <button
@@ -721,7 +741,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                         className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         <LogIn className="w-4 h-4" />
-                        <span>{isSubmitting ? 'Logging in...' : 'Login as Commander'}</span>
+                        <span>{isSubmitting ? l('Logging in...', '登录中...') : l('Login as Commander', '以指挥官身份登录')}</span>
                       </button>
 
                       <div className="text-center pt-1">
@@ -733,7 +753,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                           }}
                           className="text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-4 cursor-pointer transition"
                         >
-                          New Commander? Register here
+                          {l('New Commander? Register here', '新指挥官？点击此处注册')}
                         </button>
                       </div>
                     </form>
@@ -744,13 +764,13 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                     <form onSubmit={handleCommanderRegisterSubmit} className="space-y-3.5">
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                          Username (Login ID)
+                          {l('Username (Login ID)', '用户名（登录账号）')}
                         </label>
                         <input
                           type="text"
                           value={regUsername}
                           onChange={(e) => setRegUsername(e.target.value)}
-                          placeholder="e.g. CommanderBob"
+                          placeholder={l('e.g. CommanderBob', '例如 CommanderBob')}
                           className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
                           required
                           autoFocus
@@ -759,13 +779,14 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
 
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                          In-Game Display Name <span className="text-slate-500 font-normal lowercase">(optional)</span>
+                          {l('In-Game Display Name', '游戏内显示名称')}{' '}
+                          <span className="text-slate-500 font-normal lowercase">{l('(optional)', '（可选）')}</span>
                         </label>
                         <input
                           type="text"
                           value={regDisplayName}
                           onChange={(e) => setRegDisplayName(e.target.value)}
-                          placeholder="e.g. Bob the Conqueror"
+                          placeholder={l('e.g. Bob the Conqueror', '例如 征服者鲍勃')}
                           className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition"
                         />
                       </div>
@@ -773,13 +794,16 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5 flex items-center gap-1.5">
                           <Mail className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Notification Email <span className="text-slate-500 font-normal lowercase">(optional for turn alerts)</span></span>
+                          <span>
+                            {l('Notification Email', '通知邮箱')}{' '}
+                            <span className="text-slate-500 font-normal lowercase">{l('(optional for turn alerts)', '（可选，用于回合提醒）')}</span>
+                          </span>
                         </label>
                         <input
                           type="email"
                           value={regEmail}
                           onChange={(e) => setRegEmail(e.target.value)}
-                          placeholder="e.g. commander@example.com"
+                          placeholder={l('e.g. commander@example.com', '例如 commander@example.com')}
                           className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition"
                         />
                       </div>
@@ -793,20 +817,20 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                           className="mt-0.5 rounded border-slate-700 bg-slate-900 text-cyan-500 focus:ring-cyan-500 cursor-pointer"
                         />
                         <label htmlFor="regEmailNotifications" className="text-xs text-slate-300 cursor-pointer select-none">
-                          Send me email reminders when it is my turn and I am offline (BGA-style)
+                          {l('Send me email reminders when it is my turn and I am offline (BGA-style)', '离线时轮到我行动发送邮件提醒')}
                         </label>
                       </div>
 
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                          Password (min 3 chars)
+                          {l('Password (min 3 chars)', '密码（至少 3 位字符）')}
                         </label>
                         <div className="relative">
                           <input
                             type="password"
                             value={regPassword}
                             onChange={(e) => setRegPassword(e.target.value)}
-                            placeholder="Create a password..."
+                            placeholder={l('Create a password...', '设置登录密码...')}
                             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
                             required
                           />
@@ -816,14 +840,14 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
 
                       <div>
                         <label className="block text-xs font-semibold uppercase tracking-wider text-cyan-300 mb-1.5">
-                          Confirm Password
+                          {l('Confirm Password', '确认密码')}
                         </label>
                         <div className="relative">
                           <input
                             type="password"
                             value={regConfirmPassword}
                             onChange={(e) => setRegConfirmPassword(e.target.value)}
-                            placeholder="Confirm password..."
+                            placeholder={l('Confirm password...', '再次输入密码...')}
                             className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs text-white focus:outline-none focus:border-cyan-400 transition pr-9"
                             required
                           />
@@ -832,7 +856,10 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                       </div>
 
                       <p className="text-[11px] text-slate-400">
-                        Your password will be encrypted using PBKDF2 with salted SHA-256 before storage. Plaintext passwords are never saved.
+                        {l(
+                          'Your password will be encrypted using PBKDF2 with salted SHA-256 before storage. Plaintext passwords are never saved.',
+                          '你的密码在保存前将使用加盐 SHA-256 (PBKDF2) 加密存储，不会保存明文密码。'
+                        )}
                       </p>
 
                       <button
@@ -841,7 +868,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                         className="w-full py-2.5 rounded-xl font-display font-bold text-xs uppercase tracking-wider bg-cyan-500 hover:bg-cyan-400 text-slate-950 transition shadow-lg shadow-cyan-500/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
                       >
                         <UserPlus className="w-4 h-4" />
-                        <span>{isSubmitting ? 'Registering...' : 'Create Commander Account'}</span>
+                        <span>{isSubmitting ? l('Registering...', '注册中...') : l('Create Commander Account', '创建指挥官账号')}</span>
                       </button>
 
                       <div className="text-center pt-1">
@@ -853,7 +880,7 @@ export const UserLoginModal: React.FC<UserLoginModalProps> = ({
                           }}
                           className="text-xs text-cyan-400 hover:text-cyan-300 underline underline-offset-4 cursor-pointer transition"
                         >
-                          Already registered? Login here
+                          {l('Already registered? Login here', '已有账号？点击此处登录')}
                         </button>
                       </div>
                     </form>

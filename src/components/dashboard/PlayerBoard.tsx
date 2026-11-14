@@ -26,6 +26,16 @@ import {
 import { canExchangeAmbassadors, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 import { ALL_MINOR_SPECIES_TILES, MinorSpeciesTile } from '../../engine/rules/minorSpecies';
+import { useLanguage } from '../../i18n/LanguageContext';
+import {
+  translateFactionName,
+  translateFactionTrait,
+  translateMinorSpeciesName,
+  translateShipType,
+  translateTechCategory,
+  translateTechDesc,
+  translateTechName,
+} from '../../i18n/catalogTranslations';
 
 interface PlayerBoardProps {
   player: PlayerState;
@@ -70,6 +80,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   minorSpeciesSupply = [],
   hasMinorSpeciesExpansion = false,
 }) => {
+  const { language, l } = useLanguage();
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
     if (typeof window !== 'undefined') {
       return window.innerWidth < 768;
@@ -116,15 +127,15 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             </span>
             {player.hasPassed && (
               <span className="text-[9px] bg-slate-800 text-amber-400 px-1 py-0.2 rounded uppercase">
-                Pass
+                {l('Pass', '已过')}
               </span>
             )}
             {traitorPlayerId === player.id && (
               <span
                 className="text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-600 px-1 py-0.2 rounded uppercase shrink-0 animate-pulse"
-                title="Traitor Tile: -2 VP penalty. Diplomacy broken."
+                title={l('Traitor Tile: -2 VP penalty. Diplomacy broken.', '背叛者板块：-2 VP 惩罚。外交已破裂。')}
               >
-                🗡️ Traitor (-2)
+                {l('🗡️ Traitor (-2)', '🗡️ 背叛者 (-2)')}
               </span>
             )}
           </div>
@@ -135,7 +146,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               <button
                 onClick={onOpenPhysicalBoard}
                 className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-400 transition-colors"
-                title="Full Physical Board (P)"
+                title={l('Full Physical Board (P)', '完整实体面板 (P)')}
               >
                 <LayoutDashboard className="w-3.5 h-3.5" />
               </button>
@@ -143,21 +154,21 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             <button
               onClick={onOpenTrade}
               className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-400 transition-colors"
-              title={`Trade (${player.faction.tradeRatio ?? 2}:1)`}
+              title={l(`Trade (${player.faction.tradeRatio ?? 2}:1)`, `交易 (${player.faction.tradeRatio ?? 2}:1)`)}
             >
               <ArrowRightLeft className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={onOpenTechMarket}
               className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-pink-400 transition-colors"
-              title="Tech Market"
+              title={l('Tech Market', '科技市场')}
             >
               <Cpu className="w-3.5 h-3.5" />
             </button>
             <button
               onClick={onOpenBlueprints}
               className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-400 transition-colors"
-              title="Ship Designer"
+              title={l('Ship Designer', '飞船蓝图设计')}
             >
               <Settings className="w-3.5 h-3.5" />
             </button>
@@ -165,7 +176,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               <button
                 onClick={onOpenCombatSimulator}
                 className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400 transition-colors"
-                title="Combat Simulator"
+                title={l('Combat Simulator', '战斗模拟器')}
               >
                 <Swords className="w-3.5 h-3.5" />
               </button>
@@ -173,7 +184,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             <button
               onClick={() => setIsCollapsed(false)}
               className="p-1 bg-slate-800 hover:bg-slate-700 text-cyan-400 rounded transition-colors ml-0.5"
-              title="Expand Commander Dashboard"
+              title={l('Expand Commander Dashboard', '展开指挥官面板')}
             >
               <ChevronDown className="w-3.5 h-3.5" />
             </button>
@@ -185,7 +196,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {/* Money */}
           <div
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-yellow-950/40 border border-yellow-800/50 text-yellow-300"
-            title={`Money: ${player.resources.money} | Income: +${summary.income.money} | Upkeep: -${summary.upkeep}`}
+            title={l(
+              `Money: ${player.resources.money} | Income: +${summary.income.money} | Upkeep: -${summary.upkeep}`,
+              `信用点：${player.resources.money} | 收入：+${summary.income.money} | 维护费：-${summary.upkeep}`
+            )}
           >
             <Coins className="w-3 h-3 text-yellow-400" />
             <span className="font-bold">{player.resources.money}</span>
@@ -197,7 +211,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {/* Science */}
           <div
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-pink-950/40 border border-pink-800/50 text-pink-300"
-            title={`Science: ${player.resources.science} | Income: +${summary.income.science}`}
+            title={l(
+              `Science: ${player.resources.science} | Income: +${summary.income.science}`,
+              `科研：${player.resources.science} | 收入：+${summary.income.science}`
+            )}
           >
             <FlaskConical className="w-3 h-3 text-pink-400" />
             <span className="font-bold">{player.resources.science}</span>
@@ -206,7 +223,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {/* Materials */}
           <div
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-950/40 border border-amber-800/50 text-amber-300"
-            title={`Materials: ${player.resources.materials} | Income: +${summary.income.materials}`}
+            title={l(
+              `Materials: ${player.resources.materials} | Income: +${summary.income.materials}`,
+              `材料：${player.resources.materials} | 收入：+${summary.income.materials}`
+            )}
           >
             <Hammer className="w-3 h-3 text-amber-500" />
             <span className="font-bold">{player.resources.materials}</span>
@@ -215,7 +235,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {/* Discs */}
           <div
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-cyan-300"
-            title={`Influence Discs on Track: ${player.influenceTrack.discsOnTrack} / ${player.influenceTrack.totalDiscs}`}
+            title={l(
+              `Influence Discs on Track: ${player.influenceTrack.discsOnTrack} / ${player.influenceTrack.totalDiscs}`,
+              `影响力圆片轨道：${player.influenceTrack.discsOnTrack} / ${player.influenceTrack.totalDiscs}`
+            )}
           >
             <CircleDot className="w-3 h-3 text-cyan-400" />
             <span>{player.influenceTrack.discsOnTrack}</span>
@@ -224,7 +247,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {/* Colony Ships */}
           <div
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-slate-950 border border-slate-800 text-indigo-300"
-            title={`Colony Ships: ${player.colonyShips.ready} Ready / ${player.colonyShips.total}`}
+            title={l(
+              `Colony Ships: ${player.colonyShips.ready} Ready / ${player.colonyShips.total}`,
+              `殖民船：${player.colonyShips.ready} 就绪 / ${player.colonyShips.total}`
+            )}
           >
             <Rocket className="w-3 h-3 text-indigo-400" />
             <span>{player.colonyShips.ready}</span>
@@ -233,12 +259,12 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {/* Magellan Scavenge Colony Ship Quick Buttons (Collapsed) */}
           {player.faction.id === 'wardens_of_magellan' && onConvertColonyShip && (
             <div className="flex items-center gap-1 ml-1 pl-1 border-l border-slate-700 text-[9px]">
-              <span className="text-purple-300 font-bold">Conv:</span>
+              <span className="text-purple-300 font-bold">{l('Conv:', '转化:')}</span>
               <button
                 onClick={() => onConvertColonyShip('money')}
                 disabled={player.colonyShips.ready <= 0 || !isActive}
                 className="px-1.5 py-0.5 rounded bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 disabled:opacity-40 cursor-pointer"
-                title="Convert 1 ready Colony Ship to 1 Money"
+                title={l('Convert 1 ready Colony Ship to 1 Money', '将 1 艘就绪殖民船转化为 1 信用点')}
               >
                 +1 🪙
               </button>
@@ -246,7 +272,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 onClick={() => onConvertColonyShip('science')}
                 disabled={player.colonyShips.ready <= 0 || !isActive}
                 className="px-1.5 py-0.5 rounded bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/40 disabled:opacity-40 cursor-pointer"
-                title="Convert 1 ready Colony Ship to 1 Science"
+                title={l('Convert 1 ready Colony Ship to 1 Science', '将 1 艘就绪殖民船转化为 1 科研')}
               >
                 +1 🔬
               </button>
@@ -254,7 +280,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 onClick={() => onConvertColonyShip('materials')}
                 disabled={player.colonyShips.ready <= 0 || !isActive}
                 className="px-1.5 py-0.5 rounded bg-amber-700/20 hover:bg-amber-700/30 text-amber-200 border border-amber-700/40 disabled:opacity-40 cursor-pointer"
-                title="Convert 1 ready Colony Ship to 1 Material"
+                title={l('Convert 1 ready Colony Ship to 1 Material', '将 1 艘就绪殖民船转化为 1 材料')}
               >
                 +1 ⚙️
               </button>
@@ -272,7 +298,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                   : 'bg-slate-950 border-slate-800 text-slate-400'
               }`}
               onClick={hasMinorSpeciesExpansion ? onOpenMinorSpecies : undefined}
-              title={`Ambassadors: ${player.ambassadorTiles?.length || 0} / ${player.faction.ambassadorSlots ?? 3}${hasMinorSpeciesExpansion ? ' • Click to view Minor Species' : ''}`}
+              title={l(
+                `Ambassadors: ${player.ambassadorTiles?.length || 0} / ${player.faction.ambassadorSlots ?? 3}${hasMinorSpeciesExpansion ? ' • Click to view Minor Species' : ''}`,
+                `大使：${player.ambassadorTiles?.length || 0} / ${player.faction.ambassadorSlots ?? 3}${hasMinorSpeciesExpansion ? ' • 点击查看次要物种' : ''}`
+              )}
             >
               <Handshake className="w-3 h-3 text-indigo-400" />
               <span>{player.ambassadorTiles?.length || 0}/{player.faction.ambassadorSlots ?? 3}</span>
@@ -283,9 +312,9 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {traitorPlayerId === player.id && (
             <div
               className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-600 text-rose-300 font-bold shrink-0 animate-pulse"
-              title="Traitor Tile: -2 VP endgame penalty"
+              title={l('Traitor Tile: -2 VP endgame penalty', '背叛者板块：终局 -2 VP 惩罚')}
             >
-              <span>🗡️ Traitor (-2)</span>
+              <span>{l('🗡️ Traitor (-2)', '🗡️ 背叛者 (-2)')}</span>
             </div>
           )}
 
@@ -294,8 +323,14 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-amber-950/50 border border-amber-600/50 text-amber-300 ml-auto"
             title={
               hideOpponentReputation
-                ? `Reputation Track: ? VP (${occupiedSlotCount}/${trackSlots.length} slots occupied, secret)`
-                : `Reputation Track: ${reputationVP} VP (${occupiedSlotCount}/${trackSlots.length} slots occupied)`
+                ? l(
+                    `Reputation Track: ? VP (${occupiedSlotCount}/${trackSlots.length} slots occupied, secret)`,
+                    `声望轨：? VP（已占 ${occupiedSlotCount}/${trackSlots.length} 格，隐藏）`
+                  )
+                : l(
+                    `Reputation Track: ${reputationVP} VP (${occupiedSlotCount}/${trackSlots.length} slots occupied)`,
+                    `声望轨：${reputationVP} VP（已占 ${occupiedSlotCount}/${trackSlots.length} 格）`
+                  )
             }
           >
             <Trophy className="w-3 h-3 text-amber-400" />
@@ -327,19 +362,21 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               <span title={getPlayerDisplayName(player)}>{getPlayerDisplayName(player)}</span>
               {player.hasPassed && (
                 <span className="text-[9px] bg-slate-800 text-amber-400 px-1 py-0.2 rounded uppercase font-sans">
-                  Passed
+                  {l('Passed', '已过')}
                 </span>
               )}
               {traitorPlayerId === player.id && (
                 <span
                   className="text-[10px] font-bold bg-rose-950/90 text-rose-300 border border-rose-600 px-1.5 py-0.5 rounded flex items-center gap-1 shadow animate-pulse font-sans"
-                  title="Traitor Tile: -2 VP endgame penalty. Diplomacy forbidden."
+                  title={l('Traitor Tile: -2 VP endgame penalty. Diplomacy forbidden.', '背叛者板块：终局 -2 VP 惩罚。禁止外交。')}
                 >
-                  🗡️ Traitor (-2)
+                  {l('🗡️ Traitor (-2)', '🗡️ 背叛者 (-2)')}
                 </span>
               )}
             </div>
-            <div className="text-[10px] text-slate-400 truncate">{player.faction.traitDescription}</div>
+            <div className="text-[10px] text-slate-400 truncate">
+              {translateFactionTrait(player.faction.id, player.faction.traitDescription, language)}
+            </div>
           </div>
         </div>
 
@@ -349,7 +386,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             <button
               onClick={onOpenPhysicalBoard}
               className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-400 transition-colors"
-              title="Full Physical Player Board (Key: P)"
+              title={l('Full Physical Player Board (Key: P)', '完整实体玩家面板 (快捷键: P)')}
             >
               <LayoutDashboard className="w-4 h-4" />
             </button>
@@ -357,21 +394,21 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           <button
             onClick={onOpenTrade}
             className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-400 transition-colors"
-            title={`Trade (${player.faction.tradeRatio ?? 2}:1 for Credits)`}
+            title={l(`Trade (${player.faction.tradeRatio ?? 2}:1 for Credits)`, `交易 (${player.faction.tradeRatio ?? 2}:1 兑换信用点)`)}
           >
             <ArrowRightLeft className="w-4 h-4" />
           </button>
           <button
             onClick={onOpenTechMarket}
             className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-pink-400 transition-colors"
-            title="Tech Research Display"
+            title={l('Tech Research Display', '科技研究展板')}
           >
             <Cpu className="w-4 h-4" />
           </button>
           <button
             onClick={onOpenBlueprints}
             className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-cyan-400 transition-colors"
-            title="Ship Blueprints Designer"
+            title={l('Ship Blueprints Designer', '飞船蓝图设计器')}
           >
             <Settings className="w-4 h-4" />
           </button>
@@ -379,7 +416,8 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             <button
               onClick={onOpenCombatSimulator}
               className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-red-400 transition-colors"
-              title="Combat Simulator"
+              /* title="Combat Simulator" */
+              title={l('Combat Simulator', '战斗模拟器')}
             >
               <Swords className="w-4 h-4" />
             </button>
@@ -387,7 +425,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           <button
             onClick={() => setIsCollapsed(true)}
             className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-white transition-colors"
-            title="Minimize Dashboard"
+            title={l('Minimize Dashboard', '收起面板')}
           >
             <ChevronUp className="w-4 h-4" />
           </button>
@@ -400,7 +438,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         <div className="bg-slate-950/80 border border-yellow-950/70 rounded-lg p-2 flex flex-col">
           <div className="flex items-center justify-between text-[10.5px] text-yellow-400 font-semibold">
             <span className="flex items-center gap-1">
-              <Coins className="w-3 h-3 text-yellow-400" /> MONEY
+              <Coins className="w-3 h-3 text-yellow-400" /> {l('MONEY', '信用点')}
             </span>
             <span
               className={`text-[9.5px] font-mono ${
@@ -414,7 +452,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             {player.resources.money}
           </span>
           <span className="text-[9px] text-slate-500 truncate">
-            Inc: +{summary.income.money} <span className="text-yellow-400 font-mono font-bold">(+{moneyForecast.next1Cube.delta})</span>
+            {l('Inc:', '收入:')} +{summary.income.money} <span className="text-yellow-400 font-mono font-bold">(+{moneyForecast.next1Cube.delta})</span>
           </span>
         </div>
 
@@ -422,7 +460,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         <div className="bg-slate-950/80 border border-pink-950/50 rounded-lg p-2 flex flex-col">
           <div className="flex items-center justify-between text-[10.5px] text-pink-400 font-semibold">
             <span className="flex items-center gap-1">
-              <FlaskConical className="w-3 h-3 text-pink-400" /> SCIENCE
+              <FlaskConical className="w-3 h-3 text-pink-400" /> {l('SCIENCE', '科研')}
             </span>
             <span className="text-[9.5px] font-mono text-emerald-400">+{summary.income.science}</span>
           </div>
@@ -430,7 +468,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             {player.resources.science}
           </span>
           <span className="text-[9px] text-slate-500 truncate">
-            {player.techTrack.researched.length} Techs <span className="text-pink-400 font-mono font-bold">(+{sciForecast.next1Cube.delta})</span>
+            {player.techTrack.researched.length} {l('Techs', '科技')} <span className="text-pink-400 font-mono font-bold">(+{sciForecast.next1Cube.delta})</span>
           </span>
         </div>
 
@@ -438,7 +476,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         <div className="bg-slate-950/80 border border-amber-900/40 rounded-lg p-2 flex flex-col">
           <div className="flex items-center justify-between text-[10.5px] text-amber-500 font-semibold">
             <span className="flex items-center gap-1">
-              <Hammer className="w-3 h-3 text-amber-500" /> MATERIALS
+              <Hammer className="w-3 h-3 text-amber-500" /> {l('MATERIALS', '材料')}
             </span>
             <span className="text-[9.5px] font-mono text-emerald-400">+{summary.income.materials}</span>
           </div>
@@ -446,7 +484,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             {player.resources.materials}
           </span>
           <span className="text-[9px] text-slate-500 truncate">
-            Fleet <span className="text-amber-400 font-mono font-bold">(+{matForecast.next1Cube.delta})</span>
+            {l('Fleet', '舰队')} <span className="text-amber-400 font-mono font-bold">(+{matForecast.next1Cube.delta})</span>
           </span>
         </div>
       </div>
@@ -457,7 +495,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         <div className="bg-slate-950/70 rounded-lg border border-slate-800/90 p-1.5 flex flex-col justify-between">
           <div className="flex items-center gap-1 text-[10px] text-slate-400">
             <CircleDot className="w-3 h-3 text-cyan-400" />
-            <span>Discs</span>
+            <span>{l('Discs', '圆片')}</span>
           </div>
           <span className="font-bold text-slate-200 font-mono text-xs mt-0.5">
             {player.influenceTrack.discsOnTrack} / {player.influenceTrack.totalDiscs}
@@ -468,7 +506,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         <div className="bg-slate-950/70 rounded-lg border border-slate-800/90 p-1.5 flex flex-col justify-between">
           <div className="flex items-center gap-1 text-[10px] text-slate-400">
             <Rocket className="w-3 h-3 text-indigo-400" />
-            <span>Colony Ships</span>
+            <span>{l('Colony Ships', '殖民船')}</span>
           </div>
           <span className="font-bold text-slate-200 font-mono text-xs mt-0.5">
             {player.colonyShips.ready} / {player.colonyShips.total}
@@ -479,7 +517,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         <div className="bg-slate-950/70 rounded-lg border border-amber-800/40 px-1 py-1.5 flex flex-col justify-between">
           <div className="flex items-center justify-between text-[10px] text-amber-400">
             <span className="flex items-center gap-1">
-              <Trophy className="w-3 h-3 text-amber-400" /> Rep
+              <Trophy className="w-3 h-3 text-amber-400" /> {l('Rep', '声望')}
             </span>
             <span className="font-bold font-mono text-amber-300">
               {hideOpponentReputation ? '? VP' : `${reputationVP} VP`}
@@ -494,14 +532,17 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               if (isAmbassador) {
                 const allyId = slot.tile?.allyId;
                 const ally = allPlayers?.find((p) => p.id === allyId);
-                const allyName = slot.tile?.allyName || ally?.name || allyId || 'Ally';
+                const allyName = slot.tile?.allyName || ally?.name || allyId || l('Ally', '盟友');
                 const allyColor = slot.tile?.allyColor || ally?.color || '#818cf8';
                 return (
                   <span
                     key={`hud_rep_slot_${slot.slotIndex}`}
                     className="w-3.5 h-3.5 rounded-sm border text-[8px] font-bold flex items-center justify-center font-mono bg-indigo-950/80 text-indigo-200 shrink-0 cursor-help"
                     style={{ borderColor: allyColor }}
-                    title={`Ambassador (${allyName}): +1 VP (occupying Reputation Slot #${slot.slotIndex + 1})`}
+                    title={l(
+                      `Ambassador (${allyName}): +1 VP (occupying Reputation Slot #${slot.slotIndex + 1})`,
+                      `大使 (${allyName})：+1 VP（占用声望槽 #${slot.slotIndex + 1}）`
+                    )}
                   >
                     🤝
                   </span>
@@ -519,15 +560,24 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                   title={
                     isRep
                       ? hideOpponentReputation
-                        ? 'Facedown Reputation Tile (Secret)'
-                        : `Reputation Tile: +${repVal} VP (Slot #${slot.slotIndex + 1})`
-                      : `Empty Slot #${slot.slotIndex + 1} (${
-                          slot.slotType === 'amb_only'
-                            ? 'Ambassador Only'
-                            : slot.slotType === 'both'
-                            ? 'Ambassador or Reputation'
-                            : 'Reputation Only'
-                        })`
+                        ? l('Facedown Reputation Tile (Secret)', '暗置声望板块（保密）')
+                        : l(`Reputation Tile: +${repVal} VP (Slot #${slot.slotIndex + 1})`, `声望板块：+${repVal} VP（槽位 #${slot.slotIndex + 1}）`)
+                      : l(
+                          `Empty Slot #${slot.slotIndex + 1} (${
+                            slot.slotType === 'amb_only'
+                              ? 'Ambassador Only'
+                              : slot.slotType === 'both'
+                              ? 'Ambassador or Reputation'
+                              : 'Reputation Only'
+                          })`,
+                          `空槽位 #${slot.slotIndex + 1}（${
+                            slot.slotType === 'amb_only'
+                              ? '仅限大使'
+                              : slot.slotType === 'both'
+                              ? '大使或声望'
+                              : '仅限声望'
+                          }）`
+                        )
                   }
                 >
                   {isRep ? (hideOpponentReputation ? '?' : repVal) : ''}
@@ -546,32 +596,32 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         >
           <div className="flex items-center gap-1 text-[11px] text-purple-300 font-bold">
             <Rocket className="w-3.5 h-3.5 text-purple-400" />
-            <span>Convert Colony Ship:</span>
+            <span>{l('Convert Colony Ship:', '转化殖民船:')}</span>
           </div>
           <div className="flex items-center gap-1">
             <button
               onClick={() => onConvertColonyShip('money')}
               disabled={player.colonyShips.ready <= 0 || !isActive}
               className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 transition-colors disabled:opacity-40 cursor-pointer"
-              title="Convert 1 ready Colony Ship to 1 Money"
+              title={l('Convert 1 ready Colony Ship to 1 Money', '将 1 艘就绪殖民船转化为 1 信用点')}
             >
-              +1 🪙 Money
+              {l('+1 🪙 Money', '+1 🪙 信用点')}
             </button>
             <button
               onClick={() => onConvertColonyShip('science')}
               disabled={player.colonyShips.ready <= 0 || !isActive}
               className="px-2 py-0.5 rounded text-[10px] font-bold bg-pink-500/20 hover:bg-pink-500/30 text-pink-300 border border-pink-500/40 transition-colors disabled:opacity-40 cursor-pointer"
-              title="Convert 1 ready Colony Ship to 1 Science"
+              title={l('Convert 1 ready Colony Ship to 1 Science', '将 1 艘就绪殖民船转化为 1 科研')}
             >
-              +1 🔬 Science
+              {l('+1 🔬 Science', '+1 🔬 科研')}
             </button>
             <button
               onClick={() => onConvertColonyShip('materials')}
               disabled={player.colonyShips.ready <= 0 || !isActive}
               className="px-2 py-0.5 rounded text-[10px] font-bold bg-amber-700/20 hover:bg-amber-700/30 text-amber-200 border border-amber-700/40 transition-colors disabled:opacity-40 cursor-pointer"
-              title="Convert 1 ready Colony Ship to 1 Material"
+              title={l('Convert 1 ready Colony Ship to 1 Material', '将 1 艘就绪殖民船转化为 1 材料')}
             >
-              +1 ⚙️ Material
+              {l('+1 ⚙️ Material', '+1 ⚙️ 材料')}
             </button>
           </div>
         </div>
@@ -582,10 +632,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         <div className="bg-slate-950/60 rounded-lg border border-slate-800/80 p-2 mb-2">
           <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1.5">
             <span className="flex items-center gap-1 text-indigo-400">
-              <Handshake className="w-3.5 h-3.5 text-indigo-400" /> Ambassadors
+              <Handshake className="w-3.5 h-3.5 text-indigo-400" /> {l('Ambassadors', '大使')}
             </span>
             <span className="font-mono text-[9px] text-slate-400">
-              {player.ambassadorTiles?.length || 0} / {player.faction.ambassadorSlots ?? 3} Slots
+              {player.ambassadorTiles?.length || 0} / {player.faction.ambassadorSlots ?? 3} {l('Slots', '槽位')}
             </span>
           </div>
 
@@ -597,19 +647,23 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 .map((id) => {
                   const ms = ALL_MINOR_SPECIES_TILES.find((t) => t.id === id);
                   if (!ms) return null;
+                  const msName = translateMinorSpeciesName(ms.id, ms.name, language);
                   return (
                     <div
                       key={ms.id}
                       className="flex items-center justify-between px-2 py-1 rounded bg-emerald-950/50 border border-emerald-700/60 text-[10.5px] transition-colors"
-                      title={`Minor Species Ambassador: ${ms.name} • ${ms.abilityDescription} • +${ms.vp} VP`}
+                      title={l(
+                        `Minor Species Ambassador: ${ms.name} • ${ms.abilityDescription} • +${ms.vp} VP`,
+                        `次要物种大使：${msName} • ${ms.abilityDescription} • +${ms.vp} VP`
+                      )}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className="text-xs">🌿</span>
-                        <span className="font-bold text-emerald-200 truncate">{ms.name}</span>
+                        <span className="font-bold text-emerald-200 truncate">{msName}</span>
                         <span className="text-[9px] text-emerald-400/80 truncate">({ms.vpDescription})</span>
                       </div>
                       <span className="font-mono text-[9.5px] text-emerald-300 font-bold shrink-0">
-                        Allied (+{ms.vp}★)
+                        {l(`Allied (+${ms.vp}★)`, `已结盟 (+${ms.vp}★)`)}
                       </span>
                     </div>
                   );
@@ -630,13 +684,17 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                   const cubeType = player.ambassadorCubes?.[other.id];
                   const cubeIcon =
                     cubeType === 'money' ? '💰' : cubeType === 'science' ? '🔬' : cubeType === 'material' ? '🔨' : '★';
+                  const otherFactionName = translateFactionName(other.faction.id, other.faction.name, language);
 
                   if (isAllied) {
                     return (
                       <div
                         key={other.id}
                         className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/90 border border-slate-900 text-slate-500 text-[10.5px] transition-colors"
-                        title={`Allied with ${other.name} (${other.faction.name}) • +1 VP`}
+                        title={l(
+                          `Allied with ${other.name} (${other.faction.name}) • +1 VP`,
+                          `已与 ${other.name} (${otherFactionName}) 结盟 • +1 VP`
+                        )}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span
@@ -644,20 +702,23 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                             style={{ backgroundColor: other.color }}
                           />
                           <span className="font-medium text-slate-400 truncate">{other.name}</span>
-                          <span className="text-[9px] text-slate-600 truncate">({other.faction.name})</span>
+                          <span className="text-[9px] text-slate-600 truncate">({otherFactionName})</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
                           <span className="font-mono text-[9.5px] text-slate-500 flex items-center gap-1 shrink-0">
-                            <Handshake className="w-3 h-3 text-slate-600" /> Allied {cubeIcon} (+1★)
+                            <Handshake className="w-3 h-3 text-slate-600" /> {l('Allied', '已结盟')} {cubeIcon} (+1★)
                           </span>
                           {isActive && onBetrayAlliance && (
                             <button
                               type="button"
                               onClick={() => onBetrayAlliance(other.id)}
                               className="px-1.5 py-0.5 rounded bg-rose-950/70 hover:bg-rose-900 border border-rose-700/60 text-rose-300 hover:text-white text-[9px] font-bold transition cursor-pointer"
-                              title={`Betray alliance with ${other.name} and take Traitor Tile (-2 VP)`}
+                              title={l(
+                                `Betray alliance with ${other.name} and take Traitor Tile (-2 VP)`,
+                                `背叛与 ${other.name} 的同盟并拿取背叛者板块 (-2 VP)`
+                              )}
                             >
-                              Betray
+                              {l('Betray', '背叛')}
                             </button>
                           )}
                         </div>
@@ -672,7 +733,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                         type="button"
                         onClick={() => onInitiateDiplomacy?.(other.id)}
                         className="w-full flex items-center justify-between px-2 py-1 rounded bg-indigo-950/60 hover:bg-indigo-900/80 border border-indigo-500/70 text-indigo-200 hover:text-white text-[10.5px] font-medium transition cursor-pointer shadow-sm shadow-indigo-950/50 group"
-                        title={`Click to exchange Ambassadors with ${other.name} (${other.faction.name}) • +1 VP each`}
+                        title={l(
+                          `Click to exchange Ambassadors with ${other.name} (${other.faction.name}) • +1 VP each`,
+                          `点击与 ${other.name} (${otherFactionName}) 交换大使 • 双方各 +1 VP`
+                        )}
                       >
                         <div className="flex items-center gap-1.5 min-w-0">
                           <span
@@ -680,10 +744,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                             style={{ backgroundColor: other.color }}
                           />
                           <span className="font-bold text-slate-100 truncate">{other.name}</span>
-                          <span className="text-[9px] text-indigo-300/80 truncate">({other.faction.name})</span>
+                          <span className="text-[9px] text-indigo-300/80 truncate">({otherFactionName})</span>
                         </div>
                         <span className="px-1.5 py-0.5 rounded bg-indigo-600 group-hover:bg-indigo-500 text-white font-bold text-[9px] uppercase tracking-wider flex items-center gap-1 shrink-0 transition-colors">
-                          <Handshake className="w-2.5 h-2.5" /> Exchange
+                          <Handshake className="w-2.5 h-2.5" /> {l('Exchange', '交换')}
                         </span>
                       </button>
                     );
@@ -693,7 +757,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                     <div
                       key={other.id}
                       className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/40 border border-slate-900/60 text-slate-600 text-[10.5px] cursor-not-allowed opacity-60"
-                      title={check.reason || 'Not eligible for diplomacy'}
+                      title={check.reason || l('Not eligible for diplomacy', '暂不可外交')}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span
@@ -701,10 +765,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                           style={{ backgroundColor: other.color }}
                         />
                         <span className="truncate">{other.name}</span>
-                        <span className="text-[9px] text-slate-700 truncate">({other.faction.name})</span>
+                        <span className="text-[9px] text-slate-700 truncate">({otherFactionName})</span>
                       </div>
                       <span className="text-[9px] text-slate-600 truncate max-w-[130px] font-mono">
-                        {check.reason ? (check.reason.length > 22 ? `${check.reason.slice(0, 20)}…` : check.reason) : 'Ineligible'}
+                        {check.reason ? (check.reason.length > 22 ? `${check.reason.slice(0, 20)}…` : check.reason) : l('Ineligible', '不可交换')}
                       </span>
                     </div>
                   );
@@ -715,9 +779,9 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               <div className="pt-1.5 border-t border-slate-800/80 mt-1 flex items-center justify-between text-[10px]">
                 <div className="flex items-center gap-1 text-slate-400">
                   <span className="text-xs">🌿</span>
-                  <span>Minor Species:</span>
+                  <span>{l('Minor Species:', '次要物种:')}</span>
                   <span className="text-emerald-300 font-bold font-mono">
-                    {minorSpeciesSupply?.length ?? 0} in Galaxy
+                    {minorSpeciesSupply?.length ?? 0} {l('in Galaxy', '在银河中')}
                   </span>
                 </div>
                 {onOpenMinorSpecies && (
@@ -725,9 +789,9 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                     type="button"
                     onClick={onOpenMinorSpecies}
                     className="px-2 py-0.5 rounded bg-emerald-950/80 hover:bg-emerald-900 border border-emerald-600/60 text-emerald-300 hover:text-white text-[9.5px] font-bold transition flex items-center gap-1 cursor-pointer"
-                    title="Open Minor Species window to view abilities or form diplomatic relations"
+                    title={l('Open Minor Species window to view abilities or form diplomatic relations', '打开次要物种窗口查看能力或建立外交关系')}
                   >
-                    <span>View & Ally</span>
+                    <span>{l('View & Ally', '查看与结盟')}</span>
                     <span className="text-[10px]">➔</span>
                   </button>
                 )}
@@ -741,26 +805,26 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
       <div
         onClick={onOpenPhysicalBoard}
         className="bg-slate-950/60 hover:bg-slate-950 border border-slate-800 hover:border-cyan-500/50 rounded-lg p-1.5 transition-all cursor-pointer group mb-2"
-        title="Click to view full Physical Board & Upkeep Forecaster (P)"
+        title={l('Click to view full Physical Board & Upkeep Forecaster (P)', '点击查看完整实体面板与维护费预测 (P)')}
       >
         <div className="flex items-center justify-between text-[9.5px] font-semibold text-slate-400 mb-1">
           <span className="flex items-center gap-1 text-amber-400 group-hover:text-amber-300">
-            <Zap className="w-2.5 h-2.5 text-amber-400" /> Upkeep Forecast
+            <Zap className="w-2.5 h-2.5 text-amber-400" /> {l('Upkeep Forecast', '维护费预测')}
           </span>
           <span className="text-[8.5px] text-cyan-400 font-mono group-hover:underline">
-            Board (P) →
+            {l('Board (P) →', '实体面板 (P) →')}
           </span>
         </div>
         <div className="grid grid-cols-2 gap-1 text-[10.5px] font-mono">
           <div className="bg-slate-900/90 rounded px-1.5 py-0.5 border border-slate-800 flex items-center justify-between">
-            <span className="text-slate-400 text-[9px]">+1 Act:</span>
+            <span className="text-slate-400 text-[9px]">{l('+1 Act:', '+1 行动:')}</span>
             <span className="font-bold text-amber-300">
               -{forecast.after1Action.upkeep}{' '}
               <span className="text-[8.5px] text-rose-400">(+{forecast.after1Action.costIncrease})</span>
             </span>
           </div>
           <div className="bg-slate-900/90 rounded px-1.5 py-0.5 border border-slate-800 flex items-center justify-between">
-            <span className="text-slate-400 text-[9px]">+2 Act:</span>
+            <span className="text-slate-400 text-[9px]">{l('+2 Act:', '+2 行动:')}</span>
             <span className="font-bold text-rose-300">
               -{forecast.after2Actions.upkeep}{' '}
               <span className="text-[8.5px] text-rose-400">(+{forecast.after2Actions.costIncrease})</span>
@@ -779,7 +843,15 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             className="w-full px-2 py-1.5 flex items-center justify-between text-[10px] font-semibold text-slate-400 hover:text-slate-200 transition-colors"
           >
             <span className="flex items-center gap-1 text-cyan-400">
-              <Rocket className="w-3 h-3" /> Fleet In Service ({totalShipsDeployed})
+              {language === 'zh' ? (
+                <>
+                  <Rocket className="w-3 h-3" /> 现役舰队 ({totalShipsDeployed})
+                </>
+              ) : (
+                <>
+                  <Rocket className="w-3 h-3" /> Fleet In Service ({totalShipsDeployed})
+                </>
+              )}
             </span>
             <span className="flex items-center gap-1 font-mono text-[9px] text-slate-500">
               {showFleet ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -788,25 +860,25 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           {showFleet && (
             <div className="p-2 pt-0 grid grid-cols-4 gap-1 text-center font-mono">
               <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800">
-                <div className="text-[8px] text-slate-400 uppercase">Int</div>
+                <div className="text-[8px] text-slate-400 uppercase">{l('Int', '拦截')}</div>
                 <div className="text-[10px] font-bold text-cyan-300">
                   {deployed.interceptor}/{SHIP_LIMITS.interceptor}
                 </div>
               </div>
               <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800">
-                <div className="text-[8px] text-slate-400 uppercase">Cru</div>
+                <div className="text-[8px] text-slate-400 uppercase">{l('Cru', '巡洋')}</div>
                 <div className="text-[10px] font-bold text-cyan-300">
                   {deployed.cruiser}/{SHIP_LIMITS.cruiser}
                 </div>
               </div>
               <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800">
-                <div className="text-[8px] text-slate-400 uppercase">Dre</div>
+                <div className="text-[8px] text-slate-400 uppercase">{l('Dre', '无畏')}</div>
                 <div className="text-[10px] font-bold text-cyan-300">
                   {deployed.dreadnought}/{SHIP_LIMITS.dreadnought}
                 </div>
               </div>
               <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800">
-                <div className="text-[8px] text-slate-400 uppercase">Sta</div>
+                <div className="text-[8px] text-slate-400 uppercase">{l('Sta', '星基')}</div>
                 <div className="text-[10px] font-bold text-cyan-300">
                   {deployed.starbase}/{SHIP_LIMITS.starbase}
                 </div>
@@ -815,12 +887,12 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               {delayedBlackHoleShips && delayedBlackHoleShips.filter((s) => s.ownerId === player.id).length > 0 && (
                 <div className="col-span-4 mt-1 p-1 rounded bg-indigo-950/60 border border-indigo-700/50 text-[9px] text-indigo-200 text-left flex items-center justify-between">
                   <span className="flex items-center gap-1 font-sans font-semibold">
-                    <span>🌀</span> In Black Hole:
+                    <span>🌀</span> {l('In Black Hole:', '黑洞滞留:')}
                   </span>
                   <span className="font-mono font-bold">
                     {delayedBlackHoleShips
                       .filter((s) => s.ownerId === player.id)
-                      .map((s) => `${s.shipType.slice(0, 3).toUpperCase()} (R${s.returnRound})`)
+                      .map((s) => `${language === 'zh' ? translateShipType(s.shipType, language) : s.shipType.slice(0, 3).toUpperCase()} (R${s.returnRound})`)
                       .join(', ')}
                   </span>
                 </div>
@@ -838,7 +910,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               className="w-full px-2 py-1.5 flex items-center justify-between text-[10px] font-semibold text-slate-400 hover:text-slate-200 transition-colors"
             >
               <span className="flex items-center gap-1 text-pink-400">
-                <Cpu className="w-3 h-3" /> Researched Techs ({player.techTrack.researched.length})
+                <Cpu className="w-3 h-3" /> {l('Researched Techs', '已研发科技')} ({player.techTrack.researched.length})
               </span>
               <span className="flex items-center gap-1 font-mono text-[9px] text-slate-500">
                 {showTech ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
@@ -846,23 +918,31 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             </button>
             {showTech && (
               <div className="p-2 pt-0 flex flex-wrap gap-1 max-h-32 overflow-y-auto">
-                {player.techTrack.researched.map((tech) => (
-                  <span
-                    key={tech.id}
-                    title={`${tech.name} (${tech.category.toUpperCase()} Tech)\n\n${tech.description}\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}`}
-                    className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border cursor-help transition-all hover:scale-105 ${
-                      tech.category === 'military'
-                        ? 'bg-rose-950/50 border-rose-800/60 text-rose-300 hover:border-rose-500'
-                        : tech.category === 'grid'
-                        ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-300 hover:border-emerald-500'
-                        : tech.category === 'nano'
-                        ? 'bg-sky-950/50 border-sky-800/60 text-sky-300 hover:border-sky-500'
-                        : 'bg-purple-950/50 border-purple-800/60 text-purple-300 hover:border-purple-500'
-                    }`}
-                  >
-                    {tech.name}
-                  </span>
-                ))}
+                {player.techTrack.researched.map((tech) => {
+                  const techName = translateTechName(tech.id, tech.name, language);
+                  const techDesc = translateTechDesc(tech.id, tech.description, language);
+                  const techCat = translateTechCategory(tech.category, language);
+                  return (
+                    <span
+                      key={tech.id}
+                      title={l(
+                        `${tech.name} (${tech.category.toUpperCase()} Tech)\n\n${tech.description}\nBase Cost: ${tech.baseCost} Science${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}`,
+                        `${techName}（${techCat}科技）\n\n${techDesc}\n基础花费：${tech.baseCost} 科研${tech.victoryPoints ? ` • +${tech.victoryPoints} VP` : ''}`
+                      )}
+                      className={`text-[9px] font-semibold px-1.5 py-0.2 rounded border cursor-help transition-all hover:scale-105 ${
+                        tech.category === 'military'
+                          ? 'bg-rose-950/50 border-rose-800/60 text-rose-300 hover:border-rose-500'
+                          : tech.category === 'grid'
+                          ? 'bg-emerald-950/50 border-emerald-800/60 text-emerald-300 hover:border-emerald-500'
+                          : tech.category === 'nano'
+                          ? 'bg-sky-950/50 border-sky-800/60 text-sky-300 hover:border-sky-500'
+                          : 'bg-purple-950/50 border-purple-800/60 text-purple-300 hover:border-purple-500'
+                      }`}
+                    >
+                      {techName}
+                    </span>
+                  );
+                })}
               </div>
             )}
           </div>
@@ -877,7 +957,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           >
             <div className="flex items-center justify-between">
               <span className="text-amber-400 font-semibold flex items-center gap-1">
-                ★ Kept Discoveries ({player.keptDiscoveryTiles?.length || 0})
+                ★ {l('Kept Discoveries', '保留探索板块')} ({player.keptDiscoveryTiles?.length || 0})
               </span>
               <span className="text-amber-300 font-bold font-mono">
                 +{((player.keptDiscoveryTiles?.length || 0) * 2)} VP

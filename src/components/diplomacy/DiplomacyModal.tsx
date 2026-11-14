@@ -1,6 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { Handshake, Coins, FlaskConical, Hammer, Check, X, ShieldAlert, ArrowRight } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateFactionName, translateResourceType } from '../../i18n/catalogTranslations';
 
 export type PopulationResourceType = 'money' | 'science' | 'material';
 
@@ -30,6 +32,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
   onRespond,
   onConfirm,
 }) => {
+  const { l, language } = useLanguage();
   const [step, setStep] = useState<'PROMPT' | 'SELECT_CUBES'>('PROMPT');
 
   // Choose default cube for player with available stock
@@ -70,19 +73,19 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
     { label: string; icon: React.ReactNode; colorClass: string; activeClass: string }
   > = {
     money: {
-      label: 'Money',
+      label: l('Money', '信用点'),
       icon: <Coins className="w-4 h-4 text-yellow-400" />,
       colorClass: 'text-yellow-400',
       activeClass: 'bg-yellow-950/70 border-yellow-500 shadow-yellow-950/50',
     },
     science: {
-      label: 'Science',
+      label: l('Science', '科研'),
       icon: <FlaskConical className="w-4 h-4 text-pink-400" />,
       colorClass: 'text-pink-400',
       activeClass: 'bg-pink-950/70 border-pink-500 shadow-pink-950/50',
     },
     material: {
-      label: 'Material',
+      label: l('Material', '材料'),
       icon: <Hammer className="w-4 h-4 text-amber-500" />,
       colorClass: 'text-amber-400',
       activeClass: 'bg-amber-950/70 border-amber-500 shadow-amber-950/50',
@@ -100,15 +103,15 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-100 flex items-center gap-2 font-display">
-                Diplomatic Relations & Ambassadors
+                {l('Diplomatic Relations & Ambassadors', '外交关系与大使交换')}
                 <span className="text-xs px-2 py-0.5 rounded-full bg-indigo-900/80 text-indigo-300 border border-indigo-700/60">
-                  +1 VP Each
+                  {l('+1 VP Each', '各 +1 VP')}
                 </span>
               </h2>
               <p className="text-xs text-slate-400">
                 {step === 'PROMPT'
-                  ? 'Alliance Proposal & Mutual Consent'
-                  : 'Assign Population Cubes to Ambassadors'}
+                  ? l('Alliance Proposal & Mutual Consent', '结盟提案与双方确认')
+                  : l('Assign Population Cubes to Ambassadors', '为大使板块分配人口方块')}
               </p>
             </div>
           </div>
@@ -134,10 +137,12 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   />
                   <div className="min-w-0">
                     <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">
-                      Proposing Empire
+                      {l('Proposing Empire', '发起帝国')}
                     </div>
                     <div className="text-sm font-bold text-slate-200 truncate">{initiator.name}</div>
-                    <div className="text-xs text-indigo-300 truncate">{initiator.faction.name}</div>
+                    <div className="text-xs text-indigo-300 truncate">
+                      {translateFactionName(initiator.faction.id, initiator.faction.name, language)}
+                    </div>
                   </div>
                 </div>
 
@@ -148,10 +153,12 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   />
                   <div className="min-w-0">
                     <div className="text-xs text-slate-400 uppercase tracking-wider font-semibold">
-                      Target Empire
+                      {l('Target Empire', '目标帝国')}
                     </div>
                     <div className="text-sm font-bold text-slate-200 truncate">{target.name}</div>
-                    <div className="text-xs text-indigo-300 truncate">{target.faction.name}</div>
+                    <div className="text-xs text-indigo-300 truncate">
+                      {translateFactionName(target.faction.id, target.faction.name, language)}
+                    </div>
                   </div>
                 </div>
               </div>
@@ -162,15 +169,31 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   <div className="p-4 rounded-xl bg-indigo-950/40 border border-indigo-800/60 space-y-2.5">
                     <div className="text-sm font-bold text-indigo-200 flex items-center gap-2">
                       <Handshake className="w-4 h-4 text-indigo-400" />
-                      Alliance Proposal: Does Commander {target.name} accept?
+                      {l(`Alliance Proposal: Does Commander ${target.name} accept?`, `结盟提案：指挥官 ${target.name} 是否接受？`)}
                     </div>
                     <p className="text-xs text-slate-300 leading-relaxed">
-                      <strong className="text-slate-100">{initiator.name}</strong> ({initiator.faction.name}) has formally proposed an Ambassador Exchange, offering a <strong className="text-indigo-300 uppercase">{pendingInitiatorCube}</strong> population cube.
+                      <strong className="text-slate-100">{initiator.name}</strong> (
+                      {translateFactionName(initiator.faction.id, initiator.faction.name, language)})
+                      {l(' has formally proposed an Ambassador Exchange, offering a ', ' 正式提议交换大使，并献上一枚 ')}
+                      <strong className="text-indigo-300 uppercase">
+                        {translateResourceType(pendingInitiatorCube, language)}
+                      </strong>
+                      {l(' population cube.', ' 人口方块。')}
                     </p>
                     <div className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 text-[11px] text-slate-400 space-y-1">
-                      <div className="text-slate-300 font-semibold mb-1">If accepted:</div>
-                      <div>• Both empires place an Ambassador on their Reputation track, worth <strong className="text-indigo-300">+1 VP</strong> each at game end.</div>
-                      <div>• You choose 1 population cube (💰, 🔬, or 🔨) from your board to place on their ambassador, immediately unlocking increased production.</div>
+                      <div className="text-slate-300 font-semibold mb-1">{l('If accepted:', '如果接受：')}</div>
+                      <div>
+                        • {l('Both empires place an Ambassador on their Reputation track, worth ', '双方帝国各在自己的声望轨放置一枚大使板块，终局价值 ')}
+                        <strong className="text-indigo-300">+1 VP</strong>
+                        {l(' each at game end.', '。')}
+                      </div>
+                      <div>
+                        •{' '}
+                        {l(
+                          'You choose 1 population cube (💰, 🔬, or 🔨) from your board to place on their ambassador, immediately unlocking increased production.',
+                          '你从自身帝国面板选择 1 枚人口方块（💰、🔬 或 🔨）放到对方大使板块上，从而立即提升对应产能。'
+                        )}
+                      </div>
                     </div>
                   </div>
 
@@ -180,14 +203,14 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                       onClick={() => (onRespond ? onRespond(false) : onClose())}
                       className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
                     >
-                      Decline Proposal
+                      {l('Decline Proposal', '拒绝提案')}
                     </button>
                     <button
                       type="button"
                       onClick={() => setStep('SELECT_CUBES')}
                       className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-900/40 transition flex items-center gap-2"
                     >
-                      Accept Proposal <ArrowRight className="w-4 h-4" />
+                      {l('Accept Proposal', '接受提案')} <ArrowRight className="w-4 h-4" />
                     </button>
                   </div>
                 </>
@@ -197,10 +220,13 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   <div className="p-4 rounded-xl bg-indigo-950/40 border border-indigo-800/60 space-y-2.5">
                     <div className="text-sm font-bold text-indigo-200 flex items-center gap-2">
                       <Handshake className="w-4 h-4 text-indigo-400" />
-                      Propose Ambassador Exchange with Commander {target.name}
+                      {l(`Propose Ambassador Exchange with Commander ${target.name}`, `向指挥官 ${target.name} 提议交换大使`)}
                     </div>
                     <p className="text-xs text-slate-300 leading-relaxed">
-                      Select which population cube to offer with your ambassador. Commander {target.name} will have the right to accept or decline the proposal.
+                      {l(
+                        `Select which population cube to offer with your ambassador. Commander ${target.name} will have the right to accept or decline the proposal.`,
+                        `选择你要随大使一同献出的人口方块类型。指挥官 ${target.name} 将有权决定接受或拒绝该提议。`
+                      )}
                     </p>
                   </div>
 
@@ -209,10 +235,13 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                     <div className="flex items-center justify-between text-xs">
                       <span className="font-bold text-slate-200 flex items-center gap-1.5">
                         <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: initiator.color }} />
-                        {initiator.name}&apos;s Offered Cube
+                        {l(`${initiator.name}'s Offered Cube`, `${initiator.name} 献出的方块`)}
                       </span>
                       <span className="text-[11px] text-slate-400 font-mono">
-                        Selected: <strong className="text-slate-200 uppercase">{initiatorCube}</strong>
+                        {l('Selected:', '已选：')}{' '}
+                        <strong className="text-slate-200 uppercase">
+                          {translateResourceType(initiatorCube, language)}
+                        </strong>
                       </span>
                     </div>
                     <div className="grid grid-cols-3 gap-2">
@@ -242,7 +271,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                               {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400" />}
                             </div>
                             <div className="text-[10px] text-slate-400 mt-2 font-mono flex items-center justify-between">
-                              <span>On Track:</span>
+                              <span>{l('On Track:', '轨道库存：')}</span>
                               <span className={`font-bold ${isAvailable ? 'text-slate-200' : 'text-rose-400'}`}>
                                 {count}
                               </span>
@@ -259,7 +288,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                       onClick={onClose}
                       className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
                     >
-                      Cancel
+                      {l('Cancel', '取消')}
                     </button>
                     {onPropose ? (
                       <button
@@ -268,7 +297,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                         onClick={() => onPropose(initiatorCube)}
                         className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-lg shadow-indigo-900/40 transition flex items-center gap-2"
                       >
-                        Send Proposal to {target.name} <ArrowRight className="w-4 h-4" />
+                        {l(`Send Proposal to ${target.name}`, `向 ${target.name} 发送提案`)} <ArrowRight className="w-4 h-4" />
                       </button>
                     ) : (
                       <button
@@ -276,7 +305,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                         onClick={() => setStep('SELECT_CUBES')}
                         className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs shadow-lg shadow-indigo-900/40 transition flex items-center gap-2"
                       >
-                        Continue <ArrowRight className="w-4 h-4" />
+                        {l('Continue', '继续')} <ArrowRight className="w-4 h-4" />
                       </button>
                     )}
                   </div>
@@ -287,7 +316,10 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
             /* Step 2: Population Cube Selection */
             <div className="space-y-4">
               <div className="text-xs text-slate-300 bg-slate-950/60 border border-slate-800 p-3 rounded-xl">
-                Choose a population cube (💰, 🔬, or 🔨) from your board to attach to the ambassador. Removing the cube uncovers the track space and increases your production!
+                {l(
+                  'Choose a population cube (💰, 🔬, or 🔨) from your board to attach to the ambassador. Removing the cube uncovers the track space and increases your production!',
+                  '从帝国面板中选择 1 枚人口方块（💰、🔬 或 🔨）放到大使板块上。移除人口方块会显露下方轨道格并提高你的产能！'
+                )}
               </div>
 
               {!isProposalResponse && (
@@ -296,10 +328,14 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   <div className="flex items-center justify-between text-xs">
                     <span className="font-bold text-slate-200 flex items-center gap-1.5">
                       <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: initiator.color }} />
-                      {initiator.name}&apos;s Cube ({initiator.faction.name})
+                      {initiator.name}{l(`'s Cube`, ' 的人口方块')} (
+                      {translateFactionName(initiator.faction.id, initiator.faction.name, language)})
                     </span>
                     <span className="text-[11px] text-slate-400 font-mono">
-                      Selected: <strong className="text-slate-200 uppercase">{initiatorCube}</strong>
+                      {l('Selected:', '已选：')}{' '}
+                      <strong className="text-slate-200 uppercase">
+                        {translateResourceType(initiatorCube, language)}
+                      </strong>
                     </span>
                   </div>
                   <div className="grid grid-cols-3 gap-2">
@@ -329,7 +365,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                             {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400" />}
                           </div>
                           <div className="text-[10px] text-slate-400 mt-2 font-mono flex items-center justify-between">
-                            <span>On Track:</span>
+                            <span>{l('On Track:', '轨道库存：')}</span>
                             <span className={`font-bold ${isAvailable ? 'text-slate-200' : 'text-rose-400'}`}>
                               {count}
                             </span>
@@ -346,10 +382,14 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <span className="font-bold text-slate-200 flex items-center gap-1.5">
                     <span className="w-2.5 h-2.5 rounded-full" style={{ backgroundColor: target.color }} />
-                    {target.name}&apos;s Cube ({target.faction.name})
+                    {target.name}{l(`'s Cube`, ' 的人口方块')} (
+                    {translateFactionName(target.faction.id, target.faction.name, language)})
                   </span>
                   <span className="text-[11px] text-slate-400 font-mono">
-                    Selected: <strong className="text-slate-200 uppercase">{targetCube}</strong>
+                    {l('Selected:', '已选：')}{' '}
+                    <strong className="text-slate-200 uppercase">
+                      {translateResourceType(targetCube, language)}
+                    </strong>
                   </span>
                 </div>
                 <div className="grid grid-cols-3 gap-2">
@@ -379,7 +419,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                           {isSelected && <Check className="w-3.5 h-3.5 text-indigo-400" />}
                         </div>
                         <div className="text-[10px] text-slate-400 mt-2 font-mono flex items-center justify-between">
-                          <span>On Track:</span>
+                          <span>{l('On Track:', '轨道库存：')}</span>
                           <span className={`font-bold ${isAvailable ? 'text-slate-200' : 'text-rose-400'}`}>
                             {count}
                           </span>
@@ -397,7 +437,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                   onClick={() => setStep('PROMPT')}
                   className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
                 >
-                  Back
+                  {l('Back', '返回')}
                 </button>
                 <div className="flex items-center gap-2">
                   <button
@@ -405,7 +445,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                     onClick={onClose}
                     className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
                   >
-                    Cancel
+                    {l('Cancel', '取消')}
                   </button>
                   <button
                     type="button"
@@ -419,7 +459,10 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                     }}
                     className="px-5 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed text-white font-bold text-xs shadow-lg shadow-indigo-900/40 transition flex items-center gap-1.5"
                   >
-                    <Handshake className="w-4 h-4" /> {isProposalResponse ? 'Accept & Establish Alliance' : 'Confirm Ambassador Exchange'}
+                    <Handshake className="w-4 h-4" />{' '}
+                    {isProposalResponse
+                      ? l('Accept & Establish Alliance', '接受并缔结盟约')
+                      : l('Confirm Ambassador Exchange', '确认大使交换')}
                   </button>
                 </div>
               </div>

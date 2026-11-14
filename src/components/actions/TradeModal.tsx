@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { ArrowRightLeft, ArrowRight, Coins, FlaskConical, Hammer, X } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateResourceType } from '../../i18n/catalogTranslations';
 
 interface TradeModalProps {
   player: PlayerState;
@@ -21,6 +23,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
   readOnly = false,
   onClose,
 }) => {
+  const { language, l } = useLanguage();
   const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
   const ratio = isRhoIndi ? 3 : (player.faction.tradeRatio || 2);
   const [fromResource, setFromResource] = useState<ResourceType>('material');
@@ -58,21 +61,21 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 
   const resourceConfig: Record<ResourceType, { label: string; icon: React.ReactNode; color: string; bg: string; border: string }> = {
     money: {
-      label: 'Credits (Money)',
+      label: l('Credits (Money)', '金钱'),
       icon: <Coins className="w-4 h-4 text-yellow-400" />,
       color: 'text-yellow-400',
       bg: 'bg-yellow-950/40',
       border: 'border-yellow-500',
     },
     science: {
-      label: 'Science',
+      label: l('Science', '科研'),
       icon: <FlaskConical className="w-4 h-4 text-pink-400" />,
       color: 'text-pink-400',
       bg: 'bg-pink-950/40',
       border: 'border-pink-500',
     },
     material: {
-      label: 'Materials',
+      label: l('Materials', '材料'),
       icon: <Hammer className="w-4 h-4 text-amber-500" />,
       color: 'text-amber-400',
       bg: 'bg-amber-950/40',
@@ -94,7 +97,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           <div className="flex items-center gap-2.5">
             <ArrowRightLeft className="w-5 h-5 text-amber-400" />
             <h2 className="text-base font-bold text-slate-100 font-display">
-              COMMERCE & RESOURCE EXCHANGE
+              {l('COMMERCE & RESOURCE EXCHANGE', '星际贸易与资源兑换')}
             </h2>
           </div>
           <button onClick={onClose} className="p-1 hover:bg-slate-800 rounded text-slate-400">
@@ -106,22 +109,35 @@ export const TradeModal: React.FC<TradeModalProps> = ({
         <div className="p-6 space-y-4 text-xs">
           <div className="bg-slate-950 p-3 rounded-lg border border-slate-800 text-slate-400 leading-relaxed">
             {isRhoIndi ? (
-              <>
-                <span className="text-amber-400 font-bold">Rho Indi Syndicate Asymmetric Trade:</span>{' '}
-                Trade <strong>3 Money for 2</strong> Science or Materials (3:2), or trade <strong>3 Materials / Science for 1</strong> of any other resource (3:1).
-              </>
+              language === 'zh' ? (
+                <>
+                  <span className="text-amber-400 font-bold">罗印迪辛迪加非对称贸易：</span>{' '}
+                  以 <strong>3 金钱兑换 2</strong> 科研或材料（3:2），或以 <strong>3 材料/科研兑换 1</strong> 任意其他资源（3:1）。
+                </>
+              ) : (
+                <>
+                  <span className="text-amber-400 font-bold">Rho Indi Syndicate Asymmetric Trade:</span>{' '}
+                  Trade <strong>3 Money for 2</strong> Science or Materials (3:2), or trade <strong>3 Materials / Science for 1</strong> of any other resource (3:1).
+                </>
+              )
             ) : (
-              <>
-                Faction Exchange Rate: <strong className="text-amber-400 font-bold">{ratio}:1</strong>.{' '}
-                Trade {ratio} units of any resource for 1 unit of another resource at your galactic commerce ratio.
-              </>
+              language === 'zh' ? (
+                <>
+                  种族汇率：<strong className="text-amber-400 font-bold">{ratio}:1</strong>。按你的银河贸易比例，用 {ratio} 单位任意资源兑换 1 单位其他资源。
+                </>
+              ) : (
+                <>
+                  Faction Exchange Rate: <strong className="text-amber-400 font-bold">{ratio}:1</strong>.{' '}
+                  Trade {ratio} units of any resource for 1 unit of another resource at your galactic commerce ratio.
+                </>
+              )
             )}
           </div>
 
           {/* Trade Source */}
           <div>
             <label className="block text-slate-300 font-bold uppercase mb-2 text-[11px] tracking-wider">
-              1. Trade Source (Pay {ratio} units)
+              {l(`1. Trade Source (Pay ${ratio} units)`, `1. 付出资源（每次 ${ratio} 单位）`)}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(['material', 'science', 'money'] as const).map((res) => {
@@ -143,7 +159,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                       <span className="truncate">{cfg.label}</span>
                     </div>
                     <span className="text-[10px] font-mono text-slate-300">
-                      {getBalance(res)} Avail
+                      {getBalance(res)} {l('Avail', '可用')}
                     </span>
                   </button>
                 );
@@ -154,7 +170,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           {/* Trade Destination */}
           <div>
             <label className="block text-slate-300 font-bold uppercase mb-2 text-[11px] tracking-wider">
-              2. Trade Target (Receive {isRhoIndi && fromResource === 'money' ? '2 units' : '1 unit'})
+              {l(`2. Trade Target (Receive ${isRhoIndi && fromResource === 'money' ? '2 units' : '1 unit'})`, `2. 获得资源（每次获得 ${isRhoIndi && fromResource === 'money' ? '2 单位' : '1 单位'}）`)}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(['money', 'science', 'material'] as const).map((res) => {
@@ -180,7 +196,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                       <span className="truncate">{cfg.label}</span>
                     </div>
                     <span className="text-[10px] font-mono text-slate-300">
-                      {getBalance(res)} Current
+                      {getBalance(res)} {l('Current', '当前')}
                     </span>
                   </button>
                 );
@@ -191,7 +207,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           {/* Amount input & Exchange summary */}
           <div className="p-3.5 bg-slate-950 rounded-xl border border-slate-800">
             <label className="block text-slate-300 font-bold uppercase mb-2 text-[11px] tracking-wider">
-              Amount to Spend (Multiples of {ratio})
+              {l(`Amount to Spend (Multiples of ${ratio})`, `花费数量（${ratio} 的倍数）`)}
             </label>
             <div className="flex flex-wrap items-center gap-3">
               <input
@@ -206,7 +222,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
               <div className="flex items-center gap-2 text-slate-300 font-semibold">
                 <ArrowRight className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>
-                  Yields{' '}
+                  {l('Yields', '获得')}{' '}
                   <strong className="text-emerald-400 font-bold text-base font-mono">
                     +{gained} {resourceConfig[toResource].label}
                   </strong>
@@ -215,7 +231,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
             </div>
             {amount > available && (
               <div className="mt-2 text-rose-400 font-medium text-[11px]">
-                Insufficient {fromResource} ({available} available).
+                {l(`Insufficient ${fromResource} (${available} available).`, `${translateResourceType(fromResource, language)}不足（仅剩 ${available}）。`)}
               </div>
             )}
           </div>
@@ -227,14 +243,14 @@ export const TradeModal: React.FC<TradeModalProps> = ({
             onClick={onClose}
             className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold"
           >
-            Cancel
+            {l('Cancel', '取消')}
           </button>
           <button
             disabled={readOnly || !canTrade}
             onClick={() => onTrade(fromResource, amount, toResource)}
             className="px-5 py-2 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-bold text-xs tracking-wide shadow transition-all cursor-pointer"
           >
-            {readOnly ? 'Spectator Mode (Read Only)' : 'Confirm Exchange'}
+            {readOnly ? l('Spectator Mode (Read Only)', '观战模式（只读）') : l('Confirm Exchange', '确认兑换')}
           </button>
         </div>
       </div>

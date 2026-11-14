@@ -24607,6 +24607,222 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(modalHtml).toContain('combat-group-interceptor-1-1');
         expect(modalHtml).toContain('combat-group-ancient-2-2');
       });
+
+      it('168. verifies bilingual EN/ZH LanguageProvider, LanguageSwitcher, and Simplified Chinese rendering across major UI views', async () => {
+        const { renderToString } = await import('react-dom/server');
+        const React = await import('react');
+        const { LanguageProvider } = await import('../../i18n/LanguageContext');
+        const { LanguageSwitcher } = await import('../../components/common/LanguageSwitcher');
+        const { Header } = await import('../../components/layout/Header');
+        const { ActionBar } = await import('../../components/layout/ActionBar');
+        const { LobbyView } = await import('../../components/lobby/LobbyView');
+        const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+        const { CombatModal } = await import('../../components/combat/CombatModal');
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+
+        const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+        const p1 = game.players[0]!;
+        const homeSec = game.sectors.find((s) => s.discOwner === p1.id) || game.sectors[0]!;
+
+        // 1. Standalone LanguageSwitcher renders EN | 中文 toggle controls
+        const switcherEnHtml = renderToString(React.createElement(LanguageSwitcher, {}));
+        expect(switcherEnHtml).toContain('data-testid="language-switcher"');
+        expect(switcherEnHtml).toContain('EN');
+        expect(switcherEnHtml).toContain('中文');
+
+        // 2. Fallback outside LanguageProvider defaults strictly to English ('en')
+        const lobbyDefaultEnHtml = renderToString(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+            onOpenGallery: () => {},
+            onOpenCombatSimulator: () => {},
+          })
+        );
+        expect(lobbyDefaultEnHtml).toContain('📚 Gallery');
+        expect(lobbyDefaultEnHtml).toContain('⚔️ Simulator');
+        expect(lobbyDefaultEnHtml).toContain('data-testid="language-switcher"');
+
+        // 3. LanguageProvider with initialLanguage="zh" renders Simplified Chinese across key UI views
+        const wrapZh = (el: React.ReactElement) =>
+          React.createElement(LanguageProvider, { initialLanguage: 'zh', children: el });
+
+        const lobbyZhHtml = renderToString(
+          wrapZh(
+            React.createElement(LobbyView, {
+              onStartNewGame: () => {},
+              onJoinTable: () => {},
+              onOpenGallery: () => {},
+              onOpenCombatSimulator: () => {},
+            })
+          )
+        );
+        expect(lobbyZhHtml).toContain('📚 图鉴');
+        expect(lobbyZhHtml).toContain('⚔️ 战斗模拟');
+
+        const headerZhHtml = renderToString(
+          wrapZh(
+            React.createElement(Header, {
+              state: game,
+              currentUser: { id: 'u1', username: 'testuser', name: 'Test User', role: 'user', createdAt: 0, lastActiveAt: 0 },
+              currentSeat: 0,
+              selectedViewIndex: 0,
+              onSelectActiveViewPlayer: () => {},
+              onNewGame: () => {},
+              onOpenGallery: () => {},
+              initialDrawerOpen: true,
+            })
+          )
+        );
+        expect(headerZhHtml).toContain('data-testid="language-switcher"');
+        expect(headerZhHtml).toContain('星际图鉴');
+
+        const actionBarZhHtml = renderToString(
+          wrapZh(
+            React.createElement(ActionBar, {
+              activePlayer: p1,
+              isExploreMode: false,
+              onToggleExplore: () => {},
+              onOpenResearch: () => {},
+              onOpenUpgrade: () => {},
+              onOpenBuild: () => {},
+              onOpenMove: () => {},
+              onOpenInfluence: () => {},
+              onPass: () => {},
+            })
+          )
+        );
+        expect(actionBarZhHtml).toContain('探索');
+
+        const boardZhHtml = renderToString(
+          wrapZh(
+            React.createElement(PlayerBoard, {
+              player: p1,
+              isActive: true,
+              sectors: game.sectors,
+              allPlayers: game.players,
+              onOpenBlueprints: () => {},
+              onOpenTechMarket: () => {},
+              onOpenTrade: () => {},
+            })
+          )
+        );
+        expect(boardZhHtml).toContain('现役舰队');
+
+        const inspectorZhHtml = renderToString(
+          wrapZh(
+            React.createElement(SectorInspector, {
+              sector: homeSec,
+              players: game.players,
+              activePlayer: p1,
+              onClose: () => {},
+            })
+          )
+        );
+        expect(inspectorZhHtml).toContain('星区控制权:');
+
+        const combatSecZh = game.sectors.find((s) => s.ancientsCount > 0 || s.hasGCDS) || game.sectors[0]!;
+        combatSecZh.ships = [
+          { id: 'c_zh_int_1', ownerId: p1.id, type: 'interceptor', damage: 0 },
+          { id: 'c_zh_anc_1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+        ];
+        const combatZhHtml = renderToString(
+          wrapZh(
+            React.createElement(CombatModal, {
+              state: game,
+              combat: {
+                sectorId: combatSecZh.id,
+                roundNumber: 1,
+                stage: 'regular',
+                initiativeOrder: [],
+                currentTurnIndex: 0,
+                participatingPlayerIds: [p1.id, 'ancient'],
+                defenderOwnerId: 'ancient',
+                lastRolls: [],
+                retreatDeclared: {},
+              },
+              onStepCombat: () => {},
+            })
+          )
+        );
+        expect(combatZhHtml).toContain('交战双方舰队');
+
+        const galleryZhHtml = renderToString(
+          wrapZh(
+            React.createElement(GalacticGalleryModal, {
+              isOpen: true,
+              onClose: () => {},
+            })
+          )
+        );
+        expect(galleryZhHtml).toContain('星海百科全书与规则图鉴');
+        expect(galleryZhHtml).toContain('关闭图鉴');
+
+        // 4. Chronicle (GameLogDrawer) translates engine-generated English log entries cleanly in Chinese mode
+        const { GameLogDrawer } = await import('../../components/layout/GameLogDrawer');
+        const sampleLogs = [
+          ...game.log,
+          {
+            id: 'log_zh_explore',
+            timestamp: Date.now(),
+            round: 1,
+            phase: 'ACTION_PHASE' as const,
+            playerId: p1.id,
+            message: `${p1.name} explored Sector 204 at (1, -1) and placed an Influence Disc!`,
+            type: 'action' as const,
+          },
+          {
+            id: 'log_zh_research',
+            timestamp: Date.now(),
+            round: 1,
+            phase: 'ACTION_PHASE' as const,
+            playerId: p1.id,
+            message: `${p1.name} researched Plasma Cannon for 4 Science (MILITARY track).`,
+            type: 'action' as const,
+          },
+          {
+            id: 'log_zh_combat',
+            timestamp: Date.now(),
+            round: 1,
+            phase: 'COMBAT_PHASE' as const,
+            message: `Combat in Sector 204 has concluded! Winner: ${p1.name}.`,
+            type: 'combat' as const,
+          },
+          {
+            id: 'log_zh_upkeep',
+            timestamp: Date.now(),
+            round: 1,
+            phase: 'UPKEEP_PHASE' as const,
+            playerId: p1.id,
+            message: `💰 UPKEEP: ${p1.name} earned 4 Credits income, paid 2 Upkeep (Net: +2, Treasury: 4).`,
+            type: 'economy' as const,
+          },
+        ];
+
+        const chronicleEnHtml = renderToString(
+          React.createElement(GameLogDrawer, {
+            logs: sampleLogs,
+            initialOpen: true,
+          })
+        );
+        expect(chronicleEnHtml).toContain('explored Sector 204');
+        expect(chronicleEnHtml).toContain('researched Plasma Cannon');
+
+        const chronicleZhHtml = renderToString(
+          wrapZh(
+            React.createElement(GameLogDrawer, {
+              logs: sampleLogs,
+              initialOpen: true,
+            })
+          )
+        );
+        expect(chronicleZhHtml).toContain('星系初始化完成');
+        expect(chronicleZhHtml).toContain('在坐标 (1, -1) 探索了星区 204 并放置了影响力圆片！');
+        expect(chronicleZhHtml).toContain('花费 4 科研研发了「等离子加农炮」（放入军事科技轨）。');
+        expect(chronicleZhHtml).toContain('星区 204 的战斗已结束！');
+        expect(chronicleZhHtml).toContain('💰 维护结算：');
+      });
     });
   });
 });

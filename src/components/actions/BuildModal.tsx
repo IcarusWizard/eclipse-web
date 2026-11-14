@@ -13,6 +13,8 @@ import {
   Trash2,
   Sparkles,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateShipType } from '../../i18n/catalogTranslations';
 
 export interface BuildItemPayload {
   sectorId: string;
@@ -44,6 +46,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   onClose,
   pulsarSectorId,
 }) => {
+  const { language, l } = useLanguage();
   const isPulsarActive = Boolean(pulsarSectorId);
   const maxBuild = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxBuildActivations(player));
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
@@ -142,79 +145,79 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   }[] = [
     {
       type: 'interceptor',
-      name: 'Interceptor',
+      name: l('Interceptor', '拦截舰'),
       cost: getItemCost('interceptor'),
       limit: SHIP_LIMITS.interceptor,
       supplyLeft: getAvailableSupply('interceptor'),
       unlocked: getAvailableSupply('interceptor') > 0,
-      disabledReason: getAvailableSupply('interceptor') <= 0 ? `Max limit of ${SHIP_LIMITS.interceptor} reached` : undefined,
-      description: `Fast, agile light fighter with high base initiative (Limit 8, Cost ${getItemCost('interceptor')} Mats).`,
+      disabledReason: getAvailableSupply('interceptor') <= 0 ? l(`Max limit of ${SHIP_LIMITS.interceptor} reached`, `已达上限 ${SHIP_LIMITS.interceptor} 艘`) : undefined,
+      description: l(`Fast, agile light fighter with high base initiative (Limit 8, Cost ${getItemCost('interceptor')} Mats).`, `高速敏捷的轻型战机，拥有高基础先攻（上限 8，费用 ${getItemCost('interceptor')} 材料）。`),
     },
     {
       type: 'cruiser',
-      name: 'Cruiser',
+      name: l('Cruiser', '巡洋舰'),
       cost: getItemCost('cruiser'),
       limit: SHIP_LIMITS.cruiser,
       supplyLeft: getAvailableSupply('cruiser'),
       unlocked: getAvailableSupply('cruiser') > 0,
-      disabledReason: getAvailableSupply('cruiser') <= 0 ? `Max limit of ${SHIP_LIMITS.cruiser} reached` : undefined,
-      description: `Medium combat warship with balanced shielding and firepower (Limit 4, Cost ${getItemCost('cruiser')} Mats).`,
+      disabledReason: getAvailableSupply('cruiser') <= 0 ? l(`Max limit of ${SHIP_LIMITS.cruiser} reached`, `已达上限 ${SHIP_LIMITS.cruiser} 艘`) : undefined,
+      description: l(`Medium combat warship with balanced shielding and firepower (Limit 4, Cost ${getItemCost('cruiser')} Mats).`, `均衡防御与火力的中型主力战舰（上限 4，费用 ${getItemCost('cruiser')} 材料）。`),
     },
     {
       type: 'dreadnought',
-      name: 'Dreadnought',
+      name: l('Dreadnought', '无畏舰'),
       cost: getItemCost('dreadnought'),
       limit: isRhoIndi ? 0 : SHIP_LIMITS.dreadnought,
       supplyLeft: getAvailableSupply('dreadnought'),
       unlocked: getAvailableSupply('dreadnought') > 0,
       disabledReason: isRhoIndi
-        ? 'Rho Indi Syndicate cannot construct Dreadnoughts.'
+        ? l('Rho Indi Syndicate cannot construct Dreadnoughts.', '罗印迪辛迪加无法建造无畏舰。')
         : getAvailableSupply('dreadnought') <= 0
-        ? `Max limit of ${SHIP_LIMITS.dreadnought} reached`
+        ? l(`Max limit of ${SHIP_LIMITS.dreadnought} reached`, `已达上限 ${SHIP_LIMITS.dreadnought} 艘`)
         : undefined,
-      description: `Heavily armored capital flagship capable of carrying superweapons (Limit 2, Cost ${getItemCost('dreadnought')} Mats).`,
+      description: l(`Heavily armored capital flagship capable of carrying superweapons (Limit 2, Cost ${getItemCost('dreadnought')} Mats).`, `重装甲主力旗舰，可搭载重型武器（上限 2，费用 ${getItemCost('dreadnought')} 材料）。`),
     },
     {
       type: 'starbase',
-      name: 'Starbase',
+      name: l('Starbase', '星际基地'),
       cost: getItemCost('starbase'),
       limit: isExiles ? 0 : SHIP_LIMITS.starbase,
       supplyLeft: getAvailableSupply('starbase'),
       unlocked: !isExiles && hasStarbaseTech && getAvailableSupply('starbase') > 0,
       disabledReason: isExiles
-        ? 'The Exiles cannot construct Starbases.'
+        ? l('The Exiles cannot construct Starbases.', '流亡者无法建造星际基地。')
         : !hasStarbaseTech
-        ? 'Requires Starbase tech'
+        ? l('Requires Starbase tech', '需要星际基地科技')
         : getAvailableSupply('starbase') <= 0
-        ? `Max limit of ${SHIP_LIMITS.starbase} reached`
+        ? l(`Max limit of ${SHIP_LIMITS.starbase} reached`, `已达上限 ${SHIP_LIMITS.starbase} 座`)
         : undefined,
-      description: `Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats, requires Starbase tech).`,
+      description: l(`Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats, requires Starbase tech).`, `固定轨道防御要塞（上限 4，费用 ${getItemCost('starbase')} 材料，需要星际基地科技）。`),
     },
     {
       type: 'orbital',
-      name: isExiles ? 'Exiles Orbital' : 'Orbital Structure',
+      name: isExiles ? l('Exiles Orbital', '流亡者轨道站') : l('Orbital Structure', '轨道站'),
       cost: getItemCost('orbital'),
       unlocked: hasOrbitalTech && !currentSectorHasOrbital,
       disabledReason: !hasOrbitalTech
-        ? 'Requires Orbital tech'
+        ? l('Requires Orbital tech', '需要轨道站科技')
         : currentSectorHasOrbital
-        ? 'Sector already has Orbital'
+        ? l('Sector already has Orbital', '星区已有轨道站')
         : undefined,
       description: isExiles
-        ? `Armed orbital station acting as a combat ship when colonized (Cost 5 Mats, max 1 per sector).`
-        : `Artificial satellite providing a Money or Science population slot (Cost ${getItemCost('orbital')} Mats, max 1 per sector).`,
+        ? l(`Armed orbital station acting as a combat ship when colonized (Cost 5 Mats, max 1 per sector).`, `武装轨道站，殖民后可视为战舰参与战斗（费用 5 材料，每星区限 1 座）。`)
+        : l(`Artificial satellite providing a Money or Science population slot (Cost ${getItemCost('orbital')} Mats, max 1 per sector).`, `提供金钱或科研人口格的人造卫星（费用 ${getItemCost('orbital')} 材料，每星区限 1 座）。`),
     },
     {
       type: 'monolith',
-      name: 'Monolith',
+      name: l('Monolith', '方尖碑'),
       cost: getItemCost('monolith'),
       unlocked: hasMonolithTech && !currentSectorHasMonolith,
       disabledReason: !hasMonolithTech
-        ? 'Requires Monolith tech'
+        ? l('Requires Monolith tech', '需要方尖碑科技')
         : currentSectorHasMonolith
-        ? 'Sector already has Monolith'
+        ? l('Sector already has Monolith', '星区已有方尖碑')
         : undefined,
-      description: `Ancient mega-structure granting 3 Victory Points at game end (Cost ${getItemCost('monolith')} Mats, requires Monolith tech).`,
+      description: l(`Ancient mega-structure granting 3 Victory Points at game end (Cost ${getItemCost('monolith')} Mats, requires Monolith tech).`, `远古巨构建筑，终局提供 3 胜利分（费用 ${getItemCost('monolith')} 材料，需要方尖碑科技）。`),
     },
   ];
 
@@ -348,14 +351,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             <div className="flex items-center gap-2">
               <Sparkles className="w-4 h-4 text-cyan-400 shrink-0 animate-pulse" />
               <div>
-                <span className="font-bold">🌟 Pulsar Construction Activation</span>
+                <span className="font-bold">🌟 {l('Pulsar Construction Activation', '脉冲星建造激活')}</span>
                 <span className="text-cyan-300/80 text-[11px] block">
-                  1 Free Construction item. No Influence Disc will be deducted from your track.
+                  {l('1 Free Construction item. No Influence Disc will be deducted from your track.', '可免费执行 1 次建造（仍需支付材料），不消耗影响力圆盘。')}
                 </span>
               </div>
             </div>
             <span className="px-2 py-0.5 rounded bg-cyan-900 text-cyan-200 font-mono text-[10px] font-bold uppercase border border-cyan-700">
-              1 Item Limit
+              {l('1 Item Limit', '限 1 项')}
             </span>
           </div>
         )}
@@ -369,19 +372,19 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <span className="text-xs font-black tracking-wide text-slate-200 uppercase font-display">
-                  SHIPYARDS & CONSTRUCTION
+                  {l('SHIPYARDS & CONSTRUCTION', '船坞与建造')}
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800 text-amber-300 font-mono font-bold">
-                  {slots.length} / {maxBuild} Items
+                  {slots.length} / {maxBuild} {l('Items', '项')}
                 </span>
                 {hasNanorobots && (
                   <span className="text-[9px] px-1.5 py-0.2 rounded bg-indigo-950 text-indigo-300 border border-indigo-800 font-bold">
-                    Nanorobots
+                    {l('Nanorobots', '纳米机器人')}
                   </span>
                 )}
               </div>
               <p className="text-[10.5px] text-amber-400/90 font-medium">
-                Click any highlighted amber sector on the galaxy map to choose your shipyard.
+                {l('Click any highlighted amber sector on the galaxy map to choose your shipyard.', '点击星图上任意琥珀色高亮星区作为你的船坞。')}
               </p>
             </div>
           </div>
@@ -389,12 +392,12 @@ export const BuildModal: React.FC<BuildModalProps> = ({
           <div className="flex items-center gap-3">
             <div className="flex items-center gap-1.5 bg-amber-950/70 border border-amber-800/80 px-2.5 py-1 rounded-full text-xs text-amber-300 font-bold font-mono">
               <Hammer className="w-3.5 h-3.5 text-amber-400" />
-              <span>{player.resources.materials} Mat</span>
+              <span>{player.resources.materials} {l('Mat', '材料')}</span>
             </div>
             <button
               onClick={onClose}
               className="p-1 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-slate-100 transition-colors"
-              title="Close (Esc)"
+              title={l('Close (Esc)', '关闭 (Esc)')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -406,7 +409,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
           <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-rose-300 text-xs flex items-center gap-2">
             <CircleAlert className="w-4 h-4 shrink-0 text-rose-400" />
             <span>
-              No eligible construction sectors! You must control an uncontested sector with your Influence Disc to construct ships or structures.
+              {l('No eligible construction sectors! You must control an uncontested sector with your Influence Disc to construct ships or structures.', '没有可用于建造的星区！你必须用影响力圆盘控制一个无敌舰交战的星区才能建造飞船或建筑。')}
             </span>
           </div>
         ) : (
@@ -440,14 +443,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                     <div className="flex flex-col text-left">
                       <div className="flex items-center gap-1.5">
                         <span className="font-bold text-xs text-slate-200 uppercase">
-                          {slot.itemType}
+                          {translateShipType(slot.itemType, language)}
                         </span>
                         <span className="text-[10px] font-mono text-amber-400 font-bold">
-                          {cost}M
+                          {cost}{l('M', '材')}
                         </span>
                       </div>
                       <span className="text-[10px] text-slate-400">
-                        {sec ? `Sec ${sec.sectorNumber}` : 'Select Sector'}
+                        {sec ? l(`Sec ${sec.sectorNumber}`, `星区 ${sec.sectorNumber}`) : l('Select Sector', '选择星区')}
                       </span>
                     </div>
 
@@ -458,7 +461,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                           handleRemoveSlot(sIdx);
                         }}
                         className="p-1 hover:bg-rose-950 text-slate-500 hover:text-rose-400 rounded transition-colors ml-1"
-                        title="Remove item"
+                        title={l('Remove item', '移除此项')}
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
@@ -474,7 +477,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                   className="px-3 py-2 rounded-xl border border-dashed border-amber-600/60 hover:border-amber-400 hover:bg-amber-950/30 text-amber-300 text-xs font-bold flex items-center gap-1.5 transition-all shrink-0"
                 >
                   <Plus className="w-3.5 h-3.5" />
-                  <span>Add Item #{slots.length + 1}</span>
+                  <span>{l(`Add Item #${slots.length + 1}`, `添加第 ${slots.length + 1} 项`)}</span>
                 </button>
               )}
             </div>
@@ -486,10 +489,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-2">
                     <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider">
-                      Item #{activeSlotIndex + 1} Shipyard:
+                      {l(`Item #${activeSlotIndex + 1} Shipyard:`, `第 ${activeSlotIndex + 1} 项船坞：`)}
                     </span>
                     <span className="px-2 py-0.5 rounded bg-amber-950/70 border border-amber-700/80 text-amber-300 font-bold text-xs font-mono">
-                      Sector {currentSector?.sectorNumber} ({currentSector?.name || `Ring ${currentSector?.ring}`})
+                      {l('Sector ', '星区 ')}{currentSector?.sectorNumber} ({currentSector?.name || l(`Ring ${currentSector?.ring}`, `第 ${currentSector?.ring} 环`)})
                     </span>
                   </div>
 
@@ -500,7 +503,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                   >
                     {eligibleSectors.map((sec) => (
                       <option key={sec.id} value={sec.id}>
-                        Sector {sec.sectorNumber} ({sec.name || `Ring ${sec.ring}`} • {sec.ships.length} ships)
+                        {l(`Sector ${sec.sectorNumber}`, `星区 ${sec.sectorNumber}`)} ({sec.name || l(`Ring ${sec.ring}`, `第 ${sec.ring} 环`)} • {sec.ships.length} {l('ships', '艘船')})
                       </option>
                     ))}
                   </select>
@@ -530,7 +533,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                         </span>
                         <div className="flex items-center justify-center gap-1 mt-0.5 w-full">
                           <span className="text-[10px] font-mono font-bold text-amber-400">
-                            {item.cost}M
+                            {item.cost}{l('M', '材')}
                           </span>
                           {item.limit !== undefined && item.supplyLeft !== undefined && (
                             <span
@@ -539,7 +542,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                                   ? 'bg-slate-800 text-slate-300'
                                   : 'bg-rose-950 text-rose-400 border border-rose-800/60'
                               }`}
-                              title={`${item.supplyLeft} available in supply out of ${item.limit}`}
+                              title={l(`${item.supplyLeft} available in supply out of ${item.limit}`, `供应区剩余 ${item.supplyLeft} / ${item.limit}`)}
                             >
                               {item.supplyLeft}/{item.limit}
                             </span>
@@ -562,13 +565,13 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         {/* Footer */}
         <div className="flex items-center justify-between border-t border-slate-800/80 pt-2.5">
           <div className="text-xs">
-            <span className="text-slate-400">Total: </span>
+            <span className="text-slate-400">{l('Total: ', '总计：')}</span>
             <strong className={canAfford ? 'text-amber-400 font-bold' : 'text-rose-400 font-bold'}>
-              {totalCost} / {player.resources.materials} Materials
+              {totalCost} / {player.resources.materials} {l('Materials', '材料')}
             </strong>
             {!canAfford && (
               <span className="text-rose-400 ml-2 font-semibold text-[11px]">
-                (Need {totalCost - player.resources.materials} more)
+                ({l(`Need ${totalCost - player.resources.materials} more`, `还需 ${totalCost - player.resources.materials}`)})
               </span>
             )}
           </div>
@@ -578,14 +581,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               onClick={onClose}
               className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors"
             >
-              Cancel
+              {l('Cancel', '取消')}
             </button>
             <button
               disabled={!canBuild}
               onClick={handleTriggerBuild}
               className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all"
             >
-              Construct {slots.length} {slots.length === 1 ? 'Item' : 'Items'} (Enter)
+              {l(`Construct ${slots.length} ${slots.length === 1 ? 'Item' : 'Items'} (Enter)`, `建造 ${slots.length} 项 (Enter)`)}
             </button>
           </div>
         </div>
@@ -602,16 +605,16 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             </div>
             <div>
               <h3 className="text-base font-bold text-amber-300 font-display">
-                Unused Build Activation
+                {l('Unused Build Activation', '尚有未使用的建造次数')}
               </h3>
               <p className="text-xs text-slate-400">
-                You have {maxBuild - slots.length} unused Build activation{maxBuild - slots.length > 1 ? 's' : ''} remaining ({slots.length} of {maxBuild} used).
+                {l(`You have ${maxBuild - slots.length} unused Build activation${maxBuild - slots.length > 1 ? 's' : ''} remaining (${slots.length} of ${maxBuild} used).`, `你还有 ${maxBuild - slots.length} 次未使用的建造机会（已用 ${slots.length}/${maxBuild}）。`)}
               </p>
             </div>
           </div>
 
           <div className="bg-slate-950/60 border border-slate-800 rounded-xl p-3 text-xs text-slate-300">
-            Are you sure you want to construct only {slots.length} item{slots.length > 1 ? 's' : ''} and give up the extra activation?
+            {l(`Are you sure you want to construct only ${slots.length} item${slots.length > 1 ? 's' : ''} and give up the extra activation?`, `确定只建造 ${slots.length} 项并放弃剩余建造机会吗？`)}
           </div>
 
           <div className="flex items-center justify-end gap-2.5 pt-1">
@@ -620,7 +623,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               onClick={() => setShowUnusedWarning(false)}
               className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold transition shadow cursor-pointer"
             >
-              Keep Building (Add More)
+              {l('Keep Building (Add More)', '继续添加建造')}
             </button>
             <button
               type="button"
@@ -630,7 +633,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               }}
               className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-amber-950/50 cursor-pointer"
             >
-              Confirm & Construct {slots.length} Item{slots.length > 1 ? 's' : ''}
+              {l(`Confirm & Construct ${slots.length} Item${slots.length > 1 ? 's' : ''}`, `确认建造 ${slots.length} 项`)}
             </button>
           </div>
         </div>

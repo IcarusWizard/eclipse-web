@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { GameState, PendingExploreControl } from '../../engine/types/state';
 import { CircleDot, Check, X, Sparkles, Minimize2, Maximize2 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface ExploreSectorControlModalProps {
   state: GameState;
@@ -15,6 +16,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
   currentSeat = 'all',
   onConfirm,
 }) => {
+  const { l } = useLanguage();
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const sector = state.sectors.find((s) => s.id === pendingControl.sectorId);
   const player = state.players.find((p) => p.id === pendingControl.playerId);
@@ -32,7 +34,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
       <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-cyan-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
         <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />
         <span>
-          Waiting for <strong className="text-cyan-300">{player.name}</strong> to decide whether to control Sector {sector.sectorNumber || sector.id}...
+          {l(`Waiting for `, `正在等待 `)}<strong className="text-cyan-300">{player.name}</strong>{l(` to decide whether to control Sector ${sector.sectorNumber || sector.id}...`, ` 决定是否控制星区 ${sector.sectorNumber || sector.id}...`)}
         </span>
       </div>
     );
@@ -45,7 +47,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
         <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-cyan-500 rounded-full shadow-2xl backdrop-blur-md text-white">
           <CircleDot className="w-4 h-4 text-cyan-400" />
           <span className="font-bold text-xs sm:text-sm tracking-wide text-cyan-300 font-display">
-            SECTOR CONTROL: SECTOR {sector.sectorNumber || sector.id} ({player.name})
+            {l(`SECTOR CONTROL: SECTOR ${sector.sectorNumber || sector.id} (${player.name})`, `星区控制：星区 ${sector.sectorNumber || sector.id}（${player.name}）`)}
           </span>
           <div className="h-4 w-px bg-slate-800" />
           <button
@@ -54,7 +56,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
             className="px-3.5 py-1 bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-slate-950 font-bold rounded-full text-xs transition-all shadow-md shadow-cyan-950/50 flex items-center gap-1.5 cursor-pointer"
           >
             <Maximize2 className="w-3.5 h-3.5" />
-            <span>Decide Control</span>
+            <span>{l('Decide Control', '决定控制权')}</span>
           </button>
         </div>
       </div>
@@ -75,7 +77,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
             </div>
             <div className="min-w-0">
               <h2 className="text-base font-bold text-cyan-300 font-display uppercase tracking-wide truncate">
-                Sector Control Decision
+                {l('Sector Control Decision', '星区控制决定')}
               </h2>
               <p className="text-xs text-slate-400 flex items-center gap-1.5 mt-0.5 truncate">
                 <span
@@ -83,7 +85,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
                   style={{ backgroundColor: player.color }}
                 />
                 <span>
-                  Sector {sector.sectorNumber || sector.id} &bull;{' '}
+                  {l(`Sector ${sector.sectorNumber || sector.id}`, `星区 ${sector.sectorNumber || sector.id}`)} &bull;{' '}
                   <strong className="text-slate-200">{player.name}</strong>
                 </span>
               </p>
@@ -94,10 +96,10 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
             type="button"
             onClick={() => setIsMinimized(true)}
             className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-sm cursor-pointer shrink-0"
-            title="Minimize window to inspect galaxy map"
+            title={l('Minimize window to inspect galaxy map', '最小化窗口以查看星图')}
           >
             <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
-            <span>View Map</span>
+            <span>{l('View Map', '查看星图')}</span>
           </button>
         </div>
 
@@ -105,7 +107,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
         <div className="p-4">
           <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3">
             <p className="text-xs text-slate-200 leading-relaxed font-medium text-left">
-              Place 1 Influence Disc to take control of Sector {sector.sectorNumber || sector.id}?
+              {l(`Place 1 Influence Disc to take control of Sector ${sector.sectorNumber || sector.id}?`, `放置 1 枚影响力圆盘以控制星区 ${sector.sectorNumber || sector.id}？`)}
             </p>
             <span
               className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold ${
@@ -114,7 +116,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
                   : 'bg-rose-950/70 border-rose-800 text-rose-300'
               }`}
             >
-              {discsAvailable} disc{discsAvailable === 1 ? '' : 's'} left
+              {l(`${discsAvailable} disc${discsAvailable === 1 ? '' : 's'} left`, `剩余 ${discsAvailable} 枚圆盘`)}
             </span>
           </div>
         </div>
@@ -127,7 +129,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
             className="px-4 py-2 rounded-xl font-bold text-xs uppercase tracking-wider bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 hover:text-white flex items-center gap-1.5 transition shadow cursor-pointer"
           >
             <X className="w-3.5 h-3.5 text-slate-400" />
-            <span>Leave Uncontrolled</span>
+            <span>{l('Leave Uncontrolled', '放弃控制')}</span>
           </button>
 
           <button
@@ -141,7 +143,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
             }`}
           >
             <Check className="w-4 h-4" />
-            <span>Control Sector</span>
+            <span>{l('Control Sector', '控制星区')}</span>
           </button>
         </div>
       </div>

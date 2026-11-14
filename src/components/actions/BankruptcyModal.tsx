@@ -19,6 +19,7 @@ import {
   Undo2,
   FlaskConical,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface BankruptcyModalProps {
   player: PlayerState;
@@ -55,6 +56,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
   onConfirmPlan,
   onResetPlan,
 }) => {
+  const { l } = useLanguage();
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const [localTrades, setLocalTrades] = useState<{ materials: number; science: number }>({
     materials: 0,
@@ -200,7 +202,9 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                     simulation.isSolvent ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
-                  {simulation.isSolvent ? 'DEFICIT RESOLVED' : 'TACTICAL BANKRUPTCY'}
+                  {simulation.isSolvent
+                    ? l('DEFICIT RESOLVED', '赤字已解决')
+                    : l('TACTICAL BANKRUPTCY', '战术破产')}
                 </span>
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full font-mono font-bold ${
@@ -209,11 +213,15 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                       : 'bg-rose-500/20 border border-rose-500/40 text-rose-300'
                   }`}
                 >
-                  Projected: {simulation.isSolvent ? '0 (Solvent)' : `-${simulation.projectedDeficit}`} 💰
+                  {l('Projected:', '预计：')}{' '}
+                  {simulation.isSolvent ? l('0 (Solvent)', '0（偿付恢复）') : `-${simulation.projectedDeficit}`} 💰
                 </span>
               </div>
               <p className="text-[11px] text-slate-300">
-                Staged: {stagedAbandonedSectorIds.length} sectors, {stagedTrades.materials + stagedTrades.science} trades. Reset decision or confirm when satisfied.
+                {l(
+                  `Staged: ${stagedAbandonedSectorIds.length} sectors, ${stagedTrades.materials + stagedTrades.science} trades. Reset decision or confirm when satisfied.`,
+                  `已暂存：弃置 ${stagedAbandonedSectorIds.length} 个星区，紧急交易 ${stagedTrades.materials + stagedTrades.science} 次。可随时重置或确认方案。`
+                )}
               </p>
             </div>
           </div>
@@ -224,10 +232,10 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
               disabled={!hasStagedDecisions}
               onClick={handleResetDecisions}
               className="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-30 disabled:pointer-events-none text-slate-300 hover:text-white text-xs font-bold flex items-center gap-1 transition border border-slate-700"
-              title="Reset all staged trades and sector abandonment decisions"
+              title={l('Reset all staged trades and sector abandonment decisions', '重置所有已暂存的资源交易与星区弃置决定')}
             >
               <RotateCcw className="w-3.5 h-3.5" />
-              <span>Reset</span>
+              <span>{l('Reset', '重置')}</span>
             </button>
 
             <button
@@ -241,7 +249,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
               }`}
             >
               <Check className="w-3.5 h-3.5" />
-              <span>Confirm</span>
+              <span>{l('Confirm', '确认')}</span>
             </button>
 
             <button
@@ -250,7 +258,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
               className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-slate-950 font-bold text-xs uppercase tracking-wider flex items-center gap-1.5 shadow transition ml-1"
             >
               <Maximize2 className="w-3.5 h-3.5" />
-              <span>Expand ({controlledSectors.length})</span>
+              <span>{l(`Expand (${controlledSectors.length})`, `展开 (${controlledSectors.length})`)}</span>
             </button>
           </div>
         </div>
@@ -274,7 +282,9 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                     simulation.isSolvent ? 'text-emerald-400' : 'text-rose-400'
                   }`}
                 >
-                  {simulation.isSolvent ? 'Deficit Resolved — Solvency Restored!' : 'Tactical Bankruptcy Required'}
+                  {simulation.isSolvent
+                    ? l('Deficit Resolved — Solvency Restored!', '赤字已解决 —— 偿付能力已恢复！')
+                    : l('Tactical Bankruptcy Required', '需要执行战术破产')}
                 </h2>
                 <span
                   className={`text-xs px-2 py-0.5 rounded-full font-mono font-bold ${
@@ -283,12 +293,14 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                       : 'bg-rose-500/20 border border-rose-500/40 text-rose-300'
                   }`}
                 >
-                  Deficit: {simulation.isSolvent ? '0 (Solvent)' : `-${simulation.projectedDeficit}`} 💰
+                  {l('Deficit:', '赤字：')}{' '}
+                  {simulation.isSolvent ? l('0 (Solvent)', '0（偿付恢复）') : `-${simulation.projectedDeficit}`} 💰
                 </span>
               </div>
               <p className="text-xs text-slate-400 mt-0.5">
-                Stage resource trades or sector abandonments. You can{' '}
-                <strong className="text-amber-300">reset decisions</strong> at any time before confirming.
+                {l('Stage resource trades or sector abandonments. You can ', '暂存资源交易或弃置星区。在确认前，你可以随时')}
+                <strong className="text-amber-300">{l('reset decisions', '重置决定')}</strong>
+                {l(' at any time before confirming.', '。')}
               </p>
             </div>
           </div>
@@ -297,10 +309,10 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
             type="button"
             onClick={() => setIsMinimized(true)}
             className="flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-bold transition border border-slate-700"
-            title="Minimize to inspect the Galaxy Map"
+            title={l('Minimize to inspect the Galaxy Map', '最小化以查看星系地图')}
           >
             <Minimize2 className="w-3.5 h-3.5" />
-            <span>View Map</span>
+            <span>{l('View Map', '查看地图')}</span>
           </button>
         </div>
 
@@ -309,10 +321,10 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold text-slate-300 flex items-center gap-1.5">
               <Coins className="w-4 h-4 text-amber-400" />
-              <span>Voluntary Emergency Resource Trade ({tradeRatio}:1)</span>
+              <span>{l(`Voluntary Emergency Resource Trade (${tradeRatio}:1)`, `自愿紧急资源交易 (${tradeRatio}:1)`)}</span>
             </span>
             <span className="text-[11px] text-slate-400">
-              Decide how many resources to trade into money.
+              {l('Decide how many resources to trade into money.', '决定将多少资源兑换为信用点（金钱）。')}
             </span>
           </div>
 
@@ -321,10 +333,13 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
             <div className="flex items-center justify-between p-2 rounded-lg bg-orange-950/30 border border-orange-700/50 text-xs">
               <div>
                 <div className="text-orange-200 font-bold font-mono">
-                  {tradeRatio} Mat → +1 💰
+                  {l(`${tradeRatio} Mat → +1 💰`, `${tradeRatio} 材料 → +1 💰`)}
                 </div>
                 <div className="text-[10px] text-orange-400/80 font-mono">
-                  Avail: {simulation.simPlayer.resources.materials} (Staged: +{stagedTrades.materials} 💰)
+                  {l(
+                    `Avail: ${simulation.simPlayer.resources.materials} (Staged: +${stagedTrades.materials} 💰)`,
+                    `可用: ${simulation.simPlayer.resources.materials} (已暂存: +${stagedTrades.materials} 💰)`
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -333,7 +348,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                     type="button"
                     onClick={() => handleStageTrade('materials', -1)}
                     className="p-1 px-2 rounded bg-orange-900/80 hover:bg-orange-800 text-orange-200 text-xs font-bold transition flex items-center gap-0.5"
-                    title="Undo 1 trade"
+                    title={l('Undo 1 trade', '撤销 1 次交易')}
                   >
                     <Undo2 className="w-3 h-3" /> -1
                   </button>
@@ -353,10 +368,13 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
             <div className="flex items-center justify-between p-2 rounded-lg bg-cyan-950/30 border border-cyan-700/50 text-xs">
               <div>
                 <div className="text-cyan-200 font-bold font-mono">
-                  {tradeRatio} Sci → +1 💰
+                  {l(`${tradeRatio} Sci → +1 💰`, `${tradeRatio} 科研 → +1 💰`)}
                 </div>
                 <div className="text-[10px] text-cyan-400/80 font-mono">
-                  Avail: {simulation.simPlayer.resources.science} (Staged: +{stagedTrades.science} 💰)
+                  {l(
+                    `Avail: ${simulation.simPlayer.resources.science} (Staged: +${stagedTrades.science} 💰)`,
+                    `可用: ${simulation.simPlayer.resources.science} (已暂存: +${stagedTrades.science} 💰)`
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-1">
@@ -365,7 +383,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                     type="button"
                     onClick={() => handleStageTrade('science', -1)}
                     className="p-1 px-2 rounded bg-cyan-900/80 hover:bg-cyan-800 text-cyan-200 text-xs font-bold transition flex items-center gap-0.5"
-                    title="Undo 1 trade"
+                    title={l('Undo 1 trade', '撤销 1 次交易')}
                   >
                     <Undo2 className="w-3 h-3" /> -1
                   </button>
@@ -388,23 +406,26 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
           <div className="flex items-center justify-between font-bold text-rose-300 text-xs">
             <span className="flex items-center gap-1.5">
               <ShieldAlert className="w-4 h-4" />
-              <span>Select Sectors to Abandon</span>
+              <span>{l('Select Sectors to Abandon', '选择要弃置的星区')}</span>
             </span>
             <span className="text-[11px] font-mono text-emerald-400">
-              Next Disc Saves: +{nextUpkeepSavings} 💰 Upkeep
+              {l(`Next Disc Saves: +${nextUpkeepSavings} 💰 Upkeep`, `下一个圆盘可节省：+${nextUpkeepSavings} 💰 维护费`)}
             </span>
           </div>
           <p className="text-[11px] text-slate-300">
-            Click a sector to mark it for abandonment. You can unmark or reset before confirming.
+            {l(
+              'Click a sector to mark it for abandonment. You can unmark or reset before confirming.',
+              '点击星区将其标记为弃置。在确认之前，你可以随时取消标记或重置。'
+            )}
           </p>
         </div>
 
         {/* Controlled Sectors List */}
         <div className="space-y-2 overflow-y-auto pr-1 flex-1 min-h-[160px]">
           <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 px-1 flex justify-between items-center">
-            <span>Controlled Sectors ({controlledSectors.length})</span>
+            <span>{l(`Controlled Sectors (${controlledSectors.length})`, `已控制星区 (${controlledSectors.length})`)}</span>
             <span className="text-[10px] text-slate-500 font-mono">
-              {stagedAbandonedSectorIds.length} marked for abandonment
+              {l(`${stagedAbandonedSectorIds.length} marked for abandonment`, `已标记弃置 ${stagedAbandonedSectorIds.length} 个`)}
             </span>
           </div>
 
@@ -412,9 +433,12 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
             <div className="p-6 bg-slate-950/60 border border-rose-900/50 rounded-xl text-center flex flex-col items-center gap-3">
               <Skull className="w-10 h-10 text-rose-500" />
               <div>
-                <p className="font-bold text-rose-400 text-sm">No Controlled Sectors Left</p>
+                <p className="font-bold text-rose-400 text-sm">{l('No Controlled Sectors Left', '已无控制星区')}</p>
                 <p className="text-xs text-slate-400 mt-1">
-                  Your civilization has no further sectors or influence discs to sacrifice.
+                  {l(
+                    'Your civilization has no further sectors or influence discs to sacrifice.',
+                    '你的文明已没有更多星区或影响力圆盘可供牺牲。'
+                  )}
                 </p>
               </div>
             </div>
@@ -453,10 +477,10 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                     </div>
                     <div>
                       <div className="font-semibold text-slate-200 text-xs sm:text-sm flex items-center gap-2">
-                        <span>{sector.name || `Sector ${sector.sectorNumber}`}</span>
+                        <span>{sector.name || l(`Sector ${sector.sectorNumber}`, `星区 ${sector.sectorNumber}`)}</span>
                         {isMarkedToAbandon && (
                           <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-600 text-white font-mono font-bold uppercase">
-                            To Abandon
+                            {l('To Abandon', '待弃置')}
                           </span>
                         )}
                         {sector.victoryPoints > 0 && (
@@ -466,16 +490,16 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                         )}
                         {sector.hasArtifact && (
                           <span className="text-[10px] px-1.5 py-0.2 rounded bg-sky-950 text-sky-300 font-mono border border-sky-700">
-                            Artifact
+                            {l('Artifact', '远古遗物')}
                           </span>
                         )}
                       </div>
                       <div className="text-[11px] text-slate-400 flex items-center gap-2 mt-0.5">
-                        <span>Ring {sector.ring}</span>
+                        <span>{l(`Ring ${sector.ring}`, `第 ${sector.ring} 环`)}</span>
                         <span>•</span>
-                        <span>{sector.planets.length} Habitats</span>
+                        <span>{l(`${sector.planets.length} Habitats`, `${sector.planets.length} 个居住位`)}</span>
                         <span>•</span>
-                        <span className="text-amber-300 font-semibold">{totalPop} Population</span>
+                        <span className="text-amber-300 font-semibold">{l(`${totalPop} Population`, `${totalPop} 人口`)}</span>
                       </div>
                     </div>
                   </div>
@@ -486,7 +510,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                         type="button"
                         onClick={() => onSelectSector(sector)}
                         className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs transition"
-                        title="Focus on Map"
+                        title={l('Focus on Map', '在地图上定位')}
                       >
                         <MapPin className="w-4 h-4" />
                       </button>
@@ -504,12 +528,12 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                       {isMarkedToAbandon ? (
                         <>
                           <Undo2 className="w-3.5 h-3.5" />
-                          <span>Keep Sector</span>
+                          <span>{l('Keep Sector', '保留星区')}</span>
                         </>
                       ) : (
                         <>
                           <Disc className="w-3.5 h-3.5" />
-                          <span>Select to Abandon</span>
+                          <span>{l('Select to Abandon', '选择弃置')}</span>
                         </>
                       )}
                     </button>
@@ -538,8 +562,8 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                               >
                                 <span className="text-slate-300 font-medium">
                                   {p.isOrbital
-                                    ? '🛰️ Orbital Pop Return Track:'
-                                    : '🌌 Wild Planet Pop Return Track:'}
+                                    ? l('🛰️ Orbital Pop Return Track:', '🛰️ 轨道站人口返回轨道：')
+                                    : l('🌌 Wild Planet Pop Return Track:', '🌌 荒野星球人口返回轨道：')}
                                 </span>
                                 <div className="flex items-center gap-1.5">
                                   <button
@@ -557,7 +581,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                                         : 'bg-slate-800 text-slate-400 hover:text-slate-200'
                                     }`}
                                   >
-                                    💰 Money
+                                    💰 {l('Money', '信用点')}
                                   </button>
                                   <button
                                     type="button"
@@ -575,7 +599,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                                     }`}
                                   >
                                     <FlaskConical className="w-3 h-3 text-pink-400 inline mr-1" />
-                                    Science
+                                    {l('Science', '科研')}
                                   </button>
                                 </div>
                               </div>
@@ -592,13 +616,13 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
         {/* Footer: Reset & Confirm Bar (Bug 67) */}
         <div className="pt-3 border-t border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
           <div className="flex items-center gap-2 text-xs text-slate-400">
-            <span>Staged Plan:</span>
+            <span>{l('Staged Plan:', '暂存方案：')}</span>
             <span className="font-mono font-bold text-amber-300">
-              +{stagedTrades.materials + stagedTrades.science} 💰 Trades
+              {l(`+${stagedTrades.materials + stagedTrades.science} 💰 Trades`, `+${stagedTrades.materials + stagedTrades.science} 💰 交易`)}
             </span>
             <span>•</span>
             <span className="font-mono font-bold text-rose-300">
-              {stagedAbandonedSectorIds.length} Sectors Abandoned
+              {l(`${stagedAbandonedSectorIds.length} Sectors Abandoned`, `弃置 ${stagedAbandonedSectorIds.length} 个星区`)}
             </span>
           </div>
 
@@ -609,10 +633,10 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
               disabled={!hasStagedDecisions}
               onClick={handleResetDecisions}
               className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:pointer-events-none text-slate-200 hover:text-white text-xs font-bold border border-slate-700 transition shadow"
-              title="Reset all staged decisions"
+              title={l('Reset all staged decisions', '重置所有暂存决定')}
             >
               <RotateCcw className="w-4 h-4" />
-              <span>Reset Decision</span>
+              <span>{l('Reset Decision', '重置决定')}</span>
             </button>
 
             {/* Confirm Plan Button */}
@@ -629,8 +653,8 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
               <CheckCircle2 className="w-4 h-4" />
               <span>
                 {simulation.isSolvent
-                  ? 'Confirm & Restore Solvency'
-                  : `Deficit Remaining (-${simulation.projectedDeficit} 💰)`}
+                  ? l('Confirm & Restore Solvency', '确认并恢复偿付')
+                  : l(`Deficit Remaining (-${simulation.projectedDeficit} 💰)`, `仍有赤字 (-${simulation.projectedDeficit} 💰)`)}
               </span>
             </button>
           </div>

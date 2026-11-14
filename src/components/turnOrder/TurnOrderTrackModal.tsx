@@ -1,6 +1,8 @@
 import React from 'react';
 import { X, ListOrdered, ArrowRight, Sparkles, CheckCircle2, Clock, Coins, Info } from 'lucide-react';
 import { GameState } from '../../engine/types/state';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateFactionName } from '../../i18n/catalogTranslations';
 
 interface TurnOrderTrackModalProps {
   isOpen: boolean;
@@ -13,6 +15,7 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
   onClose,
   state,
 }) => {
+  const { l, language } = useLanguage();
   if (!isOpen) return null;
 
   // Order of players on the Turn Order Track this round
@@ -59,21 +62,24 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-slate-100 uppercase tracking-wider font-display">
-                  Turn Order Track
+                  {l('Turn Order Track', '回合顺位轨')}
                 </h2>
                 <span className="px-2 py-0.5 rounded text-[10px] font-mono font-bold bg-purple-900/60 text-purple-300 border border-purple-600/40">
-                  Expansion Module
+                  {l('Expansion Module', '扩展模块')}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                {`Round ${state.round} Action Order & Next Round Order Determined by Pass Sequence`}
+                {l(
+                  `Round ${state.round} Action Order & Next Round Order Determined by Pass Sequence`,
+                  `第 ${state.round} 轮行动顺序及按略过（Pass）顺序决定的下轮顺位`
+                )}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition cursor-pointer"
-            title="Close"
+            title={l('Close', '关闭')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -86,10 +92,13 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Clock className="w-4 h-4 text-cyan-400" />
-                {`Current Round ${state.round} Turn Order Track`}
+                {l(`Current Round ${state.round} Turn Order Track`, `第 ${state.round} 轮当前回合顺位轨`)}
               </span>
               <span className="text-[11px] text-slate-400 font-mono">
-                Actions proceed from left to right (Position 1 ➔ {playersInCurrentOrder.length})
+                {l(
+                  `Actions proceed from left to right (Position 1 ➔ ${playersInCurrentOrder.length})`,
+                  `行动按从左到右进行（顺位 1 ➔ ${playersInCurrentOrder.length}）`
+                )}
               </span>
             </div>
 
@@ -129,7 +138,7 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
                         </span>
                         {isFirstSpace && (
                           <span className="text-[9px] uppercase font-bold text-white tracking-widest bg-slate-800 px-1.5 py-0.5 rounded border border-white/40">
-                            Start Player Space
+                            {l('Start Player Space', '起始玩家位')}
                           </span>
                         )}
                       </div>
@@ -138,7 +147,7 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
                       {isCurrentTurn && (
                         <span className="flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-black uppercase tracking-wider bg-cyan-500 text-slate-950 animate-pulse">
                           <span className="w-1.5 h-1.5 rounded-full bg-slate-950 animate-ping" />
-                          Active Turn
+                          {l('Active Turn', '当前行动')}
                         </span>
                       )}
                     </div>
@@ -156,12 +165,16 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
                           <span>{player.name}</span>
                           {player.isEliminated && (
                             <span className="text-[9px] text-rose-400 uppercase font-mono font-bold">
-                              Eliminated
+                              {l('Eliminated', '已淘汰')}
                             </span>
                           )}
                         </div>
                         <div className="text-[11px] text-slate-400 truncate">
-                          {player.factionName || 'Terran Directorate'}
+                          {translateFactionName(
+                            player.faction?.id || 'terran',
+                            player.factionName || player.faction?.name || 'Terran Directorate',
+                            language
+                          )}
                         </div>
                       </div>
                     </div>
@@ -169,7 +182,7 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
                     {/* Bottom: Next Turn Order Tile Status */}
                     <div className="mt-3 pt-2.5 border-t border-slate-800/80 flex items-center justify-between">
                       <span className="text-[10px] text-slate-400 font-medium">
-                        Next Round Tile:
+                        {l('Next Round Tile:', '下轮顺位板块：')}
                       </span>
                       {hasPassed ? (
                         <div
@@ -178,9 +191,9 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
                               ? 'bg-amber-950/80 border-amber-500/70 text-amber-200'
                               : 'bg-purple-950/60 border-purple-600/50 text-purple-200'
                           }`}
-                          title={`Claimed Next Turn Order Tile #${nextTileNum}`}
+                          title={l(`Claimed Next Turn Order Tile #${nextTileNum}`, `已领取下轮顺位板块 #${nextTileNum}`)}
                         >
-                          <span className="text-[9px] uppercase tracking-wider">Tile</span>
+                          <span className="text-[9px] uppercase tracking-wider">{l('Tile', '板块')}</span>
                           <span className="text-sm font-black text-white">#{nextTileNum}</span>
                           {nextTileNum === 1 && (
                             <Sparkles className="w-3 h-3 text-amber-400 shrink-0" />
@@ -188,7 +201,7 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
                         </div>
                       ) : (
                         <div className="flex items-center gap-1 text-[11px] text-slate-400 italic font-mono">
-                          <span>Pending (next: #{nextAvailableTileNum})</span>
+                          <span>{l(`Pending (next: #${nextAvailableTileNum})`, `待定（下一枚: #${nextAvailableTileNum}）`)}</span>
                         </div>
                       )}
                     </div>
@@ -203,10 +216,10 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
             <div className="flex items-center justify-between">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                 <ArrowRight className="w-4 h-4 text-purple-400" />
-                {`Projected Round ${state.round + 1} Turn Order`}
+                {l(`Projected Round ${state.round + 1} Turn Order`, `预计第 ${state.round + 1} 轮顺位`)}
               </span>
               <span className="text-[10px] text-slate-400">
-                Updates in real-time as players pass
+                {l('Updates in real-time as players pass', '随玩家略过（Pass）实时更新')}
               </span>
             </div>
 
@@ -244,11 +257,11 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
                       <span className="truncate max-w-[120px]">{player.name}</span>
                       {hasPassed ? (
                         <span className="text-[10px] font-mono font-bold px-1 rounded bg-purple-950 text-purple-300 border border-purple-800/60">
-                          Tile #{tileNum}
+                          {l(`Tile #${tileNum}`, `板块 #${tileNum}`)}
                         </span>
                       ) : (
                         <span className="text-[10px] font-mono text-slate-400 italic">
-                          (unpassed)
+                          {l('(unpassed)', '（未略过）')}
                         </span>
                       )}
                     </div>
@@ -265,20 +278,36 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
           <div className="p-4 rounded-xl bg-purple-950/20 border border-purple-900/40 text-xs text-purple-200/90 space-y-2">
             <div className="flex items-center gap-1.5 font-bold text-purple-300 uppercase tracking-wide text-[11px]">
               <Info className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-              Turn Order Variant Rules Reference
+              {l('Turn Order Variant Rules Reference', '回合顺位变体规则参考')}
             </div>
             <ul className="list-disc list-inside space-y-1 text-slate-300 text-[11px] leading-relaxed">
               <li>
-                <strong>Action Phase Order:</strong> Players take actions strictly in the order displayed on the Turn Order Track (Space 1 to {playersInCurrentOrder.length}), looping until all commanders pass.
+                <strong>{l('Action Phase Order:', '行动阶段顺序：')}</strong>{' '}
+                {l(
+                  `Players take actions strictly in the order displayed on the Turn Order Track (Space 1 to ${playersInCurrentOrder.length}), looping until all commanders pass.`,
+                  `玩家严格按照回合顺位轨从左到右（1 号位至 ${playersInCurrentOrder.length} 号位）依次行动，循环直至所有指挥官略过（Pass）。`
+                )}
               </li>
               <li>
-                <strong>Passing:</strong> When a player Passes, they claim the lowest available Next Turn Order Tile (1st to pass gets #1, 2nd gets #2, etc.).
+                <strong>{l('Passing:', '略过（Pass）：')}</strong>{' '}
+                {l(
+                  'When a player Passes, they claim the lowest available Next Turn Order Tile (1st to pass gets #1, 2nd gets #2, etc.).',
+                  '玩家宣布略过回合时，拿取当前最小编号的下轮顺位板块（首位略过者得 #1，第二位得 #2，以此类推）。'
+                )}
               </li>
               <li>
-                <strong>First to Pass Bonus:</strong> The first player to pass receives Next Turn Order Tile #1 (Start Player next round) and immediately collects the +2 Credits bonus!
+                <strong>{l('First to Pass Bonus:', '首位略过奖励：')}</strong>{' '}
+                {l(
+                  'The first player to pass receives Next Turn Order Tile #1 (Start Player next round) and immediately collects the +2 Credits bonus!',
+                  '第一位略过的玩家获得 #1 下轮顺位板块（下轮起始玩家），并立即获得 +2 信用点奖励！'
+                )}
               </li>
               <li>
-                <strong>Cleanup Reordering:</strong> At the end of Cleanup, Turn Order Markers are reordered in ascending sequence of their Next Turn Order Tiles.
+                <strong>{l('Cleanup Reordering:', '清理阶段重排：')}</strong>{' '}
+                {l(
+                  'At the end of Cleanup, Turn Order Markers are reordered in ascending sequence of their Next Turn Order Tiles.',
+                  '在清理阶段结束时，顺位标记按所拿取的下轮顺位板块编号从小到大重新排列。'
+                )}
               </li>
             </ul>
           </div>
@@ -290,7 +319,7 @@ export const TurnOrderTrackModal: React.FC<TurnOrderTrackModalProps> = ({
             onClick={onClose}
             className="px-4 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-semibold transition cursor-pointer"
           >
-            Close Track
+            {l('Close Track', '关闭顺位轨')}
           </button>
         </div>
       </div>

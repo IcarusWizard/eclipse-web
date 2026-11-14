@@ -17,6 +17,8 @@ import {
   Flame,
   Sparkles,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateResourceType, translateShipType } from '../../i18n/catalogTranslations';
 
 interface CombatConquestModalProps {
   state: GameState;
@@ -35,6 +37,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   currentSeat = 'all',
   onConfirm,
 }) => {
+  const { l, language } = useLanguage();
   const sector = state.sectors.find((s) => s.id === conquest.sectorId);
   const winner = state.players.find((p) => p.id === conquest.winnerPlayerId);
 
@@ -51,7 +54,9 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
       <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
         <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
         <span>
-          Waiting for <strong className="text-indigo-300">{winner.name}</strong> to decide whether to control Sector {sector.sectorNumber || sector.id}...
+          {l('Waiting for ', '正在等待 ')}
+          <strong className="text-indigo-300">{winner.name}</strong>
+          {l(` to decide whether to control Sector ${sector.sectorNumber || sector.id}...`, ` 决定是否控制星区 ${sector.sectorNumber || sector.id}...`)}
         </span>
       </div>
     );
@@ -155,8 +160,8 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
               <div className="flex items-center gap-2">
                 <h2 className="text-base font-bold text-amber-300 font-display">
                   {currentStep === 'bombardment'
-                    ? `BOMBARDMENT REPORT: SECTOR ${sector.sectorNumber}`
-                    : `SECTOR CONQUEST: SECTOR ${sector.sectorNumber}`}
+                    ? l(`BOMBARDMENT REPORT: SECTOR ${sector.sectorNumber}`, `轨道轰炸报告：星区 ${sector.sectorNumber}`)
+                    : l(`SECTOR CONQUEST: SECTOR ${sector.sectorNumber}`, `星区征服：星区 ${sector.sectorNumber}`)}
                 </h2>
                 <span
                   className={`text-[10px] font-mono font-bold px-1.5 py-0.5 rounded border ${
@@ -165,21 +170,26 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                       : 'bg-rose-950 text-rose-300 border-rose-800'
                   }`}
                 >
-                  {canClaim ? `${sector.victoryPoints} VP` : 'CONTESTED'}
+                  {canClaim ? `${sector.victoryPoints} VP` : l('CONTESTED', '争夺中')}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
                 {currentStep === 'bombardment' ? (
                   <>
-                    Commander <span className="text-slate-200 font-bold">{winner.name}</span> assaulted defender planetary population.
+                    {l('Commander ', '指挥官 ')}
+                    <span className="text-slate-200 font-bold">{winner.name}</span>
+                    {l(' assaulted defender planetary population.', ' 对防守方行星人口发起了轨道轰炸。')}
                   </>
                 ) : canClaim ? (
                   <>
-                    Commander <span className="text-slate-200 font-bold">{winner.name}</span> emerged victorious! Choose sector control and colonization.
+                    {l('Commander ', '指挥官 ')}
+                    <span className="text-slate-200 font-bold">{winner.name}</span>
+                    {l(' emerged victorious! Choose sector control and colonization.', ' 赢得了战斗！请选择星区控制与殖民行动。')}
                   </>
                 ) : (
                   <>
-                    <span className="text-slate-200 font-bold">{winner.name}</span> cleared hostile ships, but defender population survived.
+                    <span className="text-slate-200 font-bold">{winner.name}</span>
+                    {l(' cleared hostile ships, but defender population survived.', ' 清除了敌方舰船，但防守方人口得以幸存。')}
                   </>
                 )}
               </p>
@@ -189,8 +199,8 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
           {!canControl && (
             <div className="px-3 py-1.5 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
               {currentSeat === 'spectator'
-                ? `Spectator Mode (Observing Conquest by ${winner.name})`
-                : `Waiting for ${winner.name} to choose control options...`}
+                ? l(`Spectator Mode (Observing Conquest by ${winner.name})`, `旁观模式（正在观察 ${winner.name} 的征服行动）`)
+                : l(`Waiting for ${winner.name} to choose control options...`, `等待 ${winner.name} 选择控制选项...`)}
             </div>
           )}
         </div>
@@ -203,10 +213,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
               <div className="flex items-center justify-between border-b border-slate-800 pb-2.5">
                 <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-rose-400">
                   <Crosshair className="w-4 h-4 text-rose-400" />
-                  <span>Planetary Bombardment & Population Assault</span>
+                  <span>{l('Planetary Bombardment & Population Assault', '行星轰炸与人口打击')}</span>
                 </div>
                 <div className="text-[11px] font-mono text-slate-400">
-                  Attacker: <strong className="text-slate-200">{conquest.bombardmentSummary.attackerName}</strong> vs{' '}
+                  {l('Attacker:', '进攻方：')} <strong className="text-slate-200">{conquest.bombardmentSummary.attackerName}</strong>{' '}
+                  {l('vs', '对阵')}{' '}
                   <strong className="text-slate-200">{conquest.bombardmentSummary.defenderName}</strong>
                 </div>
               </div>
@@ -215,9 +226,12 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 <div className="p-3 rounded-lg bg-teal-950/40 border border-teal-600/60 flex items-start gap-2.5">
                   <Shield className="w-4 h-4 text-teal-400 shrink-0 mt-0.5" />
                   <div>
-                    <span className="text-xs font-bold text-teal-300">Neutron Absorber Active</span>
+                    <span className="text-xs font-bold text-teal-300">{l('Neutron Absorber Active', '中子吸收器生效')}</span>
                     <p className="text-[11px] text-slate-300 mt-0.5">
-                      {conquest.bombardmentSummary.defenderName}&apos;s Neutron Absorber completely nullified enemy Neutron Bombs! Attacker was forced to bombard with conventional non-missile cannons.
+                      {l(
+                        `${conquest.bombardmentSummary.defenderName}'s Neutron Absorber completely nullified enemy Neutron Bombs! Attacker was forced to bombard with conventional non-missile cannons.`,
+                        `${conquest.bombardmentSummary.defenderName} 的中子吸收器完全抵消了敌方的中子炸弹！进攻方只能使用常规非导弹火炮进行轰炸。`
+                      )}
                     </p>
                   </div>
                 </div>
@@ -227,18 +241,26 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 <div className="p-3 rounded-lg bg-emerald-950/30 border border-emerald-700/40 flex items-start gap-2.5">
                   <Flame className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div>
-                    <span className="text-xs font-bold text-emerald-300">Neutron Bombs Active</span>
+                    <span className="text-xs font-bold text-emerald-300">{l('Neutron Bombs Active', '中子炸弹生效')}</span>
                     <p className="text-[11px] text-slate-300 mt-0.5">
-                      Planetary shields and surface structures bypassed! All defender population cubes were eliminated automatically without rolling dice.
+                      {l(
+                        'Planetary shields and surface structures bypassed! All defender population cubes were eliminated automatically without rolling dice.',
+                        '无视行星护盾与地表防御！无需掷骰，防守方所有人口方块已被自动消灭。'
+                      )}
                     </p>
                   </div>
                 </div>
               ) : (
                 <div className="space-y-2">
                   <div className="flex items-center justify-between text-[11px]">
-                    <span className="text-slate-400">Bombardment Rolls (Non-missile weapons vs 0 Shield):</span>
+                    <span className="text-slate-400">
+                      {l('Bombardment Rolls (Non-missile weapons vs 0 Shield):', '轰炸掷骰（非导弹武器对 0 护盾）：')}
+                    </span>
                     <span className="font-mono font-bold text-amber-300">
-                      Total Damage: {conquest.bombardmentSummary.totalDamage} pts (1 dmg = 1 cube)
+                      {l(
+                        `Total Damage: ${conquest.bombardmentSummary.totalDamage} pts (1 dmg = 1 cube)`,
+                        `总伤害：${conquest.bombardmentSummary.totalDamage} 点（1 伤害 = 1 人口）`
+                      )}
                     </span>
                   </div>
 
@@ -256,18 +278,31 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                               )}`}
                               title={
                                 r.diceColor === 'purple'
-                                  ? `Rift Cannon Die: ${
-                                      r.roll === 1 || r.roll === 2
-                                        ? 'Blank (Miss)'
-                                        : r.roll === 3
-                                        ? '1 Hit'
-                                        : r.roll === 4
-                                        ? '2 Hits'
-                                        : r.roll === 5
-                                        ? '3 Hits + 1 Self-Damage'
-                                        : '1 Self-Damage'
-                                    }`
-                                  : `Cannon Die Roll: ${r.roll}`
+                                  ? l(
+                                      `Rift Cannon Die: ${
+                                        r.roll === 1 || r.roll === 2
+                                          ? 'Blank (Miss)'
+                                          : r.roll === 3
+                                          ? '1 Hit'
+                                          : r.roll === 4
+                                          ? '2 Hits'
+                                          : r.roll === 5
+                                          ? '3 Hits + 1 Self-Damage'
+                                          : '1 Self-Damage'
+                                      }`,
+                                      `裂隙炮骰：${
+                                        r.roll === 1 || r.roll === 2
+                                          ? '空面（未命中）'
+                                          : r.roll === 3
+                                          ? '1 命中'
+                                          : r.roll === 4
+                                          ? '2 命中'
+                                          : r.roll === 5
+                                          ? '3 命中 + 1 自伤'
+                                          : '1 自伤'
+                                      }`
+                                    )
+                                  : l(`Cannon Die Roll: ${r.roll}`, `火炮掷骰：${r.roll}`)
                               }
                             >
                               {r.diceColor === 'purple'
@@ -283,21 +318,22 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                 : r.roll}
                             </div>
                             <span className="text-[11px] capitalize text-slate-300 font-medium">
-                              {r.shipType}
+                              {translateShipType(r.shipType, language)}
                             </span>
                           </div>
                           <div>
                             {r.diceColor === 'purple' && (r.selfDamage || 0) > 0 && !r.isHit ? (
                               <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-950/80 border border-purple-700/60 text-purple-300">
-                                BACKFIRE (💥)
+                                {l('BACKFIRE (💥)', '反噬 (💥)')}
                               </span>
                             ) : r.isHit ? (
                               <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-700/60 text-rose-300">
-                                HIT (+{r.damage}){r.diceColor === 'purple' && (r.selfDamage || 0) > 0 ? ' 💥' : ''}
+                                {l(`HIT (+${r.damage})`, `命中 (+${r.damage})`)}
+                                {r.diceColor === 'purple' && (r.selfDamage || 0) > 0 ? ' 💥' : ''}
                               </span>
                             ) : (
                               <span className="text-[10px] font-mono text-slate-500 px-1 py-0.5">
-                                MISS
+                                {l('MISS', '未命中')}
                               </span>
                             )}
                           </div>
@@ -305,7 +341,9 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                       ))}
                     </div>
                   ) : (
-                    <div className="text-xs text-slate-400 italic">No non-missile weapons available to bombard.</div>
+                    <div className="text-xs text-slate-400 italic">
+                      {l('No non-missile weapons available to bombard.', '没有可用于轰炸的非导弹武器。')}
+                    </div>
                   )}
                 </div>
               )}
@@ -315,14 +353,26 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 <div className="p-3 rounded-lg bg-purple-950/30 border border-purple-800/40 text-xs space-y-1.5">
                   <div className="flex items-center gap-2 text-purple-300 font-bold uppercase tracking-wider text-[11px]">
                     <Shield className="w-3.5 h-3.5 text-purple-400" />
-                    <span>Casualty Slot Rule</span>
+                    <span>{l('Casualty Slot Rule', '伤亡槽规则')}</span>
                   </div>
                   <p className="text-slate-300 text-[11px] leading-relaxed">
-                    <strong className="text-purple-300 font-semibold">{conquest.bombardmentSummary.cubesDestroyed.length} cube(s)</strong> (
-                    {conquest.bombardmentSummary.cubesDestroyed.map((c) => c.resource).join(', ')}
-                    ) destroyed and placed in{' '}
-                    <strong className="text-slate-200">{conquest.bombardmentSummary.defenderName}</strong>'s Casualty Slot.
-                    Their round income is preserved for this round, and cubes will return to their tracks during Cleanup (preventing mid-round bankruptcy).
+                    <strong className="text-purple-300 font-semibold">
+                      {l(
+                        `${conquest.bombardmentSummary.cubesDestroyed.length} cube(s)`,
+                        `${conquest.bombardmentSummary.cubesDestroyed.length} 枚人口方块`
+                      )}
+                    </strong>{' '}
+                    (
+                    {conquest.bombardmentSummary.cubesDestroyed
+                      .map((c) => translateResourceType(c.resource, language))
+                      .join(', ')}
+                    ){' '}
+                    {l('destroyed and placed in ', '被消灭并移至 ')}
+                    <strong className="text-slate-200">{conquest.bombardmentSummary.defenderName}</strong>
+                    {l(
+                      `'s Casualty Slot. Their round income is preserved for this round, and cubes will return to their tracks during Cleanup (preventing mid-round bankruptcy).`,
+                      ' 的伤亡槽。其本轮产出保持不变，且方块将在清理阶段返回对应轨道（防止回合中意外破产）。'
+                    )}
                   </p>
                 </div>
               )}
@@ -332,13 +382,24 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-600/50 text-xs flex items-center gap-2.5 text-amber-300">
                   <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>
-                    <strong>{conquest.bombardmentSummary.cubesRemaining} defender cube(s) survived!</strong> Defender retains control of Sector {sector.sectorNumber}.
+                    <strong>
+                      {l(
+                        `${conquest.bombardmentSummary.cubesRemaining} defender cube(s) survived!`,
+                        `${conquest.bombardmentSummary.cubesRemaining} 枚防守方人口幸存！`
+                      )}
+                    </strong>{' '}
+                    {l(`Defender retains control of Sector ${sector.sectorNumber}.`, `防守方保留对星区 ${sector.sectorNumber} 的控制权。`)}
                   </span>
                 </div>
               ) : (
                 <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-600/40 text-xs flex items-center gap-2 text-emerald-300">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  <span>All defender population neutralized. Sector control is overthrown and ready for conquest!</span>
+                  <span>
+                    {l(
+                      'All defender population neutralized. Sector control is overthrown and ready for conquest!',
+                      '所有防守方人口已被清除。星区控制权已被瓦解，现可占领！'
+                    )}
+                  </span>
                 </div>
               )}
             </div>
@@ -352,17 +413,19 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
                     <CircleDot className="w-4 h-4 text-cyan-400" />
-                    <span>1. Sector Control (Influence Disc)</span>
+                    <span>{l('1. Sector Control (Influence Disc)', '1. 星区控制（影响力圆盘）')}</span>
                   </div>
                   <div className="text-[11px] font-mono text-slate-400">
-                    Discs on Track: <strong className="text-cyan-300 font-bold">{winner.influenceTrack.discsOnTrack}</strong> / {winner.influenceTrack.totalDiscs}
+                    {l('Discs on Track:', '轨道剩余圆盘：')}{' '}
+                    <strong className="text-cyan-300 font-bold">{winner.influenceTrack.discsOnTrack}</strong> /{' '}
+                    {winner.influenceTrack.totalDiscs}
                   </div>
                 </div>
 
                 {alreadyControls ? (
                   <div className="p-2.5 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-cyan-300 text-xs flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                    <span>You already control this sector with an Influence Disc.</span>
+                    <span>{l('You already control this sector with an Influence Disc.', '你已通过影响力圆盘控制此星区。')}</span>
                   </div>
                 ) : hasDiscsAvailable ? (
                   <label
@@ -381,17 +444,23 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                     />
                     <div className="text-xs">
                       <div className="font-bold text-slate-200 flex items-center gap-2">
-                        Place an Influence Disc to take control of Sector {sector.sectorNumber}
+                        {l(
+                          `Place an Influence Disc to take control of Sector ${sector.sectorNumber}`,
+                          `放置影响力圆盘以控制星区 ${sector.sectorNumber}`
+                        )}
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5">
-                        Establishes territory control, unlocks sector colonization, and awards {sector.victoryPoints} Victory Points at game end.
+                        {l(
+                          `Establishes territory control, unlocks sector colonization, and awards ${sector.victoryPoints} Victory Points at game end.`,
+                          `确立领地控制权、解锁星区殖民，并在游戏结束时提供 ${sector.victoryPoints} 点胜利分。`
+                        )}
                       </p>
                     </div>
                   </label>
                 ) : (
                   <div className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-800/40 text-rose-300 text-xs flex items-center gap-2">
                     <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
-                    <span>No Influence Discs remaining on track. Sector remains uninfluenced.</span>
+                    <span>{l('No Influence Discs remaining on track. Sector remains uninfluenced.', '轨道上无剩余影响力圆盘，该星区将保持无主状态。')}</span>
                   </div>
                 )}
               </div>
@@ -401,23 +470,26 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
                     <Rocket className="w-4 h-4 text-indigo-400" />
-                    <span>2. Planetary Colonization (Optional)</span>
+                    <span>{l('2. Planetary Colonization (Optional)', '2. 行星殖民（可选）')}</span>
                   </div>
                   <div className="flex items-center gap-1.5 text-[11px] font-mono text-slate-400">
-                    <span>Colony Ships:</span>
+                    <span>{l('Colony Ships:', '殖民船：')}</span>
                     <span className="text-indigo-300 font-bold">
-                      {remainingColonyShips} / {readyColonyShips} Ready
+                      {l(`${remainingColonyShips} / ${readyColonyShips} Ready`, `就绪 ${remainingColonyShips} / ${readyColonyShips}`)}
                     </span>
                   </div>
                 </div>
 
                 {!willControl ? (
                   <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs">
-                    You must take control of this sector with an Influence Disc to deploy Colony Ships and colonize its habitats.
+                    {l(
+                      'You must take control of this sector with an Influence Disc to deploy Colony Ships and colonize its habitats.',
+                      '必须先放置影响力圆盘控制该星区，才能派遣殖民船进驻其中的居住位。'
+                    )}
                   </div>
                 ) : sector.planets.length === 0 ? (
                   <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs">
-                    There are no planetary habitats in Sector {sector.sectorNumber}.
+                    {l(`There are no planetary habitats in Sector ${sector.sectorNumber}.`, `星区 ${sector.sectorNumber} 没有行星居住位。`)}
                   </div>
                 ) : (
                   <div className="space-y-2">
@@ -483,21 +555,28 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
 
                               <div className="flex flex-col text-left min-w-0">
                                 <span className="font-bold text-xs capitalize text-slate-200 flex items-center gap-1.5">
-                                  {isOrb ? 'Orbital Station' : isWild ? 'Wild Habitat' : `${planet.resource} Planet`}
+                                  {isOrb
+                                    ? l('Orbital Station', '轨道站')
+                                    : isWild
+                                    ? l('Wild Habitat', '全能居住位')
+                                    : l(`${planet.resource} Planet`, `${translateResourceType(planet.resource, language)}星球`)}
                                   {planet.isAdvanced && (
                                     <span className="text-[9px] font-mono px-1 rounded bg-slate-800 border border-slate-700 text-slate-400">
-                                      Adv
+                                      {l('Adv', '高级')}
                                     </span>
                                   )}
                                 </span>
                                 <span className="text-[10px] text-slate-400">
                                   {isColonized
-                                    ? 'Already Colonized'
+                                    ? l('Already Colonized', '已被殖民')
                                     : isSelected
-                                    ? `Deploying Colony Ship (${chosenRes.toUpperCase()})`
+                                    ? l(
+                                        `Deploying Colony Ship (${chosenRes.toUpperCase()})`,
+                                        `部署殖民船 (${translateResourceType(chosenRes, language)})`
+                                      )
                                     : !check.canColonize
                                     ? check.reason
-                                    : 'Ready to Colonize'}
+                                    : l('Ready to Colonize', '可殖民')}
                                 </span>
 
                                 {/* Resource Selector for Wild / Orbital Habitats */}
@@ -521,10 +600,10 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                           ? 'bg-yellow-500 text-slate-950 border-yellow-400 shadow-sm'
                                           : 'bg-slate-800 text-yellow-400 border-slate-700 hover:border-yellow-500/50'
                                       } disabled:opacity-30 disabled:pointer-events-none`}
-                                      title="Colonize with Money Cube"
+                                      title={l('Colonize with Money Cube', '使用信用点人口殖民')}
                                     >
                                       <Coins className="w-2.5 h-2.5" />
-                                      <span>Money ({winner.population.money.cubesOnBoard})</span>
+                                      <span>{l('Money', '信用点')} ({winner.population.money.cubesOnBoard})</span>
                                     </button>
 
                                     {/* Science Button */}
@@ -542,10 +621,10 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                           ? 'bg-pink-500 text-white border-pink-400 shadow-sm'
                                           : 'bg-slate-800 text-pink-400 border-slate-700 hover:border-pink-500/50'
                                       } disabled:opacity-30 disabled:pointer-events-none`}
-                                      title="Colonize with Science Cube"
+                                      title={l('Colonize with Science Cube', '使用科研人口殖民')}
                                     >
                                       <FlaskConical className="w-2.5 h-2.5" />
-                                      <span>Science ({winner.population.science.cubesOnBoard})</span>
+                                      <span>{l('Science', '科研')} ({winner.population.science.cubesOnBoard})</span>
                                     </button>
 
                                     {/* Material Button (only if not orbital) */}
@@ -564,10 +643,10 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                             ? 'bg-amber-600 text-white border-amber-500 shadow-sm'
                                             : 'bg-slate-800 text-amber-400 border-slate-700 hover:border-amber-500/50'
                                         } disabled:opacity-30 disabled:pointer-events-none`}
-                                        title="Colonize with Material Cube"
+                                        title={l('Colonize with Material Cube', '使用材料人口殖民')}
                                       >
                                         <Hammer className="w-2.5 h-2.5" />
-                                        <span>Materials ({winner.population.material.cubesOnBoard})</span>
+                                        <span>{l('Materials', '材料')} ({winner.population.material.cubesOnBoard})</span>
                                       </button>
                                     )}
                                   </div>
@@ -578,7 +657,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                             {/* Checkbox / Lock */}
                             <div className="shrink-0 ml-2">
                               {isColonized ? (
-                                <span className="text-[10px] text-slate-500">Taken</span>
+                                <span className="text-[10px] text-slate-500">{l('Taken', '已占领')}</span>
                               ) : !check.canColonize && !isSelected ? (
                                 <Lock className="w-3.5 h-3.5 text-slate-600" />
                               ) : (
@@ -609,27 +688,31 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
               {!canClaim ? (
                 <>
                   <div className="text-xs text-amber-400">
-                    Defender retained control of Sector {sector.sectorNumber}.
+                    {l(`Defender retained control of Sector ${sector.sectorNumber}.`, `防守方保留了星区 ${sector.sectorNumber} 的控制权。`)}
                   </div>
                   <button
                     onClick={handleDeclineAll}
                     disabled={!canControl}
                     className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-amber-950 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <span>{canControl ? 'Acknowledge & Continue' : `Waiting for ${winner.name}...`}</span>
+                    <span>
+                      {canControl
+                        ? l('Acknowledge & Continue', '确认并继续')
+                        : l(`Waiting for ${winner.name}...`, `等待 ${winner.name}...`)}
+                    </span>
                     {canControl && <ChevronRight className="w-3.5 h-3.5" />}
                   </button>
                 </>
               ) : (
                 <>
                   <div className="text-xs text-emerald-400">
-                    All defenders neutralized! Ready for sector conquest.
+                    {l('All defenders neutralized! Ready for sector conquest.', '敌方守军已清除！准备占领星区。')}
                   </div>
                   <button
                     onClick={() => setCurrentStep('conquest')}
                     className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-emerald-950 flex items-center gap-1.5 transition-all cursor-pointer"
                   >
-                    <span>Proceed to Sector Control</span>
+                    <span>{l('Proceed to Sector Control', '前往星区控制')}</span>
                     <ChevronRight className="w-3.5 h-3.5" />
                   </button>
                 </>
@@ -643,7 +726,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                     onClick={() => setCurrentStep('bombardment')}
                     className="px-3 py-1.5 rounded-xl bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-xs font-semibold border border-slate-800 transition-colors cursor-pointer"
                   >
-                    ← Review Bombardment
+                    {l('← Review Bombardment', '← 查看轰炸结果')}
                   </button>
                 )}
                 {!alreadyControls && (
@@ -652,7 +735,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                     disabled={!canControl}
                     className="px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-400 hover:text-slate-200 text-xs font-semibold transition-colors cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    Leave Unclaimed
+                    {l('Leave Unclaimed', '放弃控制')}
                   </button>
                 )}
               </div>
@@ -665,11 +748,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 >
                   {canControl ? (
                     <>
-                      <span>Confirm Conquest</span>
+                      <span>{l('Confirm Conquest', '确认占领')}</span>
                       <ChevronRight className="w-3.5 h-3.5" />
                     </>
                   ) : (
-                    <span>Waiting for {winner.name}...</span>
+                    <span>{l(`Waiting for ${winner.name}...`, `等待 ${winner.name}...`)}</span>
                   )}
                 </button>
               </div>

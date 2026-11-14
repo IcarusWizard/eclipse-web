@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { CircleOff, Zap, ShieldAlert, Check, X, Info } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface FirstPassHintModalProps {
   player: PlayerState;
@@ -17,6 +18,7 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
   onConfirmPass,
   onCancel,
 }) => {
+  const { language, l } = useLanguage();
   const [autoPassEnabled, setAutoPassEnabled] = useState<boolean>(true);
 
   if (!isOpen) return null;
@@ -32,14 +34,14 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
             </div>
             <div>
               <h3 className="text-base sm:text-lg font-black text-slate-100 tracking-wide">
-                Pass Turn — Round {round}
+                {l(`Pass Turn — Round ${round}`, `跳过行动阶段 — 第 ${round} 轮`)}
               </h3>
               <p className="text-xs text-indigo-300 font-semibold flex items-center gap-1.5">
                 <span
                   className="w-2.5 h-2.5 rounded-full inline-block ring-1 ring-white/20"
                   style={{ backgroundColor: player.color }}
                 />
-                Commander {player.name}
+                {l('Commander', '指挥官')} {player.name}
               </p>
             </div>
           </div>
@@ -57,10 +59,18 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
           <div className="bg-slate-950/70 border border-slate-800 rounded-xl p-3 flex gap-2.5">
             <Info className="w-4 h-4 text-sky-400 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-sky-300 block mb-0.5">Reaction Turns in Eclipse:</span>
-              Passing concludes your main actions for Round {round}. However, whenever opponents take actions,
-              the turn will rotate back to you for <strong className="text-slate-100">Reaction Turns</strong> (where
-              you can Upgrade 1 part, Build 1 ship/structure, or Pass) until all players pass consecutively.
+              <span className="font-bold text-sky-300 block mb-0.5">{l('Reaction Turns in Eclipse:', '《星蚀》中的响应回合：')}</span>
+              {language === 'zh' ? (
+                <>
+                  跳过将结束你在第 {round} 轮的常规行动。但当其他玩家继续行动时，轮到你时仍会进入<strong className="text-slate-100">响应回合</strong>（可执行 1 处升级、1 项建造或跳过），直到所有玩家连续跳过为止。
+                </>
+              ) : (
+                <>
+                  Passing concludes your main actions for Round {round}. However, whenever opponents take actions,
+                  the turn will rotate back to you for <strong className="text-slate-100">Reaction Turns</strong> (where
+                  you can Upgrade 1 part, Build 1 ship/structure, or Pass) until all players pass consecutively.
+                </>
+              )}
             </div>
           </div>
 
@@ -68,10 +78,18 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
           <div className="bg-indigo-950/40 border border-indigo-500/30 rounded-xl p-3 flex gap-2.5">
             <Zap className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-amber-300 block mb-0.5">Speed Up Play with Auto-Pass:</span>
-              To avoid manually clicking "Pass" every reaction turn, you can enable{' '}
-              <strong className="text-slate-100">Auto-Pass Reactions</strong>. The game will automatically pass subsequent
-              reaction turns for you.
+              <span className="font-bold text-amber-300 block mb-0.5">{l('Speed Up Play with Auto-Pass:', '使用自动跳过加快节奏：')}</span>
+              {language === 'zh' ? (
+                <>
+                  为避免每次响应回合都手动点击“跳过”，你可以开启 <strong className="text-slate-100">自动跳过响应回合</strong>，系统将为你自动跳过后续响应回合。
+                </>
+              ) : (
+                <>
+                  To avoid manually clicking "Pass" every reaction turn, you can enable{' '}
+                  <strong className="text-slate-100">Auto-Pass Reactions</strong>. The game will automatically pass subsequent
+                  reaction turns for you.
+                </>
+              )}
             </div>
           </div>
 
@@ -79,10 +97,18 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
           <div className="bg-emerald-950/30 border border-emerald-500/30 rounded-xl p-3 flex gap-2.5">
             <ShieldAlert className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
             <div>
-              <span className="font-bold text-emerald-300 block mb-0.5">Invasion Safety:</span>
-              If another player enters or invades any sector where you have an influence disc, population cubes,
-              or ships, Auto-Pass will <strong className="text-emerald-200">immediately pause and alert you</strong> so
-              you can react and defend your territory!
+              <span className="font-bold text-emerald-300 block mb-0.5">{l('Invasion Safety:', '入侵保护机制：')}</span>
+              {language === 'zh' ? (
+                <>
+                  如果有其他玩家进入或入侵了你拥有影响力圆盘、人口方块或飞船的星区，自动跳过将<strong className="text-emerald-200">立即暂停并提醒你</strong>，以便你做出防御反应！
+                </>
+              ) : (
+                <>
+                  If another player enters or invades any sector where you have an influence disc, population cubes,
+                  or ships, Auto-Pass will <strong className="text-emerald-200">immediately pause and alert you</strong> so
+                  you can react and defend your territory!
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -98,10 +124,10 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
           <div className="flex flex-col">
             <span className="text-xs font-bold text-slate-100 flex items-center gap-1.5">
               <Zap className="w-3.5 h-3.5 text-amber-400" />
-              Enable Auto-Pass for subsequent reaction turns
+              {l('Enable Auto-Pass for subsequent reaction turns', '对后续响应回合启用自动跳过')}
             </span>
             <span className="text-[11px] text-slate-400">
-              You can toggle this ON or OFF anytime using the switch on the action bar.
+              {l('You can toggle this ON or OFF anytime using the switch on the action bar.', '你可以随时通过底部操作栏开关开启或关闭此功能。')}
             </span>
           </div>
         </label>
@@ -113,7 +139,7 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
             onClick={onCancel}
             className="px-4 py-2 rounded-xl text-xs font-bold text-slate-400 hover:text-slate-200 hover:bg-slate-800 transition-colors"
           >
-            Cancel
+            {l('Cancel', '取消')}
           </button>
           <button
             type="button"
@@ -125,7 +151,7 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
             }`}
           >
             <Check className="w-4 h-4" />
-            <span>Pass Turn {autoPassEnabled ? '(with Auto-Pass)' : '(Manual Reactions)'}</span>
+            <span>{l('Pass Turn', '确认跳过')} {autoPassEnabled ? l('(with Auto-Pass)', '（含自动跳过）') : l('(Manual Reactions)', '（手动响应）')}</span>
           </button>
         </div>
       </div>

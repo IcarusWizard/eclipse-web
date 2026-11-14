@@ -30,6 +30,8 @@ import {
   Hammer,
   AlertTriangle,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateTechName } from '../../i18n/catalogTranslations';
 
 interface ExploreModalProps {
   player: PlayerState;
@@ -65,6 +67,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
   selectedDracoIndex: externalDracoIndex,
   onSelectDracoIndex,
 }) => {
+  const { language, l } = useLanguage();
   const isDraco = player?.faction?.id === 'descendants_of_draco';
   const hasDracoChoice = isDraco && candidateTiles && candidateTiles.length >= 2;
   const [internalDracoIndex, setInternalDracoIndex] = useState<number>(0);
@@ -159,42 +162,42 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
     switch (resource) {
       case 'money':
         return {
-          name: isAdvanced ? '★ Advanced Money' : 'Yellow Money',
+          name: isAdvanced ? l('★ Advanced Money', '★ 高级金钱星') : l('Yellow Money', '黄色金钱星'),
           color: '#facc15',
           borderClass: isAdvanced ? 'border-yellow-400 ring-1 ring-yellow-400/50' : 'border-yellow-400',
           textClass: 'text-yellow-400',
           icon: <Coins className="w-3.5 h-3.5 text-yellow-400" />,
-          techName: 'Advanced Economy',
+          techName: translateTechName('advanced_economy', 'Advanced Economy', language),
           hasTech: hasAdvancedEconomy,
         };
       case 'science':
         return {
-          name: isAdvanced ? '★ Advanced Science' : 'Pink Science',
+          name: isAdvanced ? l('★ Advanced Science', '★ 高级科研星') : l('Pink Science', '粉色科研星'),
           color: '#ec4899',
           borderClass: isAdvanced ? 'border-pink-500 ring-1 ring-pink-500/50' : 'border-pink-500',
           textClass: 'text-pink-400',
           icon: <FlaskConical className="w-3.5 h-3.5 text-pink-400" />,
-          techName: 'Advanced Labs',
+          techName: translateTechName('advanced_labs', 'Advanced Labs', language),
           hasTech: hasAdvancedLabs,
         };
       case 'material':
         return {
-          name: isAdvanced ? '★ Advanced Materials' : 'Brown Materials',
+          name: isAdvanced ? l('★ Advanced Materials', '★ 高级材料星') : l('Brown Materials', '棕色材料星'),
           color: '#854d0e',
           borderClass: isAdvanced ? 'border-amber-700 ring-1 ring-amber-700/50' : 'border-amber-700',
           textClass: 'text-amber-400',
           icon: <Hammer className="w-3.5 h-3.5 text-amber-500" />,
-          techName: 'Advanced Mining',
+          techName: translateTechName('advanced_mining', 'Advanced Mining', language),
           hasTech: hasAdvancedMining,
         };
       default:
         return {
-          name: isAdvanced ? '★ Advanced Wild' : 'Standard Wild',
+          name: isAdvanced ? l('★ Advanced Wild', '★ 高级万能星') : l('Standard Wild', '标准万能星'),
           color: '#94a3b8',
           borderClass: isAdvanced ? 'border-white ring-1 ring-white/50' : 'border-slate-500',
           textClass: isAdvanced ? 'text-white font-bold' : 'text-slate-300',
           icon: <Sparkles className={`w-3.5 h-3.5 ${isAdvanced ? 'text-white' : 'text-slate-300'}`} />,
-          techName: 'Adv Economy / Labs / Mining (or Metasynthesis)',
+          techName: l('Adv Economy / Labs / Mining (or Metasynthesis)', '高级经济 / 实验室 / 采矿（或元合成）'),
           hasTech: !isAdvanced || hasAnyAdvancedTech,
         };
     }
@@ -274,7 +277,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
           <div className="flex flex-col sm:flex-row items-center justify-between gap-2 px-3 py-2 rounded-xl bg-amber-950/50 border border-amber-500/50 text-xs">
             <div className="flex items-center gap-1.5 text-amber-300 font-bold">
               <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-              <span>Draco Ability: Choose 1 of 2 revealed tiles:</span>
+              <span>{l('Draco Ability: Choose 1 of 2 revealed tiles:', '德拉科能力：从翻开的 2 块板块中选择 1 块：')}</span>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {candidateTiles!.map((tile, idx) => (
@@ -292,9 +295,9 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                       : 'bg-slate-800 text-slate-300 hover:bg-slate-700'
                   }`}
                 >
-                  <span>Tile {idx + 1}:</span>
-                  <span className="font-mono">SEC {tile.sectorNumber}</span>
-                  <span className="text-[10px] opacity-80">({tile.victoryPoints} VP)</span>
+                  <span>{l(`Tile ${idx + 1}:`, `板块 ${idx + 1}：`)}</span>
+                  <span className="font-mono">{l(`SEC ${tile.sectorNumber}`, `星区 ${tile.sectorNumber}`)}</span>
+                  <span className="text-[10px] opacity-80">({tile.victoryPoints} {l('VP', '分')})</span>
                 </button>
               ))}
             </div>
@@ -308,20 +311,20 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
               <Compass className="w-4 h-4" />
             </div>
             <span className="text-xs font-black tracking-wide text-slate-200">
-              {`EXPLORING RING ${ring}`}
+              {l(`EXPLORING RING ${ring}`, `探索第 ${ring} 环星域`)}
             </span>
-            <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-bold" title="Target Hex Coordinates">
+            <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-400 font-mono font-bold" title={l('Target Hex Coordinates', '目标六角格坐标')}>
               {`(${targetCoord.q}, ${targetCoord.r})`}
             </span>
             <span className="text-[11px] px-1.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-bold">
-              SEC {activeTile.sectorNumber}
+              {l(`SEC ${activeTile.sectorNumber}`, `星区 ${activeTile.sectorNumber}`)}
             </span>
             <span className="text-[11px] font-bold text-cyan-400">
-              {activeTile.victoryPoints} VP
+              {activeTile.victoryPoints} {l('VP', '分')}
             </span>
             <span className="text-[11px] px-1.5 py-0.5 rounded bg-cyan-950/80 border border-cyan-700/80 text-cyan-300 font-bold flex items-center gap-1">
               <span>🌌</span>
-              <span>{activeTile.wormholes.filter(Boolean).length} WH</span>
+              <span>{activeTile.wormholes.filter(Boolean).length} {l('WH', '虫洞')}</span>
             </span>
           </div>
 
@@ -329,7 +332,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
           <div className="flex items-center gap-2.5">
             {legalRotations.length === 0 && (
               <span className="px-2.5 py-0.5 rounded-full text-[11px] font-bold border bg-rose-950/60 border-rose-800 text-rose-400">
-                No Legal Connections
+                {l('No Legal Connections', '无合法连接')}
               </span>
             )}
 
@@ -340,13 +343,13 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 onClick={handleRotatePrev}
                 disabled={legalRotations.length <= 1}
                 className="p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-400 transition-colors disabled:opacity-30 disabled:hover:text-slate-300 disabled:cursor-not-allowed cursor-pointer"
-                title={legalRotations.length <= 1 ? 'Only 1 legal orientation' : 'Rotate CCW to previous legal orientation (Shift+R / ←)'}
+                title={legalRotations.length <= 1 ? l('Only 1 legal orientation', '仅 1 个合法朝向') : l('Rotate CCW to previous legal orientation (Shift+R / ←)', '逆时针旋转至上一个合法朝向 (Shift+R / ←)')}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
               </button>
               <div
                 className="flex items-center gap-1 text-[10px] font-mono text-slate-300 px-1.5 font-bold select-none"
-                title={legalRotations.length > 0 ? `Legal orientation ${rotation * 60}° (${legalRotations.indexOf(rotation) + 1} of ${legalRotations.length})` : `${rotation * 60}°`}
+                title={legalRotations.length > 0 ? l(`Legal orientation ${rotation * 60}° (${legalRotations.indexOf(rotation) + 1} of ${legalRotations.length})`, `合法朝向 ${rotation * 60}°（第 ${legalRotations.indexOf(rotation) + 1}/${legalRotations.length} 个）`) : `${rotation * 60}°`}
               >
                 <span>{rotation * 60}°</span>
                 {legalRotations.length > 1 && (
@@ -360,7 +363,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 onClick={handleRotateNext}
                 disabled={legalRotations.length <= 1}
                 className="p-1 rounded hover:bg-slate-800 text-slate-300 hover:text-cyan-400 transition-colors disabled:opacity-30 disabled:hover:text-slate-300 disabled:cursor-not-allowed cursor-pointer"
-                title={legalRotations.length <= 1 ? 'Only 1 legal orientation' : 'Rotate CW to next legal orientation (R / →)'}
+                title={legalRotations.length <= 1 ? l('Only 1 legal orientation', '仅 1 个合法朝向') : l('Rotate CW to next legal orientation (R / →)', '顺时针旋转至下一个合法朝向 (R / →)')}
               >
                 <RotateCw className="w-3.5 h-3.5" />
               </button>
@@ -374,7 +377,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
             {/* Wormhole Tile Layout Preview */}
             <div
               className="flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-950/80 border border-slate-800"
-              title={`Sector ${activeTile.sectorNumber} has ${activeTile.wormholes.filter(Boolean).length} wormholes (current orientation: ${rotation * 60}°)`}
+              title={l(`Sector ${activeTile.sectorNumber} has ${activeTile.wormholes.filter(Boolean).length} wormholes (current orientation: ${rotation * 60}°)`, `星区 ${activeTile.sectorNumber} 拥有 ${activeTile.wormholes.filter(Boolean).length} 个虫洞（当前朝向：${rotation * 60}°）`)}
             >
               <svg width="34" height="34" viewBox="0 0 34 34" className="shrink-0 overflow-visible">
                 <polygon
@@ -448,31 +451,31 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
               </svg>
               <div className="flex flex-col text-left leading-none">
                 <span className="text-[10px] font-bold text-slate-200">
-                  {activeTile.wormholes.filter(Boolean).length} Wormholes
+                  {activeTile.wormholes.filter(Boolean).length} {l('Wormholes', '个虫洞')}
                 </span>
                 {(activeTile.hasWarpPortal || activeTile.sectorNumber === 281 || activeTile.sectorNumber === 381 || activeTile.sectorNumber === 382) && (
                   <span className="text-[9px] font-bold text-purple-400 mt-0.5">
-                    🌀 Warp Portal
+                    🌀 {l('Warp Portal', '曲速传送门')}
                   </span>
                 )}
                 {(activeTile.isPulsar || activeTile.sectorNumber === 393 || activeTile.sectorNumber === 394) && (
                   <span className="text-[9px] font-bold text-cyan-400 mt-0.5">
-                    ⚡ Pulsar (3 Action Spaces)
+                    ⚡ {l('Pulsar (3 Action Spaces)', '脉冲星（3 行动位）')}
                   </span>
                 )}
                 {isBlackHoleTile && (
                   <span className="text-[9px] font-bold text-indigo-400 mt-0.5">
-                    🕳️ Black Hole ({activeTile.sectorNumber === 396 ? 'Cygnus X-1: Ring I Return' : 'V616 Mon: Empty Zone Return'})
+                    🕳️ {l('Black Hole', '黑洞')} ({activeTile.sectorNumber === 396 ? l('Cygnus X-1: Ring I Return', '天鹅座 X-1：返回第 I 环') : l('V616 Mon: Empty Zone Return', 'V616 麒麟座：返回空区域')})
                   </span>
                 )}
                 {activeTile.isNebula && (
                   <span className="text-[9px] font-bold text-emerald-400 mt-0.5">
-                    Nebula (3 Subsectors) - Sub 1 & 2 (Disc ❓), Sub 3 (Ancient 👾)
+                    {l('Nebula (3 Subsectors) - Sub 1 & 2 (Disc ❓), Sub 3 (Ancient 👾)', '星云（3 子星区）- 子星区 1&2（探索发现 ❓），子星区 3（远古遗迹 👾）')}
                   </span>
                 )}
                 {!isConnected && (
                   <span className="text-[8.5px] font-mono text-rose-400 mt-0.5">
-                    Unconnected
+                    {l('Unconnected', '未连接')}
                   </span>
                 )}
               </div>
@@ -480,9 +483,9 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
 
             {/* Habitats Group */}
             <div className="flex items-center gap-2">
-              <span className="text-[11px] font-semibold text-slate-400">Habitats:</span>
+              <span className="text-[11px] font-semibold text-slate-400">{l('Habitats:', '宜居星球：')}</span>
               {activeTile.planets.length === 0 ? (
-                <span className="text-[11px] text-slate-500 italic">None (Deep Space)</span>
+                <span className="text-[11px] text-slate-500 italic">{l('None (Deep Space)', '无（深空）')}</span>
               ) : (
                 <div className="flex items-center gap-1.5">
                   {activeTile.planets.map((planet, pIdx) => {
@@ -526,11 +529,11 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                               </span>
                               {planet.isAdvanced ? (
                                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-800 text-white font-mono font-bold border border-slate-600">
-                                  ★ ADVANCED
+                                  {l('★ ADVANCED', '★ 高级')}
                                 </span>
                               ) : (
                                 <span className="text-[9px] px-1.5 py-0.5 rounded bg-emerald-950 text-emerald-300 font-mono font-bold border border-emerald-800">
-                                  STANDARD
+                                  {l('STANDARD', '标准')}
                                 </span>
                               )}
                             </div>
@@ -538,23 +541,23 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                               {planet.isAdvanced ? (
                                 <div>
                                   <div className="text-slate-400">
-                                    Requires Tech: <strong className="text-slate-100">{meta.techName}</strong>
+                                    {l('Requires Tech:', '需要科技：')} <strong className="text-slate-100">{meta.techName}</strong>
                                   </div>
                                   <div className="mt-1">
                                     {meta.hasTech ? (
                                       <span className="text-emerald-400 font-bold flex items-center gap-1">
-                                        <Check className="w-3.5 h-3.5" /> Researched (Ready to Colonize)
+                                        <Check className="w-3.5 h-3.5" /> {l('Researched (Ready to Colonize)', '已研发（可殖民）')}
                                       </span>
                                     ) : (
                                       <span className="text-rose-400 font-medium flex items-center gap-1">
-                                        <AlertTriangle className="w-3.5 h-3.5" /> Need {meta.techName}
+                                        <AlertTriangle className="w-3.5 h-3.5" /> {l(`Need ${meta.techName}`, `缺少 ${meta.techName}`)}
                                       </span>
                                     )}
                                   </div>
                                 </div>
                               ) : (
                                 <div className="text-slate-400">
-                                  Standard colony square. Can be settled immediately with any ready Colony Ship!
+                                  {l('Standard colony square. Can be settled immediately with any ready Colony Ship!', '标准殖民格，可使用任意待命殖民船立即殖民！')}
                                 </div>
                               )}
                             </div>
@@ -580,18 +583,18 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                   >
                     <div className="px-2 py-0.5 rounded-lg bg-rose-950/70 border border-rose-800/80 text-rose-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer hover:bg-rose-900/60 transition-colors">
                       <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                      {activeTile.ancientsCount} Ancient{activeTile.ancientsCount > 1 ? 's' : ''}
+                      {l(`${activeTile.ancientsCount} Ancient${activeTile.ancientsCount > 1 ? 's' : ''}`, `${activeTile.ancientsCount} 艘先驱飞船`)}
                     </div>
                     {hoveredFeature === 'ancient' && (
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 w-64 p-2.5 rounded-xl bg-slate-950 border border-rose-800 shadow-2xl text-left z-50 pointer-events-none">
                         <div className="text-xs font-bold text-rose-300 mb-1 flex items-center gap-1">
                           <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-                          Guarded by {activeTile.ancientsCount} Ancient Ship{activeTile.ancientsCount > 1 ? 's' : ''}
+                          {l(`Guarded by ${activeTile.ancientsCount} Ancient Ship${activeTile.ancientsCount > 1 ? 's' : ''}`, `由 ${activeTile.ancientsCount} 艘先驱飞船守卫`)}
                         </div>
                         <p className="text-[11px] text-slate-300 leading-snug">
                           {isDraco
-                            ? 'Descendants of Draco coexist peacefully with Ancients and may place an Influence Disc immediately!'
-                            : 'Sector is hostile. You cannot place an Influence Disc or colonize planets until Ancient ships are defeated in the Combat Phase.'}
+                            ? l('Descendants of Draco coexist peacefully with Ancients and may place an Influence Disc immediately!', '德拉科后裔可与先驱和平共存，并可立即放置影响力圆盘！')
+                            : l('Sector is hostile. You cannot place an Influence Disc or colonize planets until Ancient ships are defeated in the Combat Phase.', '该星区处于敌对状态。必须在战斗阶段击败先驱飞船后，才能放置影响力圆盘或殖民星球。')}
                         </p>
                       </div>
                     )}
@@ -606,16 +609,16 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                   >
                     <div className="px-2 py-0.5 rounded-lg bg-amber-950/70 border border-amber-800/80 text-amber-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer hover:bg-amber-900/60 transition-colors">
                       <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                      Discovery
+                      {l('Discovery', '探索发现')}
                     </div>
                     {hoveredFeature === 'discovery' && (
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 w-64 p-2.5 rounded-xl bg-slate-950 border border-amber-800 shadow-2xl text-left z-50 pointer-events-none">
                         <div className="text-xs font-bold text-amber-300 mb-1 flex items-center gap-1">
                           <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-                          Ancient Discovery Tile
+                          {l('Ancient Discovery Tile', '远古探索发现板块')}
                         </div>
                         <p className="text-[11px] text-slate-300 leading-snug">
-                          A face-down Discovery Tile will be drawn here. Secure the sector to unlock Ancient Tech, a free Cruiser, or +2 VP!
+                          {l('A face-down Discovery Tile will be drawn here. Secure the sector to unlock Ancient Tech, a free Cruiser, or +2 VP!', '此处将放置 1 枚面朝下的探索发现板块。控制该星区即可解锁远古科技、免费巡洋舰或 +2 胜利分！')}
                         </p>
                       </div>
                     )}
@@ -630,16 +633,19 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                   >
                     <div className="px-2 py-0.5 rounded-lg bg-sky-950/70 border border-sky-800/80 text-sky-300 text-[11px] font-bold flex items-center gap-1 cursor-pointer hover:bg-sky-900/60 transition-colors">
                       <span className="font-mono font-bold text-[10px] text-sky-400">[A]</span>
-                      Artifact
+                      {l('Artifact', '遗迹')}
                     </div>
                     {hoveredFeature === 'artifact' && (
                       <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2.5 w-64 p-2.5 rounded-xl bg-slate-950 border border-sky-800 shadow-2xl text-left z-50 pointer-events-none">
                         <div className="text-xs font-bold text-sky-300 mb-1 flex items-center gap-1.5">
                           <span className="font-mono font-bold text-[10px] text-sky-400">[A]</span>
-                          Planetary Artifact
+                          {l('Planetary Artifact', '行星遗迹')}
                         </div>
                         <p className="text-[11px] text-slate-300 leading-snug">
-                          Ancient alien structure. Yields 0 VP on its own, but activates for a bonus of 5 resources when researching the <strong>Artifact Key</strong> technology.
+                          {l(
+                            'Ancient alien structure. Yields 0 VP on its own, but activates for a bonus of 5 resources when researching the Artifact Key technology.',
+                            '远古外星遗迹。自身不提供胜利分，但在研发“遗迹密钥”科技时可激活并获得 5 点资源奖励。'
+                          )}
                         </p>
                       </div>
                     )}
@@ -652,12 +658,12 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
           {/* Compact Influence Disc Option */}
           {isBlackHoleTile ? (
             <div className="text-[11px] text-indigo-400 font-medium shrink-0 flex items-center gap-1 bg-indigo-950/40 px-2 py-0.5 rounded-lg border border-indigo-900/50">
-              <span>🕳️</span> Spacetime Anomaly (No Influence Disc)
+              <span>🕳️</span> {l('Spacetime Anomaly (No Influence Disc)', '时空异常（不放置影响力圆盘）')}
             </div>
           ) : hasImmediateDiscovery ? (
             <div className="text-[11px] text-cyan-300 font-medium shrink-0 flex items-center gap-1 bg-cyan-950/50 px-2.5 py-1 rounded-lg border border-cyan-700/60 shadow">
               <Sparkles className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
-              <span>Discovery tile: Decide sector control after viewing</span>
+              <span>{l('Discovery tile: Decide sector control after viewing', '探索发现板块：查看后再决定是否控制星区')}</span>
             </div>
           ) : activeTile.ancientsCount === 0 || isDraco ? (
             <label className="flex items-center gap-2 text-xs text-slate-300 cursor-pointer shrink-0 select-none bg-slate-950/60 px-2.5 py-1 rounded-lg border border-slate-800 hover:border-slate-700 transition-colors">
@@ -668,20 +674,20 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 onChange={(e) => setClaimInfluence(e.target.checked)}
                 className="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
               />
-              <span>Place Influence Disc</span>
+              <span>{l('Place Influence Disc', '放置影响力圆盘')}</span>
               {isDraco && activeTile.ancientsCount > 0 && (
                 <span className="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/80">
-                  🐉 Ancient Coexistence
+                  🐉 {l('Ancient Coexistence', '先驱共存')}
                 </span>
               )}
               <span className="text-[10px] font-mono text-cyan-400 font-bold">
-                ({player.influenceTrack.discsOnTrack} avail)
+                ({l(`${player.influenceTrack.discsOnTrack} avail`, `可用 ${player.influenceTrack.discsOnTrack}`)})
               </span>
             </label>
           ) : (
             <div className="text-[11px] text-rose-400/90 font-medium shrink-0 flex items-center gap-1 bg-rose-950/30 px-2 py-0.5 rounded-lg border border-rose-900/50">
               <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-              Hostile Sector (No disc)
+              {l('Hostile Sector (No disc)', '敌对星区（不放置圆盘）')}
             </div>
           )}
         </div>
@@ -689,14 +695,16 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
         {/* Footer Actions */}
         <div className="flex items-center justify-between pt-2 border-t border-slate-800/80">
           <div className="flex items-center gap-2 text-[11px] text-slate-400">
-            <span className="font-mono text-slate-500 text-[10px]">Controls:</span>
+            <span className="font-mono text-slate-500 text-[10px]">{l('Controls:', '操作：')}</span>
             <span>
               {legalRotations.length > 1 ? (
-                <>Click hex on map or press <kbd className="px-1.5 py-0.5 bg-slate-800 text-cyan-300 rounded font-mono text-[10px] border border-slate-700 font-bold">R</kbd> to cycle legal orientations ({legalRotations.length} available)</>
+                language === 'zh'
+                  ? <>点击星图六角格或按 <kbd className="px-1.5 py-0.5 bg-slate-800 text-cyan-300 rounded font-mono text-[10px] border border-slate-700 font-bold">R</kbd> 切换合法朝向（共 {legalRotations.length} 个可用）</>
+                  : <>Click hex on map or press <kbd className="px-1.5 py-0.5 bg-slate-800 text-cyan-300 rounded font-mono text-[10px] border border-slate-700 font-bold">R</kbd> to cycle legal orientations ({legalRotations.length} available)</>
               ) : legalRotations.length === 1 ? (
-                <>Oriented to the single legal connection ({rotation * 60}°)</>
+                <>{l(`Oriented to the single legal connection (${rotation * 60}°)`, `已对准唯一合法连接朝向 (${rotation * 60}°)`)}</>
               ) : (
-                <span className="text-rose-400">No legal orientation connects this sector to your empire</span>
+                <span className="text-rose-400">{l('No legal orientation connects this sector to your empire', '没有合法朝向可将该星区连接至你的帝国')}</span>
               )}
             </span>
           </div>
@@ -706,14 +714,14 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
               onClick={() => onDiscard(hasDracoChoice ? selectedDracoIndex : undefined)}
               className="px-3.5 py-1.5 rounded-xl bg-slate-800/80 hover:bg-rose-950/50 hover:text-rose-300 text-slate-400 hover:border-rose-800 text-xs font-semibold border border-slate-700 transition-colors"
             >
-              Discard Tile
+              {l('Discard Tile', '弃置板块')}
             </button>
             <button
               disabled={!isConnected}
               onClick={() => onConfirmPlacement(rotation, canClaimDisc, hasDracoChoice ? selectedDracoIndex : undefined)}
               className="px-5 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all flex items-center gap-1.5"
             >
-              <Check className="w-3.5 h-3.5" /> Confirm Placement
+              <Check className="w-3.5 h-3.5" /> {l('Confirm Placement', '确认放置')}
             </button>
           </div>
         </div>

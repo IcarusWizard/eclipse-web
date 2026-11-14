@@ -19,6 +19,12 @@ import { getEffectiveShipPart } from '../../engine/rules/partData';
 import { getNeutralShipBlueprint, NeutralShipType } from '../../engine/rules/neutralShips';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
+import { useLanguage } from '../../i18n/LanguageContext';
+import {
+  translateFactionName,
+  translateNeutralBlueprintTitle,
+  translateShipType,
+} from '../../i18n/catalogTranslations';
 
 export interface CombatUnitDisplayGroup {
   key: string;
@@ -119,11 +125,13 @@ export function groupCombatUnits(
 function getSideInfo(
   ownerIds: string[],
   role: 'attacker' | 'defender',
-  players: PlayerState[]
+  players: PlayerState[],
+  lang: 'en' | 'zh'
 ) {
+  const l = (en: string, zh: string) => (lang === 'zh' ? zh : en);
   if (ownerIds.length === 0) {
     return {
-      name: role === 'attacker' ? 'Attacker' : 'Defender',
+      name: role === 'attacker' ? l('Attacker', '进攻方') : l('Defender', '防守方'),
       factionName: undefined,
       color: role === 'attacker' ? '#ef4444' : '#0ea5e9',
       isNpc: false,
@@ -136,20 +144,20 @@ function getSideInfo(
       const displayColor = getFactionDisplayColor(p.color, p.faction?.name);
       return {
         name: getPlayerDisplayName(p, { short: true }),
-        factionName: p.faction?.name,
+        factionName: p.faction ? translateFactionName(p.faction.id, p.faction.name, lang) : undefined,
         color: displayColor,
         isNpc: false,
       };
     }
   }
   if (primaryId === 'ancient') {
-    return { name: 'Ancients', factionName: 'Ancient Guardians', color: '#f43f5e', isNpc: true };
+    return { name: l('Ancients', '远古舰船'), factionName: l('Ancient Guardians', '远古守卫'), color: '#f43f5e', isNpc: true };
   }
   if (primaryId === 'guardian') {
-    return { name: 'Guardian', factionName: 'Galactic Guardian', color: '#f59e0b', isNpc: true };
+    return { name: l('Guardian', '星区守护者'), factionName: l('Galactic Guardian', '银河守护者'), color: '#f59e0b', isNpc: true };
   }
   if (primaryId === 'gcds') {
-    return { name: 'GCDS', factionName: 'Galactic Center Defense System', color: '#a855f7', isNpc: true };
+    return { name: l('GCDS', '银河中心防御系统'), factionName: l('Galactic Center Defense System', '银河中心防御系统'), color: '#a855f7', isNpc: true };
   }
   return {
     name: primaryId.toUpperCase(),
@@ -225,6 +233,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   onAutoResolve,
   currentSeat = 'all',
 }) => {
+  const { l, language } = useLanguage();
   const sector = state.sectors.find((s) => s.id === combat.sectorId);
   if (!sector) return null;
 
@@ -252,8 +261,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const attackerOwnerIds = Array.from(new Set(attackerUnits.map((u) => u.ownerId)));
   const defenderOwnerIds = Array.from(new Set(defenderUnits.map((u) => u.ownerId)));
 
-  const attackerSide = getSideInfo(attackerOwnerIds, 'attacker', state.players);
-  const defenderSide = getSideInfo(defenderOwnerIds, 'defender', state.players);
+  const attackerSide = getSideInfo(attackerOwnerIds, 'attacker', state.players, language);
+  const defenderSide = getSideInfo(defenderOwnerIds, 'defender', state.players, language);
 
   const groups = getCombatShipTypeGroups(aliveUnits, defenderOwnerId);
   const pendingMissileGroups = isMissileStage
@@ -502,15 +511,19 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             </span>
             <Crosshair className="w-4 h-4 text-rose-400 animate-spin-slow" />
             <span className="font-bold text-xs sm:text-sm tracking-wide text-rose-300">
-              FLEET ENGAGEMENT: SECTOR {sector.sectorNumber}
+              {l(`FLEET ENGAGEMENT: SECTOR ${sector.sectorNumber}`, `舰队交火：星区 ${sector.sectorNumber}`)}
             </span>
             {combat.subsector && (
               <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-indigo-950 border border-indigo-700 text-indigo-300 font-bold">
-                SUB {combat.subsector}
+                {l(`SUB ${combat.subsector}`, `子星区 ${combat.subsector}`)}
               </span>
             )}
             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-rose-950 border border-rose-800 text-rose-300">
-              {isResolved ? 'RESOLVED' : isMissileStage ? 'MISSILE' : `RND ${combat.roundNumber}`}
+              {isResolved
+                ? l('RESOLVED', '已结算')
+                : isMissileStage
+                ? l('MISSILE', '导弹阶段')
+                : l(`RND ${combat.roundNumber}`, `第 ${combat.roundNumber} 回合`)}
             </span>
           </div>
 
@@ -519,10 +532,10 @@ export const CombatModal: React.FC<CombatModalProps> = ({
           <button
             onClick={() => setIsMinimized(false)}
             className="px-3.5 py-1 bg-gradient-to-r from-rose-600 to-rose-700 hover:from-rose-500 hover:to-rose-600 text-white rounded-full text-xs font-bold transition-all shadow-md shadow-rose-950/50 flex items-center gap-1.5"
-            title="Return to combat window"
+            title={l('Return to combat window', '返回战斗窗口')}
           >
             <Maximize2 className="w-3.5 h-3.5" />
-            <span>Return to Combat</span>
+            <span>{l('Return to Combat', '返回战斗')}</span>
           </button>
         </div>
       </div>
@@ -546,6 +559,23 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
   const attackerActiveCount = attackerUnits.filter((u) => u.currentDamage < u.maxHull).length;
   const defenderActiveCount = defenderUnits.filter((u) => u.currentDamage < u.maxHull).length;
+
+  const dieColorLabel = (c: string) => {
+    switch (c) {
+      case 'yellow':
+        return l('Yellow', '黄骰');
+      case 'orange':
+        return l('Orange', '橙骰');
+      case 'blue':
+        return l('Blue', '蓝骰');
+      case 'red':
+        return l('Red', '红骰');
+      case 'purple':
+        return l('Purple', '紫骰');
+      default:
+        return c;
+    }
+  };
 
   const renderShipCard = (group: CombatUnitDisplayGroup, defaultColor: string) => {
     const owner = state.players.find((p) => p.id === group.ownerId);
@@ -581,17 +611,17 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               isMissileStage ? 'bg-amber-500 text-slate-950 ring-1 ring-amber-300 animate-pulse' : 'bg-rose-600'
             }`}
           >
-            {isMissileStage ? 'Firing Missiles' : 'Attacking'}
+            {isMissileStage ? l('Firing Missiles', '发射导弹') : l('Attacking', '正在攻击')}
           </span>
         )}
         {group.isRetreating && !group.isAttacking && (
           <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider rounded bg-amber-500 text-slate-950 shadow">
-            Retreating (Sec {group.retreatDestinationSectorNumber || '?'})
+            {l(`Retreating (Sec ${group.retreatDestinationSectorNumber || '?'})`, `撤退中 (星区 ${group.retreatDestinationSectorNumber || '?'})`)}
           </span>
         )}
         {group.isDestroyed && (
           <span className="absolute -top-2 right-2 px-1.5 py-0.2 text-[9px] font-bold uppercase tracking-wider rounded bg-slate-800 text-slate-400 border border-slate-700 shadow">
-            Destroyed {group.count > 1 ? `x ${group.count}` : ''}
+            {l('Destroyed', '已摧毁')} {group.count > 1 ? `x ${group.count}` : ''}
           </span>
         )}
 
@@ -602,7 +632,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               style={{ backgroundColor: color }}
             />
             <span className="font-bold text-xs uppercase text-slate-200 font-display">
-              {group.type}
+              {translateShipType(group.type, language)}
             </span>
             <span className="font-mono text-[10px] font-bold px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
               {group.currentHp}/{group.maxHull} HP
@@ -614,24 +644,24 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             )}
             {group.isRetreating && group.isAttacking && (
               <span className="text-[9px] font-bold text-amber-400 font-mono">
-                [Retreat Ready]
+                {l('[Retreat Ready]', '[撤退就绪]')}
               </span>
             )}
           </div>
           <span className="text-[10px] text-indigo-400 font-bold font-mono shrink-0">
-            Init {group.initiative >= 0 ? `+${group.initiative}` : group.initiative}
+            {l('Init', '先攻')} {group.initiative >= 0 ? `+${group.initiative}` : group.initiative}
           </span>
         </div>
 
         {/* Health Bar */}
         <div className="mt-2">
           <div className="flex justify-between text-[10px] text-slate-400 mb-1">
-            <span>Hull / HP</span>
+            <span>{l('Hull / HP', '舰体 / 耐久')}</span>
             <span className="font-mono font-bold text-slate-200">
               {group.currentHp} / {group.maxHull} HP
               {group.count > 1 && (
                 <span className="text-slate-400 font-normal ml-1">
-                  ({group.count} ships)
+                  {l(`(${group.count} ships)`, `(${group.count} 艘)`)}
                 </span>
               )}
             </span>
@@ -680,9 +710,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               }`}
             >
               {w.isMissile ? '🚀 ' : ''}
-              {w.count}x {w.damage} Dmg {w.color}
-              {w.isMissile ? ' (Missile)' : ''}
-              {group.count > 1 ? ' (each)' : ''}
+              {w.count}x {w.damage} {l('Dmg', '伤害')} {dieColorLabel(w.color)}
+              {w.isMissile ? l(' (Missile)', ' (导弹)') : ''}
+              {group.count > 1 ? l(' (each)', ' (每艘)') : ''}
             </span>
           ))}
         </div>
@@ -700,28 +730,28 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             <Crosshair className="w-6 h-6 text-rose-500 animate-spin-slow" />
             <div>
               <h2 className="text-lg font-bold text-rose-400 font-display flex items-center gap-2">
-                FLEET ENGAGEMENT: SECTOR {sector.sectorNumber}
+                {l(`FLEET ENGAGEMENT: SECTOR ${sector.sectorNumber}`, `舰队交火：星区 ${sector.sectorNumber}`)}
                 {combat.subsector && (
                   <span className="text-xs px-2 py-0.5 rounded bg-indigo-950/90 border border-indigo-500/80 text-indigo-300 font-mono font-bold">
-                    SUBSECTOR {combat.subsector}
+                    {l(`SUBSECTOR ${combat.subsector}`, `子星区 ${combat.subsector}`)}
                   </span>
                 )}
               </h2>
               <p className="text-xs text-slate-400">
                 {isResolved
-                  ? 'Engagement resolved! Review the final salvo dice results below.'
+                  ? l('Engagement resolved! Review the final salvo dice results below.', '战斗已分胜负！请查看下方最终齐射掷骰结果。')
                   : isMissileStage
-                  ? 'Missile Stage: Ships armed with missiles launch one salvo in initiative order before regular combat.'
+                  ? l('Missile Stage: Ships armed with missiles launch one salvo in initiative order before regular combat.', '导弹阶段：装备导弹的舰船在常规炮击前按先攻顺序齐射一轮导弹。')
                   : sector.isNebula && combat.subsector
-                  ? `Nebula battle localized to Subsector ${combat.subsector}. Ships in other subsectors do not participate.`
-                  : `Hostile forces have clashed in Ring ${sector.ring}. Tactical cannon engagement in progress.`}
+                  ? l(`Nebula battle localized to Subsector ${combat.subsector}. Ships in other subsectors do not participate.`, `星云战斗仅限子星区 ${combat.subsector} 内。其他子星区的舰船不参与交战。`)
+                  : l(`Hostile forces have clashed in Ring ${sector.ring}. Tactical cannon engagement in progress.`, `敌对舰队在第 ${sector.ring} 环展开交锋，正在进行战术炮战。`)}
               </p>
             </div>
           </div>
           <div className="flex items-center gap-2">
             {isSpectator && (
               <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/30">
-                Spectator Observing
+                {l('Spectator Observing', '旁观中')}
               </span>
             )}
             <span
@@ -733,15 +763,15 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   : 'bg-rose-950 border-rose-800 text-rose-300'
               }`}
             >
-              {isResolved ? '🏆 RESOLVED' : isMissileStage ? '🚀 MISSILE STAGE' : `Round ${combat.roundNumber}`}
+              {isResolved ? l('🏆 RESOLVED', '🏆 已结束') : isMissileStage ? l('🚀 MISSILE STAGE', '🚀 导弹阶段') : l(`Round ${combat.roundNumber}`, `第 ${combat.roundNumber} 回合`)}
             </span>
             <button
               onClick={() => setIsMinimized(true)}
               className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-sm"
-              title="Minimize combat window to view galaxy map"
+              title={l('Minimize combat window to view galaxy map', '最小化战斗窗口以查看星系地图')}
             >
               <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
-              <span>View Map</span>
+              <span>{l('View Map', '查看地图')}</span>
             </button>
           </div>
         </div>
@@ -752,9 +782,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-2">
-                <span>Opposing Fleet Forces</span>
+                <span>{l('Opposing Fleet Forces', '交战双方舰队')}</span>
                 <span className="text-[10px] font-mono text-slate-500 font-normal">
-                  ({aliveUnits.length} active vessels)
+                  {l(`(${aliveUnits.length} active vessels)`, `(${aliveUnits.length} 艘存活舰船)`)}
                 </span>
               </h3>
             </div>
@@ -769,7 +799,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <div className="flex items-center justify-between pb-2.5 border-b border-rose-900/50">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-rose-600 text-white shadow-sm shrink-0">
-                      Attacker
+                      {l('Attacker', '进攻方')}
                     </span>
                     <div className="flex items-center gap-1.5 truncate">
                       <span
@@ -787,7 +817,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     </div>
                   </div>
                   <span className="text-[10px] font-mono text-rose-300 font-bold bg-rose-950/60 border border-rose-800/80 px-1.5 py-0.5 rounded shrink-0">
-                    {attackerActiveCount} active
+                    {l(`${attackerActiveCount} active`, `${attackerActiveCount} 艘作战`)}
                   </span>
                 </div>
 
@@ -795,7 +825,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <div className="space-y-2.5">
                   {attackerGroups.length === 0 ? (
                     <div className="p-4 text-center text-xs text-slate-500 italic border border-dashed border-slate-800 rounded-lg">
-                      No attacking vessels
+                      {l('No attacking vessels', '无进攻方舰船')}
                     </div>
                   ) : (
                     attackerGroups.map((g) => renderShipCard(g, attackerSide.color))
@@ -812,7 +842,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <div className="flex items-center justify-between pb-2.5 border-b border-sky-900/50">
                   <div className="flex items-center gap-2 min-w-0">
                     <span className="px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-sky-600 text-white shadow-sm shrink-0">
-                      Defender
+                      {l('Defender', '防守方')}
                     </span>
                     <div className="flex items-center gap-1.5 truncate">
                       <span
@@ -830,7 +860,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     </div>
                   </div>
                   <span className="text-[10px] font-mono text-sky-300 font-bold bg-sky-950/60 border border-sky-800/80 px-1.5 py-0.5 rounded shrink-0">
-                    {defenderActiveCount} active
+                    {l(`${defenderActiveCount} active`, `${defenderActiveCount} 艘作战`)}
                   </span>
                 </div>
 
@@ -838,7 +868,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <div className="space-y-2.5">
                   {defenderGroups.length === 0 ? (
                     <div className="p-4 text-center text-xs text-slate-500 italic border border-dashed border-slate-800 rounded-lg">
-                      No defending vessels
+                      {l('No defending vessels', '无防守方舰船')}
                     </div>
                   ) : (
                     defenderGroups.map((g) => renderShipCard(g, defenderSide.color))
@@ -855,15 +885,23 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <CheckCircle2 className="w-8 h-8 text-emerald-400 shrink-0" />
                 <div>
                   <h3 className="text-sm font-bold text-emerald-300 font-display">
-                    ENGAGEMENT CONCLUDED
+                    {l('ENGAGEMENT CONCLUDED', '战斗已结束')}
                   </h3>
                   <p className="text-xs text-slate-300">
-                    Final salvo delivered. Victor:{' '}
+                    {l('Final salvo delivered. Victor:', '最终齐射已结算。胜者：')}{' '}
                     <strong className="text-emerald-300">
                       {state.players.find((p) => p.id === (combat as any).winnerOwnerId)?.name ||
-                        ((combat as any).winnerOwnerId ? (combat as any).winnerOwnerId.toUpperCase() : 'Surviving Fleet')}
+                        ((combat as any).winnerOwnerId
+                          ? ((combat as any).winnerOwnerId === 'ancient'
+                              ? l('Ancients', '远古舰船')
+                              : (combat as any).winnerOwnerId === 'guardian'
+                              ? l('Guardian', '星区守护者')
+                              : (combat as any).winnerOwnerId === 'gcds'
+                              ? l('GCDS', '银河中心防御系统')
+                              : (combat as any).winnerOwnerId.toUpperCase())
+                          : l('Surviving Fleet', '幸存舰队'))}
                     </strong>
-                    . Review the lethal dice results below and conclude engagement to continue.
+                    {l('. Review the lethal dice results below and conclude engagement to continue.', '。请查看下方致命一击的掷骰结果，点击确认结束战斗。')}
                   </p>
                 </div>
               </div>
@@ -872,7 +910,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 onClick={() => onStepCombat(undefined, undefined, true)}
                 className="flex items-center gap-1.5 px-4 py-2 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs uppercase tracking-wider shadow-lg transition cursor-pointer shrink-0"
               >
-                <span>Conclude Engagement</span>
+                <span>{l('Conclude Engagement', '结束战斗')}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </div>
@@ -885,10 +923,14 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <div>
                   <h3 className="text-xs font-black text-cyan-300 uppercase tracking-wider flex items-center gap-1.5">
                     <Crosshair className="w-4 h-4 text-cyan-400" />
-                    Target Damage Allocation ({pendingSalvo.attackerShipType.toUpperCase()} - {pendingSalvo.rolls.length} Dice)
+                    {l(
+                      `Target Damage Allocation (${pendingSalvo.attackerShipType.toUpperCase()} - ${pendingSalvo.rolls.length} Dice)`,
+                      `目标伤害分配 (${translateShipType(pendingSalvo.attackerShipType, language)} - ${pendingSalvo.rolls.length} 枚骰子)`
+                    )}
                   </h3>
                   <p className="text-[11px] text-slate-400">
-                    Assign each die to an enemy target vessel. Attacker Computer: <strong className="text-cyan-300">+{pendingSalvo.computerBonus}</strong>.
+                    {l('Assign each die to an enemy target vessel. Attacker Computer:', '将每枚骰子分配给敌方目标舰船。进攻方计算机加成：')}{' '}
+                    <strong className="text-cyan-300">+{pendingSalvo.computerBonus}</strong>.
                   </p>
                 </div>
                 <button
@@ -896,7 +938,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   onClick={handleAutoFillAssignments}
                   className="px-2.5 py-1 text-[11px] font-bold rounded bg-slate-800 hover:bg-slate-700 text-cyan-300 border border-slate-700 transition cursor-pointer shrink-0"
                 >
-                  Auto-Fill Optimal
+                  {l('Auto-Fill Optimal', '一键最优分配')}
                 </button>
               </div>
 
@@ -926,7 +968,18 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   return (
                     (() => {
                       const effectiveDieColor = roll.dieColor || (roll as any).diceColor || (roll as any).color || 'yellow';
-                      const colorName = effectiveDieColor.charAt(0).toUpperCase() + effectiveDieColor.slice(1);
+                      const colorName =
+                        language === 'zh'
+                          ? effectiveDieColor === 'red'
+                            ? '红'
+                            : effectiveDieColor === 'orange'
+                            ? '橙'
+                            : effectiveDieColor === 'blue'
+                            ? '蓝'
+                            : effectiveDieColor === 'purple'
+                            ? '紫'
+                            : '黄'
+                          : effectiveDieColor.charAt(0).toUpperCase() + effectiveDieColor.slice(1);
                       return (
                     <div
                       key={idx}
@@ -974,15 +1027,15 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                             <span className="capitalize font-bold">
                               {colorName}
                             </span>
-                            <span>{isPurple ? 'Rift' : `Die #${idx + 1}`}</span>
+                            <span>{isPurple ? l('Rift', '裂隙') : l(`Die #${idx + 1}`, `骰子 #${idx + 1}`)}</span>
                           </span>
                           {!isPurple && (
                             <span className="text-[10px] text-slate-400 font-mono hidden sm:inline">
-                              (Roll {roll.roll} {pendingSalvo.computerBonus >= 0 ? `+${pendingSalvo.computerBonus}` : pendingSalvo.computerBonus} {shieldBonus > 0 ? `-${shieldBonus}` : ''} = {modified})
+                              ({l('Roll', '骰面')} {roll.roll} {pendingSalvo.computerBonus >= 0 ? `+${pendingSalvo.computerBonus}` : pendingSalvo.computerBonus} {shieldBonus > 0 ? `-${shieldBonus}` : ''} = {modified})
                             </span>
                           )}
                           <span className="text-[10px] text-slate-400 font-bold">
-                            {roll.damage} Dmg
+                            {roll.damage} {l('Dmg', '伤害')}
                           </span>
                         </div>
                         <span
@@ -992,7 +1045,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                               : 'bg-slate-800 text-slate-500'
                           }`}
                         >
-                          {isHit ? `HIT (+${roll.damage})` : 'MISS'}
+                          {isHit ? l(`HIT (+${roll.damage})`, `命中 (+${roll.damage})`) : l('MISS', '未中')}
                         </span>
                       </div>
 
@@ -1001,16 +1054,17 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         <div className="flex flex-col gap-1.5">
                           <div className="flex items-center justify-between text-[10px] font-bold uppercase">
                             <span className="text-rose-300">
-                              Antimatter Splitter
+                              {l('Antimatter Splitter', '反物质分裂器')}
                             </span>
                             <span className="font-mono text-cyan-300">
-                              {totalSplitAssigned} / {roll.damage} Dmg assigned
+                              {totalSplitAssigned} / {roll.damage} {l('Dmg assigned', '伤害已分配')}
                             </span>
                           </div>
                           <div className="space-y-1 max-h-36 overflow-y-auto pr-0.5">
                             {eligibleEnemyTargets.map((eu) => {
                               const pOwner = state.players.find((p) => p.id === eu.ownerId);
                               const ownerName = pOwner ? getPlayerDisplayName(pOwner, { short: true }) : eu.ownerId.toUpperCase();
+                              const shipLabel = language === 'zh' ? translateShipType(eu.type, 'zh') : eu.type.toUpperCase();
                               const remHp = Math.max(0, eu.maxHull - eu.currentDamage);
                               const sameTypeShips = eligibleEnemyTargets.filter(
                                 (t) => t.ownerId === eu.ownerId && t.type === eu.type
@@ -1037,10 +1091,10 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                                 >
                                   <div className="truncate">
                                     <span className="font-bold">
-                                      {ownerName} {eu.type.toUpperCase()}{shipNum}
+                                      {ownerName} {shipLabel}{shipNum}
                                     </span>{' '}
                                     <span className="text-[10px] text-slate-400 font-mono">
-                                      (HP {remHp}/{eu.maxHull}, Sh -{eu.shieldBonus})
+                                      (HP {remHp}/{eu.maxHull}, {l('Sh', '盾')} -{eu.shieldBonus})
                                     </span>
                                   </div>
                                   {canHitEu ? (
@@ -1067,7 +1121,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                                     </div>
                                   ) : (
                                     <span className="text-[10px] font-bold uppercase text-slate-500 shrink-0">
-                                      Shielded
+                                      {l('Shielded', '护盾拦截')}
                                     </span>
                                   )}
                                 </div>
@@ -1078,7 +1132,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                       ) : (
                         <div className="flex flex-col gap-1">
                           <label className="text-[10px] font-bold text-slate-400 uppercase">
-                            Target Vessel:
+                            {l('Target Vessel:', '目标舰船：')}
                           </label>
                           <select
                             value={targetId}
@@ -1091,6 +1145,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                             {eligibleEnemyTargets.map((eu) => {
                               const pOwner = state.players.find((p) => p.id === eu.ownerId);
                               const ownerName = pOwner ? getPlayerDisplayName(pOwner, { short: true }) : eu.ownerId.toUpperCase();
+                              const shipLabel = language === 'zh' ? translateShipType(eu.type, 'zh') : eu.type.toUpperCase();
                               const remHp = Math.max(0, eu.maxHull - eu.currentDamage);
                               const sameTypeShips = eligibleEnemyTargets.filter(
                                 (t) => t.ownerId === eu.ownerId && t.type === eu.type
@@ -1100,7 +1155,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                                 : '';
                               return (
                                 <option key={eu.id} value={eu.id}>
-                                  {ownerName} {eu.type.toUpperCase()}{shipNum} (HP: {remHp}/{eu.maxHull}, Shield: -{eu.shieldBonus})
+                                  {ownerName} {shipLabel}{shipNum} (HP: {remHp}/{eu.maxHull}, {l('Shield', '护盾')}: -{eu.shieldBonus})
                                 </option>
                               );
                             })}
@@ -1112,10 +1167,10 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                       <div className="flex items-center justify-between text-[10px] text-slate-400 font-mono pt-1 border-t border-slate-800/80">
                         <span>
                           {isPurple
-                            ? `Rift: ${roll.damage} target dmg`
+                            ? l(`Rift: ${roll.damage} target dmg`, `裂隙：对目标造成 ${roll.damage} 伤害`)
                             : isSplitActive
-                            ? `Roll ${roll.roll} + ${pendingSalvo.computerBonus} (split across hit targets)`
-                            : `Roll ${roll.roll} + ${pendingSalvo.computerBonus} - ${shieldBonus} = ${modified}`}
+                            ? l(`Roll ${roll.roll} + ${pendingSalvo.computerBonus} (split across hit targets)`, `骰面 ${roll.roll} + ${pendingSalvo.computerBonus}（在可命中目标间分配）`)
+                            : l(`Roll ${roll.roll} + ${pendingSalvo.computerBonus} - ${shieldBonus} = ${modified}`, `骰面 ${roll.roll} + ${pendingSalvo.computerBonus} - ${shieldBonus} = ${modified}`)}
                         </span>
 
                         {(() => {
@@ -1141,11 +1196,14 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                                   onStepCombat(undefined, undefined, undefined, idx);
                                 }
                               }}
-                              title={`Lyra Ability: Flip 1 Colony Ship (${rollPlayer.colonyShips.ready} ready) to reroll this die`}
+                              title={l(
+                                `Lyra Ability: Flip 1 Colony Ship (${rollPlayer.colonyShips.ready} ready) to reroll this die`,
+                                `天琴座能力：横置 1 艘殖民船（可用 ${rollPlayer.colonyShips.ready}）重掷此骰`
+                              )}
                               className="px-1.5 py-0.5 rounded bg-orange-600/30 hover:bg-orange-500/50 border border-orange-500 text-orange-200 text-[9px] font-bold transition flex items-center gap-1 cursor-pointer"
                             >
                               <RotateCcw className="w-2.5 h-2.5 text-orange-300" />
-                              <span>Reroll</span>
+                              <span>{l('Reroll', '重掷')}</span>
                             </button>
                           );
                         })()}
@@ -1170,7 +1228,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             >
               <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-2 flex items-center gap-1.5">
                 <Dices className={`w-4 h-4 ${isResolved ? 'text-emerald-400' : 'text-cyan-400'}`} />{' '}
-                {isResolved ? 'Final Salvo Lethal Dice Results' : 'Recent Salvo Dice Results'}
+                {isResolved
+                  ? l('Final Salvo Lethal Dice Results', '终结齐射致命投骰结果')
+                  : l('Recent Salvo Dice Results', '本轮齐射投骰结果')}
               </h3>
               <div className="flex flex-wrap gap-2">
                  {combat.lastRolls.map((roll, idx) => {
@@ -1196,7 +1256,18 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     >
                       {(() => {
                         const histDieColor = roll.dieColor || (roll as any).diceColor || (roll as any).color || 'yellow';
-                        const colorName = histDieColor.charAt(0).toUpperCase() + histDieColor.slice(1);
+                        const colorName =
+                          language === 'zh'
+                            ? histDieColor === 'red'
+                              ? '红'
+                              : histDieColor === 'orange'
+                              ? '橙'
+                              : histDieColor === 'blue'
+                              ? '蓝'
+                              : histDieColor === 'purple'
+                              ? '紫'
+                              : '黄'
+                            : histDieColor.charAt(0).toUpperCase() + histDieColor.slice(1);
                         return (
                           <>
                             <CombatDieFaceGraphic
@@ -1235,7 +1306,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                               <span className="capitalize font-bold text-[10.5px]">
                                 {colorName}
                               </span>
-                              <span className="font-extrabold text-xs">{isPurple ? 'Rift' : `#${roll.roll}`}</span>
+                              <span className="font-extrabold text-xs">{isPurple ? l('Rift', '裂隙') : `#${roll.roll}`}</span>
                             </span>
                           </>
                         );
@@ -1245,24 +1316,27 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         {isPurple ? (
                           roll.damage > 0 && hasSelfDmg ? (
                             <span className="flex items-center gap-1">
-                              <span>HIT (+{roll.damage} dmg)</span>
-                              <span className="text-rose-400 font-extrabold">• 💥 1 Self</span>
+                              <span>{l(`HIT (+${roll.damage} dmg)`, `命中 (+${roll.damage} 伤害)`)}</span>
+                              <span className="text-rose-400 font-extrabold">• 💥 {l('1 Self', '1 自伤')}</span>
                             </span>
                           ) : roll.damage > 0 ? (
-                            `HIT (+${roll.damage} dmg)`
+                            l(`HIT (+${roll.damage} dmg)`, `命中 (+${roll.damage} 伤害)`)
                           ) : hasSelfDmg ? (
-                            <span className="text-rose-400 font-extrabold">💥 1 Self Dmg</span>
+                            <span className="text-rose-400 font-extrabold">💥 {l('1 Self Dmg', '1 点自伤')}</span>
                           ) : (
-                            'NO DAMAGE'
+                            l('NO DAMAGE', '无伤害')
                           )
                         ) : roll.isHit ? (
                           roll.splitAssignments && roll.splitAssignments.length > 1 ? (
-                            `HIT (Split ${roll.splitAssignments.map((s) => s.damage).join('+')})`
+                            l(
+                              `HIT (Split ${roll.splitAssignments.map((s) => s.damage).join('+')})`,
+                              `命中 (分裂 ${roll.splitAssignments.map((s) => s.damage).join('+')})`
+                            )
                           ) : (
-                            `HIT (+${roll.damage} dmg)`
+                            l(`HIT (+${roll.damage} dmg)`, `命中 (+${roll.damage} 伤害)`)
                           )
                         ) : (
-                          'MISS'
+                          l('MISS', '未中')
                         )}
                       </span>
 
@@ -1290,11 +1364,14 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                                 onStepCombat(undefined, undefined, undefined, idx);
                               }
                             }}
-                            title={`Lyra Combat Ability: Flip 1 Colony Ship (${rollPlayer.colonyShips.ready} ready) to reroll this die`}
+                            title={l(
+                              `Lyra Combat Ability: Flip 1 Colony Ship (${rollPlayer.colonyShips.ready} ready) to reroll this die`,
+                              `天琴座战斗能力：横置 1 艘殖民船（可用 ${rollPlayer.colonyShips.ready}）重掷此骰`
+                            )}
                             className="ml-1.5 px-2 py-0.5 rounded bg-orange-600/30 hover:bg-orange-500/50 border border-orange-500 text-orange-200 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow"
                           >
                             <RotateCcw className="w-2.5 h-2.5 text-orange-300" />
-                            <span>Reroll (1 Ship)</span>
+                            <span>{l('Reroll (1 Ship)', '重掷 (1 殖民船)')}</span>
                           </button>
                         );
                       })()}
@@ -1312,29 +1389,35 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             {isResolved ? (
               <span className="text-emerald-300 font-bold flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                Engagement completed • Victor:{' '}
+                {l('Engagement completed • Victor:', '交火结束 • 胜者：')}{' '}
                 <strong className="text-slate-100">
                   {state.players.find((p) => p.id === (combat as any).winnerOwnerId)?.name ||
-                    ((combat as any).winnerOwnerId ? (combat as any).winnerOwnerId.toUpperCase() : 'Surviving Fleet')}
+                    ((combat as any).winnerOwnerId ? (combat as any).winnerOwnerId.toUpperCase() : l('Surviving Fleet', '幸存舰队'))}
                 </strong>
               </span>
             ) : pendingSalvo ? (
               <span className="text-cyan-300 font-bold flex items-center gap-1.5">
                 <Crosshair className="w-4 h-4 text-cyan-400" />
-                Assigning Salvo Damage • {pendingSalvo.attackerShipType.toUpperCase()} ({pendingSalvo.rolls.length} Dice)
+                {l(
+                  `Assigning Salvo Damage • ${pendingSalvo.attackerShipType.toUpperCase()} (${pendingSalvo.rolls.length} Dice)`,
+                  `正在分配齐射伤害 • ${translateShipType(pendingSalvo.attackerShipType, 'zh')} (${pendingSalvo.rolls.length} 颗骰子)`
+                )}
               </span>
             ) : activeGroup ? (
               <span>
-                {isMissileStage ? 'Missile Salvo' : 'Salvo'}{' '}
-                <strong className="text-slate-200">#{combat.currentTurnIndex + 1}</strong> • Active Initiative:{' '}
+                {isMissileStage ? l('Missile Salvo', '导弹齐射') : l('Salvo', '常规齐射')}{' '}
+                <strong className="text-slate-200">#{combat.currentTurnIndex + 1}</strong> • {l('Active Initiative:', '当前先攻：')}{' '}
                 <strong className={isMissileStage ? 'text-amber-400' : 'text-rose-400'}>
                   {activeGroup.ships.length > 1 ? `${activeGroup.ships.length}x ` : ''}
-                  {activeGroup.type.toUpperCase()}
+                  {language === 'zh' ? translateShipType(activeGroup.type, 'zh') : activeGroup.type.toUpperCase()}
                 </strong>{' '}
                 ({activeGroup.initiative >= 0 ? `+${activeGroup.initiative}` : activeGroup.initiative})
                 {isAlreadyRetreating && (
                   <span className="text-amber-400 ml-1">
-                    (Retreating to Sec {retreatDestination?.sectorNumber || '?'})
+                    {l(
+                      `(Retreating to Sec ${retreatDestination?.sectorNumber || '?'})`,
+                      `(正在撤退至星区 ${retreatDestination?.sectorNumber || '?'})`
+                    )}
                   </span>
                 )}
               </span>
@@ -1346,7 +1429,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               isSpectator ? (
                 <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
                   <span className="inline-block w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-                  <span>Engagement resolved. Observing commanders...</span>
+                  <span>{l('Engagement resolved. Observing commanders...', '交火已结算，观战中...')}</span>
                 </div>
               ) : (
                 <button
@@ -1354,7 +1437,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   onClick={() => onStepCombat(undefined, undefined, true)}
                   className="flex items-center justify-center gap-2 px-6 py-2.5 rounded-lg bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl transition cursor-pointer"
                 >
-                  <CheckCircle2 className="w-4 h-4" /> Conclude Engagement & Continue
+                  <CheckCircle2 className="w-4 h-4" /> {l('Conclude Engagement & Continue', '结束战斗并继续')}
                 </button>
               )
             ) : pendingSalvo ? (
@@ -1362,7 +1445,15 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                 <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
                   <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                   <span>
-                    Waiting for Commander <strong className="text-amber-300">{attackerOwner ? getPlayerDisplayName(attackerOwner) : 'attacker'}</strong> to assign damage...
+                    {language === 'zh' ? (
+                      <>
+                        正在等待指挥官 <strong className="text-amber-300">{attackerOwner ? getPlayerDisplayName(attackerOwner) : '攻击方'}</strong> 分配伤害...
+                      </>
+                    ) : (
+                      <>
+                        Waiting for Commander <strong className="text-amber-300">{attackerOwner ? getPlayerDisplayName(attackerOwner) : 'attacker'}</strong> to assign damage...
+                      </>
+                    )}
                   </span>
                 </div>
               ) : (
@@ -1372,7 +1463,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     onClick={handleAutoFillAssignments}
                     className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition cursor-pointer"
                   >
-                    Auto-Fill
+                    {l('Auto-Fill', '自动填充')}
                   </button>
                   <button
                     type="button"
@@ -1380,7 +1471,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     disabled={!canCommandActiveShip}
                     className="flex items-center justify-center gap-2 px-6 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl shadow-cyan-950 transition cursor-pointer"
                   >
-                    <CheckCircle2 className="w-4 h-4" /> Confirm Damage
+                    <CheckCircle2 className="w-4 h-4" /> {l('Confirm Damage', '确认伤害分配')}
                   </button>
                 </div>
               )
@@ -1394,7 +1485,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     onChange={(e) => handleToggleAutoAssign(e.target.checked)}
                     className="rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
                   />
-                  <span className="text-[11px] font-medium text-slate-300">Auto-assign</span>
+                  <span className="text-[11px] font-medium text-slate-300">{l('Auto-assign', '自动分配伤害')}</span>
                 </label>
 
                 {/* Auto-Resolve Option */}
@@ -1404,7 +1495,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     onClick={onAutoResolve}
                     className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition shadow cursor-pointer"
                   >
-                    <Zap className="w-3.5 h-3.5 text-amber-400" /> Auto-Resolve
+                    <Zap className="w-3.5 h-3.5 text-amber-400" /> {l('Auto-Resolve', '一键自动结算')}
                   </button>
                 )}
 
@@ -1414,7 +1505,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                       <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
                       <span>
                         {isSpectator
-                          ? `Spectator Mode: Waiting for ${isNpcShip ? 'commanders' : attackerOwner ? `Commander ${getPlayerDisplayName(attackerOwner)}` : 'active ship'} to resolve...`
+                          ? language === 'zh'
+                            ? `观战模式：正在等待${isNpcShip ? '双方指挥官' : attackerOwner ? `指挥官 ${getPlayerDisplayName(attackerOwner)}` : '当前舰船'}行动...`
+                            : `Spectator Mode: Waiting for ${isNpcShip ? 'commanders' : attackerOwner ? `Commander ${getPlayerDisplayName(attackerOwner)}` : 'active ship'} to resolve...`
+                          : language === 'zh'
+                          ? `正在等待指挥官 ${attackerOwner ? getPlayerDisplayName(attackerOwner) : '对手'} 指挥其 ${activeGroup ? translateShipType(activeGroup.type, 'zh') : ''}...`
                           : `Waiting for Commander ${attackerOwner ? getPlayerDisplayName(attackerOwner) : 'opponent'} to command their ${activeGroup?.type.toUpperCase()}...`}
                       </span>
                     </div>
@@ -1431,7 +1526,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         >
                           {eligibleRetreatDestinations.map((dest) => (
                             <option key={dest.id} value={dest.id}>
-                              Sector {dest.sectorNumber}
+                              {l(`Sector ${dest.sectorNumber}`, `星区 ${dest.sectorNumber}`)}
                             </option>
                           ))}
                         </select>
@@ -1439,9 +1534,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                           type="button"
                           onClick={handleDeclareRetreat}
                           className="flex items-center gap-1 px-3 py-1.5 rounded bg-amber-600 hover:bg-amber-500 text-slate-950 font-bold text-xs uppercase shadow transition cursor-pointer"
-                          title="Retreat all ships of this type to selected sector"
+                          title={l('Retreat all ships of this type to selected sector', '将该类型所有舰船撤退至所选星区')}
                         >
-                          <Navigation className="w-3.5 h-3.5" /> Retreat
+                          <Navigation className="w-3.5 h-3.5" /> {l('Retreat', '撤退')}
                         </button>
                       </div>
                     )}
@@ -1453,16 +1548,16 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                         onClick={() => onStepCombat(undefined, undefined, undefined, undefined, autoAssignDamage)}
                         className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-lg shadow-amber-950 transition cursor-pointer"
                       >
-                        <Navigation className="w-4 h-4" /> Complete Retreat
+                        <Navigation className="w-4 h-4" /> {l('Complete Retreat', '完成撤退')}
                       </button>
                     ) : isNpcShip ? (
                       <button
                         type="button"
                         onClick={() => onStepCombat(undefined, undefined, undefined, undefined, true)}
                         className="flex items-center justify-center gap-2 px-5 py-2 rounded-lg font-bold text-xs tracking-wider uppercase shadow-lg bg-purple-600 hover:bg-purple-500 text-white shadow-purple-950 transition cursor-pointer"
-                        title="Neutral ship attack can be triggered by any commander"
+                        title={l('Neutral ship attack can be triggered by any commander', '任何指挥官均可触发中立舰船开火')}
                       >
-                        <Dices className="w-4 h-4" /> Roll Neutral Salvo ({activeGroup?.type.toUpperCase()})
+                        <Dices className="w-4 h-4" /> {l(`Roll Neutral Salvo (${activeGroup?.type.toUpperCase()})`, `投掷中立单位齐射 (${activeGroup ? translateShipType(activeGroup.type, 'zh') : ''})`)}
                       </button>
                     ) : (
                       <button
@@ -1474,7 +1569,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                             : 'bg-rose-600 hover:bg-rose-500 text-white shadow-rose-950'
                         }`}
                       >
-                        <Dices className="w-4 h-4" /> {isMissileStage ? 'Launch Missiles' : 'Fire Salvo'}
+                        <Dices className="w-4 h-4" /> {isMissileStage ? l('Launch Missiles', '发射导弹') : l('Fire Salvo', '开火齐射')}
                       </button>
                     )}
                   </>
@@ -1491,14 +1586,18 @@ export const CombatModal: React.FC<CombatModalProps> = ({
         const { group, rect } = hoveredShip;
         const hoveredOwner = state.players.find((p) => p.id === group.ownerId);
         const isNpc = group.ownerId === 'ancient' || group.ownerId === 'guardian' || group.ownerId === 'gcds';
-        const titleLabel = isNpc
+        const npcVariant = state.neutralShipBlueprints?.[group.ownerId as NeutralShipType] || 'default';
+        const npcBp = isNpc
           ? getNeutralShipBlueprint(
               group.ownerId as NeutralShipType,
-              state.neutralShipBlueprints?.[group.ownerId as NeutralShipType]
-            ).name
+              npcVariant
+            )
+          : null;
+        const titleLabel = isNpc && npcBp
+          ? translateNeutralBlueprintTitle(group.ownerId as NeutralShipType, npcVariant, npcBp.name, language)
           : hoveredOwner
-          ? `${getPlayerShortName(hoveredOwner)} ${group.type}`
-          : group.type;
+          ? `${getPlayerShortName(hoveredOwner)} ${translateShipType(group.type, language)}`
+          : translateShipType(group.type, language);
 
         const hasWindow = typeof window !== 'undefined';
         const placeLeft = hasWindow && rect.left >= 270;
@@ -1524,7 +1623,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             className="fixed z-[70] pointer-events-none p-2.5 rounded-xl bg-slate-950/95 border border-cyan-500/60 shadow-2xl shadow-black/80 backdrop-blur-md"
           >
             <div className="text-[10px] font-bold font-display uppercase tracking-wider text-slate-300 mb-2 text-center">
-              {titleLabel} Blueprint
+              {l(`${titleLabel} Blueprint`, `${titleLabel} 蓝图`)}
             </div>
             <CombatShipBlueprintPreview
               state={state}

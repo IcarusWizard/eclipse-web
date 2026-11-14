@@ -7,6 +7,14 @@ import { SHIP_PARTS } from '../../engine/rules/partData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from '../../engine/rules/shipValidation';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { ShipPartTileIconography } from '../common/PhysicalTileIconography';
+import { useLanguage } from '../../i18n/LanguageContext';
+import {
+  translateTechName,
+  translateTechCategory,
+  translatePartName,
+  translateShipType,
+  translateResourceType,
+} from '../../i18n/catalogTranslations';
 
 interface DiscoveryChoiceModalProps {
   discovery: DiscoveryTile;
@@ -34,6 +42,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   fromExplore,
   onChoice,
 }) => {
+  const { language, l } = useLanguage();
   const part = discovery.shipPartId ? SHIP_PARTS[discovery.shipPartId] : null;
 
   const sector = sectors?.find((s) => s.id === sectorId);
@@ -133,16 +142,16 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
             <Trophy className="w-4 h-4 text-amber-400" />
           )}
           <span className="font-bold text-xs sm:text-sm tracking-wide text-amber-300 font-display">
-            ANCIENT DISCOVERY: {discovery.name} ({player.name})
+            {l(`ANCIENT DISCOVERY: ${discovery.name} (${player.name})`, `远古探索发现：${discovery.name}（${player.name}）`)}
           </span>
           <div className="h-4 w-px bg-slate-800" />
           <button
             onClick={() => setIsMinimized(false)}
             className="px-3.5 py-1 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-400 hover:to-amber-500 text-slate-950 rounded-full text-xs font-bold transition-all shadow-md shadow-amber-950/50 flex items-center gap-1.5 cursor-pointer"
-            title="Return to discovery resolution"
+            title={l('Return to discovery resolution', '返回处理探索发现')}
           >
             <Maximize2 className="w-3.5 h-3.5" />
-            <span>Resolve Discovery</span>
+            <span>{l('Resolve Discovery', '处理发现')}</span>
           </button>
         </div>
       </div>
@@ -160,15 +169,15 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
         {/* Header Action Bar */}
         <div className="w-full flex items-center justify-between mb-3">
           <span className="text-[10px] uppercase tracking-widest text-amber-400 font-mono font-bold px-2 py-0.5 rounded bg-amber-950/80 border border-amber-800/80">
-            Ancient Artifact
+            {l('Ancient Artifact', '远古探索发现')}
           </span>
           <button
             onClick={() => setIsMinimized(true)}
             className="flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white text-xs font-semibold border border-slate-700 transition-colors shadow-sm cursor-pointer"
-            title="Minimize to inspect map"
+            title={l('Minimize to inspect map', '最小化以查看星图')}
           >
             <Minimize2 className="w-3.5 h-3.5 text-slate-400" />
-            <span>View Map</span>
+            <span>{l('View Map', '查看星图')}</span>
           </button>
         </div>
 
@@ -176,7 +185,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           {discovery.name}
         </h2>
         <div className="text-xs text-slate-400 mb-3 font-medium">
-          Commander <span className="font-bold text-slate-200">{player.name}</span> must decide how to utilize this ancient artifact.
+          {l('Commander', '指挥官')} <span className="font-bold text-slate-200">{player.name}</span> {l('must decide how to utilize this ancient artifact.', '必须决定如何利用此远古发现。')}
         </div>
 
         {/* Tile Details Card */}
@@ -194,51 +203,51 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                 <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">
                   {part.powerConsumed > 0 && (
                     <span className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-500/50 text-amber-300 font-bold">
-                      -{part.powerConsumed}⚡ Power
+                      -{part.powerConsumed}⚡ {l('Power', '能量')}
                     </span>
                   )}
                   {part.powerProduced > 0 && (
                     <span className="px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-500/50 text-emerald-300 font-bold">
-                      +{part.powerProduced}⚡ Power
+                      +{part.powerProduced}⚡ {l('Power', '能量')}
                     </span>
                   )}
                   {part.initiativeBonus !== 0 && (
                     <span className="px-2 py-0.5 rounded bg-amber-950/80 border border-amber-400/50 text-amber-200 font-bold">
-                      {part.initiativeBonus > 0 ? `+${part.initiativeBonus}` : part.initiativeBonus} Init
+                      {part.initiativeBonus > 0 ? `+${part.initiativeBonus}` : part.initiativeBonus} {l('Init', '先攻')}
                     </span>
                   )}
                   {part.driveSpeed ? (
                     <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 font-bold">
-                      Speed {part.driveSpeed}
+                      {l('Speed', '航速')} {part.driveSpeed}
                     </span>
                   ) : part.isJumpDrive ? (
                     <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-500/50 text-cyan-300 font-bold">
-                      Jump Drive (1 Hex)
+                      {l('Jump Drive (1 Hex)', '跳跃引擎（1 格）')}
                     </span>
                   ) : null}
                   {part.morphShield && (
                     <span className="px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/50 text-rose-300 font-bold">
-                      -1 Shield & Heals 1 HP/Round
+                      {l('-1 Shield & Heals 1 HP/Round', '-1 护盾 & 每轮回复 1 生命')}
                     </span>
                   )}
                   {part.shieldBonus > 0 && !part.morphShield && (
                     <span className="px-2 py-0.5 rounded bg-blue-950/80 border border-blue-500/50 text-blue-300 font-bold">
-                      -{part.shieldBonus} Shield
+                      -{part.shieldBonus} {l('Shield', '护盾')}
                     </span>
                   )}
                   {part.computerBonus > 0 && (
                     <span className="px-2 py-0.5 rounded bg-indigo-950/80 border border-indigo-500/50 text-indigo-300 font-bold">
-                      +{part.computerBonus} COMP
+                      +{part.computerBonus} {l('COMP', '计算机')}
                     </span>
                   )}
                   {part.hullBonus > 0 && (
                     <span className="px-2 py-0.5 rounded bg-rose-950/80 border border-rose-500/50 text-rose-300 font-bold">
-                      +{part.hullBonus} HP
+                      +{part.hullBonus} {l('HP', '生命')}
                     </span>
                   )}
                   {part.dice && part.dice.length > 0 && (
                     <span className="px-2 py-0.5 rounded bg-orange-950/80 border border-orange-500/50 text-orange-300 font-bold">
-                      {part.dice.map((d) => `${d.count}x ${d.damagePerHit} DMG ${d.color.toUpperCase()} ${d.isMissile ? '🚀' : ''}`).join(', ')}
+                      {part.dice.map((d) => `${d.count}x ${d.damagePerHit} ${l('DMG', '伤害')} ${d.color.toUpperCase()} ${d.isMissile ? '🚀' : ''}`).join(', ')}
                     </span>
                   )}
                 </div>
@@ -251,25 +260,25 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               {discovery.immediateReward.money && (
                 <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-                  +{discovery.immediateReward.money} Credits
+                  +{discovery.immediateReward.money} {l('Credits', '金钱')}
                 </span>
               )}
               {discovery.immediateReward.science && (
                 <span className="px-2.5 py-1 bg-pink-500/20 border border-pink-500/40 text-pink-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <FlaskConical className="w-3.5 h-3.5 text-pink-400 shrink-0" />
-                  +{discovery.immediateReward.science} Science
+                  +{discovery.immediateReward.science} {l('Science', '科研')}
                 </span>
               )}
               {discovery.immediateReward.materials && (
                 <span className="px-2.5 py-1 bg-amber-700/20 border border-amber-700/40 text-amber-500 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" />
-                  +{discovery.immediateReward.materials} Materials
+                  +{discovery.immediateReward.materials} {l('Materials', '材料')}
                 </span>
               )}
               {discovery.immediateReward.grantShipType && (
                 <span className="px-2.5 py-1 bg-purple-500/20 border border-purple-500/40 text-purple-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Rocket className="w-3.5 h-3.5 text-purple-400" />
-                  +1 Free {discovery.immediateReward.grantShipType.toUpperCase()}
+                  +1 {l(`Free ${discovery.immediateReward.grantShipType.toUpperCase()}`, `免费${translateShipType(discovery.immediateReward.grantShipType, language)}`)}
                 </span>
               )}
               {discovery.immediateReward.ancientTech && (
@@ -277,27 +286,27 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5 mb-1.5">
                     <Cpu className="w-4 h-4 text-cyan-400 shrink-0" />
                     <span className="flex items-center gap-1">
-                      +1 Free Regular Technology (Lowest Printed Cost: {minTechCost}
-                      <FlaskConical className="w-3.5 h-3.5 text-pink-400 inline shrink-0" />)
+                      {l(`+1 Free Regular Technology (Lowest Printed Cost: ${minTechCost}`, `+1 项免费常规科技（最低印刷费用：${minTechCost}`)}
+                      <FlaskConical className="w-3.5 h-3.5 text-pink-400 inline shrink-0" />{language === 'zh' ? '）' : ')'}
                     </span>
                   </div>
                   {tiedTechs.length === 0 ? (
-                    <div className="text-xs text-slate-400 italic">No eligible technologies in supply</div>
+                    <div className="text-xs text-slate-400 italic">{l('No eligible technologies in supply', '供应区无可选科技')}</div>
                   ) : tiedTechs.length === 1 ? (
                     <div className="text-xs text-emerald-300 font-semibold flex items-center gap-1">
-                      <span>Awarded:</span>
-                      <strong className="text-cyan-200">{tiedTechs[0].name}</strong>
+                      <span>{l('Awarded:', '获得：')}</span>
+                      <strong className="text-cyan-200">{translateTechName(tiedTechs[0].id, tiedTechs[0].name, language)}</strong>
                       <span className="text-[10px] text-slate-400 flex items-center gap-0.5">
-                        ({tiedTechs[0].category.toUpperCase()} • Cost {tiedTechs[0].baseCost}
+                        ({translateTechCategory(tiedTechs[0].category, language)} • {l('Cost', '费用')} {tiedTechs[0].baseCost}
                         <FlaskConical className="w-2.5 h-2.5 text-pink-400 inline shrink-0" />)
                       </span>
                     </div>
                   ) : (
                     <div className="space-y-1.5">
                       <div className="text-[11px] text-slate-300 font-medium flex items-center gap-1">
-                        <span>Multiple lowest-cost technologies available ({minTechCost}</span>
+                        <span>{l(`Multiple lowest-cost technologies available (${minTechCost}`, `有多个最低费用科技可选（${minTechCost}`)}</span>
                         <FlaskConical className="w-3 h-3 text-pink-400 inline shrink-0" />
-                        <span>). Choose which to receive:</span>
+                        <span>{l('). Choose which to receive:', '）。选择要获得的一项：')}</span>
                       </div>
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                         {tiedTechs.map((t) => (
@@ -311,7 +320,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                                 : 'bg-slate-900 border-slate-800 text-slate-300 hover:border-slate-700'
                             }`}
                           >
-                            <span className="truncate">{t.name}</span>
+                            <span className="truncate">{translateTechName(t.id, t.name, language)}</span>
                             <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-slate-950 text-cyan-400 border border-slate-800 flex items-center gap-1">
                               <span>{t.category[0].toUpperCase()}</span>
                               <span>•</span>
@@ -330,20 +339,20 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   <div className="text-xs font-bold text-blue-300 flex items-center justify-between mb-1.5">
                     <span className="flex items-center gap-1.5">
                       <Zap className="w-4 h-4 text-blue-400" />
-                      Ancient Orbital Habitat (+2 Materials)
+                      {l('Ancient Orbital Habitat (+2 Materials)', '远古轨道站（+2 材料）')}
                     </span>
                     <span className="text-[10px] font-mono text-blue-200">
-                      Ready Colony Ships: <strong>{player.colonyShips.ready}</strong>
+                      {l('Ready Colony Ships:', '可用殖民船：')} <strong>{player.colonyShips.ready}</strong>
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-300 mb-2">
-                    You may immediately colonize the new Orbital using 1 ready Colony Ship. Orbitals can produce Money or Science.
+                    {l('You may immediately colonize the new Orbital using 1 ready Colony Ship. Orbitals can produce Money or Science.', '你可以使用 1 艘待命殖民船立即殖民新轨道站。轨道站可产出金钱或科研。')}
                   </p>
                   {showNextStepControlNote ? (
                     <div className="p-2.5 rounded-lg bg-indigo-950/60 border border-indigo-500/40 text-[11px] text-indigo-300 flex items-center gap-2">
                       <Sparkles className="w-4 h-4 text-indigo-400 shrink-0" />
                       <span>
-                        An Ancient Orbital (+2 Materials) will be placed in this sector. You will decide whether to control this sector in the next step, where it can be colonized.
+                        {l('An Ancient Orbital (+2 Materials) will be placed in this sector. You will decide whether to control this sector in the next step, where it can be colonized.', '此星区将放置 1 座远古轨道站（+2 材料）。你将在下一步决定是否控制该星区，并在之后进行殖民。')}
                       </span>
                     </div>
                   ) : hasColonyShipReady ? (
@@ -357,7 +366,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                             : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-slate-200'
                         }`}
                       >
-                        Leave Empty (No Colonization)
+                        {l('Leave Empty (No Colonization)', '暂不殖民')}
                       </button>
                       <button
                         type="button"
@@ -370,7 +379,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                         } disabled:opacity-40 disabled:cursor-not-allowed`}
                       >
                         <span className="w-2 h-2 rounded-full bg-yellow-400 inline-block" />
-                        Colonize with Money (🪙)
+                        {l('Colonize with Money (🪙)', '殖民金钱（🪙）')}
                       </button>
                       <button
                         type="button"
@@ -383,13 +392,13 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                         } disabled:opacity-40 disabled:cursor-not-allowed`}
                       >
                         <span className="w-2 h-2 rounded-full bg-pink-400 inline-block" />
-                        <span>Colonize with Science</span>
+                        <span>{l('Colonize with Science', '殖民科研')}</span>
                         <FlaskConical className="w-3 h-3 text-pink-400 shrink-0" />
                       </button>
                     </div>
                   ) : (
                     <div className="text-[11px] text-slate-400 italic">
-                      No ready colony ships available to colonize immediately.
+                      {l('No ready colony ships available to colonize immediately.', '没有可用殖民船，无法立即殖民。')}
                     </div>
                   )}
                 </div>
@@ -397,32 +406,32 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               {discovery.immediateReward.grantStructure === 'monolith' && (
                 <span className="px-2.5 py-1 bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Trophy className="w-3.5 h-3.5 text-yellow-400" />
-                  +1 Ancient Monolith (3 VP)
+                  {l('+1 Ancient Monolith (3 VP)', '+1 远古方尖碑（3 分）')}
                 </span>
               )}
               {discovery.immediateReward.warpPortal && (
                 <span className="px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Rocket className="w-3.5 h-3.5 text-emerald-400" />
-                  Ancient Warp Portal (Connects all Warp Portals, 2 VP)
+                  {l('Ancient Warp Portal (Connects all Warp Portals, 2 VP)', '远古曲速传送门（连接所有传送门，2 分）')}
                 </span>
               )}
               {discovery.immediateReward.artifactCodex && (
                 <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                  Artifact Codex (+1 VP per Controlled Artifact at Game End)
+                  {l('Artifact Codex (+1 VP per Controlled Artifact at Game End)', '遗迹法典（终局每控制 1 个遗迹 +1 分）')}
                 </span>
               )}
               {discovery.immediateReward.ancientMight && (
                 <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Trophy className="w-3.5 h-3.5 text-amber-400" />
-                  Ancient Might (+1 VP per 3 VP in Reputation Tiles at Game End)
+                  {l('Ancient Might (+1 VP per 3 VP in Reputation Tiles at Game End)', '远古之力（终局声望板块每满 3 分额外 +1 分）')}
                 </span>
               )}
               {discovery.immediateReward.choose3Resource && (
                 <div className="w-full mt-2 p-2.5 rounded-lg bg-amber-950/60 border border-amber-500/40 text-left">
                   <div className="text-xs font-bold text-amber-300 mb-1.5 flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-amber-400" />
-                    Gain +3 Money plus 3 additional Resources of your choice:
+                    {l('Gain +3 Money plus 3 additional Resources of your choice:', '获得 +3 金钱及任意 3 点额外资源：')}
                   </div>
                   <div className="flex flex-wrap gap-2">
                     <button
@@ -435,7 +444,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                       }`}
                     >
                       <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-                      +3 Money (🪙 Total +6)
+                      {l('+3 Money (🪙 Total +6)', '+3 金钱（🪙 共计 +6）')}
                     </button>
                     <button
                       type="button"
@@ -448,8 +457,8 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                     >
                       <span className="w-2 h-2 rounded-full bg-pink-400 inline-block" />
                       <span className="flex items-center gap-1">
-                        +3 Science (3 Money + 3
-                        <FlaskConical className="w-3 h-3 text-pink-400 shrink-0 inline" /> Science)
+                        {l('+3 Science (3 Money + 3', '+3 科研（3 金钱 + 3')}
+                        <FlaskConical className="w-3 h-3 text-pink-400 shrink-0 inline" /> {l('Science)', '科研）')}
                       </span>
                     </button>
                     <button
@@ -462,7 +471,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                       }`}
                     >
                       <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" />
-                      +3 Materials (⚙️ 3 Money + 3 Materials)
+                      {l('+3 Materials (⚙️ 3 Money + 3 Materials)', '+3 材料（⚙️ 3 金钱 + 3 材料）')}
                     </button>
                   </div>
                 </div>
@@ -476,10 +485,10 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           <div className="w-full bg-slate-950/60 border border-cyan-900/50 rounded-xl p-3 mb-4 text-left">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
-                <Wrench className="w-3.5 h-3.5" /> {isMuonSource ? 'Equip Outside Grid (Free)' : 'Equip Immediately to Ship (Free)'}
+                <Wrench className="w-3.5 h-3.5" /> {isMuonSource ? l('Equip Outside Grid (Free)', '免费装配于蓝图外（额外槽位）') : l('Equip Immediately to Ship (Free)', '立即免费装配至飞船')}
               </span>
               <span className="text-[10px] text-slate-400 font-medium">
-                {isMuonSource ? 'Select ship class to attach outside grid' : 'Select ship class and slot to equip'}
+                {isMuonSource ? l('Select ship class to attach outside grid', '选择要额外挂载的飞船类型') : l('Select ship class and slot to equip', '选择飞船类型与槽位')}
               </span>
             </div>
 
@@ -496,7 +505,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                       : 'bg-slate-900 text-slate-400 hover:bg-slate-800 hover:text-slate-200'
                   }`}
                 >
-                  {st}
+                  {translateShipType(st, language)}
                 </button>
               ))}
             </div>
@@ -506,10 +515,12 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               <div className="p-3 rounded-lg border border-amber-500/70 bg-amber-950/40 text-amber-200">
                 <div className="flex items-center gap-2 font-bold text-xs text-amber-300 mb-1">
                   <Zap className="w-4 h-4 text-amber-400" />
-                  <span>External Power Module (Placed Outside Blueprint Grid)</span>
+                  <span>{l('External Power Module (Placed Outside Blueprint Grid)', '外置能源模块（置于蓝图格之外）')}</span>
                 </div>
                 <p className="text-[11px] text-slate-300 leading-relaxed mb-2.5">
-                  Attaches to <strong>{selectedShipType.toUpperCase()}</strong> outside the component grid without consuming any of its standard modular slots. Grants <strong>+2 Energy Produced</strong> and <strong>+1 Initiative</strong>.
+                  {language === 'zh'
+                    ? <>挂载至 <strong>{translateShipType(selectedShipType, language)}</strong> 的组件格之外，不占用任何标准模块槽位。提供 <strong>+2 能量产出</strong> 与 <strong>+1 先攻</strong>。</>
+                    : <>Attaches to <strong>{selectedShipType.toUpperCase()}</strong> outside the component grid without consuming any of its standard modular slots. Grants <strong>+2 Energy Produced</strong> and <strong>+1 Initiative</strong>.</>}
                 </p>
                 <div className="flex flex-col items-center justify-center p-2.5 bg-slate-950/70 rounded-lg border border-slate-800/80 overflow-x-auto">
                   <ShipBlueprintSlotsLayout
@@ -530,10 +541,10 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               <div className="p-3 rounded-lg border border-cyan-500/40 bg-slate-900/60">
                 <div className="flex items-center justify-between mb-2">
                   <div className="text-[11px] font-bold text-cyan-300 flex items-center gap-1.5">
-                    <span>Click a slot on {selectedShipType.toUpperCase()} to install:</span>
+                    <span>{l(`Click a slot on ${selectedShipType.toUpperCase()} to install:`, `点击${translateShipType(selectedShipType, language)}上的槽位进行安装：`)}</span>
                   </div>
                   <span className="text-[10px] text-slate-400 font-mono">
-                    Slots: {currentBlueprint.maxSlots}
+                    {l('Slots:', '槽位数：')} {currentBlueprint.maxSlots}
                   </span>
                 </div>
 
@@ -558,20 +569,20 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
                 <div className="w-full mt-2.5 pt-2 border-t border-slate-800 flex flex-wrap items-center justify-between text-xs gap-1.5">
                   <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                    <span className="text-slate-400">Target Slot:</span>
+                    <span className="text-slate-400">{l('Target Slot:', '目标槽位：')}</span>
                     <span className="px-1.5 py-0.5 rounded bg-cyan-950 border border-cyan-500/60 text-cyan-200 font-bold">
-                      {`Slot ${selectedSlotIndex + 1}`}
+                      {l(`Slot ${selectedSlotIndex + 1}`, `槽位 ${selectedSlotIndex + 1}`)}
                     </span>
                     <span className="text-slate-300">
                       ({currentBlueprint.slots[selectedSlotIndex] ? (
-                        <span>Replaces <strong className="text-amber-300">{currentBlueprint.slots[selectedSlotIndex]?.name}</strong></span>
+                        <span>{l('Replaces', '替换')} <strong className="text-amber-300">{translatePartName(currentBlueprint.slots[selectedSlotIndex]!.id, currentBlueprint.slots[selectedSlotIndex]!.name, language)}</strong></span>
                       ) : (
-                        <span className="text-emerald-400 font-semibold italic">Empty Slot</span>
+                        <span className="text-emerald-400 font-semibold italic">{l('Empty Slot', '空槽位')}</span>
                       )})
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 font-mono text-[11px]">
-                    <span className="text-slate-400">Power:</span>
+                    <span className="text-slate-400">{l('Power:', '能量：')}</span>
                     <span className={testStats && testStats.totalPowerConsumed > testStats.totalPowerProduced ? 'text-rose-400 font-bold' : 'text-emerald-400 font-bold'}>
                       {testStats ? `${testStats.totalPowerProduced - testStats.totalPowerConsumed >= 0 ? '+' : ''}${testStats.totalPowerProduced - testStats.totalPowerConsumed}⚡` : '0⚡'}
                     </span>
@@ -592,9 +603,9 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                             ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 ring-1 ring-cyan-400 shadow'
                             : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
                         }`}
-                        title={`Slot ${sIdx + 1}: ${sl?.name || 'Empty'}`}
+                        title={l(`Slot ${sIdx + 1}: ${sl?.name || 'Empty'}`, `槽位 ${sIdx + 1}：${sl ? translatePartName(sl.id, sl.name, language) : '空'}`)}
                       >
-                        <span>{`Slot ${sIdx + 1}`}</span>
+                        <span>{l(`Slot ${sIdx + 1}`, `槽位 ${sIdx + 1}`)}</span>
                       </button>
                     );
                   })}
@@ -609,7 +620,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           <div className="w-full mb-3 p-2.5 rounded-xl bg-rose-950/60 border border-rose-600/70 text-rose-300 text-xs flex items-center gap-2 text-left">
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>
-              <strong>Cannot Equip Immediately:</strong> Power consumed ({testStats?.totalPowerConsumed}⚡) exceeds power produced ({testStats?.totalPowerProduced}⚡) on {selectedShipType.toUpperCase()}. Store in reserve or keep for VP.
+              <strong>{l('Cannot Equip Immediately:', '无法立即装配：')}</strong> {l(`Power consumed (${testStats?.totalPowerConsumed}⚡) exceeds power produced (${testStats?.totalPowerProduced}⚡) on ${selectedShipType.toUpperCase()}. Store in reserve or keep for VP.`, `${translateShipType(selectedShipType, language)}的能量消耗 (${testStats?.totalPowerConsumed}⚡) 超过能量产出 (${testStats?.totalPowerProduced}⚡)。请放入备用库或保留为胜利分。`)}
             </span>
           </div>
         )}
@@ -624,13 +635,13 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 disabled:opacity-30 disabled:cursor-not-allowed transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
-                <Wrench className="w-3.5 h-3.5" /> {isMuonSource ? 'Equip Outside Grid' : 'Equip Immediately'}
+                <Wrench className="w-3.5 h-3.5" /> {isMuonSource ? l('Equip Outside Grid', '装配于蓝图外') : l('Equip Immediately', '立即装配')}
               </div>
               <span className="text-[10px] text-slate-300">
                 {isMuonSource ? (
-                  <>To <strong>{selectedShipType.toUpperCase()}</strong> (Outside Grid)</>
+                  <>{l('To', '至')} <strong>{translateShipType(selectedShipType, language)}</strong> ({l('Outside Grid', '蓝图外')})</>
                 ) : (
-                  <>To <strong>{selectedShipType.toUpperCase()}</strong> (Slot {selectedSlotIndex + 1})</>
+                  <>{l('To', '至')} <strong>{translateShipType(selectedShipType, language)}</strong> ({l(`Slot ${selectedSlotIndex + 1}`, `槽位 ${selectedSlotIndex + 1}`)})</>
                 )}
               </span>
             </button>
@@ -641,10 +652,10 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-800 transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-slate-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
-                <Archive className="w-3.5 h-3.5 text-slate-400" /> Store in Reserve
+                <Archive className="w-3.5 h-3.5 text-slate-400" /> {l('Store in Reserve', '存入备用库')}
               </div>
               <span className="text-[10px] text-slate-400">
-                Save for later Upgrade action
+                {l('Save for later Upgrade action', '留待之后升级行动使用')}
               </span>
             </button>
 
@@ -654,10 +665,12 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
-                <Trophy className="w-3.5 h-3.5 text-amber-400" /> Keep for 2 VP
+                <Trophy className="w-3.5 h-3.5 text-amber-400" /> {l('Keep for 2 VP', '保留换取 2 分')}
               </div>
               <span className="text-[10px] text-slate-400">
-                Score <strong className="text-amber-300">+2 VP</strong> at game end
+                {language === 'zh'
+                  ? <>终局记 <strong className="text-amber-300">+2 分</strong></>
+                  : <>Score <strong className="text-amber-300">+2 VP</strong> at game end</>}
               </span>
             </button>
           </div>
@@ -667,7 +680,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
               <div className="w-full mb-3 p-2.5 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-200 text-xs flex items-center gap-2 text-left">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>
-                  <strong>Supply Depleted:</strong> All {SHIP_LIMITS[grantShipType]} {grantShipType.toUpperCase()}s are already deployed. You cannot take another {grantShipType}; you must keep this tile for 2 VP instead.
+                  <strong>{l('Supply Depleted:', '供应已耗尽：')}</strong> {l(`All ${SHIP_LIMITS[grantShipType]} ${grantShipType.toUpperCase()}s are already deployed. You cannot take another ${grantShipType}; you must keep this tile for 2 VP instead.`, `全部 ${SHIP_LIMITS[grantShipType]} 艘${translateShipType(grantShipType, language)}均已部署，无法再领取，只能保留此板块作为 2 分。`)}
                 </span>
               </div>
             )}
@@ -678,10 +691,12 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                 className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
               >
                 <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
-                  <Trophy className="w-4 h-4 text-amber-400" /> Keep for Victory Points
+                  <Trophy className="w-4 h-4 text-amber-400" /> {l('Keep for Victory Points', '保留为胜利分')}
                 </div>
                 <span className="text-xs text-slate-400">
-                  Score <strong className="text-amber-300">+2 VP</strong> at game end
+                  {language === 'zh'
+                    ? <>终局记 <strong className="text-amber-300">+2 分</strong></>
+                    : <>Score <strong className="text-amber-300">+2 VP</strong> at game end</>}
                 </span>
               </button>
 
@@ -703,25 +718,28 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                     ? 'border-slate-800 bg-slate-900/50 opacity-40 cursor-not-allowed'
                     : 'border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25'
                 }`}
-                title={isShipSupplyDepleted ? `Cannot claim: maximum limit of ${SHIP_LIMITS[grantShipType!]} reached` : undefined}
+                title={isShipSupplyDepleted ? l(`Cannot claim: maximum limit of ${SHIP_LIMITS[grantShipType!]} reached`, `无法领取：已达上限 ${SHIP_LIMITS[grantShipType!]}`) : undefined}
               >
                 <div className={`flex items-center gap-1.5 font-bold text-sm mb-1 ${isShipSupplyDepleted ? 'text-slate-400' : 'text-cyan-400 group-hover:scale-105 transition-transform'}`}>
-                  <Zap className={`w-4 h-4 ${isShipSupplyDepleted ? 'text-slate-500' : 'text-cyan-400'}`} /> Take Immediate Reward
+                  <Zap className={`w-4 h-4 ${isShipSupplyDepleted ? 'text-slate-500' : 'text-cyan-400'}`} /> {l('Take Immediate Reward', '领取立即奖励')}
                 </div>
                 <span className="text-xs text-slate-400">
                   {isShipSupplyDepleted
-                    ? `Max supply reached (${SHIP_LIMITS[grantShipType!]} deployed)`
+                    ? l(`Max supply reached (${SHIP_LIMITS[grantShipType!]} deployed)`, `已达供应上限（已部署 ${SHIP_LIMITS[grantShipType!]} 艘）`)
                     : discovery.immediateReward?.grantShipType
-                    ? `Deploy free ${discovery.immediateReward.grantShipType} to sector`
+                    ? l(`Deploy free ${discovery.immediateReward.grantShipType} to sector`, `向该星区免费部署 1 艘${translateShipType(discovery.immediateReward.grantShipType, language)}`)
                     : discovery.immediateReward?.ancientTech
-                    ? `Claim ${(selectedTechId && tiedTechs.find((t) => t.id === selectedTechId)?.name) || tiedTechs[0]?.name || 'Tech'}`
+                    ? (() => {
+                        const chosenT = (selectedTechId && tiedTechs.find((t) => t.id === selectedTechId)) || tiedTechs[0];
+                        return l(`Claim ${chosenT?.name || 'Tech'}`, `获得 ${chosenT ? translateTechName(chosenT.id, chosenT.name, language) : '科技'}`);
+                      })()
                     : discovery.immediateReward?.artifactCodex
-                    ? 'Activate Artifact Codex (+1 VP per Artifact)'
+                    ? l('Activate Artifact Codex (+1 VP per Artifact)', '激活遗迹法典（每个遗迹 +1 分）')
                     : discovery.immediateReward?.ancientMight
-                    ? 'Activate Ancient Might (+1 VP per 3 VP Reputation)'
+                    ? l('Activate Ancient Might (+1 VP per 3 VP Reputation)', '激活远古之力（每 3 分声望 +1 分）')
                     : discovery.immediateReward?.choose3Resource
-                    ? `Collect +3 Money and +3 ${chosenBonusResource.toUpperCase()}`
-                    : 'Collect resources immediately'}
+                    ? l(`Collect +3 Money and +3 ${chosenBonusResource.toUpperCase()}`, `获得 +3 金钱与 +3 ${translateResourceType(chosenBonusResource, language)}`)
+                    : l('Collect resources immediately', '立即收集资源')}
                 </span>
               </button>
             </div>

@@ -17,6 +17,9 @@ import {
 } from '../../engine/rules/userSession';
 import { UserSession } from '../../engine/types/user';
 import { UserLoginModal } from '../auth/UserLoginModal';
+import { LanguageSwitcher } from '../common/LanguageSwitcher';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateGamePhase } from '../../i18n/catalogTranslations';
 import {
   Radio,
   Trophy,
@@ -89,6 +92,7 @@ export const Header: React.FC<HeaderProps> = ({
   onChangeSeat,
   initialDrawerOpen = false,
 }) => {
+  const { language, l } = useLanguage();
   const [isDrawerOpen, setIsDrawerOpen] = useState(initialDrawerOpen);
   const [copiedSeat, setCopiedSeat] = useState(false);
   const [currentUser, setCurrentUser] = useState<UserSession>(() => propCurrentUser || getCurrentUser());
@@ -183,7 +187,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Round Counter */}
           <div className="flex items-center gap-1.5 text-xs">
-            <span className="text-slate-400 font-semibold text-[11px]">ROUND</span>
+            <span className="text-slate-400 font-semibold text-[11px]">{l('ROUND', '回合')}</span>
             <span className="font-display font-bold text-cyan-300 text-sm">
               {state.round}/{state.maxRounds}
             </span>
@@ -191,7 +195,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Phase Pill */}
           <div className="text-[10px] sm:text-xs px-2 sm:px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider bg-slate-900 border border-slate-700 text-slate-300">
-            {state.phase.replace('_', ' ')}
+            {translateGamePhase(state.phase, language)}
           </div>
 
           {/* Main Page / Lobby Return Button (Bug 71, Bug 106) */}
@@ -203,11 +207,11 @@ export const Header: React.FC<HeaderProps> = ({
                   ? 'bg-cyan-600 hover:bg-cyan-500 border-cyan-400 text-slate-950 font-black shadow-cyan-950'
                   : 'bg-slate-900 hover:bg-slate-800 border-slate-700/80 hover:border-cyan-500/60 text-slate-300 hover:text-cyan-300'
               }`}
-              title="Return to Main Page (Galaxy Lobby)"
+              title={l('Return to Main Page (Galaxy Lobby)', '返回大厅主页')}
             >
               <Home className={`w-3.5 h-3.5 ${state.phase === 'GAME_OVER' ? 'text-slate-950' : 'text-cyan-400'}`} />
               <span className={state.phase === 'GAME_OVER' ? 'inline' : 'hidden sm:inline'}>
-                {state.phase === 'GAME_OVER' ? 'Exit to Lobby' : 'Lobby'}
+                {state.phase === 'GAME_OVER' ? l('Exit to Lobby', '返回大厅') : l('Lobby', '大厅')}
               </span>
             </button>
           )}
@@ -217,10 +221,10 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenTurnOrder}
               className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 rounded-lg bg-purple-950/70 hover:bg-purple-900 border border-purple-600/60 text-purple-200 text-xs font-bold transition-all shadow cursor-pointer shrink-0"
-              title="Inspect Turn Order Track (Turn Order Variant)"
+              title={l('Inspect Turn Order Track (Turn Order Variant)', '查看行动顺位轨')}
             >
               <ListOrdered className="w-3.5 h-3.5 text-purple-400" />
-              <span className="hidden md:inline">Turn Order</span>
+              <span className="hidden md:inline">{l('Turn Order', '行动顺位')}</span>
             </button>
           )}
 
@@ -234,13 +238,14 @@ export const Header: React.FC<HeaderProps> = ({
                 onSwitchTable(nextT.id, seatToJoin);
               }}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg bg-gradient-to-r from-amber-500 via-amber-400 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-slate-950 text-xs font-black shadow-lg shadow-amber-950/40 border border-amber-300 animate-pulse transition-all cursor-pointer shrink-0"
-              title={`Switch to Table #${getTableNumber(waitingTables[0])} where it is your turn!${
-                waitingTables.length > 1 ? ` (${waitingTables.length} tables waiting)` : ''
-              }`}
+              title={l(
+                `Switch to Table #${getTableNumber(waitingTables[0])} where it is your turn!${waitingTables.length > 1 ? ` (${waitingTables.length} tables waiting)` : ''}`,
+                `切换至 #${getTableNumber(waitingTables[0])} 号牌桌（轮到你行动）${waitingTables.length > 1 ? `（共 ${waitingTables.length} 个牌桌等待中）` : ''}`
+              )}
             >
               <Zap className="w-3.5 h-3.5 fill-current" />
               <span>
-                Table #{getTableNumber(waitingTables[0])} (Your Turn)
+                {l(`Table #${getTableNumber(waitingTables[0])} (Your Turn)`, `#${getTableNumber(waitingTables[0])} 桌（你的回合）`)}
                 {waitingTables.length > 1 ? ` +${waitingTables.length - 1}` : ''}
               </span>
               <ChevronRight className="w-3.5 h-3.5 stroke-[3]" />
@@ -318,12 +323,15 @@ export const Header: React.FC<HeaderProps> = ({
             <button
               onClick={onOpenPlayerBoard}
               className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-800 text-cyan-400 hover:text-cyan-300 text-xs font-bold transition-all shadow"
-              title="Inspect Physical Player Board (Key: P)"
+              title={l('Inspect Physical Player Board (Key: P)', '查看玩家面板 (快捷键: P)')}
             >
               <LayoutDashboard className="w-3.5 h-3.5 text-cyan-400" />
-              <span className="hidden md:inline">Player Board</span>
+              <span className="hidden md:inline">{l('Player Board', '玩家面板')}</span>
             </button>
           )}
+
+          {/* Language Switcher Pill */}
+          <LanguageSwitcher compact className="hidden sm:inline-flex" />
 
           {/* User Profile Pill */}
           <button
@@ -336,7 +344,7 @@ export const Header: React.FC<HeaderProps> = ({
                 ? 'bg-cyan-950/70 border-cyan-500/60 text-cyan-300 hover:bg-cyan-900/80'
                 : 'bg-amber-950/70 border-amber-500/60 text-amber-300 hover:bg-amber-900/80'
             }`}
-            title="Switch User / Login"
+            title={l('Switch User / Login', '切换账号 / 登录')}
           >
             {currentUser.role === 'admin' ? (
               <Shield className="w-3.5 h-3.5 text-rose-400" />
@@ -352,10 +360,10 @@ export const Header: React.FC<HeaderProps> = ({
           <button
             onClick={() => setIsDrawerOpen(true)}
             className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 hover:bg-slate-800 border border-slate-700/80 hover:border-cyan-500/60 text-slate-200 hover:text-cyan-300 text-xs font-bold transition-all shadow cursor-pointer"
-            title="Open Galaxy Command Menu"
+            title={l('Open Galaxy Command Menu', '打开指挥菜单')}
           >
             <SlidersHorizontal className="w-3.5 h-3.5 text-cyan-400" />
-            <span>Menu</span>
+            <span>{l('Menu', '菜单')}</span>
           </button>
         </div>
       </header>
@@ -381,17 +389,17 @@ export const Header: React.FC<HeaderProps> = ({
                     </div>
                     <div>
                       <h3 className="font-display font-bold text-sm tracking-wider text-slate-200 uppercase">
-                        COMMAND MENU
+                        {l('COMMAND MENU', '指挥菜单')}
                       </h3>
                       <span className="text-[10px] font-mono text-slate-500">
-                        TABLE #{tableNum}
+                        {l('TABLE', '桌号')} #{tableNum}
                       </span>
                     </div>
                   </div>
                   <button
                     onClick={() => setIsDrawerOpen(false)}
                     className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition"
-                    title="Close Menu"
+                    title={l('Close Menu', '关闭菜单')}
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -399,9 +407,12 @@ export const Header: React.FC<HeaderProps> = ({
 
                 {/* Section: Table & Session */}
                 <div className="space-y-2">
-                  <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
-                    Session & Table
-                  </span>
+                  <div className="flex items-center justify-between">
+                    <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
+                      {l('Session & Table', '对局与语言')}
+                    </span>
+                    <LanguageSwitcher compact />
+                  </div>
                   <div className="bg-slate-900/80 rounded-xl border border-slate-800/80 p-3 space-y-2.5">
                     {/* User Identity */}
                     <div className="flex items-center justify-between text-xs pb-2 border-b border-slate-800/80">
@@ -457,9 +468,15 @@ export const Header: React.FC<HeaderProps> = ({
                           return (
                             <div className="flex items-center gap-1.5 font-bold text-cyan-300">
                               <Users className="w-3.5 h-3.5 text-cyan-400" />
+                              {language === 'zh' ? (
+                              <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 text-xs font-mono font-bold">
+                                热座模式
+                              </span>
+                              ) : (
                               <span className="px-2 py-0.5 rounded bg-cyan-950/80 border border-cyan-800 text-cyan-300 text-xs font-mono font-bold">
                                 Hotseat
                               </span>
+                              )}
                             </div>
                           );
                         }
@@ -472,7 +489,10 @@ export const Header: React.FC<HeaderProps> = ({
                                 const val = e.target.value;
                                 if (val === 'all') {
                                   if (!canUserUseHotseat(currentUser.role, state.isLocalGame)) {
-                                    alert('Only administrators are allowed to use the hotseat function in online games.');
+                                    alert(l(
+                                      'Only administrators are allowed to use the hotseat function in online games.',
+                                      '联机对局中仅管理员可使用热座功能。'
+                                    ));
                                     return;
                                   }
                                   onChangeSeat('all');
@@ -480,7 +500,10 @@ export const Header: React.FC<HeaderProps> = ({
                                   onChangeSeat(val);
                                 } else {
                                   if (!state.isLocalGame && currentUser.role === 'guest') {
-                                    alert('Guest players can only join online multiplayer games as a spectator. Please log in or register.');
+                                    alert(l(
+                                      'Guest players can only join online multiplayer games as a spectator. Please log in or register.',
+                                      '游客仅能作为观战者加入联机对局，请先登录或注册账号。'
+                                    ));
                                     return;
                                   }
                                   onChangeSeat(parseInt(val, 10));
@@ -489,7 +512,8 @@ export const Header: React.FC<HeaderProps> = ({
                               className="bg-slate-950 border border-slate-700 text-xs rounded px-2 py-1 text-cyan-300 font-bold focus:outline-none"
                             >
                               <option value="all" disabled={!canUserUseHotseat(currentUser.role, state.isLocalGame)}>
-                                Hotseat (All){!canUserUseHotseat(currentUser.role, state.isLocalGame) ? ' (Admin Only)' : ''}
+                                {l('Hotseat (All)', '热座（全部席位）')}
+                                {!canUserUseHotseat(currentUser.role, state.isLocalGame) ? l(' (Admin Only)', '（仅管理员）') : ''}
                               </option>
                               {state.players.map((p, idx) => {
                                 const seatCheck = isSeatTaken(state.members, idx, currentUser.id);
@@ -498,18 +522,18 @@ export const Header: React.FC<HeaderProps> = ({
                                 const isDisabled = isGuestBlocked || (isTaken && currentUser.role !== 'admin');
                                 return (
                                   <option key={p.id} value={idx.toString()} disabled={isDisabled}>
-                                    Seat {idx + 1} ({getPlayerDisplayName(p, { short: true })})
+                                    {l(`Seat ${idx + 1}`, `席位 ${idx + 1}`)} ({getPlayerDisplayName(p, { short: true })})
                                     {isTaken
                                       ? currentUser.role === 'admin'
-                                        ? ` [Takeover: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
-                                        : ` [Taken: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
+                                        ? ` [${l('Takeover', '接管')}: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
+                                        : ` [${l('Taken', '已占用')}: ${seatCheck.occupant?.username || seatCheck.occupant?.name}]`
                                       : isGuestBlocked
-                                      ? ' (Spectator Only)'
+                                      ? l(' (Spectator Only)', '（仅可观战）')
                                       : ''}
                                   </option>
                                 );
                               })}
-                              <option value="spectator">Spectator</option>
+                              <option value="spectator">{l('Spectator', '观战者')}</option>
                             </select>
                           );
                         }
@@ -519,18 +543,18 @@ export const Header: React.FC<HeaderProps> = ({
                             {isSeatLocked && (
                               <span
                                 className="text-slate-400 hover:text-slate-300 flex items-center gap-1 text-[11px] bg-slate-900 border border-slate-800 px-1.5 py-0.5 rounded"
-                                title="Seats are locked during active matches"
+                                title={l('Seats are locked during active matches', '对局进行中席位已锁定')}
                               >
                                 <Lock className="w-3 h-3 text-amber-400" />
-                                <span>Locked</span>
+                                <span>{l('Locked', '已锁定')}</span>
                               </span>
                             )}
                             <span>
                               {currentSeat === 'all' || currentSeat === undefined
-                                ? 'Hotseat'
+                                ? l('Hotseat', '热座模式')
                                 : currentSeat === 'spectator'
-                                ? 'Spectator'
-                                : `Seat ${Number(currentSeat) + 1} (${getPlayerDisplayName(state.players[currentSeat], { short: true })})`}
+                                ? l('Spectator', '观战者')
+                                : `${l(`Seat ${Number(currentSeat) + 1}`, `席位 ${Number(currentSeat) + 1}`)} (${getPlayerDisplayName(state.players[currentSeat], { short: true })})`}
                             </span>
                           </div>
                         );
@@ -542,15 +566,15 @@ export const Header: React.FC<HeaderProps> = ({
                       onClick={handleCopySeatLink}
                       className="w-full flex items-center justify-center gap-2 px-3 py-1.5 rounded-lg bg-slate-950 hover:bg-slate-800 border border-slate-700/60 text-slate-300 hover:text-cyan-300 text-xs font-semibold transition"
                     >
-                      {copiedSeat ? (
+                        {copiedSeat ? (
                         <>
                           <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-emerald-400 font-bold">Copied URL to Clipboard!</span>
+                          <span className="text-emerald-400 font-bold">{l('Copied URL to Clipboard!', '已复制席位链接！')}</span>
                         </>
                       ) : (
                         <>
                           <Share2 className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Copy Seat Direct URL Link</span>
+                          <span>{l('Copy Seat Direct URL Link', '复制席位直达链接')}</span>
                         </>
                       )}
                     </button>
@@ -565,10 +589,10 @@ export const Header: React.FC<HeaderProps> = ({
                           onOpenManageSeats();
                         }}
                         className="w-full flex items-center justify-center gap-2 px-3 py-2 rounded-xl bg-gradient-to-r from-rose-950 to-rose-900 hover:from-rose-900 hover:to-rose-800 border border-rose-500/60 text-rose-200 text-xs font-bold transition shadow cursor-pointer"
-                        title="Manage and reassign player seats"
+                        title={l('Manage and reassign player seats', '管理与重新分配玩家席位')}
                       >
                         <Shield className="w-3.5 h-3.5 text-rose-400" />
-                        <span>Manage Seats (Admin)</span>
+                        <span>{l('Manage Seats (Admin)', '管理席位 (管理员)')}</span>
                       </button>
                     )}
 
@@ -583,7 +607,7 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <div className="flex items-center gap-1.5 font-mono">
                           <Radio className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Table Sessions Manager</span>
+                          <span>{l('Table Sessions Manager', '对局与存档管理')}</span>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-cyan-400" />
                       </button>
@@ -600,7 +624,7 @@ export const Header: React.FC<HeaderProps> = ({
                       >
                         <div className="flex items-center gap-1.5">
                           <Home className="w-3.5 h-3.5 text-cyan-400" />
-                          <span>Return to Galaxy Lobby</span>
+                          <span>{l('Return to Galaxy Lobby', '返回星际大厅')}</span>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500" />
                       </button>
@@ -611,7 +635,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Section: Tactical Views & Game Panels */}
                 <div className="space-y-2">
                   <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
-                    Tactical Views
+                    {l('Tactical Views', '战术视图')}
                   </span>
                   <div className="space-y-1.5">
                     {/* Live Scoreboard / Standings */}
@@ -628,8 +652,8 @@ export const Header: React.FC<HeaderProps> = ({
                             <Trophy className="w-3.5 h-3.5" />
                           </div>
                           <div className="text-left">
-                            <div className="text-xs font-bold text-amber-300">Live Standings</div>
-                            <div className="text-[10px] text-slate-400">Score & Victory Points breakdown</div>
+                            <div className="text-xs font-bold text-amber-300">{l('Live Standings', '实时积分榜')}</div>
+                            <div className="text-[10px] text-slate-400">{l('Score & Victory Points breakdown', '得分与胜利点数明细')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-400 transition" />
@@ -651,12 +675,12 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
                           <div className="text-left">
                             <div className="text-xs font-bold text-pink-300 flex items-center gap-1.5">
-                              <span>Tech Tray Market</span>
+                              <span>{l('Tech Tray Market', '科技市场')}</span>
                               <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-pink-950 text-pink-300 border border-pink-700/60">
                                 {state.techSupply.length}
                               </span>
                             </div>
-                            <div className="text-[10px] text-slate-400">Research & Tech tiles supply</div>
+                            <div className="text-[10px] text-slate-400">{l('Research & Tech tiles supply', '可研发科技板块供应区')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-pink-400 transition" />
@@ -678,12 +702,12 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
                           <div className="text-left">
                             <div className="text-xs font-bold text-purple-300 flex items-center gap-1.5">
-                              <span>Turn Order Track</span>
+                              <span>{l('Turn Order Track', '行动顺位轨')}</span>
                               <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-purple-950 text-purple-300 border border-purple-700/60">
-                                Variant
+                                {l('Variant', '变体')}
                               </span>
                             </div>
-                            <div className="text-[10px] text-slate-400">Round action order & pass sequence</div>
+                            <div className="text-[10px] text-slate-400">{l('Round action order & pass sequence', '回合行动顺位与跳过次序')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-purple-400 transition" />
@@ -705,12 +729,12 @@ export const Header: React.FC<HeaderProps> = ({
                           </div>
                           <div className="text-left">
                             <div className="text-xs font-bold text-emerald-300 flex items-center gap-1.5">
-                              <span>Minor Species Embassy</span>
+                              <span>{l('Minor Species Embassy', '次要种族大使馆')}</span>
                               <span className="text-[9px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-950 text-emerald-300 border border-emerald-700/60">
-                                Expansion
+                                {l('Expansion', '扩展')}
                               </span>
                             </div>
-                            <div className="text-[10px] text-slate-400">Diplomatic Relations & Ambassador Tiles</div>
+                            <div className="text-[10px] text-slate-400">{l('Diplomatic Relations & Ambassador Tiles', '外交同盟与大使板块')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-emerald-400 transition" />
@@ -731,8 +755,8 @@ export const Header: React.FC<HeaderProps> = ({
                             <BookOpen className="w-3.5 h-3.5" />
                           </div>
                           <div className="text-left">
-                            <div className="text-xs font-bold text-cyan-300">Galactic Gallery</div>
-                            <div className="text-[10px] text-slate-400">Compendium & Discovery reference</div>
+                            <div className="text-xs font-bold text-cyan-300">{l('Galactic Gallery', '星际图鉴')}</div>
+                            <div className="text-[10px] text-slate-400">{l('Compendium & Discovery reference', '科技/配件/星区/NPC 蓝图百科')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition" />
@@ -753,8 +777,8 @@ export const Header: React.FC<HeaderProps> = ({
                             <LayoutDashboard className="w-3.5 h-3.5" />
                           </div>
                           <div className="text-left">
-                            <div className="text-xs font-bold text-slate-200">Player Board</div>
-                            <div className="text-[10px] text-slate-400">Tracks, Blueprints, Colony Ships (P)</div>
+                            <div className="text-xs font-bold text-slate-200">{l('Player Board', '玩家面板')}</div>
+                            <div className="text-[10px] text-slate-400">{l('Tracks, Blueprints, Colony Ships (P)', '资源轨、舰船蓝图与殖民船 (P)')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-cyan-400 transition" />
@@ -775,8 +799,8 @@ export const Header: React.FC<HeaderProps> = ({
                             <History className="w-3.5 h-3.5" />
                           </div>
                           <div className="text-left">
-                            <div className="text-xs font-bold text-indigo-300">Galactic Replay</div>
-                            <div className="text-[10px] text-slate-400">Review full action history & scrubber</div>
+                            <div className="text-xs font-bold text-indigo-300">{l('Galactic Replay', '战局回放')}</div>
+                            <div className="text-[10px] text-slate-400">{l('Review full action history & scrubber', '查看完整历史回合与步骤回放')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-indigo-400 transition" />
@@ -797,8 +821,8 @@ export const Header: React.FC<HeaderProps> = ({
                             <Swords className="w-3.5 h-3.5" />
                           </div>
                           <div className="text-left">
-                            <div className="text-xs font-bold text-red-300">Combat Simulator</div>
-                            <div className="text-[10px] text-slate-400">Monte Carlo battle simulator & fleet analysis</div>
+                            <div className="text-xs font-bold text-red-300">{l('Combat Simulator', '战斗模拟器')}</div>
+                            <div className="text-[10px] text-slate-400">{l('Monte Carlo battle simulator & fleet analysis', '蒙特卡洛胜率模拟与舰队分析')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-red-400 transition" />
@@ -810,7 +834,7 @@ export const Header: React.FC<HeaderProps> = ({
                 {/* Section: Support & Operations */}
                 <div className="space-y-2">
                   <span className="text-[10px] font-mono uppercase tracking-wider text-slate-400 font-bold">
-                    Operations
+                    {l('Operations', '操作与反馈')}
                   </span>
                   <div className="space-y-1.5">
                     {/* Report Bug */}
@@ -827,8 +851,8 @@ export const Header: React.FC<HeaderProps> = ({
                             <Bug className="w-3.5 h-3.5" />
                           </div>
                           <div className="text-left">
-                            <div className="text-xs font-bold text-rose-300">Report Bug / Issue</div>
-                            <div className="text-[10px] text-rose-400/80">Log bug directly to bug_report.md</div>
+                            <div className="text-xs font-bold text-rose-300">{l('Report Bug / Issue', '报告 Bug / 反馈建议')}</div>
+                            <div className="text-[10px] text-rose-400/80">{l('Log bug directly to bug_report.md', '直接提交问题与当前对局状态')}</div>
                           </div>
                         </div>
                         <ChevronRight className="w-3.5 h-3.5 text-rose-400/60 group-hover:text-rose-400 transition" />
@@ -848,8 +872,8 @@ export const Header: React.FC<HeaderProps> = ({
                           <RefreshCw className="w-3.5 h-3.5" />
                         </div>
                         <div className="text-left">
-                          <div className="text-xs font-bold text-slate-200">Start New Game</div>
-                          <div className="text-[10px] text-slate-400">Reset galaxy & choose factions</div>
+                          <div className="text-xs font-bold text-slate-200">{l('Start New Game', '开始新游戏')}</div>
+                          <div className="text-[10px] text-slate-400">{l('Reset galaxy & choose factions', '重置星系并重新选择种族')}</div>
                         </div>
                       </div>
                       <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-slate-300 transition" />

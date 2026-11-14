@@ -85,8 +85,9 @@ import {
 } from './engine/rules/persistence';
 import { getCurrentUser, subscribeToUserSession } from './engine/rules/userSession';
 import { UserSession, RegisteredUserProfile } from './engine/types/user';
+import { LanguageProvider } from './i18n/LanguageContext';
 
-export const App: React.FC = () => {
+const AppContent: React.FC = () => {
   const [state, setState] = useState<GameState>(() => {
     const loaded = loadActiveGameState();
     return loaded || createInitialGame(2);
@@ -3916,3 +3917,9 @@ export const App: React.FC = () => {
     </div>
   );
 };
+
+export const App: React.FC = () => (
+  <LanguageProvider>
+    <AppContent />
+  </LanguageProvider>
+);

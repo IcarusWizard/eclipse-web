@@ -32,6 +32,7 @@ import {
   Hammer,
   Hexagon,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 export interface HexMapBuildMode {
   eligibleSectorIds: string[];
@@ -185,6 +186,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
   effectivePlayerId,
   currentSeat,
 }) => {
+  const { l } = useLanguage();
   const containerRef = useRef<HTMLDivElement>(null);
   const [zoom, setZoom] = useState(1);
   const [pan, setPan] = useState({ x: 450, y: 350 });
@@ -527,7 +529,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
       >
         {/* Sector Deck Counter Badge */}
         <div className="hidden sm:flex items-center gap-2 px-3 py-1.5 bg-slate-900/85 backdrop-blur-md border border-slate-700/80 rounded-lg text-xs font-mono shadow-md">
-          <span className="text-slate-400 font-bold text-[11px]">DECKS:</span>
+          <span className="text-slate-400 font-bold text-[11px]">{l('DECKS:', '星区牌堆:')}</span>
           <span
             data-testid="deck-counter-r1"
             className={`transition-opacity ${
@@ -535,8 +537,14 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             }`}
             title={
               !isRing1Possible
-                ? `Ring 1: ${ring1SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`
-                : `Ring 1 Sector Stack (${state.sectorDecks?.ring1?.length ?? 0} tiles, ${ring1SlotsRemaining} slots open)`
+                ? l(
+                    `Ring 1: ${ring1SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`,
+                    `第 I 环：${ring1SlotsRemaining === 0 ? '已无剩余可探索空位' : '牌堆已空'}`
+                  )
+                : l(
+                    `Ring 1 Sector Stack (${state.sectorDecks?.ring1?.length ?? 0} tiles, ${ring1SlotsRemaining} slots open)`,
+                    `第 I 环星区牌堆（剩余 ${state.sectorDecks?.ring1?.length ?? 0} 枚，可探索空位 ${ring1SlotsRemaining}）`
+                  )
             }
           >
             R1: {state.sectorDecks?.ring1?.length ?? 0}
@@ -549,8 +557,14 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             }`}
             title={
               !isRing2Possible
-                ? `Ring 2: ${ring2SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`
-                : `Ring 2 Sector Stack (${state.sectorDecks?.ring2?.length ?? 0} tiles, ${ring2SlotsRemaining} slots open)`
+                ? l(
+                    `Ring 2: ${ring2SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`,
+                    `第 II 环：${ring2SlotsRemaining === 0 ? '已无剩余可探索空位' : '牌堆已空'}`
+                  )
+                : l(
+                    `Ring 2 Sector Stack (${state.sectorDecks?.ring2?.length ?? 0} tiles, ${ring2SlotsRemaining} slots open)`,
+                    `第 II 环星区牌堆（剩余 ${state.sectorDecks?.ring2?.length ?? 0} 枚，可探索空位 ${ring2SlotsRemaining}）`
+                  )
             }
           >
             R2: {state.sectorDecks?.ring2?.length ?? 0}
@@ -563,8 +577,14 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             }`}
             title={
               !isRing3Possible
-                ? `Ring 3: ${ring3SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`
-                : `Ring 3 Sector Stack (${state.sectorDecks?.ring3?.length ?? 0} tiles, ${ring3SlotsRemaining} slots open)`
+                ? l(
+                    `Ring 3: ${ring3SlotsRemaining === 0 ? 'No slots remaining to explore' : 'Deck empty'}`,
+                    `第 III 环：${ring3SlotsRemaining === 0 ? '已无剩余可探索空位' : '牌堆已空'}`
+                  )
+                : l(
+                    `Ring 3 Sector Stack (${state.sectorDecks?.ring3?.length ?? 0} tiles, ${ring3SlotsRemaining} slots open)`,
+                    `第 III 环星区牌堆（剩余 ${state.sectorDecks?.ring3?.length ?? 0} 枚，可探索空位 ${ring3SlotsRemaining}）`
+                  )
             }
           >
             R3: {state.sectorDecks?.ring3?.length ?? 0}
@@ -580,32 +600,32 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               ? 'bg-cyan-500/25 border-cyan-400 text-cyan-200 shadow-cyan-500/20'
               : 'bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-300'
           }`}
-          title="Toggle Dashed Hexagonal Grid Outlines for Unexplored Sectors"
+          title={l('Toggle Dashed Hexagonal Grid Outlines for Unexplored Sectors', '切换未探索星区六边形网格虚线框')}
         >
           <Hexagon className="w-3.5 h-3.5" />
-          <span>Grid</span>
+          <span>{l('Grid', '网格')}</span>
         </button>
 
         <button
           onClick={() => setZoom((z) => Math.min(2.5, z * 1.2))}
           className="p-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-200 rounded text-sm font-bold shadow"
-          title="Zoom In"
+          title={l('Zoom In', '放大')}
         >
           +
         </button>
         <button
           onClick={() => setZoom((z) => Math.max(0.4, z * 0.8))}
           className="p-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-200 rounded text-sm font-bold shadow"
-          title="Zoom Out"
+          title={l('Zoom Out', '缩小')}
         >
           -
         </button>
         <button
           onClick={resetView}
           className="px-3 py-2 bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-cyan-400 rounded text-xs font-semibold shadow"
-          title="Center Galaxy"
+          title={l('Center Galaxy', '重置视角居中')}
         >
-          Center
+          {l('Center', '居中')}
         </button>
       </div>
 
@@ -1687,13 +1707,13 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     <text x="0" y="2.5" textAnchor="middle" fill="#c7d2fe" fontSize="7" fontWeight="900">BH</text>
                     <rect x="-30" y="16" width="60" height="11" rx="3" fill="rgba(15, 23, 42, 0.9)" stroke="#6366f1" strokeWidth="0.8" />
                     <text x="0" y="24" textAnchor="middle" fill="#c7d2fe" fontSize="6.5" fontWeight="bold">
-                      {sector.sectorNumber === 396 ? 'Ring I Return' : 'Empty Zone Return'}
+                      {sector.sectorNumber === 396 ? l('Ring I Return', '第 I 环回归') : l('Empty Zone Return', '空域回归')}
                     </text>
                     {state.galacticEvents?.blackHoleDelayedShips && state.galacticEvents.blackHoleDelayedShips.length > 0 && (
                       <g transform="translate(0, -22)">
                         <rect x="-34" y="-6" width="68" height="12" rx="3" fill="#1e1b4b" stroke="#818cf8" strokeWidth="0.9" />
                         <text x="0" y="2.5" textAnchor="middle" fill="#e0e7ff" fontSize="6.5" fontWeight="bold">
-                          ⏳ {state.galacticEvents.blackHoleDelayedShips.length} Trapped (R{Math.min(...state.galacticEvents.blackHoleDelayedShips.map((s) => s.returnRound))})
+                          ⏳ {state.galacticEvents.blackHoleDelayedShips.length} {l('Trapped', '滞留')} (R{Math.min(...state.galacticEvents.blackHoleDelayedShips.map((s) => s.returnRound))})
                         </text>
                       </g>
                     )}
@@ -1709,7 +1729,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         <text x="0" y="-2" textAnchor="middle" fill="#fca5a5" fontSize="12" fontWeight="900">💥</text>
                         <rect x="-32" y="10" width="64" height="12" rx="3" fill="#7f1d1d" stroke="#ef4444" strokeWidth="1" />
                         <text x="0" y="18.5" textAnchor="middle" fill="#fef2f2" fontSize="7" fontWeight="900" letterSpacing="0.5">
-                          EXPLODED
+                          {l('EXPLODED', '已爆发')}
                         </text>
                       </g>
                     ) : (
@@ -2976,7 +2996,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     fontSize="9.5"
                     fontWeight="bold"
                   >
-                    ↻ Click to Rotate
+                    {l('↻ Click to Rotate', '↻ 点击旋转板块')}
                   </text>
                 </g>
               </g>

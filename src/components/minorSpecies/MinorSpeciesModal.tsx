@@ -24,6 +24,50 @@ import {
   Info,
   Orbit,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateMinorSpeciesName, translateResourceType } from '../../i18n/catalogTranslations';
+
+const MINOR_SPECIES_ZH: Record<
+  MinorSpeciesId,
+  { vpDescription: string; abilityDescription: string }
+> = {
+  minor_species_reputation_vp: {
+    vpDescription: '终局时你声望轨上每有 1 枚声望板块获得 1 VP',
+    abilityDescription: '游戏结束时，你声望轨上的每枚声望板块记 1 点胜利分。',
+  },
+  minor_species_ambassador_vp: {
+    vpDescription: '终局时每有 1 枚大使板块（含本板块）获得 1 VP',
+    abilityDescription: '游戏结束时，每枚大使板块（包括本板块自身）记 1 点胜利分。',
+  },
+  minor_species_flat_vp: {
+    vpDescription: '终局获得 3 VP',
+    abilityDescription: '游戏结束时提供 3 点胜利分。',
+  },
+  minor_species_population_cube: {
+    vpDescription: '终局获得 1 VP',
+    abilityDescription: '立即从你任选的一条人口轨上拿取 1 枚人口方块放置于此板块。终局记 1 VP。',
+  },
+  minor_species_cruiser_discount: {
+    vpDescription: '终局获得 1 VP',
+    abilityDescription: '建造巡洋舰时费用 -1 材料。终局记 1 VP。',
+  },
+  minor_species_dreadnought_discount: {
+    vpDescription: '终局获得 1 VP',
+    abilityDescription: '建造无畏舰时费用 -2 材料。终局记 1 VP。',
+  },
+  minor_species_orbital_discount: {
+    vpDescription: '终局获得 1 VP',
+    abilityDescription: '建造轨道站时费用 -1 材料。终局记 1 VP。',
+  },
+  minor_species_monolith_discount: {
+    vpDescription: '终局获得 1 VP',
+    abilityDescription: '建造纪念碑时费用 -2 材料。终局记 1 VP。',
+  },
+  minor_species_tech_discount: {
+    vpDescription: '终局获得 1 VP',
+    abilityDescription: '研发科技时费用 -1 科研（仍需满足该科技的最低科研费用）。终局记 1 VP。',
+  },
+};
 
 export interface MinorSpeciesModalProps {
   state: GameState;
@@ -40,6 +84,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
   onClose,
   readOnly = false,
 }) => {
+  const { l, language } = useLanguage();
   const [isMinimized, setIsMinimized] = useState(false);
   const [selectedPopulationTrack, setSelectedPopulationTrack] = useState<'money' | 'science' | 'material'>('money');
 
@@ -86,7 +131,9 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
           className="flex items-center gap-2 px-4 py-2 rounded-xl bg-slate-900/95 border-2 border-emerald-500/80 text-emerald-300 font-bold shadow-2xl backdrop-blur-md hover:bg-slate-800 transition cursor-pointer"
         >
           <Users className="w-4 h-4 text-emerald-400" />
-          <span className="text-sm">Minor Species ({supply.length} Available)</span>
+          <span className="text-sm">
+            {l(`Minor Species (${supply.length} Available)`, `次要种族 (${supply.length} 可结盟)`)}
+          </span>
           <Maximize2 className="w-3.5 h-3.5 text-slate-400 ml-1" />
         </button>
       </div>
@@ -108,13 +155,18 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
             </div>
             <div className="text-left">
               <div className="flex items-center gap-2">
-                <h2 className="text-lg font-black text-white tracking-wide">Minor Species Embassy</h2>
+                <h2 className="text-lg font-black text-white tracking-wide">
+                  {l('Minor Species Embassy', '次要种族大使馆')}
+                </h2>
                 <span className="text-[10px] uppercase font-mono font-bold px-2 py-0.5 rounded bg-emerald-950/80 border border-emerald-800/80 text-emerald-400">
-                  Expansion
+                  {l('Expansion', '扩展模块')}
                 </span>
               </div>
               <p className="text-xs text-slate-400">
-                Form Diplomatic Relations by paying Money to claim Ambassador Tiles.
+                {l(
+                  'Form Diplomatic Relations by paying Money to claim Ambassador Tiles.',
+                  '支付信用点与次要种族建立外交关系并获取大使板块。'
+                )}
               </p>
             </div>
           </div>
@@ -122,14 +174,14 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
             <button
               onClick={() => setIsMinimized(true)}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
-              title="Minimize to inspect map"
+              title={l('Minimize to inspect map', '最小化以查看地图')}
             >
               <Minimize2 className="w-4 h-4" />
             </button>
             <button
               onClick={onClose}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
-              title="Close modal"
+              title={l('Close modal', '关闭窗口')}
             >
               <X className="w-4 h-4" />
             </button>
@@ -139,7 +191,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
         {/* Player Status Banner */}
         <div className="w-full bg-slate-950/80 border border-slate-800/80 rounded-xl p-3 mb-3 flex items-center justify-between text-xs">
           <div className="flex items-center gap-2">
-            <span className="text-slate-400">Commander:</span>
+            <span className="text-slate-400">{l('Commander:', '指挥官：')}</span>
             <span className="font-bold text-white" style={{ color: getFactionDisplayColor(activePlayer.color, activePlayer.faction?.name) }}>
               {activePlayer.name}
             </span>
@@ -147,12 +199,12 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
           <div className="flex items-center gap-4">
             <div className="flex items-center gap-1.5">
               <Coins className="w-4 h-4 text-amber-400" />
-              <span className="text-slate-400">Money:</span>
+              <span className="text-slate-400">{l('Money:', '信用点：')}</span>
               <span className="font-mono font-bold text-amber-300">{activePlayer.resources.money}</span>
             </div>
             <div className="flex items-center gap-1.5">
               <Shield className="w-4 h-4 text-indigo-400" />
-              <span className="text-slate-400">Empty Amb Spaces:</span>
+              <span className="text-slate-400">{l('Empty Amb Spaces:', '空余大使位：')}</span>
               <span className={`font-mono font-bold ${availableSlots > 0 ? 'text-indigo-300' : 'text-rose-400'}`}>
                 {availableSlots}
               </span>
@@ -164,12 +216,15 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
         <div className="w-full mb-3 text-left">
           <h3 className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-2 flex items-center gap-1.5">
             <Sparkles className="w-3.5 h-3.5 text-emerald-400" />
-            Available Minor Species in Galaxy ({supply.length})
+            {l(`Available Minor Species in Galaxy (${supply.length})`, `银河系可结盟的次要种族 (${supply.length})`)}
           </h3>
 
           {supply.length === 0 ? (
             <div className="p-4 rounded-xl bg-slate-950/50 border border-slate-800 text-center text-xs text-slate-500">
-              All Minor Species ambassador tiles have been claimed by galactic powers.
+              {l(
+                'All Minor Species ambassador tiles have been claimed by galactic powers.',
+                '所有次要种族大使板块均已被各银河势力认领。'
+              )}
             </div>
           ) : (
             <div className="grid grid-cols-1 gap-2.5">
@@ -178,6 +233,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                 const hasSlots = availableSlots > 0;
                 const alreadyHas = playerHasMinorSpecies(activePlayer, tile.id);
                 const canAlly = !readOnly && isCurrentTurn && canAfford && hasSlots && !alreadyHas;
+                const zhTile = MINOR_SPECIES_ZH[tile.id];
 
                 return (
                   <div
@@ -191,29 +247,29 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                         </div>
                         <div>
                           <h4 className="text-sm font-bold text-white flex items-center gap-2">
-                            {tile.name}
+                            {translateMinorSpeciesName(tile.id, tile.name, language)}
                             <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-amber-950/80 border border-amber-800/80 text-amber-300 font-bold flex items-center gap-1">
                               <Coins className="w-3 h-3 text-amber-400" />
-                              {tile.cost} Money
+                              {l(`${tile.cost} Money`, `${tile.cost} 信用点`)}
                             </span>
                           </h4>
                           <span className="text-[11px] font-semibold text-indigo-400 flex items-center gap-1 mt-0.5">
                             <Trophy className="w-3 h-3" />
-                            {tile.vpDescription}
+                            {language === 'zh' && zhTile ? zhTile.vpDescription : tile.vpDescription}
                           </span>
                         </div>
                       </div>
                     </div>
 
                     <p className="text-xs text-slate-300 leading-relaxed bg-slate-900/60 p-2 rounded-lg border border-slate-800/60">
-                      {tile.abilityDescription}
+                      {language === 'zh' && zhTile ? zhTile.abilityDescription : tile.abilityDescription}
                     </p>
 
                     {/* Population Track selection for Population Cube tile */}
                     {tile.id === 'minor_species_population_cube' && (
                       <div className="p-2.5 rounded-lg bg-emerald-950/30 border border-emerald-900/50 flex flex-col gap-1.5">
                         <span className="text-[11px] font-semibold text-emerald-300">
-                          Select Population Track for cube placement:
+                          {l('Select Population Track for cube placement:', '选择要移出人口方块的人口轨：')}
                         </span>
                         <div className="grid grid-cols-3 gap-2">
                           {(['money', 'science', 'material'] as const).map((track) => (
@@ -227,7 +283,12 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                                   : 'bg-slate-900 border-slate-700 text-slate-400 hover:text-white'
                               }`}
                             >
-                              {track} ({activePlayer.population[track].cubesOnBoard} on board)
+                              {translateResourceType(track, language)} (
+                              {l(
+                                `${activePlayer.population[track].cubesOnBoard} on board`,
+                                `余 ${activePlayer.population[track].cubesOnBoard}`
+                              )}
+                              )
                             </button>
                           ))}
                         </div>
@@ -237,16 +298,21 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                     {/* Action button */}
                     <div className="flex items-center justify-between pt-1 border-t border-slate-800/80">
                       <div className="text-[11px] text-slate-400">
-                        {readOnly && <span className="text-sky-400 font-semibold">Spectator Mode (Read Only)</span>}
-                        {!readOnly && !isCurrentTurn && <span className="text-amber-400">Can only ally during your turn</span>}
+                        {readOnly && <span className="text-sky-400 font-semibold">{l('Spectator Mode (Read Only)', '旁观模式（只读）')}</span>}
+                        {!readOnly && !isCurrentTurn && <span className="text-amber-400">{l('Can only ally during your turn', '仅可在你的回合内结盟')}</span>}
                         {!readOnly && isCurrentTurn && !canAfford && (
-                          <span className="text-rose-400">Need {tile.cost} Money (have {activePlayer.resources.money})</span>
+                          <span className="text-rose-400">
+                            {l(
+                              `Need ${tile.cost} Money (have ${activePlayer.resources.money})`,
+                              `需要 ${tile.cost} 信用点（当前持有 ${activePlayer.resources.money}）`
+                            )}
+                          </span>
                         )}
                         {!readOnly && isCurrentTurn && canAfford && !hasSlots && (
-                          <span className="text-rose-400">No empty Ambassador space on track</span>
+                          <span className="text-rose-400">{l('No empty Ambassador space on track', '声望轨上无空余大使位')}</span>
                         )}
                         {!readOnly && isCurrentTurn && canAfford && hasSlots && (
-                          <span className="text-emerald-400">Ready to form Diplomatic Relations</span>
+                          <span className="text-emerald-400">{l('Ready to form Diplomatic Relations', '可以建立外交关系')}</span>
                         )}
                       </div>
 
@@ -266,7 +332,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                         }`}
                       >
                         <Users className="w-3.5 h-3.5" />
-                        {readOnly ? 'Spectator Mode' : `Ally (-${tile.cost} Money)`}
+                        {readOnly ? l('Spectator Mode', '旁观模式') : l(`Ally (-${tile.cost} Money)`, `结盟 (-${tile.cost} 信用点)`)}
                       </button>
                     </div>
                   </div>
@@ -281,7 +347,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
           <div className="w-full mt-2 pt-3 border-t border-slate-800 text-left">
             <h3 className="text-xs uppercase tracking-wider font-bold text-slate-400 mb-2 flex items-center gap-1.5">
               <CheckCircle2 className="w-3.5 h-3.5 text-indigo-400" />
-              Allied Minor Species Across Galaxy
+              {l('Allied Minor Species Across Galaxy', '全银河已结盟次要种族')}
             </h3>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               {state.players.flatMap((p) =>
@@ -290,6 +356,7 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                   .map((id) => {
                     const tile = ALL_MINOR_SPECIES_TILES.find((m) => m.id === id);
                     if (!tile) return null;
+                    const zhTile = MINOR_SPECIES_ZH[tile.id];
                     return (
                       <div
                         key={`${p.id}_${id}`}
@@ -298,8 +365,12 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
                         <div className="flex items-center gap-2">
                           {getIcon(tile.targetType)}
                           <div>
-                            <div className="font-bold text-white text-[11px]">{tile.name}</div>
-                            <div className="text-[10px] text-slate-400">{tile.vpDescription}</div>
+                            <div className="font-bold text-white text-[11px]">
+                              {translateMinorSpeciesName(tile.id, tile.name, language)}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {language === 'zh' && zhTile ? zhTile.vpDescription : tile.vpDescription}
+                            </div>
                           </div>
                         </div>
                         <span
@@ -324,7 +395,10 @@ export const MinorSpeciesModal: React.FC<MinorSpeciesModalProps> = ({
         <div className="w-full mt-3 p-2.5 rounded-lg bg-slate-950/40 border border-slate-800 text-left flex items-start gap-2 text-[10px] text-slate-400">
           <Info className="w-3.5 h-3.5 text-slate-400 mt-0.5 shrink-0" />
           <span>
-            Minor Species tiles are placed on empty Ambassador Tile spaces ('amb_only' or 'both') on your Reputation Track and cannot be discarded. Relations can be formed at any time during your actions.
+            {l(
+              `Minor Species tiles are placed on empty Ambassador Tile spaces ('amb_only' or 'both') on your Reputation Track and cannot be discarded. Relations can be formed at any time during your actions.`,
+              `次要种族板块放置在声望轨的空大使位（仅限大使或通用位）上，且之后不可弃除。你可以在行动阶段的任意时机与之建交。`
+            )}
           </span>
         </div>
       </div>

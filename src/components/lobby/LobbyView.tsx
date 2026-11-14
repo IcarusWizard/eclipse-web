@@ -78,6 +78,13 @@ import {
   NeutralShipSelection,
   NeutralShipSelectionConfig,
 } from '../../engine/rules/neutralShips';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { LanguageSwitcher } from '../common/LanguageSwitcher';
+import {
+  translateFactionName,
+  translateExpansionName,
+  translateGamePhase,
+} from '../../i18n/catalogTranslations';
 
 interface LobbyViewProps {
   onStartNewGame: (
@@ -105,6 +112,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   onOpenReplay,
   onOpenCombatSimulator,
 }) => {
+  const { language, l } = useLanguage();
   const isSSR = typeof window === 'undefined';
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
   const [showUserModal, setShowUserModal] = useState<boolean>(false);
@@ -427,7 +435,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
         loaded = await fetchTableFromServer(String(num));
       }
       if (!loaded) {
-        setJoinError(`Table "${id}" does not exist.`);
+        setJoinError(l(`Table "${id}" does not exist.`, `牌桌 "${id}" 不存在。`));
         setIsJoining(false);
         return;
       }
@@ -436,22 +444,28 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       const effectiveSeat = isLocal ? 'all' : joinSeat;
 
       if (!isLocal && currentUser.role === 'guest' && effectiveSeat !== 'spectator') {
-        setJoinError('Guest players can only join online multiplayer games as a spectator. Please select Spectator or log in.');
+        setJoinError(l(
+          'Guest players can only join online multiplayer games as a spectator. Please select Spectator or log in.',
+          '游客仅能作为观战者加入联机对局，请选择观战者或先登录账号。'
+        ));
         setShowUserModal(true);
         setIsJoining(false);
         return;
       }
 
       if (effectiveSeat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
-        setJoinError('Only administrators are allowed to use the hotseat function in online games.');
+        setJoinError(l(
+          'Only administrators are allowed to use the hotseat function in online games.',
+          '联机对局中仅管理员可使用热座功能。'
+        ));
         setIsJoining(false);
         return;
       }
       if (typeof effectiveSeat === 'number') {
         const seatCheck = isSeatTaken(loaded.members, effectiveSeat, currentUser.id);
         if (seatCheck.isTaken && seatCheck.occupant) {
-          const occ = seatCheck.occupant.username || seatCheck.occupant.name || 'another player';
-          setJoinError(`Seat ${effectiveSeat + 1} is already taken by ${occ}.`);
+          const occ = seatCheck.occupant.username || seatCheck.occupant.name || l('another player', '其他玩家');
+          setJoinError(l(`Seat ${effectiveSeat + 1} is already taken by ${occ}.`, `席位 ${effectiveSeat + 1} 已被 ${occ} 占用。`));
           setIsJoining(false);
           return;
         }
@@ -473,7 +487,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       setIsJoining(false);
       onJoinTable(targetId, effectiveSeat);
     } catch {
-      setJoinError(`Table "${id}" does not exist.`);
+      setJoinError(l(`Table "${id}" does not exist.`, `牌桌 "${id}" 不存在。`));
       setIsJoining(false);
     }
   };
@@ -483,19 +497,25 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     const isLocal = Boolean(table?.isLocalGame || tableId.startsWith('local-') || tableId.startsWith('local_'));
     const effectiveSeat = isLocal ? 'all' : seat;
     if (!isLocal && currentUser.role === 'guest' && effectiveSeat !== 'spectator') {
-      alert('Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.');
+      alert(l(
+        'Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.',
+        '游客仅能作为观战者加入联机对局，请先登录或注册以占用玩家席位。'
+      ));
       setShowUserModal(true);
       return;
     }
     if (effectiveSeat === 'all' && !canUserUseHotseat(currentUser.role, isLocal)) {
-      alert('Only administrators are allowed to use the hotseat function in online games.');
+      alert(l(
+        'Only administrators are allowed to use the hotseat function in online games.',
+        '联机对局中仅管理员可使用热座功能。'
+      ));
       return;
     }
     if (typeof effectiveSeat === 'number' && table) {
       const seatCheck = isSeatTaken(table.members, effectiveSeat, currentUser.id);
       if (seatCheck.isTaken && seatCheck.occupant) {
-        const occ = seatCheck.occupant.username || seatCheck.occupant.name || 'another player';
-        alert(`Seat ${effectiveSeat + 1} is already taken by ${occ}.`);
+        const occ = seatCheck.occupant.username || seatCheck.occupant.name || l('another player', '其他玩家');
+        alert(l(`Seat ${effectiveSeat + 1} is already taken by ${occ}.`, `席位 ${effectiveSeat + 1} 已被 ${occ} 占用。`));
         return;
       }
     }
@@ -516,7 +536,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleDelete = (tableId: string) => {
-    if (window.confirm(`Are you sure you want to permanently delete table ${tableId}?`)) {
+    if (window.confirm(l(
+      `Are you sure you want to permanently delete table ${tableId}?`,
+      `确定要永久删除牌桌 ${tableId} 吗？`
+    ))) {
       deleteSavedTable(tableId);
       refreshTables();
     }
@@ -567,13 +590,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       <header className="relative z-10 text-center max-w-4xl mb-6 w-full">
         <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-cyan-500/10 border border-cyan-500/30 text-cyan-400 text-xs font-mono font-semibold uppercase tracking-wider mb-2">
           <Sparkles className="w-3.5 h-3.5" />
-          <span>Second Dawn for the Galaxy</span>
+          <span>{l('Second Dawn for the Galaxy', '银河第二黎明')}</span>
         </div>
         <h1 className="text-3xl sm:text-4xl lg:text-5xl font-display font-black tracking-tight text-transparent bg-clip-text bg-gradient-to-b from-white via-slate-100 to-slate-400 drop-shadow-sm">
-          ECLIPSE: WEB COMMAND
+          {l('ECLIPSE: WEB COMMAND', '星蚀：银河网页指挥中心')}
         </h1>
         <p className="text-slate-400 text-xs sm:text-sm mt-1.5 max-w-xl mx-auto leading-relaxed">
-          High-fidelity multiplayer web adaptation of Eclipse: Second Dawn. Create tables, browse matches waiting for players, or resume your campaigns.
+          {l(
+            'High-fidelity multiplayer web adaptation of Eclipse: Second Dawn. Create tables, browse matches waiting for players, or resume your campaigns.',
+            '《星蚀：银河第二黎明》高还原多人在线网页版。创建对局牌桌、加入等待中的房间，或继续你的银河战役。'
+          )}
         </p>
 
         {/* Identity & Global Gallery Header Toolbar */}
@@ -601,8 +627,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             <span className="text-[10px] font-mono opacity-80 lowercase bg-black/40 px-1.5 py-0.5 rounded">
               ({currentUser.role})
             </span>
-            <span className="text-slate-400 text-[10px] underline ml-0.5">Switch</span>
+            <span className="text-slate-400 text-[10px] underline ml-0.5">{l('Switch', '切换')}</span>
           </button>
+
+          {/* Language Switcher */}
+          <LanguageSwitcher />
 
           {/* Gallery Option - Always available throughout */}
           {onOpenGallery && (
@@ -610,10 +639,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               type="button"
               onClick={onOpenGallery}
               className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border border-cyan-500/40 hover:border-cyan-400 hover:bg-slate-800 text-cyan-300 hover:text-cyan-200 text-xs font-bold tracking-wider uppercase shadow-lg shadow-cyan-950/40 transition-all cursor-pointer"
-              title="Inspect component gallery, ships, technologies, and discovery tiles"
+              title={l('Inspect component gallery, ships, technologies, and discovery tiles', '浏览组件图鉴、飞船蓝图、科技及探索板块')}
             >
               <BookOpen className="w-3.5 h-3.5 text-cyan-400" />
-              <span>📚 Gallery</span>
+              <span>{l('📚 Gallery', '📚 图鉴')}</span>
             </button>
           )}
 
@@ -623,10 +652,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               type="button"
               onClick={onOpenCombatSimulator}
               className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-slate-900/90 border border-red-500/40 hover:border-red-400 hover:bg-slate-800 text-red-300 hover:text-red-200 text-xs font-bold tracking-wider uppercase shadow-lg shadow-red-950/40 transition-all cursor-pointer"
-              title="Open Monte Carlo Combat Simulator"
+              title={l('Open Monte Carlo Combat Simulator', '打开蒙特卡洛战斗模拟器')}
             >
               <Swords className="w-3.5 h-3.5 text-red-400" />
-              <span>⚔️ Simulator</span>
+              <span>{l('⚔️ Simulator', '⚔️ 战斗模拟')}</span>
             </button>
           )}
 
@@ -637,7 +666,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold tracking-wider uppercase border border-slate-700 hover:border-slate-500 transition shadow cursor-pointer"
             >
               <ArrowLeft className="w-3.5 h-3.5" />
-              <span>Back to Lobby Hub</span>
+              <span>{l('Back to Lobby Hub', '返回大厅主页')}</span>
             </button>
           )}
         </div>
@@ -654,7 +683,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             }`}
           >
             <Rocket className="w-4 h-4 text-cyan-400" />
-            <span>Create Game</span>
+            <span>{l('Create Game', '创建对局')}</span>
           </button>
 
           <button
@@ -667,7 +696,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             }`}
           >
             <Globe className="w-4 h-4 text-blue-400" />
-            <span>Join Other Games</span>
+            <span>{l('Join Other Games', '加入对局')}</span>
             {waitingTables.length > 0 && (
               <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-950 text-blue-300 border border-blue-500/40">
                 {waitingTables.length}
@@ -693,12 +722,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             }`}
           >
             <Bookmark className={`w-4 h-4 ${myTurnCount > 0 ? 'text-emerald-400 animate-bounce' : 'text-purple-400'}`} />
-            <span>{!isUserLoggedIn && myTables.length > 0 ? 'My Local Games' : 'View My Games'}</span>
+            <span>{!isUserLoggedIn && myTables.length > 0 ? l('My Local Games', '我的本地对局') : l('View My Games', '我的对局')}</span>
             {!isUserLoggedIn && myTables.length === 0 ? (
               <Lock className="w-3 h-3 text-slate-500" />
             ) : myTurnCount > 0 ? (
               <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-black bg-emerald-500 text-slate-950 animate-pulse">
-                {myTurnCount} Your Turn
+                {myTurnCount} {l('Your Turn', '待行动')}
               </span>
             ) : myTables.length > 0 ? (
               <span className="px-1.5 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
@@ -728,19 +757,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </div>
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-display font-bold text-white group-hover:text-cyan-300 transition-colors">
-                    Create Game
+                    {l('Create Game', '创建对局')}
                   </h2>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800 flex items-center gap-1">
-                    Local & Online
+                    {l('Local & Online', '本地与联机')}
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Start a match! Play a <strong>Local Game</strong> (Pass-and-play hotseat in this browser, no account needed) or host a <strong>Normal Game</strong> (Online multiplayer server hosted).
+                  {l(
+                    'Start a match! Play a Local Game (Pass-and-play hotseat in this browser, no account needed) or host a Normal Game (Online multiplayer server hosted).',
+                    '开启一场星际争霸！可选择本地热座模式（单设备轮流操作，无需账号）或创建联机对局（服务器托管多人对战）。'
+                  )}
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-cyan-400 group-hover:text-cyan-300">
-                <span>Configure & Start</span>
+                <span>{l('Configure & Start', '配置并开启')}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
@@ -757,19 +789,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 </div>
                 <div className="flex items-center justify-between">
                   <h2 className="text-xl font-display font-bold text-white group-hover:text-blue-300 transition-colors">
-                    Join Other Games
+                    {l('Join Other Games', '加入其他对局')}
                   </h2>
                   <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-blue-950 border border-blue-500/40 text-blue-300">
-                    {waitingTables.length} Open
+                    {waitingTables.length} {l('Open', '开放中')}
                   </span>
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
-                  Browse tables waiting for commanders to join (not started yet). Select an open seat to step into the command chair and prepare for galactic war.
+                  {l(
+                    'Browse tables waiting for commanders to join (not started yet). Select an open seat to step into the command chair and prepare for galactic war.',
+                    '浏览正在招募指挥官的未开赛房间，选择一个空余席位入座，备战银河全面战争。'
+                  )}
                 </p>
               </div>
 
               <div className="pt-3 border-t border-slate-800/80 flex items-center justify-between text-xs font-bold uppercase tracking-wider text-blue-400 group-hover:text-blue-300">
-                <span>Browse Waiting Tables</span>
+                <span>{l('Browse Waiting Tables', '浏览等待中的牌桌')}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
@@ -810,30 +845,42 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       myTurnCount > 0 ? 'text-emerald-300 group-hover:text-emerald-200' : 'text-white group-hover:text-purple-300'
                     }`}
                   >
-                    {!isUserLoggedIn && myTables.length > 0 ? 'My Local Games' : 'View My Games'}
+                    {!isUserLoggedIn && myTables.length > 0 ? l('My Local Games', '我的本地对局') : l('View My Games', '查看我的对局')}
                   </h2>
                   {!isUserLoggedIn && myTables.length === 0 ? (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
-                      <Lock className="w-3 h-3" /> Login Required
+                      <Lock className="w-3 h-3" /> {l('Login Required', '需要登录')}
                     </span>
                   ) : myTurnCount > 0 ? (
                     <span className="px-2.5 py-1 rounded-full text-xs font-black bg-emerald-500 text-slate-950 animate-pulse flex items-center gap-1">
-                      <Zap className="w-3 h-3 fill-current" /> {myTurnCount} Your Turn
+                      <Zap className="w-3 h-3 fill-current" /> {myTurnCount} {l('Your Turn', '你的回合')}
                     </span>
                   ) : (
                     <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-purple-950 border border-purple-500/40 text-purple-300">
-                      {myTables.length} Tables
+                      {myTables.length} {l('Tables', '局')}
                     </span>
                   )}
                 </div>
                 <p className="text-xs text-slate-400 leading-relaxed">
                   {!isUserLoggedIn && myTables.length === 0
-                    ? 'Log in to track your personal tables, rejoin active matches, and get notified when it is your turn.'
+                    ? l(
+                        'Log in to track your personal tables, rejoin active matches, and get notified when it is your turn.',
+                        '登录后可追踪个人对局、随时重连进行中的比赛，并在轮到你时及时获知。'
+                      )
                     : !isUserLoggedIn && myTables.length > 0
-                    ? `You have ${myTables.length} local hotseat match(es) saved in this browser. Click to resume playing.`
+                    ? l(
+                        `You have ${myTables.length} local hotseat match(es) saved in this browser. Click to resume playing.`,
+                        `当前浏览器保存了 ${myTables.length} 场本地热座对局，点击继续游玩。`
+                      )
                     : myTurnCount > 0
-                    ? `You have ${myTurnCount} match(es) waiting for you to make a move! Rejoin now to take your turn.`
-                    : 'View all matches you belong to: tables waiting for players, games in progress, and completed match chronicles.'}
+                    ? l(
+                        `You have ${myTurnCount} match(es) waiting for you to make a move! Rejoin now to take your turn.`,
+                        `你有 ${myTurnCount} 场对局正等待你行动！立即进入继续你的回合。`
+                      )
+                    : l(
+                        'View all matches you belong to: tables waiting for players, games in progress, and completed match chronicles.',
+                        '查看你参与的所有牌桌：等待开局房间、激战中的对局以及已完成战局回放。'
+                      )}
                 </p>
               </div>
 
@@ -844,7 +891,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     : 'border-slate-800/80 text-purple-400 group-hover:text-purple-300'
                 }`}
               >
-                <span>{!isUserLoggedIn && myTables.length === 0 ? 'Log In to View' : 'Open My Tables'}</span>
+                <span>{!isUserLoggedIn && myTables.length === 0 ? l('Log In to View', '登录查看') : l('Open My Tables', '打开我的牌桌')}</span>
                 <ArrowRight className="w-4 h-4 group-hover:translate-x-1 transition-transform" />
               </div>
             </div>
@@ -862,9 +909,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <Rocket className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-display font-bold text-white">Create New Game Table</h2>
+                  <h2 className="text-xl font-display font-bold text-white">{l('Create New Game Table', '创建新对局牌桌')}</h2>
                   <p className="text-xs text-slate-400">
-                    Configure players, expansions, and neutral ship blueprints. Game starts once all seats are filled.
+                    {l(
+                      'Configure players, expansions, and neutral ship blueprints. Game starts once all seats are filled.',
+                      '配置玩家人数、扩展模块及中立飞船蓝图。所有席位坐满后即可开局。'
+                    )}
                   </p>
                 </div>
               </div>
@@ -874,7 +924,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 onClick={() => setActiveSection('hub')}
                 className="text-xs text-slate-400 hover:text-white px-3 py-1.5 rounded-lg hover:bg-slate-800 transition cursor-pointer"
               >
-                Cancel
+                {l('Cancel', '取消')}
               </button>
             </div>
 
@@ -896,14 +946,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="font-display font-bold text-sm text-purple-300 flex items-center gap-1.5">
                       <Gamepad2 className="w-4 h-4 text-purple-400" />
-                      Local Game (Pass & Play)
+                      {l('Local Game (Pass & Play)', '本地对局（热座模式）')}
                     </span>
                     <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-900/80 text-purple-200 border border-purple-700">
-                      Hotseat Mode
+                      {l('Hotseat Mode', '热座模式')}
                     </span>
                   </div>
                   <p className="text-[11px] text-slate-400 leading-snug">
-                    Stored locally in your browser. Single user controls all factions. Not uploaded to server or table list. Guest friendly!
+                    {l(
+                      'Stored locally in your browser. Single user controls all factions. Not uploaded to server or table list. Guest friendly!',
+                      '仅保存在本地浏览器，单设备轮流控制全部势力，不上传服务器。游客也可畅玩！'
+                    )}
                   </p>
                 </button>
 
@@ -911,7 +964,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   type="button"
                   onClick={() => {
                     if (currentUser.role === 'guest') {
-                      alert('To create and host a normal online multiplayer game, please log in or register.');
+                      alert(l(
+                        'To create and host a normal online multiplayer game, please log in or register.',
+                        '创建并主持在线多人对局前，请先登录或注册账号。'
+                      ));
                       setShowUserModal(true);
                       return;
                     }
@@ -929,20 +985,23 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <div className="flex items-center justify-between">
                     <span className="font-display font-bold text-sm text-cyan-300 flex items-center gap-1.5">
                       <Globe className="w-4 h-4 text-cyan-400" />
-                      Normal Game (Online Multiplayer)
+                      {l('Normal Game (Online Multiplayer)', '标准对局（在线多人）')}
                     </span>
                     {currentUser.role === 'guest' ? (
                       <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700 flex items-center gap-1">
-                        <Lock className="w-2.5 h-2.5" /> Login Required
+                        <Lock className="w-2.5 h-2.5" /> {l('Login Required', '需登录')}
                       </span>
                     ) : (
                       <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-cyan-900/80 text-cyan-200 border border-cyan-700">
-                        Server-Hosted
+                        {l('Server-Hosted', '服务器托管')}
                       </span>
                     )}
                   </div>
                   <p className="text-[11px] text-slate-400 leading-snug">
-                    Hosted on the server. Other commanders can join via table ID or invite link. Enter a waiting room until seats fill.
+                    {l(
+                      'Hosted on the server. Other commanders can join via table ID or invite link. Enter a waiting room until seats fill.',
+                      '由服务器实时同步。其他指挥官可通过房间号或邀请链接加入，等待全员入座后开赛。'
+                    )}
                   </p>
                 </button>
               </div>
@@ -951,13 +1010,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                    Table ID / Identifier
+                    {l('Table ID / Identifier', '房间编号 / 牌桌 ID')}
                   </label>
                   <input
                     type="text"
                     value={customTableId}
                     onChange={(e) => setCustomTableId(e.target.value)}
-                    placeholder="e.g. galaxy-101"
+                    placeholder={l('e.g. galaxy-101', '例如 galaxy-101')}
                     className="w-full bg-slate-950 border border-slate-700 rounded-xl px-3.5 py-2.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-cyan-400 transition"
                     required
                   />
@@ -965,7 +1024,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
                 <div>
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                    Player Count: <span className="text-cyan-400 font-bold">{playerCount} Commanders</span>
+                    {l('Player Count:', '玩家人数：')}{' '}
+                    <span className="text-cyan-400 font-bold">
+                      {playerCount} {l('Commanders', '位指挥官')}
+                    </span>
                   </label>
                   <div className="flex items-center gap-1.5 bg-slate-950 p-1.5 rounded-xl border border-slate-700">
                     {[2, 3, 4, 5, 6].map((num) => (
@@ -979,7 +1041,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             : 'text-slate-400 hover:text-slate-200 hover:bg-slate-800/60'
                         }`}
                       >
-                        {num}P
+                        {num}{l('P', '人')}
                       </button>
                     ))}
                   </div>
@@ -992,17 +1054,20 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <Compass className="w-5 h-5 text-indigo-400 shrink-0" />
                   <div>
                     <div className="flex items-center gap-2">
-                      <span className="font-bold text-indigo-200 text-xs">Faction Draft Mode</span>
+                      <span className="font-bold text-indigo-200 text-xs">{l('Faction Draft Mode', '种族轮抽模式')}</span>
                       {isDraftMode && (
                         <span className="px-1.5 py-0.5 rounded text-[9px] font-black uppercase tracking-wider bg-indigo-500 text-white">
-                          Active
+                          {l('Active', '已启用')}
                         </span>
                       )}
                     </div>
                     <p className="text-[11px] text-slate-400 mt-0.5">
                       {isDraftMode
-                        ? 'Players draft factions counter-clockwise during setup after Ring 2 positions are established.'
-                        : 'Fixed factions pre-selected below.'}
+                        ? l(
+                            'Players draft factions counter-clockwise during setup after Ring 2 positions are established.',
+                            '确定二环初始星区位置后，玩家按逆时针顺序轮流挑选势力种族。'
+                          )
+                        : l('Fixed factions pre-selected below.', '直接采用下方预先指定的固定势力配置。')}
                     </p>
                   </div>
                 </div>
@@ -1016,22 +1081,25 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       : 'bg-slate-900 text-slate-300 border-slate-700 hover:border-slate-500'
                   }`}
                 >
-                  {isDraftMode ? 'Draft Enabled' : 'Enable Faction Draft'}
+                  {isDraftMode ? l('Draft Enabled', '已开启轮抽') : l('Enable Faction Draft', '启用种族轮抽')}
                 </button>
               </div>
 
               {/* Creator's Assigned Seat / Hotseat Mode */}
               <div>
                 <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300 mb-1.5">
-                  Your Command Mode
+                  {l('Your Command Mode', '你的席位与操控模式')}
                 </label>
                 {gameMode === 'local' ? (
                   <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-600/40 text-xs text-purple-200 flex items-center gap-3">
                     <Zap className="w-5 h-5 text-purple-400 shrink-0" />
                     <div>
-                      <div className="font-bold text-white text-xs">Hotseat Mode (All Factions)</div>
+                      <div className="font-bold text-white text-xs">{l('Hotseat Mode (All Factions)', '热座模式（操控所有势力）')}</div>
                       <p className="text-[11px] text-purple-300/80 mt-0.5">
-                        In a Local Game, you command all {playerCount} factions in turn-by-turn pass-and-play mode on this device.
+                        {l(
+                          `In a Local Game, you command all ${playerCount} factions in turn-by-turn pass-and-play mode on this device.`,
+                          `在本地对局中，你可以在当前设备上轮流操作全部 ${playerCount} 个势力。`
+                        )}
                       </p>
                     </div>
                   </div>
@@ -1048,7 +1116,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                         }`}
                       >
-                        <div className="text-[10px] font-mono text-slate-500 uppercase">Seat</div>
+                        <div className="text-[10px] font-mono text-slate-500 uppercase">{l('Seat', '席位')}</div>
                         <div className="text-sm font-bold">{idx + 1}</div>
                       </button>
                     ))}
@@ -1062,8 +1130,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             : 'bg-slate-950 border-slate-800 text-slate-400 hover:border-slate-700'
                         }`}
                       >
-                        <div className="text-[10px] font-mono text-purple-400 uppercase">Hotseat</div>
-                        <div className="text-xs font-bold">All Seats</div>
+                        <div className="text-[10px] font-mono text-purple-400 uppercase">{l('Hotseat', '热座')}</div>
+                        <div className="text-xs font-bold">{l('All Seats', '全部席位')}</div>
                       </button>
                     )}
                   </div>
@@ -1074,7 +1142,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
               {!isDraftMode && (
                 <div className="space-y-2.5">
                   <label className="block text-xs font-semibold uppercase tracking-wider text-slate-300">
-                    Species Factions Selection ({playerCount} Required)
+                    {l(`Species Factions Selection (${playerCount} Required)`, `势力种族选择（需选 ${playerCount} 个）`)}
                   </label>
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5">
                     {Array.from({ length: playerCount }).map((_, pIdx) => {
@@ -1082,10 +1150,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       return (
                         <div key={pIdx} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex flex-col gap-1.5">
                           <div className="flex items-center justify-between text-[11px] text-slate-400">
-                            <span className="font-mono font-bold">Seat {pIdx + 1}</span>
+                            <span className="font-mono font-bold">{l(`Seat ${pIdx + 1}`, `席位 ${pIdx + 1}`)}</span>
                             {mySeat === pIdx && (
                               <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
-                                Your Seat
+                                {l('Your Seat', '你的席位')}
                               </span>
                             )}
                           </div>
@@ -1103,8 +1171,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 .some((otherId, otherIdx) => otherIdx !== pIdx && areFactionsConflictingColor(otherId, f.id));
                               return (
                                 <option key={f.id} value={f.id} disabled={isTakenByOther || hasConflict}>
-                                  {f.name} ({f.defaultColor.toUpperCase()})
-                                  {isTakenByOther ? ' - Picked' : hasConflict ? ' - Color Conflict' : ''}
+                                  {translateFactionName(f.id, f.name, language)} ({f.defaultColor.toUpperCase()})
+                                  {isTakenByOther ? l(' - Picked', ' - 已选') : hasConflict ? l(' - Color Conflict', ' - 颜色冲突') : ''}
                                 </option>
                               );
                             })}
@@ -1122,10 +1190,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <div className="flex items-center gap-2">
                     <Sparkles className="w-4 h-4 text-cyan-400" />
                     <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                      Expansions Module (Default: No Expansions)
+                      {l('Expansions Module (Default: No Expansions)', '扩展模块配置（默认不启用扩展）')}
                     </span>
                     <span className="text-[11px] font-mono font-bold text-cyan-400 bg-cyan-950/80 px-2 py-0.5 rounded-full border border-cyan-800">
-                      {selectedExpansions.length} Active
+                      {selectedExpansions.length} {l('Active', '已启用')}
                     </span>
                   </div>
 
@@ -1135,7 +1203,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       onClick={toggleAllExpansions}
                       className="text-[11px] text-cyan-400 hover:text-cyan-300 underline cursor-pointer"
                     >
-                      {allExpansionsSelected ? 'Clear All' : 'Select All'}
+                      {allExpansionsSelected ? l('Clear All', '清空') : l('Select All', '全选')}
                     </button>
                     <button
                       type="button"
@@ -1168,7 +1236,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             className="mt-0.5 rounded border-slate-700 bg-slate-950 text-cyan-500 pointer-events-none"
                           />
                           <div className="min-w-0">
-                            <div className="text-xs font-bold text-slate-200">{exp.name}</div>
+                            <div className="text-xs font-bold text-slate-200">{translateExpansionName(exp.id, exp.name, language)}</div>
                             <div className="text-[10px] text-slate-400 mt-0.5 leading-snug">{exp.description}</div>
                           </div>
                         </div>
@@ -1184,16 +1252,16 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <div className="flex items-center gap-2">
                     <Shield className="w-4 h-4 text-purple-400" />
                     <span className="text-xs font-bold text-slate-200 uppercase tracking-wider">
-                      Neutral Ship Blueprints (NPCs) (Default: Default)
+                      {l('Neutral Ship Blueprints (NPCs) (Default: Default)', '中立飞船蓝图 (NPC)（默认：标准）')}
                     </span>
                   </div>
                   <div className="flex items-center gap-1.5 text-xs">
-                    <span className="text-[10px] text-slate-400">Layout:</span>
+                    <span className="text-[10px] text-slate-400">{l('Layout:', '布局：')}</span>
                     <button type="button" className="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
-                      Compact
+                      {l('Compact', '紧凑')}
                     </button>
                     <button type="button" className="px-2 py-0.5 rounded bg-slate-800 text-[10px] text-slate-300">
-                      Scrollable
+                      {l('Scrollable', '滚动')}
                     </button>
                     <button
                       type="button"
@@ -1212,15 +1280,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         [
                           {
                             type: 'ancient' as const,
-                            label: 'Ancient Ship',
+                            label: l('Ancient Ship', '远古舰船'),
                           },
                           {
                             type: 'guardian' as const,
-                            label: 'Guardian',
+                            label: l('Guardian', '守卫舰'),
                           },
                           {
                             type: 'gcds' as const,
-                            label: 'Galactic Center Defense System (GCDS)',
+                            label: l('Galactic Center Defense System (GCDS)', '银河核心防御系统 (GCDS)'),
                           },
                         ]
                       ).map(({ type, label }) => (
@@ -1241,7 +1309,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                   : 'text-slate-400 hover:text-slate-200'
                               }`}
                             >
-                              Default
+                              {l('Default', '标准')}
                             </button>
                             <button
                               type="button"
@@ -1257,7 +1325,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                   : 'text-slate-400 hover:text-slate-200'
                               }`}
                             >
-                              Advanced
+                              {l('Advanced', '进阶')}
                             </button>
                             <button
                               type="button"
@@ -1273,7 +1341,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                   : 'text-slate-400 hover:text-slate-200'
                               }`}
                             >
-                              Random
+                              {l('Random', '随机')}
                             </button>
                             <button
                               type="button"
@@ -1291,9 +1359,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                   ? 'text-slate-400 hover:text-slate-200'
                                   : 'text-slate-600 opacity-50 cursor-not-allowed'
                               }`}
-                              title={!hasRemnants ? 'Remnants Blueprint requires Remnants of Worlds Afar expansion' : 'Remnants blueprint variant'}
+                              title={
+                                !hasRemnants
+                                  ? l('Remnants Blueprint requires Remnants of Worlds Afar expansion', '遗迹蓝图需要启用“远方世界遗迹”扩展')
+                                  : l('Remnants blueprint variant', '遗迹扩展变体蓝图')
+                              }
                             >
-                              Rem
+                              {l('Rem', '遗迹')}
                             </button>
                           </div>
                         </div>
@@ -1302,7 +1374,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
                     {!hasRemnants && (
                       <div className="text-[10px] text-slate-500 italic">
-                        Remnants Blueprint requires Remnants of Worlds Afar expansion
+                        {l('Remnants Blueprint requires Remnants of Worlds Afar expansion', '遗迹蓝图需要启用“远方世界遗迹”扩展')}
                       </div>
                     )}
                   </div>
@@ -1316,7 +1388,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   onClick={() => setActiveSection('hub')}
                   className="w-full sm:w-auto px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs uppercase tracking-wider transition cursor-pointer"
                 >
-                  Cancel
+                  {l('Cancel', '取消')}
                 </button>
 
                 <button
@@ -1326,8 +1398,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <Rocket className="w-4 h-4" />
                   <span>
                     {gameMode === 'local'
-                      ? 'Launch Galactic Conflict (Local Hotseat)'
-                      : 'Launch Galactic Conflict (Enter Waiting Room)'}
+                      ? l('Launch Galactic Conflict (Local Hotseat)', '开启银河冲突（本地热座）')
+                      : l('Launch Galactic Conflict (Enter Waiting Room)', '开启银河冲突（进入等待室）')}
                   </span>
                 </button>
               </div>
@@ -1346,9 +1418,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <Globe className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-display font-bold text-white">Join Other Games</h2>
+                  <h2 className="text-xl font-display font-bold text-white">{l('Join Other Games', '加入其他对局')}</h2>
                   <p className="text-xs text-slate-400">
-                    Tables that are waiting for players (not started yet). Select an open seat to join.
+                    {l(
+                      'Tables that are waiting for players (not started yet). Select an open seat to join.',
+                      '正在等待玩家加入的未开局房间。选择一个空余席位即可入座。'
+                    )}
                   </p>
                 </div>
               </div>
@@ -1362,7 +1437,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     setJoinTableInput(e.target.value);
                     if (joinError) setJoinError(null);
                   }}
-                  placeholder="Code (e.g. 101)"
+                  placeholder={l('Code (e.g. 101)', '房间号（如 101）')}
                   className="bg-slate-950 border border-slate-700 rounded-xl px-3 py-1.5 text-xs font-mono text-cyan-300 focus:outline-none focus:border-blue-400 w-32"
                 />
                 <select
@@ -1371,7 +1446,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                     const val = e.target.value;
                     if (val === 'all') {
                       if (!canUserUseHotseat(currentUser.role)) {
-                        alert('Only administrators are allowed to use the hotseat function in online games.');
+                        alert(l(
+                          'Only administrators are allowed to use the hotseat function in online games.',
+                          '联机对局中仅管理员可使用热座功能。'
+                        ));
                         return;
                       }
                       setJoinSeat(val);
@@ -1379,7 +1457,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       setJoinSeat(val);
                     } else {
                       if (currentUser.role === 'guest') {
-                        alert('Guest players can only join online multiplayer games as a spectator. Please log in or register.');
+                        alert(l(
+                          'Guest players can only join online multiplayer games as a spectator. Please log in or register.',
+                          '游客仅能作为观战者加入联机对局，请先登录或注册账号。'
+                        ));
                         setShowUserModal(true);
                         return;
                       }
@@ -1390,20 +1471,22 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                 >
                   {[0, 1, 2, 3, 4, 5].map((s) => (
                     <option key={s} value={s.toString()} disabled={currentUser.role === 'guest'}>
-                      Seat {s + 1} (Player {s + 1}){currentUser.role === 'guest' ? ' (Spectator Only)' : ''}
+                      {l(`Seat ${s + 1} (Player ${s + 1})`, `席位 ${s + 1}（玩家 ${s + 1}）`)}
+                      {currentUser.role === 'guest' ? l(' (Spectator Only)', '（仅可观战）') : ''}
                     </option>
                   ))}
                   <option value="all" disabled={!canUserUseHotseat(currentUser.role)}>
-                    Hotseat / All Players{!canUserUseHotseat(currentUser.role) ? ' (Admin Only)' : ''}
+                    {l('Hotseat / All Players', '热座 / 全部席位')}
+                    {!canUserUseHotseat(currentUser.role) ? l(' (Admin Only)', '（仅管理员）') : ''}
                   </option>
-                  <option value="spectator">Spectator / Observer</option>
+                  <option value="spectator">{l('Spectator / Observer', '观战者 / 旁观')}</option>
                 </select>
                 <button
                   type="submit"
                   disabled={isJoining}
                   className="px-3 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer disabled:opacity-50"
                 >
-                  {isJoining ? 'Joining...' : 'Quick Join'}
+                  {isJoining ? l('Joining...', '加入中...') : l('Quick Join', '快速加入')}
                 </button>
               </form>
             </div>
@@ -1418,9 +1501,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             {waitingTables.length === 0 ? (
               <div className="p-12 text-center flex flex-col items-center justify-center gap-3 bg-slate-950/50 rounded-2xl border border-dashed border-slate-800">
                 <Users className="w-10 h-10 text-slate-600 mb-1" />
-                <h3 className="text-base font-bold text-slate-300">No Tables Waiting for Players</h3>
+                <h3 className="text-base font-bold text-slate-300">{l('No Tables Waiting for Players', '暂无等待中的牌桌')}</h3>
                 <p className="text-xs text-slate-500 max-w-sm">
-                  There are currently no open tables waiting for players. Establish a new table and invite commanders to launch a match!
+                  {l(
+                    'There are currently no open tables waiting for players. Establish a new table and invite commanders to launch a match!',
+                    '目前没有空余席位的房间。新建一个牌桌并邀请其他指挥官开战吧！'
+                  )}
                 </p>
                 <button
                   type="button"
@@ -1428,7 +1514,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold uppercase tracking-wider transition shadow cursor-pointer"
                 >
                   <Rocket className="w-3.5 h-3.5" />
-                  <span>Create New Game</span>
+                  <span>{l('Create New Game', '创建新对局')}</span>
                 </button>
               </div>
             ) : (
@@ -1450,17 +1536,17 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       <div className="space-y-1.5">
                         <div className="flex items-center justify-between">
                           <span className="text-sm font-display font-black text-white">
-                            Table #{table.tableNumber || table.id}
+                            {l(`Table #${table.tableNumber || table.id}`, `#${table.tableNumber || table.id} 号桌`)}
                           </span>
                           <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 border border-amber-500/30 text-amber-300">
-                            {occupiedSeats.size} of {table.playerCount} Seated
+                            {occupiedSeats.size} / {table.playerCount} {l('Seated', '已入座')}
                           </span>
                         </div>
 
                         <div className="text-[11px] text-slate-400">
                           {table.playerNames && table.playerNames.length > 0
                             ? table.playerNames.join(', ')
-                            : `${table.playerCount} Players`}
+                            : `${table.playerCount} ${l('Players', '名玩家')}`}
                         </div>
                       </div>
 
@@ -1470,12 +1556,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         return (
                           <div className="space-y-1 pt-1.5 border-t border-slate-800/80">
                             <span className="text-[10px] font-mono uppercase text-slate-500 font-bold block">
-                              Expansions Enabled
+                              {l('Expansions Enabled', '已启用扩展')}
                             </span>
                             <div className="flex flex-wrap gap-1">
                               {expansions.length === 0 ? (
                                 <span className="px-2 py-0.5 rounded text-[10px] bg-slate-900 border border-slate-800 text-slate-400">
-                                  Base Game (No Expansions)
+                                  {l('Base Game (No Expansions)', '基础版（无扩展）')}
                                 </span>
                               ) : (
                                 expansions.map((expId) => {
@@ -1486,7 +1572,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                       className="px-2 py-0.5 rounded text-[10px] font-semibold bg-purple-950/70 border border-purple-700/60 text-purple-300"
                                       title={def?.description || expId}
                                     >
-                                      {def?.name || expId}
+                                      {def ? translateExpansionName(def.id, def.name, language) : expId}
                                     </span>
                                   );
                                 })
@@ -1499,7 +1585,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       {/* Seating Roster with Join Buttons */}
                       <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
                         <span className="text-[10px] font-mono uppercase text-slate-500 font-bold block">
-                          Seats & Availability
+                          {l('Seats & Availability', '席位与空缺状态')}
                         </span>
                         <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
                           {Array.from({ length: table.playerCount }).map((_, sIdx) => {
@@ -1517,8 +1603,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                       : 'bg-slate-900 border-slate-800 text-slate-400'
                                   }`}
                                 >
-                                  <div className="text-[9px] opacity-70">Seat {sIdx + 1}</div>
-                                  <div className="truncate font-semibold">{isMySeat ? 'YOU' : occupant?.username || 'Taken'}</div>
+                                  <div className="text-[9px] opacity-70">{l(`Seat ${sIdx + 1}`, `席位 ${sIdx + 1}`)}</div>
+                                  <div className="truncate font-semibold">{isMySeat ? l('YOU', '你') : occupant?.username || l('Taken', '已占用')}</div>
                                 </div>
                               );
                             }
@@ -1529,15 +1615,18 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                   key={sIdx}
                                   type="button"
                                   onClick={() => {
-                                    alert('Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.');
+                                    alert(l(
+                                      'Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.',
+                                      '游客仅能作为观战者加入联机对局，请先登录或注册以占用玩家席位。'
+                                    ));
                                     setShowUserModal(true);
                                   }}
                                   className="p-1.5 rounded-lg border border-slate-700/60 bg-slate-900/60 hover:bg-slate-800 text-slate-400 hover:text-slate-200 text-center text-[10px] font-medium transition cursor-pointer"
-                                  title="Login required to claim a player seat in online games"
+                                  title={l('Login required to claim a player seat in online games', '联机对局需登录后方可认领玩家席位')}
                                 >
-                                  <div>Seat {sIdx + 1}</div>
+                                  <div>{l(`Seat ${sIdx + 1}`, `席位 ${sIdx + 1}`)}</div>
                                   <div className="text-[9px] text-slate-500 flex items-center justify-center gap-0.5">
-                                    <Lock className="w-2.5 h-2.5" /> Login
+                                    <Lock className="w-2.5 h-2.5" /> {l('Login', '登录')}
                                   </div>
                                 </button>
                               );
@@ -1550,8 +1639,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 onClick={() => handleJoinFromList(table.id, sIdx)}
                                 className="p-1.5 rounded-lg border border-blue-500/50 hover:border-blue-400 bg-blue-950/50 hover:bg-blue-900/80 text-blue-200 text-center text-[10px] font-bold transition cursor-pointer"
                               >
-                                <div>Seat {sIdx + 1}</div>
-                                <div className="text-[9px] text-blue-400 uppercase">Join</div>
+                                <div>{l(`Seat ${sIdx + 1}`, `席位 ${sIdx + 1}`)}</div>
+                                <div className="text-[9px] text-blue-400 uppercase">{l('Join', '加入')}</div>
                               </button>
                             );
                           })}
@@ -1565,10 +1654,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             type="button"
                             onClick={() => handleJoinFromList(table.id, 'spectator')}
                             className="px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 bg-slate-900 hover:bg-slate-800 border-slate-700 text-slate-300 hover:text-white cursor-pointer"
-                            title="Join this game as a spectator"
+                            title={l('Join this game as a spectator', '以观战者身份加入对局')}
                           >
                             <Eye className="w-2.5 h-2.5 text-cyan-400" />
-                            <span>Spectate</span>
+                            <span>{l('Spectate', '观战')}</span>
                           </button>
                           <button
                             type="button"
@@ -1578,7 +1667,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 handleJoinFromList(table.id, 'all');
                               }
                             }}
-                            title={!canUserUseHotseat(currentUser.role) ? 'Hotseat is restricted to administrators' : 'Join as Hotseat (Control All)'}
+                            title={!canUserUseHotseat(currentUser.role) ? l('Hotseat is restricted to administrators', '热座模式仅限管理员使用') : l('Join as Hotseat (Control All)', '以热座模式加入（控制全部席位）')}
                             className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
                               !canUserUseHotseat(currentUser.role)
                                 ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
@@ -1586,7 +1675,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             }`}
                           >
                             {!canUserUseHotseat(currentUser.role) && <Lock className="w-2.5 h-2.5" />}
-                            <span>Hotseat</span>
+                            <span>{l('Hotseat', '热座')}</span>
                           </button>
                           <button
                             type="button"
@@ -1594,7 +1683,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             className="inline-flex items-center gap-1 text-[11px] text-slate-400 hover:text-slate-200 cursor-pointer"
                           >
                             <Share2 className="w-3 h-3" />
-                            <span>{copiedLinkTableId === table.id ? 'Copied!' : 'Share'}</span>
+                            <span>{copiedLinkTableId === table.id ? l('Copied!', '已复制！') : l('Share', '分享')}</span>
                           </button>
                         </div>
 
@@ -1604,7 +1693,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             onClick={() => onJoinTable(table.id, typeof myMembership?.seat === 'number' ? myMembership.seat : 0)}
                             className="inline-flex items-center gap-1 px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer"
                           >
-                            <span>Rejoin Table</span>
+                            <span>{l('Rejoin Table', '回到牌桌')}</span>
                             <ArrowRight className="w-3 h-3" />
                           </button>
                         )}
@@ -1628,9 +1717,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <Bookmark className="w-5 h-5" />
                 </div>
                 <div>
-                  <h2 className="text-xl font-display font-bold text-white">My Game Tables</h2>
+                  <h2 className="text-xl font-display font-bold text-white">{l('My Game Tables', '我的对局牌桌')}</h2>
                   <p className="text-xs text-slate-400">
-                    All tables you are registered in across waiting rooms, active matches, and finished games.
+                    {l(
+                      'All tables you are registered in across waiting rooms, active matches, and finished games.',
+                      '你参与的所有房间，包括等待中、进行中及已结束的对局。'
+                    )}
                   </p>
                 </div>
               </div>
@@ -1648,7 +1740,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         : 'text-slate-400 hover:text-slate-200'
                     }`}
                   >
-                    {status === 'need_players' ? 'Waiting' : status === 'running' ? 'Active' : status}
+                    {status === 'need_players'
+                      ? l('Waiting', '等待中')
+                      : status === 'running'
+                      ? l('Active', '进行中')
+                      : status === 'done'
+                      ? l('Done', '已结束')
+                      : l('All', '全部')}
                     {status === 'all'
                       ? ` (${myTables.length})`
                       : status === 'need_players'
@@ -1665,9 +1763,12 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
             {!isUserLoggedIn && myTables.length === 0 ? (
               <div className="p-10 text-center flex flex-col items-center justify-center gap-3 bg-slate-950/50 rounded-2xl border border-slate-800">
                 <Lock className="w-10 h-10 text-amber-400 mb-1" />
-                <h3 className="text-base font-bold text-white">Login Required</h3>
+                <h3 className="text-base font-bold text-white">{l('Login Required', '需要登录')}</h3>
                 <p className="text-xs text-slate-400 max-w-sm">
-                  You must be logged in to view and rejoin your personalized online tables. Please log in or register.
+                  {l(
+                    'You must be logged in to view and rejoin your personalized online tables. Please log in or register.',
+                    '请先登录或注册账号以查看和重连您的在线牌桌。'
+                  )}
                 </p>
                 <button
                   type="button"
@@ -1675,15 +1776,18 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   className="mt-2 inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold uppercase tracking-wider transition shadow cursor-pointer"
                 >
                   <LogIn className="w-4 h-4" />
-                  <span>Log In / Register</span>
+                  <span>{l('Log In / Register', '登录 / 注册')}</span>
                 </button>
               </div>
             ) : filteredMyTables.length === 0 ? (
               <div className="p-10 text-center flex flex-col items-center justify-center gap-3 bg-slate-950/50 rounded-2xl border border-dashed border-slate-800">
                 <Bookmark className="w-10 h-10 text-slate-600 mb-1" />
-                <h3 className="text-base font-bold text-slate-300">No Tables Found</h3>
+                <h3 className="text-base font-bold text-slate-300">{l('No Tables Found', '未找到符合条件的牌桌')}</h3>
                 <p className="text-xs text-slate-500 max-w-sm">
-                  You are not currently participating in any tables under this category.
+                  {l(
+                    'You are not currently participating in any tables under this category.',
+                    '该分类下暂无你参与的对局。'
+                  )}
                 </p>
                 <button
                   type="button"
@@ -1691,7 +1795,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   className="mt-2 inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-bold uppercase tracking-wider transition shadow cursor-pointer"
                 >
                   <Rocket className="w-3.5 h-3.5" />
-                  <span>Create a New Table</span>
+                  <span>{l('Create a New Table', '创建新牌桌')}</span>
                 </button>
               </div>
             ) : (
@@ -1714,45 +1818,46 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                       <div className="space-y-2">
                         <div className="flex items-center justify-between">
                           <span className="text-base font-display font-black text-white flex items-center gap-2">
-                            Table #{table.tableNumber || table.id}
+                            {l(`Table #${table.tableNumber || table.id}`, `#${table.tableNumber || table.id} 号桌`)}
                             {table.isLocalGame && (
                               <span className="px-2 py-0.5 rounded-full text-[9px] font-bold bg-purple-950 text-purple-300 border border-purple-700">
-                                Local Hotseat
+                                {l('Local Hotseat', '本地热座')}
                               </span>
                             )}
                           </span>
 
                           {isMyTurn ? (
                             <span className="px-2.5 py-0.5 rounded-full text-xs font-black bg-emerald-500 text-slate-950 flex items-center gap-1 animate-pulse">
-                              <Zap className="w-3 h-3 fill-current" /> YOUR TURN
+                              <Zap className="w-3 h-3 fill-current" /> {l('YOUR TURN', '轮到你了')}
                             </span>
                           ) : statusCat === 'need_players' ? (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-amber-500/15 border border-amber-500/30 text-amber-300">
-                              Waiting for Players ({getTableOccupiedSeats(table).size}/{table.playerCount})
+                              {l('Waiting for Players', '等待玩家')} ({getTableOccupiedSeats(table).size}/{table.playerCount})
                             </span>
                           ) : statusCat === 'running' ? (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-cyan-500/15 border border-cyan-500/30 text-cyan-300">
-                              Round {table.round} • {table.phase}
+                              {l(`Round ${table.round}`, `第 ${table.round} 回合`)} • {translateGamePhase(table.phase || '', language)}
                             </span>
                           ) : (
                             <span className="px-2 py-0.5 rounded-full text-[10px] font-mono font-bold bg-slate-800 text-slate-300">
-                              Completed
+                              {l('Completed', '已结束')}
                             </span>
                           )}
                         </div>
 
                         <div className="text-xs text-slate-400">
-                          <span>Seated as: </span>
+                          <span>{l('Seated as: ', '当前身份：')}</span>
                           <span className="text-slate-200 font-bold">
                             {table.isLocalGame
-                              ? 'Commander (Hotseat - All Factions)'
+                              ? l('Commander (Hotseat - All Factions)', '总指挥官（热座模式 - 全部势力）')
                               : myMem?.seat === 'all'
-                              ? 'Admin Hotseat'
-                              : `Seat ${mySeatNum + 1}`}
+                              ? l('Admin Hotseat', '管理员热座')
+                              : l(`Seat ${mySeatNum + 1}`, `席位 ${mySeatNum + 1}`)}
                           </span>
                           {table.activePlayerName && statusCat === 'running' && (
                             <div className="text-[11px] text-slate-500 mt-0.5">
-                              Active Player: <span className="text-slate-300 font-semibold">{table.activePlayerName}</span>
+                              {l('Active Player:', '当前行动玩家：')}{' '}
+                              <span className="text-slate-300 font-semibold">{table.activePlayerName}</span>
                             </div>
                           )}
                         </div>
@@ -1760,7 +1865,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         {/* Every Seat with Seat Number, Player Faction (or Still drafting), and Player Name (Bug 221) */}
                         <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
                           <span className="text-[10px] font-mono uppercase text-slate-500 font-bold block">
-                            Seats & Roster
+                            {l('Seats & Roster', '席位与玩家阵容')}
                           </span>
                           <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
                             {getTableSeatsInfo(table, currentUser.id).map((seat) => (
@@ -1774,10 +1879,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               >
                                 <div className="flex items-center gap-1.5 min-w-0">
                                   <span className="font-mono text-[10px] px-1 py-0.5 rounded bg-slate-800/90 text-slate-400 shrink-0 font-bold">
-                                    {`Seat ${seat.seatNumber}`}
+                                    {l(`Seat ${seat.seatNumber}`, `席位 ${seat.seatNumber}`)}
                                   </span>
                                   <span className="truncate font-medium text-slate-200">
-                                    {`${seat.playerName}${seat.isMySeat ? ' (You)' : ''}`}
+                                    {`${seat.playerName}${seat.isMySeat ? l(' (You)', '（你）') : ''}`}
                                   </span>
                                 </div>
                                 <span
@@ -1787,7 +1892,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                       : 'bg-slate-800 border border-slate-700/60 text-slate-300'
                                   }`}
                                 >
-                                  {seat.factionName}
+                                  {seat.isDrafting ? l('Still drafting', '仍在轮抽') : seat.factionName}
                                 </span>
                               </div>
                             ))}
@@ -1806,7 +1911,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 handleJoinFromList(table.id, 'all');
                               }
                             }}
-                            title={!canUserUseHotseat(currentUser.role, table.isLocalGame) ? 'Hotseat is restricted to administrators' : 'Join as Hotseat (Control All)'}
+                            title={
+                              !canUserUseHotseat(currentUser.role, table.isLocalGame)
+                                ? l('Hotseat is restricted to administrators', '热座模式仅限管理员使用')
+                                : l('Join as Hotseat (Control All)', '以热座模式加入（控制全部）')
+                            }
                             className={`px-2 py-1 border rounded text-[10px] font-semibold transition flex items-center gap-1 ${
                               !canUserUseHotseat(currentUser.role, table.isLocalGame)
                                 ? 'bg-slate-950/40 border-slate-800/60 text-slate-600 cursor-not-allowed opacity-60'
@@ -1814,13 +1923,13 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             }`}
                           >
                             {!canUserUseHotseat(currentUser.role, table.isLocalGame) && <Lock className="w-2.5 h-2.5" />}
-                            <span>Hotseat</span>
+                            <span>{l('Hotseat', '热座')}</span>
                           </button>
                           <button
                             type="button"
                             onClick={() => handleCopyShareLink(table.id)}
                             className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-slate-900 text-xs transition cursor-pointer"
-                            title="Copy Table Link"
+                            title={l('Copy Table Link', '复制牌桌邀请链接')}
                           >
                             <Share2 className="w-3.5 h-3.5" />
                           </button>
@@ -1830,7 +1939,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               type="button"
                               onClick={() => handleDelete(table.id)}
                               className="p-1.5 rounded-lg text-slate-500 hover:text-red-400 hover:bg-slate-900 text-xs transition cursor-pointer"
-                              title="Delete Table"
+                              title={l('Delete Table', '删除牌桌')}
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -1845,7 +1954,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                               className="px-3 py-1.5 rounded-xl border border-indigo-700 bg-indigo-950/60 hover:bg-indigo-900 text-indigo-300 hover:text-white text-xs font-bold transition flex items-center gap-1 cursor-pointer"
                             >
                               <History className="w-3.5 h-3.5" />
-                              <span>Replay</span>
+                              <span>{l('Replay', '战局回放')}</span>
                             </button>
                           )}
 
@@ -1858,7 +1967,15 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                 : 'bg-cyan-600 hover:bg-cyan-500 text-white shadow-cyan-950/30'
                             }`}
                           >
-                            <span>{table.isLocalGame ? 'Resume Local Game' : isMyTurn ? 'Take Turn' : statusCat === 'need_players' ? 'Rejoin Waiting Room' : 'Open Game'}</span>
+                            <span>
+                              {table.isLocalGame
+                                ? l('Resume Local Game', '继续本地对局')
+                                : isMyTurn
+                                ? l('Take Turn', '进入行动')
+                                : statusCat === 'need_players'
+                                ? l('Rejoin Waiting Room', '回到等待室')
+                                : l('Open Game', '进入对局')}
+                            </span>
                             <ArrowRight className="w-3.5 h-3.5" />
                           </button>
                         </div>

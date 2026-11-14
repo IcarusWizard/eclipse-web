@@ -8,6 +8,7 @@ import {
   getFactionShortName,
 } from '../../engine/rules/gameReducer';
 import { MessageSquare, Send, ChevronDown, ChevronUp, Maximize2, Minimize2, X } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
 
 interface GameChatDrawerProps {
   messages?: ChatMessage[];
@@ -34,6 +35,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
   members,
   initialOpen = false,
 }) => {
+  const { l } = useLanguage();
   const [isOpen, setIsOpen] = useState<boolean>(initialOpen);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>('');
@@ -110,7 +112,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
           <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
             <span className="text-xs font-bold text-slate-200 flex items-center gap-1.5 uppercase font-display">
               <MessageSquare className="w-4 h-4 text-cyan-400" />
-              <span>Table Chat</span>
+              <span>{l('Table Chat', '牌桌聊天')}</span>
               {tableNumber && (
                 <span className="text-[10px] px-1.5 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-800 font-mono font-semibold">
                   #{tableNumber}
@@ -122,7 +124,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
                 type="button"
                 onClick={() => setIsExpanded(!isExpanded)}
                 className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition cursor-pointer"
-                title={isExpanded ? 'Compress Chat' : 'Expand Chat'}
+                title={isExpanded ? l('Compress Chat', '收起聊天') : l('Expand Chat', '展开聊天')}
               >
                 {isExpanded ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
               </button>
@@ -133,7 +135,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
                   setIsOpen(false);
                 }}
                 className="p-1 rounded hover:bg-slate-800 text-slate-400 hover:text-slate-200 transition cursor-pointer"
-                title="Close Chat"
+                title={l('Close Chat', '关闭聊天')}
               >
                 <X className="w-3.5 h-3.5" />
               </button>
@@ -145,9 +147,9 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
             {messages.length === 0 ? (
               <div className="h-full flex flex-col items-center justify-center text-center p-4 text-slate-500 text-xs italic">
                 <MessageSquare className="w-6 h-6 mb-2 opacity-30 text-cyan-400" />
-                <p>No messages in table chat yet.</p>
+                <p>{l('No messages in table chat yet.', '当前牌桌暂无聊天消息。')}</p>
                 <p className="text-[11px] text-slate-600 mt-1">
-                  Type a message below and hit Enter to chat!
+                  {l('Type a message below and hit Enter to chat!', '在下方输入内容并按回车键发送！')}
                 </p>
               </div>
             ) : (
@@ -174,9 +176,9 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
                         return getPlayerHumanName(players[pIdx], pIdx, members, null);
                       }
                     }
-                    return 'Player';
+                    return l('Player', '玩家');
                   }
-                  return sName || 'Commander';
+                  return sName || l('Commander', '指挥官');
                 })();
 
                 return (
@@ -193,14 +195,14 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
                             data-testid="chat-black-faction-badge"
                             className="font-bold px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-500 text-zinc-100 shadow-sm inline-block mr-1 text-[11px]"
                           >
-                            {msg.senderFactionName || 'Commander'}
+                            {msg.senderFactionName || l('Commander', '指挥官')}
                           </span>
                         ) : (
                           <span
                             className="font-bold"
                             style={{ color: displayColor }}
                           >
-                            {msg.senderFactionName || 'Commander'}
+                            {msg.senderFactionName || l('Commander', '指挥官')}
                           </span>
                         )}{' '}
                         <span className="font-semibold text-slate-300">
@@ -233,7 +235,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
               type="text"
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
-              placeholder="Type message and hit Enter..."
+              placeholder={l('Type message and hit Enter...', '输入消息并按回车发送...')}
               maxLength={500}
               className="flex-1 bg-slate-900 border border-slate-700/80 rounded-xl px-3 py-1.5 text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 transition-all"
             />
@@ -241,7 +243,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
               type="submit"
               disabled={!inputText.trim()}
               className="p-2 rounded-xl bg-cyan-600 hover:bg-cyan-500 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-bold transition-all cursor-pointer shrink-0 shadow-md"
-              title="Send message (Enter)"
+              title={l('Send message (Enter)', '发送消息 (回车)')}
             >
               <Send className="w-3.5 h-3.5 stroke-[2.5]" />
             </button>
@@ -250,7 +252,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
           {/* Chatting As Hint */}
           <div className="text-[10px] text-slate-500 mt-1 px-1 flex items-center justify-between font-mono">
             <span className="truncate mr-2">
-              Chatting as:{' '}
+              {l('Chatting as:', '发言身份：')}{' '}
               {isBlackFaction(currentSenderFactionName, currentSenderFactionColor) ? (
                 <strong
                   data-testid="chat-black-sender-hint"
@@ -269,7 +271,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
                 </strong>
               )}
             </span>
-            <span className="shrink-0 text-slate-600">Enter to send</span>
+            <span className="shrink-0 text-slate-600">{l('Enter to send', '回车发送')}</span>
           </div>
         </div>
       )}
@@ -280,15 +282,15 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
         data-testid="chat-toggle-button"
         onClick={handleToggle}
         className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold shadow-lg transition-all cursor-pointer relative"
-        title="Table Chat"
+        title={l('Table Chat', '牌桌聊天')}
       >
         <MessageSquare className="w-4 h-4 text-cyan-400" />
-        <span>{`Chat (${messages.length})`}</span>
+        <span>{l(`Chat (${messages.length})`, `聊天 (${messages.length})`)}</span>
         {unreadCount > 0 && !isOpen && (
           <span
             data-testid="chat-unread-badge"
             className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-cyan-500 text-slate-950 text-[10px] font-black tracking-wide shadow-md shadow-cyan-500/50 animate-pulse"
-            title={`${unreadCount} new messages`}
+            title={l(`${unreadCount} new messages`, `${unreadCount} 条新消息`)}
           >
             <span>!</span>
             <span>{unreadCount}</span>

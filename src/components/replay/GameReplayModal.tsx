@@ -5,6 +5,11 @@ import { isReplayAvailable, resolveStepState } from '../../engine/rules/replay';
 import { getPlayerShortName, getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { HexGalaxyMap } from '../map/HexGalaxyMap';
 import { CombatDieFaceGraphic } from '../common/PhysicalTileIconography';
+import { useLanguage } from '../../i18n/LanguageContext';
+import {
+  translateGamePhase,
+  translateShipType,
+} from '../../i18n/catalogTranslations';
 import {
   History,
   Play,
@@ -32,6 +37,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
   tableNumber,
   onClose,
 }) => {
+  const { l, language } = useLanguage();
   const replayAvailable = isReplayAvailable(state);
 
   // If no replay tracking data exists (older games / backward compatibility)
@@ -42,7 +48,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
           <button
             onClick={onClose}
             className="absolute top-4 right-4 text-slate-400 hover:text-white p-1 rounded-lg hover:bg-slate-800 transition cursor-pointer"
-            title="Close"
+            title={l('Close', '关闭')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -50,22 +56,22 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
             <History className="w-7 h-7" />
           </div>
           <h3 className="text-lg font-bold text-amber-300 font-display mb-2">
-            Replay Not Available
+            {l('Replay Not Available', '回放不可用')}
           </h3>
           <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 text-xs text-slate-300 mb-6 leading-relaxed text-left space-y-2">
             <p className="font-semibold text-amber-200/90 flex items-start gap-1.5">
               <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-              <span>Replay is not available for this game (created before replay tracking was enabled).</span>
+              <span>{l('Replay is not available for this game (created before replay tracking was enabled).', '此对局无回放记录（创建于回放追踪功能启用之前）。')}</span>
             </p>
             <p className="text-slate-400 pl-5.5">
-              Historical action tracking requires step snapshots recorded during gameplay. Older games created prior to action tracking do not have historical snapshots saved.
+              {l('Historical action tracking requires step snapshots recorded during gameplay. Older games created prior to action tracking do not have historical snapshots saved.', '历史行动追踪需要游玩过程中记录的步进快照。早于该功能创建的旧对局未保存历史快照。')}
             </p>
           </div>
           <button
             onClick={onClose}
             className="px-6 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-white font-bold text-xs uppercase tracking-wider transition cursor-pointer border border-slate-700 hover:border-slate-500 shadow"
           >
-            Close Replay
+            {l('Close Replay', '关闭回放')}
           </button>
         </div>
       </div>
@@ -199,19 +205,19 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition cursor-pointer"
-            title="Exit Replay (Esc)"
+            title={l('Exit Replay (Esc)', '退出回放 (Esc)')}
           >
             <X className="w-5 h-5" />
           </button>
 
           <div className="flex items-center gap-2">
             <span className="px-2 py-0.5 rounded font-mono font-bold text-xs bg-indigo-950 border border-indigo-700 text-indigo-300">
-              #{effectiveTableNum || 'MATCH'}
+              #{effectiveTableNum || l('MATCH', '对局')}
             </span>
             <div className="flex items-center gap-1.5">
               <History className="w-4 h-4 text-indigo-400" />
               <span className="font-extrabold text-sm text-indigo-200 font-display hidden sm:inline">
-                GALACTIC REPLAY
+                {l('GALACTIC REPLAY', '星海回放')}
               </span>
             </div>
           </div>
@@ -224,7 +230,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
               R{stepState.round}/{stepState.maxRounds}
             </span>
             <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-800/80 text-cyan-300 border border-cyan-800/60 hidden sm:inline">
-              {stepState.phase.replace('_', ' ')}
+              {translateGamePhase(stepState.phase, language)}
             </span>
           </div>
         </div>
@@ -250,7 +256,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
         {/* Right: Step Counter */}
         <div className="flex items-center gap-2 shrink-0">
           <span className="px-2.5 py-1 rounded-md text-xs font-mono font-bold bg-slate-800/90 text-amber-300 border border-slate-700">
-            Step {stepIndex + 1} / {totalSteps}
+            {l(`Step ${stepIndex + 1} / ${totalSteps}`, `第 ${stepIndex + 1} / ${totalSteps} 步`)}
           </span>
         </div>
       </header>
@@ -270,11 +276,14 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
               <div className="flex items-center gap-1.5">
                 <Swords className="w-4 h-4 text-rose-400" />
                 <span className="font-bold text-rose-300 uppercase tracking-wider text-xs">
-                  Combat Salvo {stepState.activeCombat?.sectorId ? `• Sector ${stepState.activeCombat.sectorId}` : ''}
+                  {l('Combat Salvo', '战斗齐射')}{' '}
+                  {stepState.activeCombat?.sectorId
+                    ? l(`• Sector ${stepState.activeCombat.sectorId}`, `• 星区 ${stepState.activeCombat.sectorId}`)
+                    : ''}
                 </span>
               </div>
               <span className="px-2 py-0.5 rounded bg-rose-950 text-rose-300 font-mono text-[10px] font-bold border border-rose-800">
-                Round {stepState.activeCombat?.roundNumber || stepState.round}
+                {l(`Round ${stepState.activeCombat?.roundNumber || stepState.round}`, `第 ${stepState.activeCombat?.roundNumber || stepState.round} 轮`)}
               </span>
             </div>
 
@@ -282,10 +291,10 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
             {lastRolls.length > 0 && (
               <div className="mb-2">
                 <div className="text-[10px] uppercase font-bold text-slate-400 mb-1 flex items-center justify-between">
-                  <span>Dice Rolled & Damage</span>
+                  <span>{l('Dice Rolled & Damage', '骰面与伤害')}</span>
                   <span className="text-amber-300 font-mono font-bold">
-                    {lastRolls.filter((r) => r.isHit).length} Hit(s) •{' '}
-                    {lastRolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0)} Dmg
+                    {lastRolls.filter((r) => r.isHit).length} {l('Hit(s)', '命中')} •{' '}
+                    {lastRolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0)} {l('Dmg', '伤害')}
                   </span>
                 </div>
                 <div className="flex flex-wrap gap-1.5 p-1.5 rounded-lg bg-slate-900/90 border border-slate-800">
@@ -307,9 +316,11 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
                         className={`flex items-center gap-1 px-2 py-1 rounded border font-mono text-xs font-bold ${dieBg} ${
                           roll.isHit ? 'ring-1 ring-emerald-400' : 'opacity-60'
                         }`}
-                        title={`${roll.dieColor.toUpperCase()} Die: Rolled ${roll.roll} (Mod: ${roll.modifiedRoll}) -> ${
-                          roll.isHit ? `HIT (${roll.damage} dmg)` : 'MISS'
-                        }`}
+                        title={
+                          language === 'zh'
+                            ? `${roll.dieColor.toUpperCase()} 骰: 掷出 ${roll.roll} (修正: ${roll.modifiedRoll}) -> ${roll.isHit ? `命中 (${roll.damage} 伤害)` : '未命中'}`
+                            : `${roll.dieColor.toUpperCase()} Die: Rolled ${roll.roll} (Mod: ${roll.modifiedRoll}) -> ${roll.isHit ? `HIT (${roll.damage} dmg)` : 'MISS'}`
+                        }
                       >
                         <CombatDieFaceGraphic color={roll.dieColor} roll={roll.roll} size="xs" />
                         <span>{roll.roll}</span>
@@ -334,13 +345,13 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
             {/* Casualties / Destroyed Ships */}
             {destroyedShips.length > 0 && (
               <div className="mt-2 pt-1.5 border-t border-slate-800 flex items-center gap-1.5 flex-wrap text-[10px]">
-                <span className="font-bold text-rose-400">Casualties:</span>
+                <span className="font-bold text-rose-400">{l('Casualties:', '战损：')}</span>
                 {destroyedShips.map((des, dIdx) => (
                   <span
                     key={dIdx}
                     className="px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-800 text-rose-300 font-mono font-bold"
                   >
-                    💥 {des.ownerId} {des.type.toUpperCase()}
+                    💥 {des.ownerId} {language === 'zh' ? translateShipType(des.type, 'zh') : des.type.toUpperCase()}
                   </span>
                 ))}
               </div>
@@ -353,7 +364,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
           <div className="absolute top-4 right-4 z-20 max-w-xs bg-slate-900/95 border border-indigo-500/40 rounded-xl shadow-2xl p-3 text-xs text-slate-200 backdrop-blur-md">
             <div className="flex items-center justify-between pb-1.5 border-b border-slate-800 mb-2">
               <span className="font-bold text-indigo-300">
-                Sector {selectedSector.sectorNumber} ({selectedSector.name || 'Deep Space'})
+                {l(`Sector ${selectedSector.sectorNumber}`, `星区 ${selectedSector.sectorNumber}`)} ({selectedSector.name || l('Deep Space', '深空')})
               </span>
               <button
                 onClick={() => setSelectedSector(null)}
@@ -364,25 +375,25 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
             </div>
             <div className="space-y-1">
               <div>
-                Controlled By:{' '}
+                {l('Controlled By:', '控制者：')}{' '}
                 <strong className="text-white">
                   {selectedSector.discOwner
                     ? stepState.players.find((p) => p.id === selectedSector.discOwner)?.name || selectedSector.discOwner
-                    : 'Unclaimed'}
+                    : l('Unclaimed', '未占领')}
                 </strong>
               </div>
               <div>
-                Ships Present:{' '}
+                {l('Ships Present:', '驻留舰船：')}{' '}
                 <strong className="text-white">
                   {selectedSector.ships?.length || 0}
                 </strong>
               </div>
               {selectedSector.planets && selectedSector.planets.length > 0 && (
                 <div>
-                  Planets ({selectedSector.planets.length}):{' '}
+                  {l(`Planets (${selectedSector.planets.length}):`, `行星 (${selectedSector.planets.length})：`)}{' '}
                   <span className="text-slate-300 font-mono">
                     {selectedSector.planets
-                      .map((p) => `${p.resource}${p.colonizedBy ? ' (colonized)' : ''}`)
+                      .map((p) => `${p.resource}${p.colonizedBy ? l(' (colonized)', ' (已殖民)') : ''}`)
                       .join(', ')}
                   </span>
                 </div>
@@ -413,7 +424,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
         {/* Scrubber Range Slider */}
         <div className="w-full flex items-center gap-3">
           <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
-            0 (Setup)
+            0 ({l('Setup', '开局')})
           </span>
           <input
             type="range"
@@ -427,7 +438,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
             className="flex-1 h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-400"
           />
           <span className="text-[10px] font-mono font-bold text-slate-400 shrink-0">
-            {totalSteps - 1} (Latest)
+            {totalSteps - 1} ({l('Latest', '最新')})
           </span>
         </div>
 
@@ -442,7 +453,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
               }}
               disabled={stepIndex === 0}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 transition cursor-pointer"
-              title="Jump to Start (Home)"
+              title={l('Jump to Start (Home)', '跳至开头 (Home)')}
             >
               <SkipBack className="w-4 h-4" />
             </button>
@@ -453,17 +464,17 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
               }}
               disabled={stepIndex === 0}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 transition cursor-pointer"
-              title="Step Back (Left Arrow)"
+              title={l('Step Back (Left Arrow)', '上一步 (左方向键)')}
             >
               <ChevronLeft className="w-4 h-4" />
             </button>
             <button
               onClick={handleTogglePlay}
               className="px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs flex items-center gap-1.5 shadow transition cursor-pointer"
-              title={isPlaying ? 'Pause (Space)' : 'Play (Space)'}
+              title={isPlaying ? l('Pause (Space)', '暂停 (空格)') : l('Play (Space)', '播放 (空格)')}
             >
               {isPlaying ? <Pause className="w-4 h-4 fill-white" /> : <Play className="w-4 h-4 fill-white" />}
-              <span>{isPlaying ? 'Pause' : 'Play'}</span>
+              <span>{isPlaying ? l('Pause', '暂停') : l('Play', '播放')}</span>
             </button>
             <button
               onClick={() => {
@@ -472,7 +483,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
               }}
               disabled={stepIndex >= totalSteps - 1}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 transition cursor-pointer"
-              title="Step Forward (Right Arrow)"
+              title={l('Step Forward (Right Arrow)', '下一步 (右方向键)')}
             >
               <ChevronRight className="w-4 h-4" />
             </button>
@@ -483,7 +494,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
               }}
               disabled={stepIndex >= totalSteps - 1}
               className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed text-slate-200 transition cursor-pointer"
-              title="Jump to End (End)"
+              title={l('Jump to End (End)', '跳至末尾 (End)')}
             >
               <SkipForward className="w-4 h-4" />
             </button>
@@ -492,7 +503,7 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
             <button
               onClick={handleCycleSpeed}
               className="px-2 py-1 rounded bg-slate-800 hover:bg-slate-700 text-indigo-300 font-mono font-bold text-xs flex items-center gap-1 transition cursor-pointer ml-1"
-              title="Playback Speed"
+              title={l('Playback Speed', '播放倍速')}
             >
               <Gauge className="w-3 h-3 text-indigo-400" />
               <span>{playbackSpeed}x</span>
@@ -522,13 +533,13 @@ export const GameReplayModal: React.FC<GameReplayModalProps> = ({
                     {getPlayerDisplayName(p, { short: true })}
                   </span>
                   <div className="flex items-center gap-1 text-[10px] font-mono text-slate-400">
-                    <span title="Credits (Money)" className="text-amber-400">💰{p.resources?.money ?? 0}</span>
-                    <span title="Science" className="text-cyan-400">🧪{p.resources?.science ?? 0}</span>
-                    <span title="Materials" className="text-rose-400">🔨{p.resources?.materials ?? 0}</span>
+                    <span title={l('Credits (Money)', '信用点 (金钱)')} className="text-amber-400">💰{p.resources?.money ?? 0}</span>
+                    <span title={l('Science', '科技')} className="text-cyan-400">🧪{p.resources?.science ?? 0}</span>
+                    <span title={l('Materials', '材料')} className="text-rose-400">🔨{p.resources?.materials ?? 0}</span>
                   </div>
                   {hasPassed && (
                     <span className="px-1 py-0.2 rounded text-[9px] font-bold bg-slate-800 text-slate-400">
-                      PASSED
+                      {l('PASSED', '已跳过')}
                     </span>
                   )}
                 </div>

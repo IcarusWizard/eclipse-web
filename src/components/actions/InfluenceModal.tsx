@@ -20,6 +20,8 @@ import {
   ArrowRight,
   ShieldAlert,
 } from 'lucide-react';
+import { useLanguage } from '../../i18n/LanguageContext';
+import { translateResourceType } from '../../i18n/catalogTranslations';
 
 interface InfluenceModalProps {
   player: PlayerState;
@@ -40,6 +42,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
   onConfirm,
   warpConduits,
 }) => {
+  const { language, l } = useLanguage();
   const maxActivations = getMaxInfluenceActivations(player);
   const [claimSectors, setClaimSectors] = useState<string[]>([]);
   const [abandonSectors, setAbandonSectors] = useState<string[]>([]);
@@ -246,20 +249,20 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-bold text-slate-100 font-display flex items-center gap-2">
-                INFLUENCE
+                {l('INFLUENCE', '影响力')}
                 <span className="text-[11px] font-semibold px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700 text-cyan-300">
-                  {totalActivations} / {maxActivations} Activations
+                  {totalActivations} / {maxActivations} {l('Activations', '次激活')}
                 </span>
               </h2>
               <p className="text-[11px] text-slate-400 leading-tight">
-                Flip up to {colonyShipRefreshes} Colony Ship{colonyShipRefreshes === 1 ? '' : 's'}, modify Control on up to {maxActivations} sectors in sequence.
+                {l(`Flip up to ${colonyShipRefreshes} Colony Ship${colonyShipRefreshes === 1 ? '' : 's'}, modify Control on up to ${maxActivations} sectors in sequence.`, `翻正至多 ${colonyShipRefreshes} 艘殖民船，并依次调整至多 ${maxActivations} 个星区的控制权。`)}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
             className="p-1.5 hover:bg-slate-800 rounded-lg text-slate-400 hover:text-white transition-colors cursor-pointer"
-            title="Close Influence window"
+            title={l('Close Influence window', '关闭影响力窗口')}
           >
             <X className="w-5 h-5" />
           </button>
@@ -275,17 +278,17 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-indigo-300 uppercase tracking-wide">
-                  Colony Ships Readied
+                  {l('Colony Ships Readied', '重整殖民船')}
                 </div>
                 <div className="text-[11px] text-slate-400">
-                  Flips up to {colonyShipRefreshes} used Colony Ship{colonyShipRefreshes === 1 ? '' : 's'} faceup automatically upon action execution.
+                  {l(`Flips up to ${colonyShipRefreshes} used Colony Ship${colonyShipRefreshes === 1 ? '' : 's'} faceup automatically upon action execution.`, `执行此行动时自动将至多 ${colonyShipRefreshes} 艘已使用的殖民船翻正为可用状态。`)}
                 </div>
               </div>
             </div>
             <div className="flex items-center gap-2 text-sm font-bold font-mono">
-              <span className="text-slate-400">{player.colonyShips.ready} Ready</span>
+              <span className="text-slate-400">{player.colonyShips.ready} {l('Ready', '可用')}</span>
               <ArrowRight className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="text-emerald-400">{readyShipsAfter} Ready</span>
+              <span className="text-emerald-400">{readyShipsAfter} {l('Ready', '可用')}</span>
               <span className="text-xs text-slate-500 font-sans">/ {player.colonyShips.total}</span>
             </div>
           </div>
@@ -293,17 +296,17 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
           {/* Influence Discs Balance Card */}
           <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 grid grid-cols-4 gap-2 text-center text-xs">
             <div>
-              <div className="text-[10px] text-slate-500 uppercase">On Track</div>
+              <div className="text-[10px] text-slate-500 uppercase">{l('On Track', '轨上圆盘')}</div>
               <div className="text-base font-bold text-slate-200 font-mono">
                 {player.influenceTrack.discsOnTrack}
               </div>
             </div>
             <div>
-              <div className="text-[10px] text-slate-500 uppercase">Action Cost</div>
+              <div className="text-[10px] text-slate-500 uppercase">{l('Action Cost', '行动消耗')}</div>
               <div className="text-base font-bold text-rose-400 font-mono">-1</div>
             </div>
             <div>
-              <div className="text-[10px] text-slate-500 uppercase">Net Claims / Returns</div>
+              <div className="text-[10px] text-slate-500 uppercase">{l('Net Claims / Returns', '净增减')}</div>
               <div className="text-base font-bold font-mono text-cyan-300">
                 {abandonSectors.length - claimSectors.length >= 0
                   ? `+${abandonSectors.length - claimSectors.length}`
@@ -311,7 +314,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
               </div>
             </div>
             <div>
-              <div className="text-[10px] text-slate-500 uppercase">Projected Track</div>
+              <div className="text-[10px] text-slate-500 uppercase">{l('Projected Track', '预计轨上剩余')}</div>
               <div
                 className={`text-base font-bold font-mono ${
                   discsRemainingAfter >= 0 ? 'text-emerald-400' : 'text-rose-500'
@@ -326,15 +329,14 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Plus className="w-3.5 h-3.5 text-emerald-400" /> Claim Sector Control ({claimSectors.length} selected)
+                <Plus className="w-3.5 h-3.5 text-emerald-400" /> {l(`Claim Sector Control (${claimSectors.length} selected)`, `占领星区控制权（已选 ${claimSectors.length}）`)}
               </span>
-              <span className="text-[11px] text-slate-500">1 Disc per sector • Resolved in sequence</span>
+              <span className="text-[11px] text-slate-500">{l('1 Disc per sector • Resolved in sequence', '每星区 1 圆盘 • 按顺序结算')}</span>
             </div>
 
             {eligibleToClaim.length === 0 ? (
               <div className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-4 text-center text-xs text-slate-500">
-                No uncontrolled sectors currently eligible for claiming.
-                Station a ship or establish a wormhole connection from a controlled sector.
+                {l('No uncontrolled sectors currently eligible for claiming. Station a ship or establish a wormhole connection from a controlled sector.', '当前没有可占领的无主星区。请派遣飞船驻守或从已控制星区建立虫洞连接。')}
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2">
@@ -359,26 +361,26 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                     >
                       <div>
                         <div className="font-bold text-xs text-slate-200 flex items-center gap-1.5 flex-wrap">
-                          <span>Sector {sec.sectorNumber}</span>
-                          <span className="text-[10px] text-slate-500 font-normal">Ring {sec.ring}</span>
+                          <span>{l(`Sector ${sec.sectorNumber}`, `星区 ${sec.sectorNumber}`)}</span>
+                          <span className="text-[10px] text-slate-500 font-normal">{l(`Ring ${sec.ring}`, `第 ${sec.ring} 环`)}</span>
                           {hasShip && (
                             <span className="text-[9px] bg-cyan-950 text-cyan-300 px-1 py-0.2 rounded font-mono">
-                              Ship stationed
+                              {l('Ship stationed', '有飞船驻守')}
                             </span>
                           )}
                           {isSelected && (
                             <span className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-700/60 px-1.5 py-0.2 rounded font-bold">
-                              Activation #{activationIndex}
+                              {l(`Activation #${activationIndex}`, `第 ${activationIndex} 次激活`)}
                             </span>
                           )}
                           {unlockedBySectorNumber && (
                             <span className="text-[9px] bg-cyan-950/80 text-cyan-300 border border-cyan-800/60 px-1.5 py-0.2 rounded font-medium flex items-center gap-0.5">
-                              ⚡ Unlocked via Sector {unlockedBySectorNumber}
+                              ⚡ {l(`Unlocked via Sector ${unlockedBySectorNumber}`, `经星区 ${unlockedBySectorNumber} 连通`)}
                             </span>
                           )}
                         </div>
                         <div className="text-[10px] text-slate-400 mt-0.5">
-                          {sec.planets.length} Planet Slots • {sec.victoryPoints} VP
+                          {sec.planets.length} {l('Planet Slots', '个星球格')} • {sec.victoryPoints} {l('VP', '分')}
                         </div>
                       </div>
                       <button
@@ -391,9 +393,9 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                             ? 'bg-slate-800 text-slate-600 cursor-not-allowed'
                             : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                         }`}
-                        title={isSelected ? 'Click to unclaim' : isMaxReached ? 'Max activations reached' : 'Click to claim'}
+                        title={isSelected ? l('Click to unclaim', '点击取消占领') : isMaxReached ? l('Max activations reached', '已达最大激活次数') : l('Click to claim', '点击占领')}
                       >
-                        {isSelected ? `Claiming #${activationIndex}` : isMaxReached ? 'Max Reached' : 'Claim'}
+                        {isSelected ? l(`Claiming #${activationIndex}`, `将占领 #${activationIndex}`) : isMaxReached ? l('Max Reached', '已达上限') : l('Claim', '占领')}
                       </button>
                     </div>
                   );
@@ -406,14 +408,14 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
-                <Minus className="w-3.5 h-3.5 text-amber-400" /> Abandon Controlled Sector ({abandonSectors.length} selected)
+                <Minus className="w-3.5 h-3.5 text-amber-400" /> {l(`Abandon Controlled Sector (${abandonSectors.length} selected)`, `放弃已控制星区（已选 ${abandonSectors.length}）`)}
               </span>
-              <span className="text-[11px] text-slate-500">Returns 1 Disc to Track & returns population cubes</span>
+              <span className="text-[11px] text-slate-500">{l('Returns 1 Disc to Track & returns population cubes', '退还 1 枚圆盘至轨道并收回人口方块')}</span>
             </div>
 
             {controlledSectors.length === 0 ? (
               <div className="bg-slate-950/50 border border-slate-800/80 rounded-xl p-4 text-center text-xs text-slate-500">
-                You currently do not control any sectors to abandon.
+                {l('You currently do not control any sectors to abandon.', '你目前没有控制任何可放弃的星区。')}
               </div>
             ) : (
               <div className="grid grid-cols-1 gap-2">
@@ -437,11 +439,11 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                       <div className="flex items-center justify-between">
                         <div>
                           <div className="font-bold text-xs text-slate-200 flex items-center gap-1.5">
-                            <span>Sector {sec.sectorNumber}</span>
-                            <span className="text-[10px] text-slate-500 font-normal">Ring {sec.ring}</span>
+                            <span>{l(`Sector ${sec.sectorNumber}`, `星区 ${sec.sectorNumber}`)}</span>
+                            <span className="text-[10px] text-slate-500 font-normal">{l(`Ring ${sec.ring}`, `第 ${sec.ring} 环`)}</span>
                           </div>
                           <div className="text-[10px] text-amber-400 mt-0.5">
-                            {popCount > 0 ? `${popCount} Population Cube(s) will return` : 'No population'}
+                            {popCount > 0 ? l(`${popCount} Population Cube(s) will return`, `将收回 ${popCount} 个生态方块`) : l('No population', '无殖民人口')}
                           </div>
                         </div>
                         <button
@@ -452,7 +454,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                               : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
                           }`}
                         >
-                          {isSelected ? 'Abandoning' : 'Abandon'}
+                          {isSelected ? l('Abandoning', '准备放弃') : l('Abandon', '放弃')}
                         </button>
                       </div>
 
@@ -489,7 +491,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                                 className="text-[10px] bg-slate-900/90 p-1.5 rounded-lg border border-slate-800"
                               >
                                 <span className="font-semibold text-slate-300">
-                                  Return {isOrb ? 'Orbital' : 'Wild'} Cube to:
+                                  {l(`Return ${isOrb ? 'Orbital' : 'Wild'} Cube to:`, `将${isOrb ? '轨道站' : '万能星'}方块退回至：`)}
                                 </span>
                                 <div className="flex items-center gap-1 mt-1">
                                   {options.map((opt) => {
@@ -515,11 +517,11 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                                         }`}
                                         title={
                                           isOptFull
-                                            ? 'Track is FULL (11 cubes / production 2)'
-                                            : `Return to ${opt}`
+                                            ? l('Track is FULL (11 cubes / production 2)', '该人口轨已满（11 个方块 / 产出 2）')
+                                            : l(`Return to ${opt}`, `退回至${translateResourceType(opt, language)}`)
                                         }
                                       >
-                                        {opt} {isOptFull ? '(Full)' : `(${player.population[opt].cubesOnBoard}/11)`}
+                                        {translateResourceType(opt, language)} {isOptFull ? l('(Full)', '(已满)') : `(${player.population[opt].cubesOnBoard}/11)`}
                                       </button>
                                     );
                                   })}
@@ -542,15 +544,15 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
           <div className="text-xs text-slate-400">
             {!canAffordDiscs && (
               <span className="text-rose-400 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" /> Insufficient influence discs on track.
+                <AlertCircle className="w-3.5 h-3.5" /> {l('Insufficient influence discs on track.', '影响力轨上剩余圆盘不足。')}
               </span>
             )}
             {canAffordDiscs && totalActivations === 0 && (
-              <span>Optionally ready {colonyShipRefreshes} colony ship{colonyShipRefreshes === 1 ? '' : 's'} without moving sector discs.</span>
+              <span>{l(`Optionally ready ${colonyShipRefreshes} colony ship${colonyShipRefreshes === 1 ? '' : 's'} without moving sector discs.`, `可仅翻正 ${colonyShipRefreshes} 艘殖民船而不移动任何星区圆盘。`)}</span>
             )}
             {canAffordDiscs && totalActivations > 0 && (
               <span className="text-emerald-400 flex items-center gap-1">
-                <CheckCircle2 className="w-3.5 h-3.5" /> Ready to execute {totalActivations} sector activation(s).
+                <CheckCircle2 className="w-3.5 h-3.5" /> {l(`Ready to execute ${totalActivations} sector activation(s).`, `准备执行 ${totalActivations} 次星区控制调整。`)}
               </span>
             )}
           </div>
@@ -560,7 +562,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
               onClick={onClose}
               className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
             >
-              Cancel
+              {l('Cancel', '取消')}
             </button>
             <button
               disabled={!canAffordDiscs}
@@ -571,7 +573,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
                   : 'bg-slate-800 text-slate-500 cursor-not-allowed'
               }`}
             >
-              Execute Influence
+              {l('Execute Influence', '执行影响力')}
             </button>
           </div>
         </div>
