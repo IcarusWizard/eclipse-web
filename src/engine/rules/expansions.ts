@@ -32,14 +32,14 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
     name: 'Remnants of Worlds Afar',
     shortName: 'Remnants',
     badge: 'Extra Discoveries & Blueprints',
-    description: 'Introduces 6 extra Discovery Tiles (Jump Drive, Morph Shield, Artifact Codex, Ancient Might, 2x +3 Money +3 Resource) and adds 3 Expert neutral ship blueprints.',
+    description: 'Introduces 6 extra Discovery Tiles (Jump Drive, Morph Shield, Artifact Codex, Ancient Might, 2x +3 Money +3 Resource) and adds 3 Remnants neutral ship blueprints.',
     features: [
       '6 New Discovery Tiles: Jump Drive, Morph Shield, Artifact Codex, Ancient Might, 2x +3 Money +3 Resource',
       'Jump Drive: Move 1 adjacent sector regardless of wormholes per activation',
       'Morph Shield: -1 Shield and removes 1 damage cube after each engagement round',
       'Artifact Codex: +1 VP per controlled artifact at game end',
       'Ancient Might: +1 VP per 3 VP in reputation tiles at game end',
-      'Expert Neutral Ship Blueprints for Ancients, Guardians, and GCDS',
+      'Remnants Neutral Ship Blueprints for Ancients, Guardians, and GCDS',
     ],
   },
   {

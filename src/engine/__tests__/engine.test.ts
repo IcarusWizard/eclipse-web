@@ -8968,17 +8968,17 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const React = (await import('react')).default;
         const { renderToString } = await import('react-dom/server');
 
-        // NewGameModal renders Exp buttons
+        // NewGameModal renders Rem buttons
         const { NewGameModal } = await import('../../components/setup/NewGameModal');
         const modalHtml = renderToString(
           React.createElement(NewGameModal, {
             onStartGame: () => {},
           })
         );
-        expect(modalHtml).toContain('Exp');
-        expect(modalHtml).toContain('Expert Blueprint requires Remnants of Worlds Afar expansion');
+        expect(modalHtml).toContain('Rem');
+        expect(modalHtml).toContain('Remnants Blueprint requires Remnants of Worlds Afar expansion');
 
-        // LobbyView renders Exp buttons and Remnants descriptors
+        // LobbyView renders Rem buttons and Remnants descriptors
         const { LobbyView } = await import('../../components/lobby/LobbyView');
         const lobbyHtml = renderToString(
           React.createElement(LobbyView, {
@@ -8986,11 +8986,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
             onJoinTable: () => {},
           })
         );
-        expect(lobbyHtml).toContain('Exp');
+        expect(lobbyHtml).toContain('Rem');
         expect(lobbyHtml).toContain('Remnants of Worlds Afar');
-        expect(lobbyHtml).toContain('Expert Blueprint requires Remnants of Worlds Afar expansion');
+        expect(lobbyHtml).toContain('Remnants Blueprint requires Remnants of Worlds Afar expansion');
 
-        // SectorInspector renders [Expert] badge
+        // SectorInspector renders [Remnants] badge
         const { SectorInspector } = await import('../../components/map/SectorInspector');
         const inspectorHtml = renderToString(
           React.createElement(SectorInspector, {
@@ -9001,7 +9001,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
             onClose: () => {},
           })
         );
-        expect(inspectorHtml).toContain('[Expert]');
+        expect(inspectorHtml).toContain('[Remnants]');
         expect(inspectorHtml).toContain('1 Yellow Cannon');
 
         // GalacticGalleryModal renders Remnants expansion badges for Jump Drive and Morph Shield
@@ -24391,6 +24391,221 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(loaded).not.toBeNull();
         expect(loaded!.attacker.factionId).toBe('descendants_of_draco');
         expect(loaded!.defender.factionId).toBe(terran.faction.id);
+      });
+
+      it('166. renders NPC square-box blueprints in geometric row layouts in both GalacticGalleryModal and SectorInspector', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { NEUTRAL_SHIP_BLUEPRINTS } = await import('../rules/neutralShips');
+        const {
+          buildNeutralShipComponents,
+          getNeutralShipLayoutRows,
+          NeutralShipBlueprintLayout,
+        } = await import('../../components/blueprints/NeutralShipBlueprintLayout');
+        const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+        const { SectorInspector } = await import('../../components/map/SectorInspector');
+
+        // 1. Row layout geometry: 2 -> [2], 3 -> [1, 2], 4 -> [2, 2], 5 -> [2, 3]
+        expect(getNeutralShipLayoutRows(['a', 'b'])).toEqual([['a', 'b']]);
+        expect(getNeutralShipLayoutRows(['a', 'b', 'c'])).toEqual([['a'], ['b', 'c']]);
+        expect(getNeutralShipLayoutRows(['a', 'b', 'c', 'd'])).toEqual([
+          ['a', 'b'],
+          ['c', 'd'],
+        ]);
+        expect(getNeutralShipLayoutRows(['a', 'b', 'c', 'd', 'e'])).toEqual([
+          ['a', 'b'],
+          ['c', 'd', 'e'],
+        ]);
+
+        // 2. Real NPC blueprint decomposition & rendered data-layout-rows
+        expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.ancient.default)).toHaveLength(3);
+        expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.guardian.advanced)).toHaveLength(4);
+        expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.guardian.default)).toHaveLength(5);
+        expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.gcds.default)).toHaveLength(5);
+
+        const ancientHtml = renderToString(
+          React.createElement(NeutralShipBlueprintLayout, {
+            blueprint: NEUTRAL_SHIP_BLUEPRINTS.ancient.default,
+          })
+        );
+        expect(ancientHtml).toContain('data-layout-rows="1-2"');
+        expect(ancientHtml).toContain('2 HP');
+        // Double yellow cannon in compact sm (48px) view uses 18px xs dice so neither die clips at the edge
+        expect(ancientHtml).toContain('w-[18px] h-[18px]');
+
+        const guardianAdvHtml = renderToString(
+          React.createElement(NeutralShipBlueprintLayout, {
+            blueprint: NEUTRAL_SHIP_BLUEPRINTS.guardian.advanced,
+          })
+        );
+        expect(guardianAdvHtml).toContain('data-layout-rows="2-2"');
+        expect(guardianAdvHtml).toContain('4 HP');
+
+        const gcdsDefHtml = renderToString(
+          React.createElement(NeutralShipBlueprintLayout, {
+            blueprint: NEUTRAL_SHIP_BLUEPRINTS.gcds.default,
+          })
+        );
+        expect(gcdsDefHtml).toContain('data-layout-rows="2-3"');
+        expect(gcdsDefHtml).toContain('Init 0');
+        expect(gcdsDefHtml).toContain('7 HP');
+
+        const twoCompHtml = renderToString(
+          React.createElement(NeutralShipBlueprintLayout, {
+            blueprint: {
+              type: 'ancient',
+              variant: 'default',
+              name: 'Custom Drone',
+              initiative: 1,
+              maxHull: 2,
+              computerBonus: 0,
+              shieldBonus: 0,
+              weapons: [{ color: 'yellow', damage: 1, count: 1 }],
+              summary: '1 Yellow Cannon',
+            },
+          })
+        );
+        expect(twoCompHtml).toContain('data-layout-rows="2"');
+
+        // 3. SectorInspector renders NPC square-box blueprint inside in-game sector window
+        const g166 = createInitialGame(2);
+        const npcSector: any = {
+          id: 'sec-npc-166',
+          sectorNumber: 205,
+          ring: 2,
+          coord: { q: 1, r: -1 },
+          explored: true,
+          wormholes: [true, true, false, false, false, false],
+          planets: [],
+          ships: [
+            { id: 'anc_1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+            { id: 'grd_1', ownerId: 'guardian', type: 'guardian', damage: 0 },
+          ],
+          ancientsCount: 1,
+          guardiansCount: 1,
+        };
+        const sectorHtml = renderToString(
+          React.createElement(SectorInspector, {
+            sector: npcSector,
+            players: g166.players,
+            activePlayer: g166.players[0]!,
+            neutralShipBlueprints: { ancient: 'expert', guardian: 'advanced' },
+            onClose: () => {},
+          })
+        );
+        expect(sectorHtml).toContain('data-testid="npc-blueprint-grid"');
+        expect(sectorHtml).toContain('data-npc-type="ancient"');
+        expect(sectorHtml).toContain('data-npc-variant="expert"');
+        expect(sectorHtml).toContain('[Remnants]');
+        expect(sectorHtml).toContain('data-layout-rows="1-2"');
+        expect(sectorHtml).toContain('data-npc-type="guardian"');
+        expect(sectorHtml).toContain('data-layout-rows="2-2"');
+
+        // 4. GalacticGalleryModal renders all 9 NPC square-box blueprints on the 'npcs' tab
+        const galleryNpcHtml = renderToString(
+          React.createElement(GalacticGalleryModal, {
+            isOpen: true,
+            onClose: () => {},
+            initialTab: 'npcs',
+          })
+        );
+        expect(galleryNpcHtml).toContain('Neutral Ship Blueprints (Ancients, Guardians &amp; GCDS)');
+        expect(galleryNpcHtml).toContain('NPC Blueprints');
+        expect(galleryNpcHtml).toContain('Ancient Cruiser');
+        expect(galleryNpcHtml).toContain('Guardian (Advanced)');
+        expect(galleryNpcHtml).toContain('Galactic Center Defense System (Remnants)');
+        expect(galleryNpcHtml).not.toContain('Expert');
+        expect(galleryNpcHtml).toContain('data-layout-rows="1-2"');
+        expect(galleryNpcHtml).toContain('data-layout-rows="2-2"');
+        expect(galleryNpcHtml).toContain('data-layout-rows="2-3"');
+      });
+
+      it('167. renders player and NPC square-box blueprints for in-game CombatModal hover preview', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { CombatModal, CombatShipBlueprintPreview } = await import('../../components/combat/CombatModal');
+
+        const g167 = createInitialGame(2, ['terran_federation', 'orion_hegemony'], ['remnants_of_worlds_afar'], {
+          ancient: 'expert',
+          guardian: 'advanced',
+          gcds: 'default',
+        });
+        const p1 = g167.players[0]!;
+        const p2 = g167.players[1]!;
+
+        // 1. Player ship blueprint box preview
+        const playerPreviewHtml = renderToString(
+          React.createElement(CombatShipBlueprintPreview, {
+            state: g167,
+            ownerId: p1.id,
+            shipType: 'interceptor',
+          })
+        );
+        expect(playerPreviewHtml).toContain('Nuclear Source');
+        expect(playerPreviewHtml).toContain('Ion Cannon');
+
+        // Player with preprinted chassis & external Muon Source
+        p2.blueprints.interceptor!.externalParts = [SHIP_PARTS.muon_source];
+        const orionPreviewHtml = renderToString(
+          React.createElement(CombatShipBlueprintPreview, {
+            state: g167,
+            ownerId: p2.id,
+            shipType: 'interceptor',
+          })
+        );
+        expect(orionPreviewHtml).toContain('Muon Source');
+        expect(orionPreviewHtml).toContain('FIXED');
+
+        // 2. NPC ship blueprint box preview (respects state.neutralShipBlueprints variant)
+        const ancientPreviewHtml = renderToString(
+          React.createElement(CombatShipBlueprintPreview, {
+            state: g167,
+            ownerId: 'ancient',
+            shipType: 'ancient',
+          })
+        );
+        expect(ancientPreviewHtml).toContain('data-testid="npc-blueprint-grid"');
+        expect(ancientPreviewHtml).toContain('data-npc-variant="expert"');
+        expect(ancientPreviewHtml).toContain('data-layout-rows="1-2"');
+        expect(ancientPreviewHtml).toContain('Computer (+2)');
+
+        const gcdsPreviewHtml = renderToString(
+          React.createElement(CombatShipBlueprintPreview, {
+            state: g167,
+            ownerId: 'gcds',
+            shipType: 'gcds',
+          })
+        );
+        expect(gcdsPreviewHtml).toContain('data-npc-type="gcds"');
+        expect(gcdsPreviewHtml).toContain('data-layout-rows="2-3"');
+
+        // 3. CombatModal renders cleanly with attacker and defender ship cards
+        const combatSec = g167.sectors.find((s) => s.ancientsCount > 0 || s.hasGCDS) || g167.sectors[0]!;
+        combatSec.explored = true;
+        combatSec.ships = [
+          { id: 'c_int_1', ownerId: p1.id, type: 'interceptor', damage: 0 },
+          { id: 'c_anc_1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+        ];
+        const combatMock: any = {
+          sectorId: combatSec.id,
+          roundNumber: 1,
+          stage: 'regular',
+          initiativeOrder: [],
+          currentTurnIndex: 0,
+          participatingPlayerIds: [p1.id, 'ancient'],
+          defenderOwnerId: 'ancient',
+          lastRolls: [],
+          retreatDeclared: {},
+        };
+        const modalHtml = renderToString(
+          React.createElement(CombatModal, {
+            state: g167,
+            combat: combatMock,
+            onStepCombat: () => {},
+          })
+        );
+        expect(modalHtml).toContain('combat-group-interceptor-1-1');
+        expect(modalHtml).toContain('combat-group-ancient-2-2');
       });
     });
   });

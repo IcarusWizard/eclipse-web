@@ -143,7 +143,7 @@ export const PowerCostBadge: React.FC<{
 export interface DiceGraphicProps {
   color: 'yellow' | 'orange' | 'blue' | 'red' | 'purple' | string;
   count?: number;
-  size?: 'sm' | 'md' | 'lg';
+  size?: 'xs' | 'sm' | 'md' | 'lg';
   className?: string;
 }
 
@@ -156,13 +156,15 @@ export const DiceGraphic: React.FC<DiceGraphicProps> = ({
   const normColor = color.toLowerCase();
 
   const sizeDims =
-    size === 'sm'
+    size === 'xs'
+      ? 'w-[18px] h-[18px] rounded-[4px]'
+      : size === 'sm'
       ? 'w-6 h-6 rounded-[5px]'
       : size === 'lg'
       ? 'w-11 h-11 rounded-[9px]'
       : 'w-9 h-9 rounded-[8px]';
 
-  const pipSize = size === 'sm' ? 8 : size === 'lg' ? 15 : 12;
+  const pipSize = size === 'xs' ? 6 : size === 'sm' ? 8 : size === 'lg' ? 15 : 12;
 
   let bgClass = 'bg-amber-400 border-amber-300 shadow-amber-950/60';
   let pipFill = '#111827';
@@ -226,7 +228,7 @@ export const DiceGraphic: React.FC<DiceGraphicProps> = ({
   );
 
   return (
-    <div className={`inline-flex items-center gap-1.5 ${className}`}>
+    <div className={`inline-flex items-center ${size === 'xs' ? 'gap-1' : 'gap-1.5'} ${className}`}>
       {Array.from({ length: count }).map((_, i) => renderSingleDie(i))}
     </div>
   );
@@ -818,7 +820,9 @@ export const MissileGraphic: React.FC<{
   const missileWidth = size === 'sm' ? 26 : size === 'lg' ? 44 : 34;
   const missileHeight = size === 'sm' ? 8 : size === 'lg' ? 14 : 10;
   const diceSize =
-    size === 'sm' || primary.count > 2
+    size === 'sm' && primary.count > 1
+      ? 'xs'
+      : size === 'sm' || primary.count > 2
       ? 'sm'
       : size === 'lg'
       ? 'md'
@@ -2019,14 +2023,17 @@ export const ShipPartSlotGraphic: React.FC<{
           />
         ) : part.dice ? (
           <div className="flex items-center gap-1">
-            {part.dice.map((d, idx) => (
-              <DiceGraphic
-                key={idx}
-                color={d.color}
-                count={d.count}
-                size={d.count > 1 || part.dice!.length > 1 || part.hullBonus > 0 ? 'sm' : size}
-              />
-            ))}
+            {part.dice.map((d, idx) => {
+              const isCrowded = d.count > 1 || part.dice!.length > 1 || part.hullBonus > 0;
+              return (
+                <DiceGraphic
+                  key={idx}
+                  color={d.color}
+                  count={d.count}
+                  size={isCrowded ? (size === 'sm' ? 'xs' : 'sm') : size}
+                />
+              );
+            })}
             {part.hullBonus > 0 && (
               <HullGraphic
                 hullBonus={part.hullBonus}

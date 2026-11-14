@@ -53,6 +53,7 @@ import {
   getNeutralShipBlueprint,
   getNeutralShipSummary,
 } from '../../engine/rules/neutralShips';
+import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
 
 interface SectorInspectorProps {
   sector: SectorTile;
@@ -457,62 +458,79 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                         const bp = pl ? pl.blueprints[type] : null;
                         const stats = bp ? calculateBlueprintStats(bp) : null;
 
+                        const isNpcBlueprint = isNpc && (type === 'ancient' || type === 'guardian' || type === 'gcds');
+                        const npcBp = isNpcBlueprint
+                          ? getNeutralShipBlueprint(
+                              type as NeutralShipType,
+                              neutralShipBlueprints?.[type as NeutralShipType]
+                            )
+                          : null;
+
                         return (
                           <div
                             key={type}
-                            className="p-2 rounded-lg bg-slate-950/80 border border-slate-800/80 flex items-center justify-between"
+                            className="p-2 rounded-lg bg-slate-950/80 border border-slate-800/80 space-y-2"
                           >
-                            <div>
-                              <div className="font-extrabold text-[11px] text-slate-100 uppercase tracking-wide flex items-center gap-1.5">
-                                <span className="font-mono text-cyan-400 font-bold">
-                                  {typeShips.length}×
-                                </span>
-                                <span>{type}</span>
-                                {typeShips.some((s) => s.damage > 0) && (
-                                  <span className="text-[9px] px-1 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
-                                    Damaged
+                            <div className="flex items-center justify-between gap-2">
+                              <div>
+                                <div className="font-extrabold text-[11px] text-slate-100 uppercase tracking-wide flex items-center gap-1.5">
+                                  <span className="font-mono text-cyan-400 font-bold">
+                                    {typeShips.length}×
                                   </span>
-                                )}
-                                {sector.isNebula && (
-                                  <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
-                                    Sub {Array.from(new Set(typeShips.map((s) => s.subsector || 1))).sort().join(', ')}
-                                  </span>
-                                )}
+                                  <span>{type}</span>
+                                  {typeShips.some((s) => s.damage > 0) && (
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800">
+                                      Damaged
+                                    </span>
+                                  )}
+                                  {sector.isNebula && (
+                                    <span className="text-[9px] px-1.5 py-0.2 rounded bg-emerald-950 text-emerald-300 border border-emerald-800 font-mono">
+                                      Sub {Array.from(new Set(typeShips.map((s) => s.subsector || 1))).sort().join(', ')}
+                                    </span>
+                                  )}
+                                </div>
+
+                                {/* Stats / Weapons Preview */}
+                                {stats ? (
+                                  <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 font-mono">
+                                    <span>Hull: {stats.totalHull}</span>
+                                    <span>• Speed: {stats.totalDriveSpeed}</span>
+                                    <span>• Init: {stats.totalInitiative}</span>
+                                    {stats.computerBonus > 0 && <span>• +{stats.computerBonus} COMP</span>}
+                                    {stats.shieldBonus > 0 && <span>• -{stats.shieldBonus} Shield</span>}
+                                  </div>
+                                ) : isNpcBlueprint ? (
+                                  <div className={`text-[10px] font-mono mt-0.5 ${type === 'guardian' ? 'text-pink-300/80' : 'text-rose-300/80'}`}>
+                                    {neutralShipBlueprints?.[type as NeutralShipType] === 'advanced' && (
+                                      <span className="text-amber-400 font-bold mr-1.5">[Advanced]</span>
+                                    )}
+                                    {neutralShipBlueprints?.[type as NeutralShipType] === 'expert' && (
+                                      <span className="text-rose-400 font-bold mr-1.5">[Remnants]</span>
+                                    )}
+                                    {getNeutralShipSummary(type as NeutralShipType, neutralShipBlueprints?.[type as NeutralShipType])}
+                                  </div>
+                                ) : null}
                               </div>
 
-                              {/* Stats / Weapons Preview */}
-                              {stats ? (
-                                <div className="text-[10px] text-slate-400 flex items-center gap-2 mt-0.5 font-mono">
-                                  <span>Hull: {stats.totalHull}</span>
-                                  <span>• Speed: {stats.totalDriveSpeed}</span>
-                                  <span>• Init: {stats.totalInitiative}</span>
-                                  {stats.computerBonus > 0 && <span>• +{stats.computerBonus} COMP</span>}
-                                  {stats.shieldBonus > 0 && <span>• -{stats.shieldBonus} Shield</span>}
-                                </div>
-                              ) : isNpc && (type === 'ancient' || type === 'guardian' || type === 'gcds') ? (
-                                <div className={`text-[10px] font-mono mt-0.5 ${type === 'guardian' ? 'text-pink-300/80' : 'text-rose-300/80'}`}>
-                                  {neutralShipBlueprints?.[type as NeutralShipType] === 'advanced' && (
-                                    <span className="text-amber-400 font-bold mr-1.5">[Advanced]</span>
-                                  )}
-                                  {neutralShipBlueprints?.[type as NeutralShipType] === 'expert' && (
-                                    <span className="text-rose-400 font-bold mr-1.5">[Expert]</span>
-                                  )}
-                                  {getNeutralShipSummary(type as NeutralShipType, neutralShipBlueprints?.[type as NeutralShipType])}
-                                </div>
-                              ) : null}
+                              <span
+                                className="px-2 py-0.5 rounded text-[10px] font-bold uppercase shrink-0"
+                                style={{
+                                  backgroundColor: `${ownerColor}20`,
+                                  color: ownerColor,
+                                  borderColor: `${ownerColor}60`,
+                                  borderWidth: '1px',
+                                }}
+                              >
+                                {type.toUpperCase()}
+                              </span>
                             </div>
 
-                            <span
-                              className="px-2 py-0.5 rounded text-[10px] font-bold uppercase"
-                              style={{
-                                backgroundColor: `${ownerColor}20`,
-                                color: ownerColor,
-                                borderColor: `${ownerColor}60`,
-                                borderWidth: '1px',
-                              }}
-                            >
-                              {type.toUpperCase()}
-                            </span>
+                            {/* Square-Box Blueprint View for NPCs */}
+                            {npcBp && (
+                              <div className="p-2 rounded-lg bg-slate-900/70 border border-slate-800/80 flex items-center justify-center">
+                                <NeutralShipBlueprintLayout blueprint={npcBp} size="sm" />
+                              </div>
+                            )}
                           </div>
                         );
                       })}

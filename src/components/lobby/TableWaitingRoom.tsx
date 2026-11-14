@@ -1015,8 +1015,8 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
                             }}
                             title={
                               hasRemnants
-                                ? `Expert (${exp})`
-                                : 'Expert Blueprint requires Remnants of Worlds Afar expansion'
+                                ? `Remnants (${exp})`
+                                : 'Remnants Blueprint requires Remnants of Worlds Afar expansion'
                             }
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase transition ${
                               !hasRemnants
@@ -1026,7 +1026,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
                                 : 'bg-slate-950 text-slate-500 hover:text-slate-300 border border-slate-800 cursor-pointer'
                             }`}
                           >
-                            Exp
+                            Rem
                           </button>
                           {/* 4. RND (LAST PLACE) */}
                           <button
@@ -1034,7 +1034,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
                             onClick={() => setNeutralShip(type, 'random')}
                             title={
                               hasRemnants
-                                ? 'Random (Default / Advanced / Expert)'
+                                ? 'Random (Default / Advanced / Remnants)'
                                 : 'Random (50% Default / 50% Advanced)'
                             }
                             className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase transition cursor-pointer flex items-center gap-0.5 ${

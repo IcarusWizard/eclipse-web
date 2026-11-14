@@ -448,8 +448,8 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                         }}
                         title={
                           selectedExpansions.includes('remnants_of_worlds_afar')
-                            ? `Expert (${exp})`
-                            : 'Expert Blueprint requires Remnants of Worlds Afar expansion'
+                            ? `Remnants (${exp})`
+                            : 'Remnants Blueprint requires Remnants of Worlds Afar expansion'
                         }
                         className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition ${
                           !selectedExpansions.includes('remnants_of_worlds_afar')
@@ -459,14 +459,14 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                             : 'bg-slate-900 text-slate-500 hover:text-slate-300 border border-slate-800 cursor-pointer'
                         }`}
                       >
-                        Exp
+                        Rem
                       </button>
                       <button
                         type="button"
                         onClick={() =>
                           setNeutralShipSelections((prev) => ({ ...prev, [type]: 'random' }))
                         }
-                        title={selectedExpansions.includes('remnants_of_worlds_afar') ? "Random (Default / Advanced / Expert)" : "Random (50% Default / 50% Advanced)"}
+                        title={selectedExpansions.includes('remnants_of_worlds_afar') ? "Random (Default / Advanced / Remnants)" : "Random (50% Default / 50% Advanced)"}
                         className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition cursor-pointer flex items-center gap-0.5 ${
                           currentSel === 'random'
                             ? 'bg-purple-500/25 text-purple-300 border border-purple-400'

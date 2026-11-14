@@ -1006,7 +1006,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                         : 'text-slate-400 hover:text-white'
                     }`}
                   >
-                    {v}
+                    {v === 'expert' ? 'Remnants' : v}
                   </button>
                 ))}
               </div>

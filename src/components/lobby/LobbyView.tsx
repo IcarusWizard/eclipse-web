@@ -1291,9 +1291,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                                   ? 'text-slate-400 hover:text-slate-200'
                                   : 'text-slate-600 opacity-50 cursor-not-allowed'
                               }`}
-                              title={!hasRemnants ? 'Expert Blueprint requires Remnants of Worlds Afar expansion' : 'Expert blueprint variant'}
+                              title={!hasRemnants ? 'Remnants Blueprint requires Remnants of Worlds Afar expansion' : 'Remnants blueprint variant'}
                             >
-                              Exp
+                              Rem
                             </button>
                           </div>
                         </div>
@@ -1302,7 +1302,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
                     {!hasRemnants && (
                       <div className="text-[10px] text-slate-500 italic">
-                        Expert Blueprint requires Remnants of Worlds Afar expansion
+                        Remnants Blueprint requires Remnants of Worlds Afar expansion
                       </div>
                     )}
                   </div>

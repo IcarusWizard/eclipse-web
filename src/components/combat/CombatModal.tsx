@@ -15,6 +15,10 @@ import {
 import { areSectorsConnected } from '../../engine/rules/hexMath';
 import { playerHasWormholeGenerator, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor } from '../../engine/rules/gameReducer';
 import { CombatDieFaceGraphic } from '../common/PhysicalTileIconography';
+import { getEffectiveShipPart } from '../../engine/rules/partData';
+import { getNeutralShipBlueprint, NeutralShipType } from '../../engine/rules/neutralShips';
+import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
+import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
 
 export interface CombatUnitDisplayGroup {
   key: string;
@@ -154,6 +158,48 @@ function getSideInfo(
     isNpc: false,
   };
 }
+
+/**
+ * Renders the square-box blueprint view for either a player vessel or an NPC vessel in combat.
+ */
+export const CombatShipBlueprintPreview: React.FC<{
+  state: GameState;
+  ownerId: string;
+  shipType: string;
+}> = ({ state, ownerId, shipType }) => {
+  const isNpc = ownerId === 'ancient' || ownerId === 'guardian' || ownerId === 'gcds';
+  if (isNpc) {
+    const npcBp = getNeutralShipBlueprint(
+      ownerId as NeutralShipType,
+      state.neutralShipBlueprints?.[ownerId as NeutralShipType]
+    );
+    return <NeutralShipBlueprintLayout blueprint={npcBp} size="sm" showInitiative={false} />;
+  }
+
+  const owner = state.players.find((p) => p.id === ownerId);
+  const bp = owner?.blueprints?.[shipType];
+  if (!owner || !bp) return null;
+
+  const effectiveSlots = bp.slots.map((s) => (s ? getEffectiveShipPart(s, state.expansions) : null));
+  const effectiveExternal = (bp.externalParts || []).map((p) =>
+    getEffectiveShipPart(p, state.expansions)
+  );
+
+  return (
+    <ShipBlueprintSlotsLayout
+      shipType={bp.type}
+      factionId={owner.faction.id}
+      slots={effectiveSlots}
+      maxSlots={bp.maxSlots}
+      preprintedPower={bp.preprintedPower}
+      preprintedComputer={bp.preprintedComputer}
+      preprintedShield={bp.preprintedShield}
+      preprintedHull={bp.preprintedHull}
+      externalParts={effectiveExternal}
+      size="sm"
+    />
+  );
+};
 
 interface CombatModalProps {
   state: GameState;
@@ -423,6 +469,14 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     eligibleRetreatDestinations[0]?.id || ''
   );
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
+  const [hoveredShip, setHoveredShip] = useState<{
+    group: CombatUnitDisplayGroup;
+    rect: { left: number; right: number; top: number; bottom: number };
+  } | null>(null);
+
+  useEffect(() => {
+    setHoveredShip(null);
+  }, [combat.sectorId, combat.roundNumber, combat.stage, isMinimized]);
 
   const isAlreadyRetreating = activeGroup ? activeGroup.ships.some((s) => !!combat.retreatDeclared?.[s.id]) : false;
   const retreatDestination = isAlreadyRetreating && activeGroup
@@ -501,14 +555,24 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       <div
         key={group.key}
         data-testid={`combat-group-${group.type}-${group.currentHp}-${group.maxHull}`}
+        onMouseEnter={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setHoveredShip({
+            group,
+            rect: { left: r.left, right: r.right, top: r.top, bottom: r.bottom },
+          });
+        }}
+        onMouseLeave={() => {
+          setHoveredShip((prev) => (prev?.group.key === group.key ? null : prev));
+        }}
         className={`p-3 rounded-lg border transition-all relative ${
           group.isDestroyed
             ? 'bg-slate-950/40 border-slate-900 opacity-40'
             : group.isAttacking
-            ? 'bg-slate-900 border-rose-500 shadow-lg shadow-rose-950/50 ring-1 ring-rose-500/60'
+            ? 'bg-slate-900 border-rose-500 hover:border-rose-400 shadow-lg shadow-rose-950/50 ring-1 ring-rose-500/60'
             : group.isRetreating
-            ? 'bg-amber-950/20 border-amber-500/60 shadow'
-            : 'bg-slate-950 border-slate-800 shadow'
+            ? 'bg-amber-950/20 border-amber-500/60 hover:border-amber-400 shadow'
+            : 'bg-slate-950 border-slate-800 hover:border-cyan-500/60 shadow'
         }`}
       >
         {group.isAttacking && (
@@ -627,7 +691,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   };
 
   return (
-    <div className="fixed top-18 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] sm:w-[620px] md:w-[700px] lg:w-[780px] max-w-4xl pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
+    <>
+      <div className="fixed top-18 right-2 sm:right-4 z-40 w-[calc(100vw-1rem)] sm:w-[620px] md:w-[700px] lg:w-[780px] max-w-4xl pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
       <div className="bg-slate-900/95 border-2 border-rose-600/80 rounded-2xl shadow-2xl backdrop-blur-md overflow-hidden text-slate-100 flex flex-col max-h-[calc(100vh-90px)]">
         {/* Combat Header */}
         <div className="flex items-center justify-between p-4 border-b border-rose-950 bg-slate-950">
@@ -1419,6 +1484,56 @@ export const CombatModal: React.FC<CombatModalProps> = ({
           </div>
         </div>
       </div>
-    </div>
+      </div>
+
+      {/* Hover Blueprint Box Preview Popover */}
+      {hoveredShip && (() => {
+        const { group, rect } = hoveredShip;
+        const hoveredOwner = state.players.find((p) => p.id === group.ownerId);
+        const isNpc = group.ownerId === 'ancient' || group.ownerId === 'guardian' || group.ownerId === 'gcds';
+        const titleLabel = isNpc
+          ? getNeutralShipBlueprint(
+              group.ownerId as NeutralShipType,
+              state.neutralShipBlueprints?.[group.ownerId as NeutralShipType]
+            ).name
+          : hoveredOwner
+          ? `${getPlayerShortName(hoveredOwner)} ${group.type}`
+          : group.type;
+
+        const hasWindow = typeof window !== 'undefined';
+        const placeLeft = hasWindow && rect.left >= 270;
+        const posStyle: React.CSSProperties = placeLeft
+          ? {
+              right: window.innerWidth - rect.left + 10,
+              top: Math.max(12, Math.min(window.innerHeight - 210, rect.top)),
+            }
+          : hasWindow && rect.top >= 200
+          ? {
+              left: Math.max(12, Math.min(window.innerWidth - 260, rect.left)),
+              bottom: window.innerHeight - rect.top + 8,
+            }
+          : {
+              left: hasWindow ? Math.max(12, Math.min(window.innerWidth - 260, rect.left)) : 12,
+              top: rect.bottom + 8,
+            };
+
+        return (
+          <div
+            data-testid="combat-ship-blueprint-hover"
+            style={posStyle}
+            className="fixed z-[70] pointer-events-none p-2.5 rounded-xl bg-slate-950/95 border border-cyan-500/60 shadow-2xl shadow-black/80 backdrop-blur-md"
+          >
+            <div className="text-[10px] font-bold font-display uppercase tracking-wider text-slate-300 mb-2 text-center">
+              {titleLabel} Blueprint
+            </div>
+            <CombatShipBlueprintPreview
+              state={state}
+              ownerId={group.ownerId}
+              shipType={group.type}
+            />
+          </div>
+        );
+      })()}
+    </>
   );
 };

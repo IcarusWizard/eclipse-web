@@ -16,6 +16,13 @@ import {
 import { ALL_FACTIONS } from '../../engine/rules/setup';
 import { getExpansionForItem } from '../../engine/rules/expansions';
 import { ALL_MINOR_SPECIES_TILES } from '../../engine/rules/minorSpecies';
+import {
+  NEUTRAL_SHIP_BLUEPRINTS,
+  NeutralShipBlueprint,
+  NeutralShipType,
+  NeutralShipVariant,
+} from '../../engine/rules/neutralShips';
+import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
 import { Technology } from '../../engine/types/tech';
 import { ShipPart } from '../../engine/types/blueprints';
 import { DiscoveryTile } from '../../engine/types/galaxy';
@@ -73,6 +80,7 @@ export type GalleryTab =
   | 'sectors'
   | 'discoveries'
   | 'factions'
+  | 'npcs'
   | 'reputation'
   | 'minorSpecies';
 
@@ -464,6 +472,25 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
     );
   }, [searchQuery]);
 
+  // 7. NPC Ship Blueprints Catalog (Ancient, Guardian, GCDS x Default/Advanced/Expert)
+  const allNpcBlueprints = useMemo<NeutralShipBlueprint[]>(() => {
+    const types: NeutralShipType[] = ['ancient', 'guardian', 'gcds'];
+    const variants: NeutralShipVariant[] = ['default', 'advanced', 'expert'];
+    return types.flatMap((t) => variants.map((v) => NEUTRAL_SHIP_BLUEPRINTS[t][v]));
+  }, []);
+
+  const filteredNpcBlueprints = useMemo(() => {
+    const q = searchQuery.toLowerCase().trim();
+    return allNpcBlueprints.filter(
+      (bp) =>
+        !q ||
+        bp.name.toLowerCase().includes(q) ||
+        bp.type.toLowerCase().includes(q) ||
+        bp.variant.toLowerCase().includes(q) ||
+        bp.summary.toLowerCase().includes(q)
+    );
+  }, [allNpcBlueprints, searchQuery]);
+
   if (!isOpen) return null;
 
   return (
@@ -506,6 +533,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
               { id: 'sectors', label: 'Sector Tiles', count: allSectors.length, icon: Compass },
               { id: 'discoveries', label: 'Discoveries', count: '36', icon: Award },
               { id: 'factions', label: 'Factions', count: ALL_FACTIONS.length, icon: Users },
+              { id: 'npcs', label: 'NPC Blueprints', count: allNpcBlueprints.length, icon: Crosshair },
               { id: 'reputation', label: 'Reputation Bag', count: '33', icon: Shield },
               { id: 'minorSpecies', label: 'Minor Species', count: ALL_MINOR_SPECIES_TILES.length, icon: Globe },
             ].map((tab) => {
@@ -1866,6 +1894,128 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                   </ul>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ===================== TAB: NPC BLUEPRINTS ===================== */}
+          {activeTab === 'npcs' && (
+            <div className="space-y-6">
+              <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-rose-400 font-display uppercase tracking-wider flex items-center gap-2">
+                    <Crosshair className="w-4 h-4 text-rose-400" />
+                    Neutral Ship Blueprints (Ancients, Guardians & GCDS)
+                  </h3>
+                  <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-rose-950/60 text-rose-300 border border-rose-700/60 font-bold uppercase">
+                    Base • Advanced • Remnants
+                  </span>
+                </div>
+                <p className="text-xs text-slate-400 leading-relaxed">
+                  Visual square-box blueprints for all 9 neutral NPC ship configurations across Base, Advanced, and Remnants variants.
+                </p>
+              </div>
+
+              {(['ancient', 'guardian', 'gcds'] as NeutralShipType[]).map((npcType) => {
+                const groupBps = filteredNpcBlueprints.filter((bp) => bp.type === npcType);
+                if (groupBps.length === 0) return null;
+
+                const groupTitle =
+                  npcType === 'ancient'
+                    ? 'Ancient Ships'
+                    : npcType === 'guardian'
+                    ? 'Guardian Defenders'
+                    : 'Galactic Center Defense System (GCDS)';
+                const groupAccent =
+                  npcType === 'guardian'
+                    ? 'text-pink-300 border-pink-700/50 bg-pink-950/20'
+                    : npcType === 'gcds'
+                    ? 'text-amber-300 border-amber-700/50 bg-amber-950/20'
+                    : 'text-rose-300 border-rose-700/50 bg-rose-950/20';
+
+                return (
+                  <div key={npcType} className="space-y-3">
+                    <div className="flex items-center justify-between border-b border-slate-800 pb-1.5">
+                      <h4 className={`text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-lg border ${groupAccent}`}>
+                        {groupTitle}
+                      </h4>
+                      <span className="text-[10px] font-mono text-slate-500">
+                        {groupBps.length} Variant{groupBps.length > 1 ? 's' : ''}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                      {groupBps.map((bp) => {
+                        const variantBadge =
+                          bp.variant === 'expert'
+                            ? {
+                                label: 'Remnants',
+                                cls: 'bg-rose-950/80 text-rose-300 border-rose-700/70',
+                              }
+                            : bp.variant === 'advanced'
+                            ? {
+                                label: 'Advanced',
+                                cls: 'bg-amber-950/80 text-amber-300 border-amber-700/70',
+                              }
+                            : {
+                                label: 'Default (Base)',
+                                cls: 'bg-cyan-950/80 text-cyan-300 border-cyan-700/70',
+                              };
+
+                        return (
+                          <div
+                            key={`${bp.type}_${bp.variant}`}
+                            className="p-4 rounded-2xl bg-slate-950/90 border border-slate-800 hover:border-slate-700 transition-all flex flex-col justify-between gap-3 shadow-lg"
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div>
+                                <div className="text-sm font-bold font-display text-slate-100">
+                                  {bp.name}
+                                </div>
+                                <div className="text-[10px] font-mono text-slate-400 mt-0.5">
+                                  {bp.summary}
+                                </div>
+                              </div>
+                              <span
+                                className={`text-[9px] px-2 py-0.5 rounded-full border font-mono font-bold uppercase shrink-0 ${variantBadge.cls}`}
+                              >
+                                {variantBadge.label}
+                              </span>
+                            </div>
+
+                            <div className="p-3 rounded-xl bg-slate-900/70 border border-slate-800/80 flex items-center justify-center min-h-[148px]">
+                              <NeutralShipBlueprintLayout blueprint={bp} size="md" />
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-between gap-1.5 pt-2 border-t border-slate-800/80 text-[10px] font-mono text-slate-400">
+                              <span>Init {bp.initiative}</span>
+                              <span>•</span>
+                              <span>Hull {bp.maxHull}</span>
+                              {bp.computerBonus > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-indigo-300">+{bp.computerBonus} Hit</span>
+                                </>
+                              )}
+                              {bp.shieldBonus > 0 && (
+                                <>
+                                  <span>•</span>
+                                  <span className="text-teal-300">-{bp.shieldBonus} Shield</span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })}
+
+              {filteredNpcBlueprints.length === 0 && (
+                <div className="text-center py-10 text-xs text-slate-500">
+                  No NPC ship blueprints match "{searchQuery}".
+                </div>
+              )}
             </div>
           )}
 

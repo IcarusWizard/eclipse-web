@@ -192,6 +192,18 @@ export const getChassisTooltip = (
   return parts.join('\n');
 };
 
+export function getPartSlotCategoryClasses(part: ShipPart | null): string {
+  if (!part) return 'bg-slate-900/30 border-dashed border-slate-700/60';
+  const isAncient = part.id?.startsWith('ancient_') || (part as any)?.isAncient;
+  if (isAncient) return 'bg-amber-950/40 border-amber-500/80 shadow ring-1 ring-amber-500/30';
+  if (part.category === 'reactor') return 'bg-amber-950/30 border-amber-600/70';
+  if (part.category === 'drive') return 'bg-cyan-950/30 border-cyan-600/70';
+  if (part.category === 'hull') return 'bg-rose-950/30 border-rose-600/70';
+  if (part.category === 'computer') return 'bg-indigo-950/30 border-indigo-600/70';
+  if (part.category === 'shield') return 'bg-teal-950/30 border-teal-600/70';
+  return 'bg-yellow-950/30 border-yellow-600/70';
+}
+
 export interface ShipBlueprintSlotsLayoutProps {
   shipType: ShipType;
   factionId?: string;
@@ -313,23 +325,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
 
         const isSelected = selectedSlotIndex === idx;
         const isModified = modifiedSlotIndices.includes(idx);
-        const isAncient = part?.id?.startsWith('ancient_') || (part as any)?.isAncient;
-
-        const baseCategoryBg = part
-          ? isAncient
-            ? 'bg-amber-950/40 border-amber-500/80 shadow ring-1 ring-amber-500/30'
-            : part.category === 'reactor'
-            ? 'bg-amber-950/30 border-amber-600/70'
-            : part.category === 'drive'
-            ? 'bg-cyan-950/30 border-cyan-600/70'
-            : part.category === 'hull'
-            ? 'bg-rose-950/30 border-rose-600/70'
-            : part.category === 'computer'
-            ? 'bg-indigo-950/30 border-indigo-600/70'
-            : part.category === 'shield'
-            ? 'bg-teal-950/30 border-teal-600/70'
-            : 'bg-yellow-950/30 border-yellow-600/70'
-          : 'bg-slate-900/30 border-dashed border-slate-700/60';
+        const baseCategoryBg = getPartSlotCategoryClasses(part);
 
         const stateClasses = isSelected
           ? 'border-2 border-cyan-400 bg-cyan-950/50 shadow-lg shadow-cyan-950 ring-2 ring-cyan-400/60'
