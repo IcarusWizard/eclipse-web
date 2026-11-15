@@ -9049,8 +9049,22 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         p2.resources.materials = 20;
 
         // 3. Round 1 Action Phase order follows turnOrder: p0 -> p1 -> p2 -> p0
+        // Exclude rare/special interactive techs, advanced-planet unlocks (which pause for pre-upkeep colonization), and already-owned starting techs
+        const excludedTest57Techs = new Set([
+          'ancient_labs',
+          'artifact_key',
+          'warp_portal',
+          'advanced_labs',
+          'advanced_mining',
+          'advanced_economy',
+          'metasynthesis',
+        ]);
+        const p0OwnedTechIds = new Set(p0.techTrack.researched.map((t) => t.id));
         // P0 takes Research action
-        const techToResearch = game.techSupply.find((t) => t.category !== 'rare' && t.id !== 'ancient_labs' && t.id !== 'artifact_key' && t.id !== 'warp_portal') || game.techSupply[0];
+        const techToResearch =
+          game.techSupply.find(
+            (t) => t.category !== 'rare' && !excludedTest57Techs.has(t.id) && !p0OwnedTechIds.has(t.id)
+          ) || game.techSupply[0];
         const res0 = executeAction(game, {
           type: 'RESEARCH',
           playerId: p0.id,
@@ -9061,7 +9075,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(res0.newState.activePlayerIndex).toBe(1);
 
         // P1 takes Research action
-        const tech2 = res0.newState.techSupply.find((t) => t.category !== 'rare' && t.id !== 'ancient_labs' && t.id !== 'artifact_key' && t.id !== 'warp_portal') || res0.newState.techSupply[0];
+        const p1OwnedTechIds = new Set(res0.newState.players[1].techTrack.researched.map((t) => t.id));
+        const tech2 =
+          res0.newState.techSupply.find(
+            (t) => t.category !== 'rare' && !excludedTest57Techs.has(t.id) && !p1OwnedTechIds.has(t.id)
+          ) || res0.newState.techSupply[0];
         const res1 = executeAction(res0.newState, {
           type: 'RESEARCH',
           playerId: p1.id,
