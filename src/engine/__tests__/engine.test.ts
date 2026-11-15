@@ -24840,6 +24840,26 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(chronicleZhHtml).toContain('花费 4 科研研发了「等离子加农炮」（放入军事科技轨）。');
         expect(chronicleZhHtml).toContain('星区 204 的战斗已结束！');
         expect(chronicleZhHtml).toContain('💰 维护结算：');
+
+        // 5. CombatSimulatorModal displays NPC square-box blueprint and Chinese NPC stats including weapons
+        const { CombatSimulatorModal } = await import('../../components/simulator/CombatSimulatorModal');
+        const { NEUTRAL_SHIP_BLUEPRINTS } = await import('../rules/neutralShips');
+        const { translateNeutralBlueprintSummary } = await import('../../i18n/catalogTranslations');
+        const simZhHtml = renderToString(
+          wrapZh(
+            React.createElement(CombatSimulatorModal, {
+              isOpen: true,
+              onClose: () => {},
+              gameState: game,
+            })
+          )
+        );
+        expect(simZhHtml).toContain('data-testid="npc-blueprint-grid"');
+        expect(simZhHtml).toContain('data-npc-type="ancient"');
+        expect(simZhHtml).toContain('2 黄加农炮');
+        expect(translateNeutralBlueprintSummary(NEUTRAL_SHIP_BLUEPRINTS.guardian.advanced, 'zh')).toContain(
+          '2 橙导弹、1 红加农炮'
+        );
       });
     });
   });

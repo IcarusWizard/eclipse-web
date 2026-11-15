@@ -56,7 +56,7 @@ import {
 import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
 import { useLanguage } from '../../i18n/LanguageContext';
 import {
-  translateNeutralBlueprintTitle,
+  translateNeutralBlueprintSummary,
   translateResourceType,
   translateShipType,
   translateTechName,
@@ -565,8 +565,8 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                                     {neutralShipBlueprints?.[type as NeutralShipType] === 'expert' && (
                                       <span className="text-rose-400 font-bold mr-1.5">{l('[Remnants]', '[遗迹/残骸]')}</span>
                                     )}
-                                    {language === 'zh'
-                                      ? translateNeutralBlueprintTitle(type, npcVariant, npcBp?.name || '', language)
+                                    {language === 'zh' && npcBp
+                                      ? translateNeutralBlueprintSummary(npcBp, language)
                                       : getNeutralShipSummary(type as NeutralShipType, neutralShipBlueprints?.[type as NeutralShipType])}
                                   </div>
                                 ) : null}

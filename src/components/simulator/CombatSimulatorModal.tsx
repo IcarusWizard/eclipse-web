@@ -14,10 +14,12 @@ import { ShipBlueprint, ShipPart } from '../../engine/types/blueprints';
 import { SHIP_PARTS } from '../../engine/rules/partData';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
+import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
 import { useLanguage, AppLanguage } from '../../i18n/LanguageContext';
 import {
   translateFactionName,
   translateNeutralBlueprintTitle,
+  translateNeutralBlueprintSummary,
   translateShipType,
   translatePartName,
 } from '../../i18n/catalogTranslations';
@@ -1042,18 +1044,21 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 ))}
               </div>
             </div>
-            {/* NPC Stats Summary */}
+            {/* NPC Stats Summary & Square-Box Blueprint */}
             {(() => {
               const npcType = sideConfig.factionId as NeutralShipType;
               const npcVar = sideConfig.npcVariant || 'default';
               const bp = NEUTRAL_SHIP_BLUEPRINTS[npcType]?.[npcVar];
-              const bpTitle = bp ? translateNeutralBlueprintTitle(npcType, npcVar, bp.name, language) : '';
+              if (!bp) return null;
               return (
-                <div className="text-xs text-slate-400 font-mono bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
-                  {language === 'zh' && bp
-                    ? `${bpTitle}: 船体 ${bp.maxHull}, 先攻 ${bp.initiative}, 计算机 +${bp.computerBonus}${bp.shieldBonus ? `, 护盾 -${bp.shieldBonus}` : ''}`
-                    : bp?.summary || `${bp?.name}: Hull ${bp?.maxHull}, Init ${bp?.initiative}, Comp +${bp?.computerBonus}`}
-                </div>
+                <>
+                  <div className="text-xs text-slate-300 font-mono bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                    {translateNeutralBlueprintSummary(bp, language)}
+                  </div>
+                  <div className="p-2.5 rounded-lg bg-slate-950/60 border border-slate-800/80 flex items-center justify-center">
+                    <NeutralShipBlueprintLayout blueprint={bp} size="sm" />
+                  </div>
+                </>
               );
             })()}
           </div>

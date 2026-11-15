@@ -373,3 +373,40 @@ export function translateNeutralBlueprintTitle(type: string, variant: string, fa
   const varLabel = variant === 'advanced' ? ' (进阶)' : variant === 'expert' ? ' (遗迹)' : '';
   return `${baseName}${varLabel}`;
 }
+
+const DIE_COLOR_ZH: Record<string, string> = {
+  yellow: '黄',
+  orange: '橙',
+  blue: '蓝',
+  red: '红',
+  purple: '紫',
+};
+
+/**
+ * Formats an NPC blueprint summary (hull, initiative, weapons/missiles, computer, shield) in EN or ZH.
+ */
+export function translateNeutralBlueprintSummary(
+  bp: {
+    type: string;
+    variant: string;
+    name: string;
+    initiative: number;
+    maxHull: number;
+    computerBonus: number;
+    shieldBonus: number;
+    weapons: Array<{ color: string; damage: number; count: number; isMissile?: boolean }>;
+    summary: string;
+  },
+  lang: AppLanguage
+): string {
+  if (lang !== 'zh') return bp.summary;
+  const title = translateNeutralBlueprintTitle(bp.type, bp.variant, bp.name, lang);
+  const weaponStr = bp.weapons
+    .map((w) => `${w.count} ${DIE_COLOR_ZH[w.color] || w.color}${w.isMissile ? '导弹' : '加农炮'}`)
+    .join('、');
+  const mods: string[] = [];
+  if (bp.computerBonus > 0) mods.push(`命中 +${bp.computerBonus}`);
+  if (bp.shieldBonus > 0) mods.push(`护盾 -${bp.shieldBonus}`);
+  const modStr = mods.length > 0 ? `（${mods.join('，')}）` : '';
+  return `${title}：船体 ${bp.maxHull} • 先攻 ${bp.initiative}${weaponStr ? ` • ${weaponStr}` : ''}${modStr}`;
+}
