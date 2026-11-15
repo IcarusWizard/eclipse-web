@@ -15,6 +15,7 @@ import { SHIP_PARTS } from '../../engine/rules/partData';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
+import { ShipTypeIcon } from '../common/ShipTypeIcon';
 import { useLanguage, AppLanguage } from '../../i18n/LanguageContext';
 import {
   translateFactionName,
@@ -1118,9 +1119,12 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                     key={st}
                     className="flex flex-col items-center bg-slate-900/80 border border-slate-800 rounded-xl p-2 text-center"
                   >
-                    <span className="text-[11px] font-bold text-slate-300 capitalize">
-                      {translateShipType(st, language)}
-                    </span>
+                    <div className="flex items-center justify-center gap-1">
+                      <ShipTypeIcon shipType={st} factionId={sideConfig.factionId} size={12} className="text-cyan-400" />
+                      <span className="text-[11px] font-bold text-slate-300 capitalize">
+                        {translateShipType(st, language)}
+                      </span>
+                    </div>
                     <div className="flex items-center gap-1.5 mt-1.5">
                       <button
                         type="button"
@@ -1169,6 +1173,7 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                           : 'text-slate-400 hover:text-white'
                       }`}
                     >
+                      <ShipTypeIcon shipType={st} factionId={sideConfig.factionId} size={11} className="opacity-90" />
                       <span>{translateShipType(st, language)}</span>
                       {count > 0 && (
                         <span className="text-[10px] font-mono opacity-80">({count})</span>

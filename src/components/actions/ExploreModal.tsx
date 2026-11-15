@@ -593,8 +593,8 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                         </div>
                         <p className="text-[11px] text-slate-300 leading-snug">
                           {isDraco
-                            ? l('Descendants of Draco coexist peacefully with Ancients and may place an Influence Disc immediately!', '德拉科后裔可与先驱和平共存，并可立即放置影响力圆盘！')
-                            : l('Sector is hostile. You cannot place an Influence Disc or colonize planets until Ancient ships are defeated in the Combat Phase.', '该星区处于敌对状态。必须在战斗阶段击败先驱飞船后，才能放置影响力圆盘或殖民星球。')}
+                            ? l('Descendants of Draco coexist peacefully with Ancients and may place an Influence Disc immediately!', '德拉科后裔可与先驱和平共存，并可立即放置影响力圆片！')
+                            : l('Sector is hostile. You cannot place an Influence Disc or colonize planets until Ancient ships are defeated in the Combat Phase.', '该星区处于敌对状态。必须在战斗阶段击败先驱飞船后，才能放置影响力圆片或殖民星球。')}
                         </p>
                       </div>
                     )}
@@ -658,7 +658,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
           {/* Compact Influence Disc Option */}
           {isBlackHoleTile ? (
             <div className="text-[11px] text-indigo-400 font-medium shrink-0 flex items-center gap-1 bg-indigo-950/40 px-2 py-0.5 rounded-lg border border-indigo-900/50">
-              <span>🕳️</span> {l('Spacetime Anomaly (No Influence Disc)', '时空异常（不放置影响力圆盘）')}
+              <span>🕳️</span> {l('Spacetime Anomaly (No Influence Disc)', '时空异常（不放置影响力圆片）')}
             </div>
           ) : hasImmediateDiscovery ? (
             <div className="text-[11px] text-cyan-300 font-medium shrink-0 flex items-center gap-1 bg-cyan-950/50 px-2.5 py-1 rounded-lg border border-cyan-700/60 shadow">
@@ -674,7 +674,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                 onChange={(e) => setClaimInfluence(e.target.checked)}
                 className="rounded bg-slate-900 border-slate-700 text-cyan-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
               />
-              <span>{l('Place Influence Disc', '放置影响力圆盘')}</span>
+              <span>{l('Place Influence Disc', '放置影响力圆片')}</span>
               {isDraco && activeTile.ancientsCount > 0 && (
                 <span className="text-[10px] text-amber-400 font-bold px-1.5 py-0.5 rounded bg-amber-950/60 border border-amber-800/80">
                   🐉 {l('Ancient Coexistence', '先驱共存')}
@@ -687,7 +687,7 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
           ) : (
             <div className="text-[11px] text-rose-400/90 font-medium shrink-0 flex items-center gap-1 bg-rose-950/30 px-2 py-0.5 rounded-lg border border-rose-900/50">
               <ShieldAlert className="w-3.5 h-3.5 text-rose-400" />
-              {l('Hostile Sector (No disc)', '敌对星区（不放置圆盘）')}
+              {l('Hostile Sector (No disc)', '敌对星区（不放置圆片）')}
             </div>
           )}
         </div>

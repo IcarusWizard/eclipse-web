@@ -129,7 +129,7 @@ export const PulsarModal: React.FC<PulsarModalProps> = ({
               <Disc className="w-5 h-5 text-indigo-400 shrink-0" />
               <div>
                 <span className="text-[11px] uppercase tracking-wider text-slate-400 block font-semibold">
-                  {l('Current Sector Disc Slot', '当前星区圆盘位置')}
+                  {l('Current Sector Disc Slot', '当前星区圆片位置')}
                 </span>
                 <span className="text-sm font-bold text-white uppercase font-mono">
                   {slotLabels[currentSlot]}
@@ -141,20 +141,20 @@ export const PulsarModal: React.FC<PulsarModalProps> = ({
                 {l('Rule', '规则')}
               </span>
               <span className="text-xs text-cyan-300 font-medium">
-                {l('1 Activation • 0 Discs Placed', '1 次激活 • 0 圆盘消耗')}
+                {l('1 Activation • 0 Discs Placed', '1 次激活 • 0 圆片消耗')}
               </span>
             </div>
           </div>
 
           <p className="text-xs text-slate-300 leading-relaxed">
-            {l('Shift the pulsar disc from ', '将脉冲星圆盘从 ')}
+            {l('Shift the pulsar disc from ', '将脉冲星圆片从 ')}
             <span className="font-bold text-white uppercase font-mono">{slotLabels[currentSlot]}</span>
             {l(
               ' to one of the two available slots below. This initiates the standard action interface with ',
               ' 移至下方两个可用行动位之一。这将以 '
             )}
             <span className="font-bold text-cyan-300">{l('1 free activation', '1 次免费激活')}</span>
-            {l(' without placing an Influence Disc from your track:', ' 打开标准行动界面，且不从你的影响力轨扣除圆盘：')}
+            {l(' without placing an Influence Disc from your track:', ' 打开标准行动界面，且不从你的影响力轨扣除圆片：')}
           </p>
 
           {/* Action Choice Cards */}

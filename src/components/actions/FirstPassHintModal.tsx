@@ -100,7 +100,7 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
               <span className="font-bold text-emerald-300 block mb-0.5">{l('Invasion Safety:', '入侵保护机制：')}</span>
               {language === 'zh' ? (
                 <>
-                  如果有其他玩家进入或入侵了你拥有影响力圆盘、人口方块或飞船的星区，自动跳过将<strong className="text-emerald-200">立即暂停并提醒你</strong>，以便你做出防御反应！
+                  如果有其他玩家进入或入侵了你拥有影响力圆片、人口方块或飞船的星区，自动跳过将<strong className="text-emerald-200">立即暂停并提醒你</strong>，以便你做出防御反应！
                 </>
               ) : (
                 <>

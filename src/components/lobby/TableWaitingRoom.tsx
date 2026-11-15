@@ -1290,7 +1290,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
                               🚀 {faction.startingColonyShips} {l('Ships', '殖民船')}
                             </span>
                             <span className="px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800">
-                              ⚪ {faction.startingDiscs} {l('Discs', '圆盘')}
+                              ⚪ {faction.startingDiscs} {l('Discs', '圆片')}
                             </span>
                           </div>
                         </div>

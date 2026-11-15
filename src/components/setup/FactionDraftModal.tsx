@@ -317,7 +317,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
 
                     <div className="grid grid-cols-2 gap-2 text-[10px] bg-slate-900/90 p-2 rounded-xl border border-slate-800/80 font-mono mb-2">
                       <div>
-                        <span className="text-slate-500 block">{l('Starting Discs:', '初始圆盘：')}</span>
+                        <span className="text-slate-500 block">{l('Starting Discs:', '初始圆片：')}</span>
                         <strong className="text-slate-200">{f.startingDiscs}</strong>
                       </div>
                       <div>

@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateShipType } from '../../i18n/catalogTranslations';
+import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
 
 export interface BuildItemPayload {
   sectorId: string;
@@ -353,7 +354,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               <div>
                 <span className="font-bold">🌟 {l('Pulsar Construction Activation', '脉冲星建造激活')}</span>
                 <span className="text-cyan-300/80 text-[11px] block">
-                  {l('1 Free Construction item. No Influence Disc will be deducted from your track.', '可免费执行 1 次建造（仍需支付材料），不消耗影响力圆盘。')}
+                  {l('1 Free Construction item. No Influence Disc will be deducted from your track.', '可免费执行 1 次建造（仍需支付材料），不消耗影响力圆片。')}
                 </span>
               </div>
             </div>
@@ -409,7 +410,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
           <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-rose-300 text-xs flex items-center gap-2">
             <CircleAlert className="w-4 h-4 shrink-0 text-rose-400" />
             <span>
-              {l('No eligible construction sectors! You must control an uncontested sector with your Influence Disc to construct ships or structures.', '没有可用于建造的星区！你必须用影响力圆盘控制一个无敌舰交战的星区才能建造飞船或建筑。')}
+              {l('No eligible construction sectors! You must control an uncontested sector with your Influence Disc to construct ships or structures.', '没有可用于建造的星区！你必须用影响力圆片控制一个无敌舰交战的星区才能建造飞船或建筑。')}
             </span>
           </div>
         ) : (
@@ -528,9 +529,19 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                         }`}
                         title={item.disabledReason ? `${item.name}: ${item.disabledReason}` : item.description}
                       >
-                        <span className="font-bold text-[11px] truncate w-full">
-                          {item.name}
-                        </span>
+                        <div className="flex items-center justify-center gap-1 w-full">
+                          {item.type !== 'monolith' && shouldShowShipTypeIcon(item.type, player.faction.id) && (
+                            <ShipTypeIcon
+                              shipType={item.type}
+                              factionId={player.faction.id}
+                              size={12}
+                              className={isSelected ? 'text-amber-300' : 'text-cyan-400'}
+                            />
+                          )}
+                          <span className="font-bold text-[11px] truncate">
+                            {item.name}
+                          </span>
+                        </div>
                         <div className="flex items-center justify-center gap-1 mt-0.5 w-full">
                           <span className="text-[10px] font-mono font-bold text-amber-400">
                             {item.cost}{l('M', '材')}

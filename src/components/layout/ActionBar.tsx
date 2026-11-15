@@ -272,7 +272,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           ) : null}
           <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-bold text-cyan-300">
             <CircleDot className="w-3 h-3 text-cyan-400" />
-            <span>{activePlayer.influenceTrack.discsOnTrack} {l('Discs', '圆盘')}</span>
+            <span>{activePlayer.influenceTrack.discsOnTrack} {l('Discs', '圆片')}</span>
           </div>
 
           {/* Auto-Pass Reactions Toggle */}
@@ -470,7 +470,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         <button
           disabled={!canActNormal}
           onClick={onOpenInfluence}
-          title={l(`Influence (INF) - Up to ${maxInfluence} disc actions`, `扩张 (INF) - 最多 ${maxInfluence} 次影响力圆盘操作`)}
+          title={l(`Influence (INF) - Up to ${maxInfluence} disc actions`, `扩张 (INF) - 最多 ${maxInfluence} 次影响力圆片操作`)}
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
             canActNormal
               ? 'bg-slate-900 hover:bg-slate-800 text-cyan-400 border border-slate-800 hover:scale-105'
@@ -489,7 +489,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             onClick={onOpenPulsar}
             title={l(
               'Activate Pulsar Sector (Free Action without taking an Influence Disc)',
-              '激活脉冲星星区（免费行动，不消耗影响力圆盘）'
+              '激活脉冲星星区（免费行动，不消耗影响力圆片）'
             )}
             className="flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer bg-gradient-to-b from-cyan-950 to-slate-900 border-2 border-cyan-400 text-cyan-200 animate-pulse hover:scale-105 min-w-[44px] sm:min-w-[52px]"
           >

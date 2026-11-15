@@ -56,7 +56,7 @@ const TECH_ZH: Record<string, { name: string; description: string }> = {
   },
   advanced_robotics: {
     name: '高级机械学',
-    description: '立即从储备区拿取 1 枚额外影响力圆盘放到影响力轨上。',
+    description: '立即从储备区拿取 1 枚额外影响力圆片放到影响力轨上。',
   },
   advanced_labs: {
     name: '高级实验室',
@@ -104,7 +104,7 @@ const TECH_ZH: Record<string, { name: string; description: string }> = {
   },
   quantum_grid: {
     name: '量子网格',
-    description: '立即获得 2 枚额外影响力圆盘放到影响力轨上。',
+    description: '立即获得 2 枚额外影响力圆片放到影响力轨上。',
   },
   neutron_bombs: {
     name: '中子炸弹',
@@ -257,13 +257,13 @@ const FACTION_ZH: Record<string, { name: string; trait?: string }> = {
   terran_conglomerate: { name: '地球财团 (人族)' },
   terran_union: { name: '地球联盟 (人族)' },
   terran_alliance: { name: '地球同盟 (人族)' },
-  eridani_empire: { name: '埃里达尼帝国', trait: '起始 26 信用点、2 个随机发现板块，少 2 枚影响力圆盘。' },
+  eridani_empire: { name: '埃里达尼帝国', trait: '起始 26 信用点、2 个随机发现板块，少 2 枚影响力圆片。' },
   hydran_progress: { name: '海德拉学者', trait: '极强科研能力（研究行动 2 次，起始进阶科研星）。' },
   planta: { name: '植物种族', trait: '每探索行动可翻 2 个星区，星区终局额外 +1 VP，但船只脆弱。' },
   descendants_of_draco: { name: '德拉科后裔', trait: '与远古舰和平共处，无法攻打远古舰，但每个未摧毁远古舰星区终局 +1 VP。' },
   mechanema: { name: '机械种族', trait: '造价低廉，每次升级/建造效率更高。' },
   orion_hegemony: { name: '猎户座霸权', trait: '起始即拥有巡洋舰与高斯护盾，全部战舰自带额外能量与先攻加成。' },
-  wardens_of_magellan: { name: '麦哲伦守望者', trait: '遗迹猎手：16 枚圆盘，起始聚变能源，游戏结束每件远古配件 +1 VP。' },
+  wardens_of_magellan: { name: '麦哲伦守望者', trait: '遗迹猎手：16 枚圆片，起始聚变能源，游戏结束每件远古配件 +1 VP。' },
   enlightened_of_lyra: { name: '天琴座悟道者', trait: '起始带神社建筑，探索或外交后可建神社获取大量终局 VP。' },
   the_exiles: { name: '流亡者', trait: '不可建造星际基地，以带武装的强化轨道站替代星际基地防卫领地。' },
   rho_indi_syndicate: { name: '罗印第辛迪加', trait: '不可建造无畏舰，自带闪避护盾，大使位更少但机动灵活。' },

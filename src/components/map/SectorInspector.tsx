@@ -25,6 +25,7 @@ export function getSubsectorEdgesDescription(subIdx: 1 | 2 | 3, rotation: number
 }
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { getPlayerDisplayName } from '../../engine/rules/gameReducer';
+import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
 import {
   Rocket,
   Shield,
@@ -532,6 +533,14 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                             <div className="flex items-center justify-between gap-2">
                               <div>
                                 <div className="font-extrabold text-[11px] text-slate-100 uppercase tracking-wide flex items-center gap-1.5">
+                                  {shouldShowShipTypeIcon(type, pl?.faction.id) && (
+                                    <ShipTypeIcon
+                                      shipType={type}
+                                      factionId={pl?.faction.id}
+                                      size={13}
+                                      className="text-cyan-400"
+                                    />
+                                  )}
                                   <span className="font-mono text-cyan-400 font-bold">
                                     {typeShips.length}×
                                   </span>

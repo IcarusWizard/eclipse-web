@@ -107,7 +107,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
         <div className="p-4">
           <div className="p-3.5 rounded-xl bg-slate-950/80 border border-slate-800 flex items-center justify-between gap-3">
             <p className="text-xs text-slate-200 leading-relaxed font-medium text-left">
-              {l(`Place 1 Influence Disc to take control of Sector ${sector.sectorNumber || sector.id}?`, `放置 1 枚影响力圆盘以控制星区 ${sector.sectorNumber || sector.id}？`)}
+              {l(`Place 1 Influence Disc to take control of Sector ${sector.sectorNumber || sector.id}?`, `放置 1 枚影响力圆片以控制星区 ${sector.sectorNumber || sector.id}？`)}
             </p>
             <span
               className={`shrink-0 px-2.5 py-1 rounded-lg border text-[11px] font-mono font-bold ${
@@ -116,7 +116,7 @@ export const ExploreSectorControlModal: React.FC<ExploreSectorControlModalProps>
                   : 'bg-rose-950/70 border-rose-800 text-rose-300'
               }`}
             >
-              {l(`${discsAvailable} disc${discsAvailable === 1 ? '' : 's'} left`, `剩余 ${discsAvailable} 枚圆盘`)}
+              {l(`${discsAvailable} disc${discsAvailable === 1 ? '' : 's'} left`, `剩余 ${discsAvailable} 枚圆片`)}
             </span>
           </div>
         </div>

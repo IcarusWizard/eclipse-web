@@ -24860,6 +24860,133 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(translateNeutralBlueprintSummary(NEUTRAL_SHIP_BLUEPRINTS.guardian.advanced, 'zh')).toContain(
           '2 橙导弹、1 红加农炮'
         );
+
+        // 6. Pre-Upkeep Colonization Readiness Bar in App.tsx is bilingual EN/ZH
+        const fs = await import('fs');
+        const path = await import('path');
+        const appSrc = fs.readFileSync(path.join(process.cwd(), 'src', 'App.tsx'), 'utf-8');
+        expect(appSrc).toContain('维护阶段 • 收益结算前殖民');
+        expect(appSrc).toContain('确认进入维护');
+        expect(appSrc).not.toContain('圆盘');
+      });
+    });
+
+    // =========================================================================
+    // Test 169: Per-Ship Terran Box Layout Icons & Exiles Orbital Icon
+    // =========================================================================
+    describe('169. ShipTypeIcon Blueprint Box Silhouettes', () => {
+      it('renders exact Terran box counts (excluding outside modules) and Exile Orbital box layout', async () => {
+        const React = await import('react');
+        const { renderToString } = await import('react-dom/server');
+        const { getShipIconBoxes, ShipTypeIcon, shouldShowShipTypeIcon } = await import('../../components/common/ShipTypeIcon');
+        const { SHIP_LAYOUTS_STANDARD } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
+
+        // Box counts strictly match SHIP_LAYOUTS_STANDARD[type].cubes (no extraCube / externalCube)
+        expect(getShipIconBoxes('interceptor').boxes.length).toBe(4);
+        expect(getShipIconBoxes('interceptor').boxes.length).toBe(SHIP_LAYOUTS_STANDARD.interceptor.cubes.length);
+        expect(getShipIconBoxes('cruiser').boxes.length).toBe(6);
+        expect(getShipIconBoxes('cruiser').boxes.length).toBe(SHIP_LAYOUTS_STANDARD.cruiser.cubes.length);
+        expect(getShipIconBoxes('dreadnought').boxes.length).toBe(8);
+        expect(getShipIconBoxes('dreadnought').boxes.length).toBe(SHIP_LAYOUTS_STANDARD.dreadnought.cubes.length);
+        expect(getShipIconBoxes('starbase').boxes.length).toBe(5);
+        expect(getShipIconBoxes('starbase').boxes.length).toBe(SHIP_LAYOUTS_STANDARD.starbase.cubes.length);
+        expect(getShipIconBoxes('orbital').boxes.length).toBe(3);
+        expect(getShipIconBoxes('orbital').boxes.length).toBe(SHIP_LAYOUTS_STANDARD.orbital.cubes.length);
+
+        // Orbital diagonal stairs silhouette: col 0 low (maxY), col 1 mid, col 2 high (minY=0)
+        const orbitalBoxes = getShipIconBoxes('orbital').boxes;
+        expect(orbitalBoxes[0].x).toBe(0);
+        expect(orbitalBoxes[0].y).toBeGreaterThan(orbitalBoxes[1].y);
+        expect(orbitalBoxes[1].y).toBeGreaterThan(orbitalBoxes[2].y);
+        expect(orbitalBoxes[2].y).toBe(0);
+
+        // Renders distinct SVG rects per ship type
+        const intSvg = renderToString(React.createElement(ShipTypeIcon, { shipType: 'interceptor' }));
+        const orbSvg = renderToString(React.createElement(ShipTypeIcon, { shipType: 'orbital' }));
+        expect(intSvg).toContain('data-testid="ship-type-icon"');
+        expect(intSvg).toContain('data-ship-type="interceptor"');
+        expect(intSvg.match(/<rect /g)?.length).toBe(4);
+        expect(orbSvg).toContain('data-ship-type="orbital"');
+        expect(orbSvg.match(/<rect /g)?.length).toBe(3);
+
+        // Integrated into ShipBlueprintEditor & CombatSimulatorModal
+        const game = createInitialGame(2, ['terran_federation', 'the_exiles']);
+        const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+        const bpEditorHtml = renderToString(
+          React.createElement(ShipBlueprintEditor, {
+            player: game.players[1]!,
+            onSaveBlueprint: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(bpEditorHtml).toContain('data-ship-type="interceptor"');
+        expect(bpEditorHtml).toContain('data-ship-type="orbital"');
+
+        const { CombatSimulatorModal } = await import('../../components/simulator/CombatSimulatorModal');
+        const simHtml = renderToString(
+          React.createElement(CombatSimulatorModal, {
+            isOpen: true,
+            onClose: () => {},
+            gameState: game,
+          })
+        );
+        expect(simHtml).toContain('data-ship-type="dreadnought"');
+        expect(simHtml).toContain('data-ship-type="starbase"');
+
+        // Orbital icon only shown for The Exiles, never for other factions
+        expect(shouldShowShipTypeIcon('orbital', 'the_exiles')).toBe(true);
+        expect(shouldShowShipTypeIcon('orbital', 'terran_federation')).toBe(false);
+        expect(shouldShowShipTypeIcon('orbital')).toBe(false);
+        expect(
+          renderToString(React.createElement(ShipTypeIcon, { shipType: 'orbital', factionId: 'terran_federation' }))
+        ).toBe('');
+
+        const { BuildModal } = await import('../../components/actions/BuildModal');
+        const pTerran = game.players[0]!;
+        const pExiles = game.players[1]!;
+        const terranSector = game.sectors.find((s) => s.discOwner === pTerran.id) || game.sectors[0]!;
+        const exilesSector = game.sectors.find((s) => s.discOwner === pExiles.id) || game.sectors[0]!;
+
+        const buildTerranHtml = renderToString(
+          React.createElement(BuildModal, {
+            player: pTerran,
+            sectors: game.sectors,
+            eligibleSectors: [terranSector],
+            slots: [{ sectorId: terranSector.id, itemType: 'interceptor' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(buildTerranHtml).toContain('data-ship-type="interceptor"');
+        expect(buildTerranHtml).not.toContain('data-ship-type="orbital"');
+
+        const buildExilesHtml = renderToString(
+          React.createElement(BuildModal, {
+            player: pExiles,
+            sectors: game.sectors,
+            eligibleSectors: [exilesSector],
+            slots: [{ sectorId: exilesSector.id, itemType: 'orbital' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+          })
+        );
+        expect(buildExilesHtml).toContain('data-ship-type="orbital"');
+
+        const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+        const mapHtml = renderToString(
+          React.createElement(HexGalaxyMap, {
+            state: game,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+          })
+        );
+        expect(mapHtml).toContain('<rect');
       });
     });
   });

@@ -570,7 +570,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               </div>
             ) : !hasActionDiscs ? (
               <span className="w-full py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 font-semibold text-[10px] flex items-center justify-center">
-                {l('No Discs', '无可用圆盘')}
+                {l('No Discs', '无可用圆片')}
               </span>
             ) : (
               <span className="w-full py-0.5 rounded bg-slate-900 border border-slate-800 text-slate-400 font-semibold text-[10px] flex items-center justify-center">
@@ -851,7 +851,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   const rowNames = [
                     l('Row 1 (Wormhole Gen)', '第 1 行（虫洞发生器）'),
                     l('Row 2 (Discovery Tile)', '第 2 行（探索发现板块）'),
-                    l('Row 3 (+1 Disc)', '第 3 行（+1 圆盘）'),
+                    l('Row 3 (+1 Disc)', '第 3 行（+1 圆片）'),
                   ];
                   return (
                     <div key={`lyra_shrine_row_${rIdx}`} className="bg-slate-900/90 border border-slate-800 rounded-lg p-2">
@@ -974,7 +974,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 </div>
                 <div className="text-[11px] text-slate-400">
                   {selectedForResearch.length === 0 ? (
-                    l('Select up to 2 technologies to research concurrently for 1 Action Disc.', '最多可选择 2 项科技，仅消耗 1 枚行动圆盘同时研发。')
+                    l('Select up to 2 technologies to research concurrently for 1 Action Disc.', '最多可选择 2 项科技，仅消耗 1 枚行动圆片同时研发。')
                   ) : (
                     <div className="flex items-center gap-2 mt-1">
                       {stagedResearches.items.map((item, idx) => (
@@ -1043,7 +1043,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                     <span className="flex items-center gap-1">
                       <span>{l(`Research Selected (${stagedResearches.totalScience}`, `研发所选 (${stagedResearches.totalScience}`)}</span>
                       <FlaskConical className="w-3.5 h-3.5 inline text-slate-950" />
-                      <span>{l(', 1 Disc)', ', 1 圆盘)')}</span>
+                      <span>{l(', 1 Disc)', ', 1 圆片)')}</span>
                     </span>
                   ) : currentSeat === 'spectator' ? (
                     l(`Spectator Mode (Observing ${activePlayer?.name || 'Commander'})`, `观战模式（正在旁观 ${activePlayer?.name || '指挥官'}）`)

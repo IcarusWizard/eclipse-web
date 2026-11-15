@@ -17,6 +17,7 @@ import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
 import { ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { TechTileIconography, ShipPartSlotGraphic, getPartTooltip, TechHoverTooltip } from '../common/PhysicalTileIconography';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
+import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 import { getPlayerShortName, getPlayerDisplayName, playerHasWormholeGenerator, canExchangeAmbassadors } from '../../engine/rules/gameReducer';
 import {
@@ -1498,7 +1499,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       {/* Ship Header */}
                       <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                         <div className="flex items-center gap-2">
-                          <Rocket className="w-4 h-4 text-cyan-400" />
+                          {shouldShowShipTypeIcon(sc.type, player.faction.id) && ['interceptor', 'cruiser', 'dreadnought', 'starbase', 'orbital'].includes(sc.type) ? (
+                            <ShipTypeIcon shipType={sc.type} factionId={player.faction.id} size={15} className="text-cyan-400" />
+                          ) : (
+                            <Rocket className="w-4 h-4 text-cyan-400" />
+                          )}
                           <h3 className="text-sm font-bold text-slate-100 font-display uppercase tracking-wide">
                             {language === 'zh' ? shipLabel : sc.name}
                           </h3>

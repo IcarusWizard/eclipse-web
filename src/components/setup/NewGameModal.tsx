@@ -651,8 +651,8 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                       <span className="text-[8px] text-slate-500 block font-sans">{l('Colony', '殖民')}</span>
                       <span className="text-emerald-400 font-bold">{faction.startingColonyShips}</span>
                     </div>
-                    <div title={l('Starting Discs', '起始影响力圆盘')}>
-                      <span className="text-[8px] text-slate-500 block font-sans">{l('Discs', '圆盘')}</span>
+                    <div title={l('Starting Discs', '起始影响力圆片')}>
+                      <span className="text-[8px] text-slate-500 block font-sans">{l('Discs', '圆片')}</span>
                       <span className="text-indigo-400 font-bold">{faction.startingDiscs}</span>
                     </div>
                   </div>

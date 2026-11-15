@@ -7,6 +7,7 @@ import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS, getEffectiveShipP
 import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
 import { ShipPartTileIconography, ShipPartSlotGraphic, getPartTooltip } from '../common/PhysicalTileIconography';
 import { ShipBlueprintSlotsLayout } from './ShipBlueprintSlotsLayout';
+import { ShipTypeIcon } from '../common/ShipTypeIcon';
 import {
   Zap,
   Shield,
@@ -386,7 +387,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
               <div>
                 <span className="font-bold">🌟 {l('Pulsar Blueprint Upgrade', '脉冲星蓝图升级')}</span>
                 <span className="text-cyan-300/80 text-[11px] block">
-                  {l('1 Component upgrade. No Influence Disc will be deducted from your track.', '可改装 1 个部件，不消耗影响力轨上的圆盘。')}
+                  {l('1 Component upgrade. No Influence Disc will be deducted from your track.', '可改装 1 个部件，不消耗影响力轨上的圆片。')}
                 </span>
               </div>
             </div>
@@ -417,6 +418,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                     : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
                 }`}
               >
+                <ShipTypeIcon shipType={type} factionId={player.faction.id} size={13} className="opacity-90" />
                 <span>{translateShipType(type, language)}</span>
                 <span className="text-[10px] font-mono opacity-60 font-normal">
                   ({l(`Limit ${SHIP_LIMITS[type]}`, `上限 ${SHIP_LIMITS[type]}`)})

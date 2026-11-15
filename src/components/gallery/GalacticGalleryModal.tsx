@@ -1701,7 +1701,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                                 : sec.sectorNumber === 393 || sec.sectorNumber === 394
                                 ? l(
                                     'Replaces influence disc space with Move, Build, and Upgrade. Shift disc once per round for a free action activation.',
-                                    '以移动/建造/升级位替代影响力位；每回合可迁移 1 次圆盘触发一次免费行动激活。'
+                                    '以移动/建造/升级位替代影响力位；每回合可迁移 1 次圆片触发一次免费行动激活。'
                                   )
                                 : sec.sectorNumber === 397 || sec.sectorNumber === 398
                                 ? l(
@@ -1921,7 +1921,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         </span>
                       </div>
                       <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">{l('Starting Discs', '初始影响力圆盘')}</span>
+                        <span className="text-[10px] text-slate-400 block">{l('Starting Discs', '初始影响力圆片')}</span>
                         <span className="text-slate-200 font-bold text-sm">
                           {l(`${f.startingDiscs} Discs`, `${f.startingDiscs} 枚`)}
                         </span>

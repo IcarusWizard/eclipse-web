@@ -409,7 +409,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
               <span>{l('Select Sectors to Abandon', '选择要弃置的星区')}</span>
             </span>
             <span className="text-[11px] font-mono text-emerald-400">
-              {l(`Next Disc Saves: +${nextUpkeepSavings} 💰 Upkeep`, `下一个圆盘可节省：+${nextUpkeepSavings} 💰 维护费`)}
+              {l(`Next Disc Saves: +${nextUpkeepSavings} 💰 Upkeep`, `下一个圆片可节省：+${nextUpkeepSavings} 💰 维护费`)}
             </span>
           </div>
           <p className="text-[11px] text-slate-300">
@@ -437,7 +437,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                 <p className="text-xs text-slate-400 mt-1">
                   {l(
                     'Your civilization has no further sectors or influence discs to sacrifice.',
-                    '你的文明已没有更多星区或影响力圆盘可供牺牲。'
+                    '你的文明已没有更多星区或影响力圆片可供牺牲。'
                   )}
                 </p>
               </div>

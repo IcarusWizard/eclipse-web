@@ -296,7 +296,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
           {/* Influence Discs Balance Card */}
           <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 grid grid-cols-4 gap-2 text-center text-xs">
             <div>
-              <div className="text-[10px] text-slate-500 uppercase">{l('On Track', '轨上圆盘')}</div>
+              <div className="text-[10px] text-slate-500 uppercase">{l('On Track', '轨上圆片')}</div>
               <div className="text-base font-bold text-slate-200 font-mono">
                 {player.influenceTrack.discsOnTrack}
               </div>
@@ -331,7 +331,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Plus className="w-3.5 h-3.5 text-emerald-400" /> {l(`Claim Sector Control (${claimSectors.length} selected)`, `占领星区控制权（已选 ${claimSectors.length}）`)}
               </span>
-              <span className="text-[11px] text-slate-500">{l('1 Disc per sector • Resolved in sequence', '每星区 1 圆盘 • 按顺序结算')}</span>
+              <span className="text-[11px] text-slate-500">{l('1 Disc per sector • Resolved in sequence', '每星区 1 圆片 • 按顺序结算')}</span>
             </div>
 
             {eligibleToClaim.length === 0 ? (
@@ -410,7 +410,7 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
               <span className="text-xs font-bold text-slate-300 uppercase tracking-wider flex items-center gap-1.5">
                 <Minus className="w-3.5 h-3.5 text-amber-400" /> {l(`Abandon Controlled Sector (${abandonSectors.length} selected)`, `放弃已控制星区（已选 ${abandonSectors.length}）`)}
               </span>
-              <span className="text-[11px] text-slate-500">{l('Returns 1 Disc to Track & returns population cubes', '退还 1 枚圆盘至轨道并收回人口方块')}</span>
+              <span className="text-[11px] text-slate-500">{l('Returns 1 Disc to Track & returns population cubes', '退还 1 枚圆片至轨道并收回人口方块')}</span>
             </div>
 
             {controlledSectors.length === 0 ? (
@@ -544,11 +544,11 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
           <div className="text-xs text-slate-400">
             {!canAffordDiscs && (
               <span className="text-rose-400 flex items-center gap-1">
-                <AlertCircle className="w-3.5 h-3.5" /> {l('Insufficient influence discs on track.', '影响力轨上剩余圆盘不足。')}
+                <AlertCircle className="w-3.5 h-3.5" /> {l('Insufficient influence discs on track.', '影响力轨上剩余圆片不足。')}
               </span>
             )}
             {canAffordDiscs && totalActivations === 0 && (
-              <span>{l(`Optionally ready ${colonyShipRefreshes} colony ship${colonyShipRefreshes === 1 ? '' : 's'} without moving sector discs.`, `可仅翻正 ${colonyShipRefreshes} 艘殖民船而不移动任何星区圆盘。`)}</span>
+              <span>{l(`Optionally ready ${colonyShipRefreshes} colony ship${colonyShipRefreshes === 1 ? '' : 's'} without moving sector discs.`, `可仅翻正 ${colonyShipRefreshes} 艘殖民船而不移动任何星区圆片。`)}</span>
             )}
             {canAffordDiscs && totalActivations > 0 && (
               <span className="text-emerald-400 flex items-center gap-1">

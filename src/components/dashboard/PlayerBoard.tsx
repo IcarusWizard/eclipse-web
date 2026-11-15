@@ -27,6 +27,7 @@ import { canExchangeAmbassadors, getPlayerDisplayName } from '../../engine/rules
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 import { ALL_MINOR_SPECIES_TILES, MinorSpeciesTile } from '../../engine/rules/minorSpecies';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { ShipTypeIcon } from '../common/ShipTypeIcon';
 import {
   translateFactionName,
   translateFactionTrait,
@@ -858,34 +859,47 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             </span>
           </button>
           {showFleet && (
-            <div className="p-2 pt-0 grid grid-cols-4 gap-1 text-center font-mono">
-              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800">
+            <div className={`p-2 pt-0 grid ${player.faction.id === 'the_exiles' ? 'grid-cols-5' : 'grid-cols-4'} gap-1 text-center font-mono`}>
+              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800 flex flex-col items-center">
+                <ShipTypeIcon shipType="interceptor" size={10} className="text-cyan-400 my-0.5" />
                 <div className="text-[8px] text-slate-400 uppercase">{l('Int', '拦截')}</div>
                 <div className="text-[10px] font-bold text-cyan-300">
                   {deployed.interceptor}/{SHIP_LIMITS.interceptor}
                 </div>
               </div>
-              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800">
+              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800 flex flex-col items-center">
+                <ShipTypeIcon shipType="cruiser" size={10} className="text-cyan-400 my-0.5" />
                 <div className="text-[8px] text-slate-400 uppercase">{l('Cru', '巡洋')}</div>
                 <div className="text-[10px] font-bold text-cyan-300">
                   {deployed.cruiser}/{SHIP_LIMITS.cruiser}
                 </div>
               </div>
-              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800">
+              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800 flex flex-col items-center">
+                <ShipTypeIcon shipType="dreadnought" size={10} className="text-cyan-400 my-0.5" />
                 <div className="text-[8px] text-slate-400 uppercase">{l('Dre', '无畏')}</div>
                 <div className="text-[10px] font-bold text-cyan-300">
                   {deployed.dreadnought}/{SHIP_LIMITS.dreadnought}
                 </div>
               </div>
-              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800">
+              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800 flex flex-col items-center">
+                <ShipTypeIcon shipType="starbase" size={10} className="text-cyan-400 my-0.5" />
                 <div className="text-[8px] text-slate-400 uppercase">{l('Sta', '星基')}</div>
                 <div className="text-[10px] font-bold text-cyan-300">
                   {deployed.starbase}/{SHIP_LIMITS.starbase}
                 </div>
               </div>
+              {player.faction.id === 'the_exiles' && (
+                <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800 flex flex-col items-center">
+                  <ShipTypeIcon shipType="orbital" size={10} className="text-cyan-400 my-0.5" />
+                  <div className="text-[8px] text-slate-400 uppercase">{l('Orb', '轨道')}</div>
+                  <div className="text-[10px] font-bold text-cyan-300">
+                    {deployed.orbital}/{SHIP_LIMITS.orbital}
+                  </div>
+                </div>
+              )}
 
               {delayedBlackHoleShips && delayedBlackHoleShips.filter((s) => s.ownerId === player.id).length > 0 && (
-                <div className="col-span-4 mt-1 p-1 rounded bg-indigo-950/60 border border-indigo-700/50 text-[9px] text-indigo-200 text-left flex items-center justify-between">
+                <div className={`${player.faction.id === 'the_exiles' ? 'col-span-5' : 'col-span-4'} mt-1 p-1 rounded bg-indigo-950/60 border border-indigo-700/50 text-[9px] text-indigo-200 text-left flex items-center justify-between`}>
                   <span className="flex items-center gap-1 font-sans font-semibold">
                     <span>🌀</span> {l('In Black Hole:', '黑洞滞留:')}
                   </span>

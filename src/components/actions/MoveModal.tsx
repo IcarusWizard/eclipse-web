@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateShipType, translatePartName } from '../../i18n/catalogTranslations';
+import { ShipTypeIcon } from '../common/ShipTypeIcon';
 
 export interface MoveStepPayload {
   shipId: string;
@@ -197,7 +198,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
               <div>
                 <span className="font-bold">🌟 {l('Pulsar Movement Activation', '脉冲星移动激活')}</span>
                 <span className="text-cyan-300/80 text-[11px] block">
-                  {l('1 Free Ship Movement activation. No Influence Disc will be deducted from your track.', '获得 1 次免费飞船移动激活，不消耗影响力轨上的圆盘。')}
+                  {l('1 Free Ship Movement activation. No Influence Disc will be deducted from your track.', '获得 1 次免费飞船移动激活，不消耗影响力轨上的圆片。')}
                 </span>
               </div>
             </div>
@@ -395,6 +396,12 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                               : l(`Select ${item.ship.type} (Speed ${shipSpeed})`, `选择${translateShipType(item.ship.type, language)}（航速 ${shipSpeed}）`)
                           }
                         >
+                          <ShipTypeIcon
+                            shipType={item.ship.type}
+                            factionId={player.faction.id}
+                            size={11}
+                            className={isSel ? 'text-slate-950' : 'text-cyan-400'}
+                          />
                           <span>
                             {language === 'zh' ? translateShipType(item.ship.type, language) : item.ship.type.slice(0, 3).toUpperCase()} ({l(`Sector ${sim?.sectorNumber}`, `星区 ${sim?.sectorNumber}`)}
                             {sim?.isNebula ? ` ${l(`Sub ${getShipSubsector(item.ship.id, item.ship.subsector, sim)}`, `子区 ${getShipSubsector(item.ship.id, item.ship.subsector, sim)}`)}` : ''})

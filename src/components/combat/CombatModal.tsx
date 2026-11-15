@@ -19,6 +19,7 @@ import { getEffectiveShipPart } from '../../engine/rules/partData';
 import { getNeutralShipBlueprint, NeutralShipType } from '../../engine/rules/neutralShips';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
+import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
 import { useLanguage } from '../../i18n/LanguageContext';
 import {
   translateFactionName,
@@ -627,10 +628,20 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
         <div className="flex justify-between items-start gap-1">
           <div className="flex items-center gap-1.5 flex-wrap min-w-0">
-            <div
-              className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
-              style={{ backgroundColor: color }}
-            />
+            {shouldShowShipTypeIcon(group.type, owner?.faction?.id) ? (
+              <ShipTypeIcon
+                shipType={group.type}
+                factionId={owner?.faction?.id}
+                size={14}
+                color={color}
+                className="drop-shadow-sm"
+              />
+            ) : (
+              <div
+                className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm"
+                style={{ backgroundColor: color }}
+              />
+            )}
             <span className="font-bold text-xs uppercase text-slate-200 font-display">
               {translateShipType(group.type, language)}
             </span>

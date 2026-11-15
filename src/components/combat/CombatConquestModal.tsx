@@ -413,10 +413,10 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-slate-300">
                     <CircleDot className="w-4 h-4 text-cyan-400" />
-                    <span>{l('1. Sector Control (Influence Disc)', '1. 星区控制（影响力圆盘）')}</span>
+                    <span>{l('1. Sector Control (Influence Disc)', '1. 星区控制（影响力圆片）')}</span>
                   </div>
                   <div className="text-[11px] font-mono text-slate-400">
-                    {l('Discs on Track:', '轨道剩余圆盘：')}{' '}
+                    {l('Discs on Track:', '轨道剩余圆片：')}{' '}
                     <strong className="text-cyan-300 font-bold">{winner.influenceTrack.discsOnTrack}</strong> /{' '}
                     {winner.influenceTrack.totalDiscs}
                   </div>
@@ -425,7 +425,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 {alreadyControls ? (
                   <div className="p-2.5 rounded-lg bg-cyan-950/30 border border-cyan-800/40 text-cyan-300 text-xs flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-cyan-400 shrink-0" />
-                    <span>{l('You already control this sector with an Influence Disc.', '你已通过影响力圆盘控制此星区。')}</span>
+                    <span>{l('You already control this sector with an Influence Disc.', '你已通过影响力圆片控制此星区。')}</span>
                   </div>
                 ) : hasDiscsAvailable ? (
                   <label
@@ -446,7 +446,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                       <div className="font-bold text-slate-200 flex items-center gap-2">
                         {l(
                           `Place an Influence Disc to take control of Sector ${sector.sectorNumber}`,
-                          `放置影响力圆盘以控制星区 ${sector.sectorNumber}`
+                          `放置影响力圆片以控制星区 ${sector.sectorNumber}`
                         )}
                       </div>
                       <p className="text-[11px] text-slate-400 mt-0.5">
@@ -460,7 +460,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                 ) : (
                   <div className="p-2.5 rounded-lg bg-rose-950/30 border border-rose-800/40 text-rose-300 text-xs flex items-center gap-2">
                     <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
-                    <span>{l('No Influence Discs remaining on track. Sector remains uninfluenced.', '轨道上无剩余影响力圆盘，该星区将保持无主状态。')}</span>
+                    <span>{l('No Influence Discs remaining on track. Sector remains uninfluenced.', '轨道上无剩余影响力圆片，该星区将保持无主状态。')}</span>
                   </div>
                 )}
               </div>
@@ -484,7 +484,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                   <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs">
                     {l(
                       'You must take control of this sector with an Influence Disc to deploy Colony Ships and colonize its habitats.',
-                      '必须先放置影响力圆盘控制该星区，才能派遣殖民船进驻其中的居住位。'
+                      '必须先放置影响力圆片控制该星区，才能派遣殖民船进驻其中的居住位。'
                     )}
                   </div>
                 ) : sector.planets.length === 0 ? (

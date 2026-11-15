@@ -340,7 +340,7 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
               </div>
               <div>
                 <strong className="text-slate-200">{l('• Planta Species Trait:', '• 植物人种族特性：')}</strong>{' '}
-                {l('+1 additional bonus VP for each sector controlled with an Influence Disc.', '每用影响力圆盘控制 1 个星区，额外获得 +1 VP。')}
+                {l('+1 additional bonus VP for each sector controlled with an Influence Disc.', '每用影响力圆片控制 1 个星区，额外获得 +1 VP。')}
               </div>
               <div>
                 <strong className="text-slate-200">{l('• Draco Species Trait:', '• 天龙族种族特性：')}</strong>{' '}

@@ -85,9 +85,11 @@ import {
 } from './engine/rules/persistence';
 import { getCurrentUser, subscribeToUserSession } from './engine/rules/userSession';
 import { UserSession, RegisteredUserProfile } from './engine/types/user';
-import { LanguageProvider } from './i18n/LanguageContext';
+import { LanguageProvider, useLanguage } from './i18n/LanguageContext';
+import { translateFactionName } from './i18n/catalogTranslations';
 
 const AppContent: React.FC = () => {
+  const { l, language } = useLanguage();
   const [state, setState] = useState<GameState>(() => {
     const loaded = loadActiveGameState();
     return loaded || createInitialGame(2);
@@ -1957,7 +1959,7 @@ const AppContent: React.FC = () => {
     const targetSector = state.sectors.find((s) => s.id === sectorId);
     const targetPlayerId = targetSector?.discOwner || effectiveColonizingPlayer.id;
     if (!canActForPlayer(targetPlayerId)) {
-      showToast('Spectators cannot perform actions.');
+      showToast(l('Spectators cannot perform actions.', '观战者无法执行操作。'));
       return;
     }
     const res = executeAction(state, {
@@ -1971,7 +1973,7 @@ const AppContent: React.FC = () => {
       setState(res.newState);
       saveGameState(res.newState);
     } else {
-      showToast(res.error || 'Colonization failed.');
+      showToast(res.error || l('Colonization failed.', '殖民失败。'));
     }
   };
 
@@ -1979,7 +1981,7 @@ const AppContent: React.FC = () => {
   const handleReadyForUpkeep = (targetPlayerId?: string) => {
     const pId = targetPlayerId || effectiveColonizingPlayer.id;
     if (!pId || !canActForPlayer(pId)) {
-      showToast('Spectators cannot perform actions.');
+      showToast(l('Spectators cannot perform actions.', '观战者无法执行操作。'));
       return;
     }
     const res = executeAction(state, {
@@ -1990,7 +1992,7 @@ const AppContent: React.FC = () => {
       setState(res.newState);
       saveGameState(res.newState);
     } else {
-      showToast(res.error || 'Failed to ready for upkeep.');
+      showToast(res.error || l('Failed to ready for upkeep.', '确认进入维护阶段失败。'));
     }
   };
 
@@ -3181,7 +3183,7 @@ const AppContent: React.FC = () => {
               <div className="flex flex-col text-left">
                 <div className="flex items-center gap-2">
                   <span className="text-[10px] text-cyan-300 uppercase tracking-widest font-bold">
-                    Upkeep Phase • Pre-Income Colonization
+                    {l('Upkeep Phase • Pre-Income Colonization', '维护阶段 • 收益结算前殖民')}
                   </span>
                   {currentSeat === 'all' && (
                     <span
@@ -3192,14 +3194,24 @@ const AppContent: React.FC = () => {
                         color: effectiveColonizingPlayer.color,
                       }}
                     >
-                      Turn: {getPlayerDisplayName(effectiveColonizingPlayer)}
+                      {language === 'zh' ? (
+                        <>当前行动: {getPlayerDisplayName(effectiveColonizingPlayer)}</>
+                      ) : (
+                        <>Turn: {getPlayerDisplayName(effectiveColonizingPlayer)}</>
+                      )}
                     </span>
                   )}
                 </div>
                 <span className="text-xs text-slate-300">
                   {effectiveColonizingPlayer.colonyShips.ready > 0
-                    ? `${getPlayerDisplayName(effectiveColonizingPlayer)} has ${effectiveColonizingPlayer.colonyShips.ready} ready Colony Ship(s). Click planet slots to colonize before income!`
-                    : `${getPlayerDisplayName(effectiveColonizingPlayer)}: Click slots on map to colonize, or confirm ready for Upkeep income.`}
+                    ? l(
+                        `${getPlayerDisplayName(effectiveColonizingPlayer)} has ${effectiveColonizingPlayer.colonyShips.ready} ready Colony Ship(s). Click planet slots to colonize before income!`,
+                        `${getPlayerDisplayName(effectiveColonizingPlayer)} 有 ${effectiveColonizingPlayer.colonyShips.ready} 艘就绪殖民船。请在收益结算前点击星图上的星球格子进行殖民！`
+                      )
+                    : l(
+                        `${getPlayerDisplayName(effectiveColonizingPlayer)}: Click slots on map to colonize, or confirm ready for Upkeep income.`,
+                        `${getPlayerDisplayName(effectiveColonizingPlayer)}：可点击星图上的格子进行殖民，或点击确认就绪以进入维护收益结算。`
+                      )}
                 </span>
               </div>
             </div>
@@ -3212,6 +3224,9 @@ const AppContent: React.FC = () => {
                   .map((p) => {
                     const isReady = Boolean(state.upkeepReadyPlayers?.[p.id]);
                     const isSelected = p.id === effectiveColonizingPlayer.id;
+                    const factionLabel = p.faction?.id
+                      ? translateFactionName(p.faction.id, p.faction.name || p.name, language)
+                      : (p.faction?.name || p.name);
                     return (
                       <button
                         key={p.id}
@@ -3224,13 +3239,13 @@ const AppContent: React.FC = () => {
                             ? 'bg-slate-900/60 text-emerald-400 border-emerald-900/40 opacity-70'
                             : 'bg-slate-900/80 text-slate-300 border-slate-800 hover:bg-slate-800'
                         }`}
-                        title={isReady ? `${p.name} is Ready` : `Switch turn to ${p.name}`}
+                        title={isReady ? l(`${p.name} is Ready`, `${p.name} 已就绪`) : l(`Switch turn to ${p.name}`, `切换至 ${p.name}`)}
                       >
                         <span
                           className="w-2 h-2 rounded-full shrink-0"
                           style={{ backgroundColor: p.color }}
                         />
-                        <span className="truncate max-w-[80px]">{p.faction?.name || p.name}</span>
+                        <span className="truncate max-w-[80px]">{factionLabel}</span>
                         {isReady ? (
                           <Check className="w-3 h-3 text-emerald-400 stroke-[3]" />
                         ) : null}
@@ -3245,7 +3260,7 @@ const AppContent: React.FC = () => {
                 <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-semibold text-slate-400">
                   <CheckCircle2 className="w-4 h-4 text-emerald-400" />
                   <span>
-                    Ready ({Object.values(state.upkeepReadyPlayers).filter(Boolean).length}/{state.players.filter((p) => !p.isEliminated).length})
+                    {l('Ready', '已就绪')} ({Object.values(state.upkeepReadyPlayers).filter(Boolean).length}/{state.players.filter((p) => !p.isEliminated).length})
                   </span>
                 </div>
               ) : (
@@ -3257,8 +3272,11 @@ const AppContent: React.FC = () => {
                   <Check className="w-4 h-4 stroke-[3]" />
                   <span>
                     {currentSeat === 'all'
-                      ? `Ready for Upkeep (${getPlayerDisplayName(effectiveColonizingPlayer)})`
-                      : 'Ready for Upkeep'}
+                      ? l(
+                          `Ready for Upkeep (${getPlayerDisplayName(effectiveColonizingPlayer)})`,
+                          `确认进入维护 (${getPlayerDisplayName(effectiveColonizingPlayer)})`
+                        )
+                      : l('Ready for Upkeep', '确认进入维护')}
                   </span>
                 </button>
               )}
@@ -3598,10 +3616,18 @@ const AppContent: React.FC = () => {
             <Coins className="w-5 h-5 text-rose-400 shrink-0" />
             <div>
               <div className="font-bold text-rose-300">
-                Treasury Deficit Resolution (Upkeep Phase)
+                {l('Treasury Deficit Resolution (Upkeep Phase)', '国库赤字结算（维护阶段）')}
               </div>
               <div className="text-xs text-slate-300">
-                Waiting for <strong className="text-white">{state.players.find((p) => p.id === state.pendingBankruptcy!.playerId)?.name || 'Player'}</strong> to resolve treasury deficit ({state.pendingBankruptcy.deficit} Credits)...
+                {language === 'zh' ? (
+                  <>
+                    正在等待 <strong className="text-white">{state.players.find((p) => p.id === state.pendingBankruptcy!.playerId)?.name || '玩家'}</strong> 处理国库赤字（{state.pendingBankruptcy.deficit} 信用点）...
+                  </>
+                ) : (
+                  <>
+                    Waiting for <strong className="text-white">{state.players.find((p) => p.id === state.pendingBankruptcy!.playerId)?.name || 'Player'}</strong> to resolve treasury deficit ({state.pendingBankruptcy.deficit} Credits)...
+                  </>
+                )}
               </div>
             </div>
           </div>

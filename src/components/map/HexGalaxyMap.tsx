@@ -33,6 +33,7 @@ import {
   Hexagon,
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
+import { getShipIconBoxes, ShipTypeSvgBoxes, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
 
 export interface HexMapBuildMode {
   eligibleSectorIds: string[];
@@ -2013,6 +2014,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     ownerId: string;
                     ownerName: string;
                     ownerColor: string;
+                    ownerFactionId?: string;
                     isNpc: boolean;
                     typeCounts: { type: string; count: number; label: string }[];
                     totalDamage: number;
@@ -2022,6 +2024,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   for (const [ownerId, ships] of ownerMap.entries()) {
                     let ownerName = 'Commander';
                     let ownerColor = '#38bdf8';
+                    let ownerFactionId: string | undefined;
                     let isNpc = false;
 
                     if (ownerId === 'ancient') {
@@ -2041,6 +2044,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                       if (pl) {
                         ownerName = getPlayerShortName(pl);
                         ownerColor = pl.color;
+                        ownerFactionId = pl.faction?.id;
                       }
                     }
 
@@ -2065,6 +2069,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                       ownerId,
                       ownerName,
                       ownerColor,
+                      ownerFactionId,
                       isNpc,
                       typeCounts,
                       totalDamage,
@@ -2078,8 +2083,31 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     <g transform={`translate(${x}, ${y + (isCenter ? 38 : 34)})`}>
                       {fleetGroups.map((group, gIdx) => {
                         const offsetY = (gIdx - (fleetGroups.length - 1) / 2) * 17;
-                        const labelStr = group.typeCounts.map((t) => `${t.count}${t.label}`).join(' ');
-                        const badgeWidth = Math.max(50, labelStr.length * 6.5 + 24);
+                        const shipTint = group.ownerColor === '#18181b' || group.ownerColor === '#000000' ? '#e2e8f0' : group.ownerColor;
+                        const unitScale = 9 / 25;
+                        const segmentGap = 5;
+                        let cursorX = 0;
+                        const segments = group.typeCounts.map((t) => {
+                          const showIcon = shouldShowShipTypeIcon(t.type, group.ownerFactionId);
+                          const iconLayout = getShipIconBoxes(t.type);
+                          const iconW = showIcon ? iconLayout.width * unitScale : t.label.length * 5.0;
+                          const iconH = iconLayout.height * unitScale;
+                          const countW = String(t.count).length * 5.6;
+                          const segStart = cursorX;
+                          const iconX = segStart + countW + (showIcon ? 1.5 : 0.5);
+                          cursorX = iconX + iconW + segmentGap;
+                          return {
+                            ...t,
+                            showIcon,
+                            segStart,
+                            iconX,
+                            iconW,
+                            iconH,
+                          };
+                        });
+                        const contentWidth = Math.max(0, cursorX - segmentGap);
+                        const badgeWidth = Math.max(46, Math.ceil(contentWidth + 20 + (group.totalDamage > 0 ? 6 : 0)));
+                        const startX = -badgeWidth / 2 + 13;
 
                         return (
                           <g key={group.ownerId} transform={`translate(0, ${offsetY})`}>
@@ -2106,24 +2134,46 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                               strokeWidth="0.8"
                             />
 
-                            {/* Ship Type Breakdown */}
-                            <text
-                              x={5}
-                              y="3"
-                              textAnchor="middle"
-                              fill="#ffffff"
-                              fontSize="9"
-                              fontWeight="bold"
-                              fontFamily="monospace"
-                            >
-                              {group.typeCounts.map((t, tIdx) => (
-                                <tspan key={t.type}>
-                                  {tIdx > 0 ? ' ' : ''}
-                                  <tspan fill="#ffffff">{t.count}</tspan>
-                                  <tspan fill={group.ownerColor === '#18181b' || group.ownerColor === '#000000' ? '#e2e8f0' : group.ownerColor} fontSize="8">{t.label}</tspan>
-                                </tspan>
-                              ))}
-                            </text>
+                            {/* Ship Type Breakdown: count + blueprint-shaped box icon */}
+                            {segments.map((seg) => (
+                              <g key={seg.type} transform={`translate(${startX + seg.segStart}, 0)`}>
+                                <text
+                                  x={0}
+                                  y="3"
+                                  textAnchor="start"
+                                  fill="#ffffff"
+                                  fontSize="9"
+                                  fontWeight="bold"
+                                  fontFamily="monospace"
+                                >
+                                  {seg.count}
+                                </text>
+                                {seg.showIcon ? (
+                                  <ShipTypeSvgBoxes
+                                    shipType={seg.type}
+                                    x={seg.iconX - seg.segStart}
+                                    y={-seg.iconH / 2}
+                                    height={seg.iconH}
+                                    fill={shipTint}
+                                    stroke={shipTint}
+                                    fillOpacity={0.35}
+                                    strokeWidth={1.6}
+                                  />
+                                ) : (
+                                  <text
+                                    x={seg.iconX - seg.segStart}
+                                    y="3"
+                                    textAnchor="start"
+                                    fill={shipTint}
+                                    fontSize="8"
+                                    fontWeight="bold"
+                                    fontFamily="monospace"
+                                  >
+                                    {seg.label}
+                                  </text>
+                                )}
+                              </g>
+                            ))}
 
                             {/* Damage indicator pip if any ship in fleet took damage */}
                             {group.totalDamage > 0 && (
