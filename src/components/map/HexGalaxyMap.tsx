@@ -2206,6 +2206,94 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   />
                 )}
 
+                {/* Draft Phase Seat & Sequence Indicator */}
+                {state.phase === 'DRAFT_PHASE' && state.factionDraft && sector.discOwner && state.factionDraft.assignedPositions?.[sector.discOwner] !== undefined && (() => {
+                  const pId = sector.discOwner!;
+                  const seatPos = state.factionDraft!.assignedPositions[pId]! + 1;
+                  const turnOrderNum = state.turnOrder.indexOf(pId) + 1;
+                  const draftOrderNum = state.factionDraft!.draftOrder.indexOf(pId) + 1;
+                  const isCurrentDrafter = state.factionDraft!.draftOrder[state.factionDraft!.currentDraftIndex] === pId;
+                  const isEmptyDraftSlot = sector.id.startsWith('draft_slot_');
+                  const accentStroke = isCurrentDrafter ? '#818cf8' : (owner?.color === '#18181b' || owner?.color === '#000000' ? '#94a3b8' : (owner?.color || '#64748b'));
+
+                  if (isEmptyDraftSlot) {
+                    return (
+                      <g transform={`translate(${x}, ${y + 2})`} className="pointer-events-none">
+                        <rect
+                          x="-46"
+                          y="-22"
+                          width="92"
+                          height="44"
+                          rx="8"
+                          fill="rgba(15, 23, 42, 0.92)"
+                          stroke={accentStroke}
+                          strokeWidth={isCurrentDrafter ? '2' : '1.4'}
+                        />
+                        <text
+                          x="0"
+                          y="-8"
+                          textAnchor="middle"
+                          fill={isCurrentDrafter ? '#c7d2fe' : '#f8fafc'}
+                          fontSize="10"
+                          fontFamily="monospace"
+                          fontWeight="900"
+                        >
+                          {isCurrentDrafter
+                            ? l(`POS ${seatPos} ★ NOW`, `位置 ${seatPos} ★ 当前`)
+                            : l(`POS ${seatPos}`, `位置 ${seatPos}`)}
+                        </text>
+                        <text
+                          x="0"
+                          y="4.5"
+                          textAnchor="middle"
+                          fill="#e2e8f0"
+                          fontSize="8.5"
+                          fontWeight="700"
+                        >
+                          {(owner?.name || pId).slice(0, 14)}
+                        </text>
+                        <text
+                          x="0"
+                          y="16.5"
+                          textAnchor="middle"
+                          fill="#fbbf24"
+                          fontSize="8"
+                          fontFamily="monospace"
+                          fontWeight="700"
+                        >
+                          {l(`T#${turnOrderNum} • D#${draftOrderNum}`, `行#${turnOrderNum} • 选#${draftOrderNum}`)}
+                        </text>
+                      </g>
+                    );
+                  }
+
+                  return (
+                    <g transform={`translate(${x}, ${y + HEX_RADIUS - 36})`} className="pointer-events-none">
+                      <rect
+                        x="-42"
+                        y="-7.5"
+                        width="84"
+                        height="15"
+                        rx="4"
+                        fill="rgba(15, 23, 42, 0.94)"
+                        stroke={accentStroke}
+                        strokeWidth="1.2"
+                      />
+                      <text
+                        x="0"
+                        y="3"
+                        textAnchor="middle"
+                        fill="#e0e7ff"
+                        fontSize="8"
+                        fontFamily="monospace"
+                        fontWeight="800"
+                      >
+                        {l(`POS ${seatPos} T#${turnOrderNum} D#${draftOrderNum}`, `位${seatPos} 行#${turnOrderNum} 选#${draftOrderNum}`)}
+                      </text>
+                    </g>
+                  );
+                })()}
+
                 {/* Build Mode Interactive Overlay Badges */}
                 {buildMode && isBuildEligible && (
                   <g transform={`translate(${x}, ${y - HEX_RADIUS + (sector.victoryPoints > 0 ? (showGrid ? 53 : 48) : (showGrid ? 39 : 34))})`} className="pointer-events-none">

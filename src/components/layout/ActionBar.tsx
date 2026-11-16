@@ -225,49 +225,60 @@ export const ActionBar: React.FC<ActionBarProps> = ({
             className="w-2.5 h-2.5 rounded-full ring-2 ring-white/20 shrink-0"
             style={{ backgroundColor: activePlayer.color }}
           />
-          <span
-            className="font-bold text-slate-100 text-xs truncate max-w-[130px] sm:max-w-[200px]"
-            title={getPlayerDisplayName(activePlayer)}
-          >
-            {getPlayerDisplayName(activePlayer, { short: true })}
-          </span>
-          <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 uppercase font-semibold">
-            {hasPassed ? l('Reaction', '反应回合') : l('Active', '行动中')}
-          </span>
+          {isTurnGated && !isSpectator ? (
+            <span
+              className="font-bold text-amber-300 text-xs truncate max-w-[180px] sm:max-w-[260px]"
+              title={getPlayerDisplayName(activePlayer)}
+            >
+              ⏳{' '}
+              {l(
+                `${getPlayerDisplayName(activePlayer, { short: true })}'s Turn`,
+                `${getPlayerDisplayName(activePlayer, { short: true })} 的回合`
+              )}
+              {hasPassed ? ` (${l('Reaction', '反应')})` : ''}
+            </span>
+          ) : (
+            <>
+              <span
+                className="font-bold text-slate-100 text-xs truncate max-w-[130px] sm:max-w-[200px]"
+                title={getPlayerDisplayName(activePlayer)}
+              >
+                {getPlayerDisplayName(activePlayer, { short: true })}
+              </span>
+              <span className="text-[9px] px-1.5 py-0.5 rounded bg-slate-900 text-slate-400 uppercase font-semibold">
+                {hasPassed ? l('Reaction', '反应回合') : l('Active', '行动中')}
+              </span>
+            </>
+          )}
         </div>
         <div className="flex items-center gap-2 shrink-0">
           {isSpectator ? (
             <span className="text-[10px] font-bold text-sky-400 bg-sky-500/10 px-2 py-0.5 rounded border border-sky-500/20">
               {l('👁️ Spectator Mode (Observing)', '👁️ 观战模式')}
             </span>
-          ) : isTurnGated ? (
+          ) : isTurnGated && onTogglePassInAdvance && !hasPassed ? (
             <div className="flex items-center gap-1.5">
-              <span className="text-[10px] font-bold text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">
-                {l("⏳ Opponent's Turn", '⏳ 对手回合中')}
-              </span>
-              {onTogglePassInAdvance && !hasPassed && (
-                <button
-                  type="button"
-                  disabled={!canTogglePassInAdvance}
-                  onClick={onTogglePassInAdvance}
-                  title={
-                    passInAdvance
-                      ? l("Pass in Advance is ON: you will automatically pass when your turn arrives (Click to revert/cancel)", "提前跳过已开启：轮到你的回合时将自动跳过（点击取消）")
-                      : l("Enable Pass in Advance: automatically pass your turn when it becomes your turn", "开启提前跳过：轮到你的回合时自动跳过")
-                  }
-                  className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
-                    passInAdvance
-                      ? 'bg-purple-950/90 border-purple-500 text-purple-200 hover:border-purple-400 ring-1 ring-purple-500'
-                      : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
-                  }`}
-                >
-                  <CircleOff className={`w-3 h-3 ${passInAdvance ? 'text-purple-400' : 'text-slate-400'}`} />
-                  <span className="hidden sm:inline">{l('Pass in Advance:', '提前跳过:')}</span>
-                  <span className={passInAdvance ? 'text-purple-300 font-black' : 'text-slate-400 font-bold'}>
-                    {passInAdvance ? l('ON (Revert)', '开 (撤销)') : l('OFF', '关')}
-                  </span>
-                </button>
-              )}
+              <button
+                type="button"
+                disabled={!canTogglePassInAdvance}
+                onClick={onTogglePassInAdvance}
+                title={
+                  passInAdvance
+                    ? l("Pass in Advance is ON: you will automatically pass when your turn arrives (Click to revert/cancel)", "提前跳过已开启：轮到你的回合时将自动跳过（点击取消）")
+                    : l("Enable Pass in Advance: automatically pass your turn when it becomes your turn", "开启提前跳过：轮到你的回合时自动跳过")
+                }
+                className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
+                  passInAdvance
+                    ? 'bg-purple-950/90 border-purple-500 text-purple-200 hover:border-purple-400 ring-1 ring-purple-500'
+                    : 'bg-slate-900 border-slate-700 text-slate-300 hover:text-white hover:border-slate-500'
+                }`}
+              >
+                <CircleOff className={`w-3 h-3 ${passInAdvance ? 'text-purple-400' : 'text-slate-400'}`} />
+                <span className="hidden sm:inline">{l('Pass in Advance:', '提前跳过:')}</span>
+                <span className={passInAdvance ? 'text-purple-300 font-black' : 'text-slate-400 font-bold'}>
+                  {passInAdvance ? l('ON (Revert)', '开 (撤销)') : l('OFF', '关')}
+                </span>
+              </button>
             </div>
           ) : null}
           <div className="flex items-center gap-1 px-2 py-0.5 rounded bg-slate-900 border border-slate-800 text-[10px] font-bold text-cyan-300">
@@ -283,10 +294,19 @@ export const ActionBar: React.FC<ActionBarProps> = ({
               onClick={onToggleAutoPass}
               title={
                 isInvaded
-                  ? l("Hostile invasion detected! Auto-pass is paused", "检测到敌军入侵！自动跳过反应已暂停")
+                  ? l(
+                      "Hostile invasion detected! Auto-pass is paused so you can react and defend.",
+                      "检测到敌军入侵！自动跳过反应已暂停，以便你做出防御反应。"
+                    )
                   : autoPassReactions
-                  ? l("Auto-Pass Reactions is ON (click to turn OFF)", "自动跳过反应已开启（点击关闭）")
-                  : l("Auto-Pass Reactions is OFF (click to turn ON)", "自动跳过反应已关闭（点击开启）")
+                  ? l(
+                      "Auto-Pass Reactions is ON: automatically passes subsequent reaction turns, and pauses if any of your sectors come under attack (click to turn OFF)",
+                      "自动跳过反应已开启：将自动跳过后续反应回合，若你的星区遭到攻击会自动暂停并提醒（点击关闭）"
+                    )
+                  : l(
+                      "Auto-Pass Reactions is OFF: enable to automatically pass subsequent reaction turns; pauses automatically if any of your sectors come under attack (click to turn ON)",
+                      "自动跳过反应已关闭：开启后将自动跳过后续反应回合，若你的星区遭到攻击会自动暂停并提醒（点击开启）"
+                    )
               }
               className={`flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-bold border transition-all cursor-pointer ${
                 isInvaded
@@ -534,9 +554,13 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           >
             <CircleOff className={`w-4 h-4 shrink-0 ${passInAdvance ? 'text-purple-400 animate-pulse' : ''}`} />
             <span className="leading-tight">{l('PASS', '跳过')}</span>
-            <span className={`text-[8.5px] font-mono font-bold leading-none ${passInAdvance ? 'text-purple-300' : 'text-slate-400'}`}>
-              {passInAdvance ? l('ADV: ON', '预跳: 开') : l('ADV: OFF', '预跳: 关')}
-            </span>
+            {isTurnOrderVariant && nextPassTileNum ? (
+              <span className="text-[8.5px] text-purple-400 font-mono font-bold leading-none">
+                #{nextPassTileNum}
+              </span>
+            ) : (
+              <span className="text-[8.5px] opacity-0 leading-none">(-)</span>
+            )}
           </button>
         ) : (
           <button

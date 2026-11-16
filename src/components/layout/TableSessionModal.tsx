@@ -5,11 +5,12 @@ import {
   listSavedTables,
   loadTableByNumber,
   deleteSavedTable,
+  canUserDeleteTable,
+  getPersonalTablesForUser,
   SavedTableSummary,
   fetchTableFromServer,
   fetchSavedTablesFromServer,
   saveGameState,
-  filterTablesForUser,
   isPlayerTurnAtTable,
   mergeTableSummaries,
 } from '../../engine/rules/persistence';
@@ -111,9 +112,10 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
     }
   };
 
-  const handleDelete = (id: string, e: React.MouseEvent) => {
+  const handleDelete = (entry: SavedTableSummary, e: React.MouseEvent) => {
     e.stopPropagation();
-    deleteSavedTable(id);
+    if (!canUserDeleteTable(entry, currentUser)) return;
+    deleteSavedTable(entry.id);
     setSavedTables(listSavedTables());
   };
 
@@ -256,8 +258,7 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
           {/* Saved Tables List */}
           <div>
             {(() => {
-              const myTables = filterTablesForUser(savedTables, currentUser);
-              const baseList = currentUser.role === 'admin' ? savedTables : myTables;
+              const baseList = getPersonalTablesForUser(savedTables, currentUser);
               const displayed = [...baseList].sort((a, b) => {
                 const aTurn = isPlayerTurnAtTable(a, currentUser) ? 1 : 0;
                 const bTurn = isPlayerTurnAtTable(b, currentUser) ? 1 : 0;
@@ -395,13 +396,15 @@ export const TableSessionModal: React.FC<TableSessionModalProps> = ({
                                   <span>{l('Act', '行动')}</span>
                                 </button>
                               )}
-                              <button
-                                onClick={(e) => handleDelete(entry.id, e)}
-                                className="p-1.5 hover:bg-rose-950/60 rounded-lg text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
-                                title={l('Delete saved table', '删除已保存的牌桌')}
-                              >
-                                <Trash2 className="w-4 h-4" />
-                              </button>
+                              {canUserDeleteTable(entry, currentUser) && (
+                                <button
+                                  onClick={(e) => handleDelete(entry, e)}
+                                  className="p-1.5 hover:bg-rose-950/60 rounded-lg text-slate-500 hover:text-rose-400 transition-colors cursor-pointer"
+                                  title={l('Delete saved table', '删除已保存的牌桌')}
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
                             </div>
                           </div>
                         );

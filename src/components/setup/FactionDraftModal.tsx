@@ -12,6 +12,8 @@ import {
   Layers,
   Shield,
   Zap,
+  Minimize2,
+  Maximize2,
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import {
@@ -48,6 +50,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
     draft.availableFactionIds[0] || availableFactions[0]?.id || ''
   );
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'alien' | 'human'>('all');
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
   useEffect(() => {
     if (!draft.availableFactionIds.includes(selectedFactionId)) {
@@ -69,6 +72,42 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
     onDraftFaction(selectedFactionId);
   };
 
+  if (isMinimized) {
+    return (
+      <div className="fixed top-14 sm:top-4 left-1/2 -translate-x-1/2 z-50 w-[calc(100vw-1.5rem)] max-w-2xl animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-indigo-500 rounded-2xl sm:rounded-full shadow-2xl backdrop-blur-md text-white">
+          <div className="flex items-center gap-2.5 min-w-0">
+            <Compass className="w-4 h-4 text-indigo-400 shrink-0" />
+            <span className="font-bold text-xs sm:text-sm tracking-wide text-indigo-300 font-display whitespace-nowrap">
+              {l(`DRAFT PICK #${draft.currentDraftIndex + 1}/${draft.draftOrder.length}`, `轮抽第 ${draft.currentDraftIndex + 1}/${draft.draftOrder.length} 顺位`)}
+            </span>
+            <div className="h-4 w-px bg-slate-800 shrink-0" />
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span
+                className="w-2.5 h-2.5 rounded-full border border-white/40 shrink-0"
+                style={{ backgroundColor: currentDrafter.color }}
+              />
+              <span className="text-xs font-bold text-slate-200 truncate">
+                {isCurrentDrafter
+                  ? l(`Your Turn (${currentDrafter.name})`, `当前轮到你 (${currentDrafter.name})`)
+                  : l(`Waiting for ${currentDrafter.name}`, `等待 ${currentDrafter.name}`)}
+              </span>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setIsMinimized(false)}
+            className="px-3.5 py-1.5 bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white rounded-full text-xs font-bold transition-all shadow-md shadow-indigo-950/50 flex items-center gap-1.5 cursor-pointer shrink-0"
+            title={l('Return to faction draft panel', '返回种族轮抽面板')}
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>{l('Return to Draft', '返回选族')}</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5">
       <div className="bg-slate-900 border-2 border-indigo-500/80 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[94vh] text-slate-100 animate-in fade-in zoom-in-95 duration-150">
@@ -89,14 +128,23 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
               </div>
               <p className="text-xs text-slate-400">
                 {l(
-                  'Seating randomly assigned on Ring 2. Turn order runs clockwise; faction drafting runs counter-clockwise from the last player.',
-                  '玩家二环母星位置已随机分配。行动顺序为顺时针，而种族挑选从最后一位玩家开始逆时针进行。'
+                  'Seat (Pos) is your fixed Ring 2 spot on the galaxy map. Turn order runs clockwise from a random Start Player; Faction Draft runs counter-clockwise from last in Turn order.',
+                  '席位（位置 Pos）代表你在二环星图上的固定母星格。行动序从随机起始玩家顺时针排列；选族序则从末位行动玩家开始逆时针挑选。'
                 )}
               </p>
             </div>
           </div>
 
           <div className="flex items-center gap-2 flex-wrap shrink-0">
+            <button
+              type="button"
+              onClick={() => setIsMinimized(true)}
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white text-xs font-bold border border-slate-700 transition cursor-pointer shadow-sm"
+              title={l('Minimize draft panel to inspect the galaxy map', '最小化轮抽窗口以查看二环星图')}
+            >
+              <Minimize2 className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{l('View Map', '查看星图')}</span>
+            </button>
             {!isCurrentDrafter && (
               <span className="px-2.5 py-1 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
                 {currentSeat === 'spectator'

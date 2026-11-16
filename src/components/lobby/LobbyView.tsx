@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   listSavedTables,
   deleteSavedTable,
+  canUserDeleteTable,
+  getPersonalTablesForUser,
   fetchSavedTablesFromServerWithStatus,
   isGuestCreatedOnlineTable,
   SavedTableSummary,
@@ -547,6 +549,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   const handleDelete = (tableId: string) => {
+    const targetTable = savedTables.find((t) => t.id === tableId);
+    if (!canUserDeleteTable(targetTable || { id: tableId }, currentUser)) {
+      return;
+    }
     if (window.confirm(l(
       `Are you sure you want to permanently delete table ${tableId}?`,
       `确定要永久删除牌桌 ${tableId} 吗？`
@@ -578,11 +584,9 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       t.phase !== 'GAME_OVER'
   );
 
-  // 2. User's personal tables (logged in users see personal tables excluding guest-created online tables; guests see their local hotseat games)
+  // 2. User's personal tables (browser-local hotseat games + logged-in user's online tables excluding guest-created online tables)
   const isUserLoggedIn = currentUser.role !== 'guest';
-  const myTables = isUserLoggedIn
-    ? filterTablesForUser(savedTables, currentUser).filter((t) => !isGuestCreatedOnlineTable(t))
-    : savedTables.filter((t) => t.isLocalGame);
+  const myTables = getPersonalTablesForUser(savedTables, currentUser);
   const myTurnCount = myTables.filter((t) => isPlayerTurnAtTable(t, currentUser)).length;
 
   const myWaitingCount = myTables.filter((t) => getTableStatusCategory(t) === 'need_players').length;
@@ -1949,7 +1953,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                             <Share2 className="w-3.5 h-3.5" />
                           </button>
 
-                          {(currentUser.role === 'admin' || (myMem as any)?.isCreator) && (
+                          {canUserDeleteTable(table, currentUser) && (
                             <button
                               type="button"
                               onClick={() => handleDelete(table.id)}

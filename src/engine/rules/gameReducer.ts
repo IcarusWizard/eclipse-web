@@ -19,6 +19,7 @@ import {
   PassAction,
   SetAutoPassAction,
   SetPassInAdvanceAction,
+  SetCombatAutoResolveAction,
   SendChatAction,
 } from '../types/actions';
 import {
@@ -673,7 +674,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'READY_FOR_UPKEEP' &&
       action.type !== 'SET_AUTO_PASS' &&
-      action.type !== 'SET_PASS_IN_ADVANCE'
+      action.type !== 'SET_PASS_IN_ADVANCE' &&
+      action.type !== 'SET_COMBAT_AUTO_RESOLVE'
     ) {
       return {
         valid: false,
@@ -707,7 +709,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'READY_FOR_UPKEEP' &&
       action.type !== 'SET_AUTO_PASS' &&
-      action.type !== 'SET_PASS_IN_ADVANCE'
+      action.type !== 'SET_PASS_IN_ADVANCE' &&
+      action.type !== 'SET_COMBAT_AUTO_RESOLVE'
     ) {
       return { valid: false, error: `It is not player ${action.playerId}'s turn.` };
     }
@@ -728,7 +731,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'PROPOSE_DIPLOMACY' &&
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'SET_AUTO_PASS' &&
-      action.type !== 'SET_PASS_IN_ADVANCE'
+      action.type !== 'SET_PASS_IN_ADVANCE' &&
+      action.type !== 'SET_COMBAT_AUTO_RESOLVE'
     ) {
       return {
         valid: false,
@@ -1992,6 +1996,20 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (otherShip) {
           return { valid: false, error: 'Cannot retreat ships belonging to another player.' };
         }
+      }
+      return { valid: true };
+    }
+
+    case 'SET_COMBAT_AUTO_RESOLVE': {
+      if (!state.activeCombat) {
+        return { valid: false, error: 'No active combat in progress.' };
+      }
+      const sector = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
+      const isParticipant =
+        state.activeCombat.participatingPlayerIds?.includes(player.id) ||
+        Boolean(sector?.ships.some((s) => s.ownerId === player.id));
+      if (!isParticipant) {
+        return { valid: false, error: 'Only combatants in this battle can toggle Auto-Resolve.' };
       }
       return { valid: true };
     }
@@ -4195,6 +4213,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
             if (hasMoreCombatsInSector) {
               // Winner continues to fight the next player WITHOUT repairing ship damage!
+              // Do not carry over autoResolvePlayerIds to the next duel stage so the surviving commander can re-evaluate (e.g. retreat).
               addLog(
                 `⚔️ Duel in Sector ${sector.sectorNumber}${activeSub ? ` (Subsector ${activeSub})` : ''} resolved. Victor ${winnerId || 'Unknown'} advances to fight the next opponent without repairing ship damage!`,
                 'combat'
@@ -5097,6 +5116,23 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       return { success: true, newState };
     }
 
+    case 'SET_COMBAT_AUTO_RESOLVE': {
+      const autoAct = action as SetCombatAutoResolveAction;
+      if (newState.activeCombat) {
+        const currentIds = newState.activeCombat.autoResolvePlayerIds || [];
+        if (autoAct.enabled) {
+          if (!currentIds.includes(player.id)) {
+            newState.activeCombat.autoResolvePlayerIds = [...currentIds, player.id];
+          }
+          addLog(`${player.name} enabled Combat Auto-Resolve.`, 'combat');
+        } else {
+          newState.activeCombat.autoResolvePlayerIds = currentIds.filter((id) => id !== player.id);
+          addLog(`${player.name} disabled Combat Auto-Resolve.`, 'combat');
+        }
+      }
+      return { success: true, newState };
+    }
+
     case 'SEND_CHAT': {
       const chatAct = action as SendChatAction;
       const text = chatAct.message.trim();
@@ -5231,7 +5267,133 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
   return { success: true, newState };
 }
 
-export function executeAction(state: GameState, action: GameAction): ActionResult {
+/**
+ * Automatically advances combat turns for any NPCs (when all human combatants opted in)
+ * and any human players listed in `activeCombat.autoResolvePlayerIds`.
+ * Stops immediately if a non-opted-in human player needs to act or manually assign damage.
+ */
+function advanceAutoResolveCombatSteps(initialState: GameState): GameState {
+  let current = initialState;
+  let iterations = 0;
+
+  while (current.activeCombat && iterations < 100) {
+    iterations++;
+    const combat = current.activeCombat;
+    const autoIds = combat.autoResolvePlayerIds || [];
+    if (autoIds.length === 0) break;
+
+    const sector = current.sectors.find((s) => s.id === combat.sectorId);
+    if (!sector) break;
+
+    const units = buildCombatUnitsForSector(
+      sector,
+      current.players,
+      combat.participatingPlayerIds,
+      current.neutralShipBlueprints,
+      current.expansions
+    );
+    const activeHumanParticipants = Array.from(
+      new Set([
+        ...(combat.participatingPlayerIds || []).filter((id) =>
+          current.players.some((p) => p.id === id)
+        ),
+        ...units.map((u) => u.ownerId).filter((id) => current.players.some((p) => p.id === id)),
+      ])
+    );
+    const allHumansAutoResolving =
+      activeHumanParticipants.length > 0 &&
+      activeHumanParticipants.every((id) => autoIds.includes(id));
+
+    if (combat.stage === 'resolved') {
+      if (!allHumansAutoResolving) break;
+      const res = executeAction(
+        current,
+        {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: autoIds[0]!,
+          sectorId: combat.sectorId,
+          concludeCombat: true,
+        },
+        true
+      );
+      if (!res.success) break;
+      current = res.newState;
+      continue;
+    }
+
+    if (combat.pendingDamageAssignment) {
+      const attackerId = combat.pendingDamageAssignment.attackerOwnerId;
+      if (!autoIds.includes(attackerId)) break;
+      const res = executeAction(
+        current,
+        {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: attackerId,
+          sectorId: combat.sectorId,
+          autoAssign: true,
+        },
+        true
+      );
+      if (!res.success) break;
+      current = res.newState;
+      continue;
+    }
+
+    const defenderId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector, current.players);
+    const aliveUnits = sortUnitsByInitiative(
+      units.filter((u) => u.currentDamage < u.maxHull),
+      defenderId
+    );
+    const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
+    const activeGroup = getActiveCombatGroup(combat, groups);
+
+    if (!activeGroup) {
+      if (!allHumansAutoResolving) break;
+      const res = executeAction(
+        current,
+        {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: autoIds[0]!,
+          sectorId: combat.sectorId,
+          autoAssign: true,
+        },
+        true
+      );
+      if (!res.success) break;
+      current = res.newState;
+      continue;
+    }
+
+    const isNpcGroup = !current.players.some((p) => p.id === activeGroup.ownerId);
+    const canAutoAdvanceThisGroup = isNpcGroup
+      ? allHumansAutoResolving
+      : autoIds.includes(activeGroup.ownerId);
+
+    if (!canAutoAdvanceThisGroup) break;
+
+    const actingPlayerId = isNpcGroup ? autoIds[0]! : activeGroup.ownerId;
+    const res = executeAction(
+      current,
+      {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: actingPlayerId,
+        sectorId: combat.sectorId,
+        autoAssign: true,
+      },
+      true
+    );
+    if (!res.success) break;
+    current = res.newState;
+  }
+
+  return current;
+}
+
+export function executeAction(
+  state: GameState,
+  action: GameAction,
+  skipAutoCombatAdvance = false
+): ActionResult {
   const result = internalExecuteAction(state, action);
   if (!result.success) return result;
 
@@ -5253,8 +5415,19 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
     return result;
   }
 
-  // Pure client UI setting toggles (like auto-pass preference) and chat messages do not modify galactic state
-  if (action.type === 'SET_AUTO_PASS' || action.type === 'SET_PASS_IN_ADVANCE' || action.type === 'SEND_CHAT') {
+  // Pure client UI setting toggles and chat messages do not record standalone replay steps
+  if (
+    action.type === 'SET_AUTO_PASS' ||
+    action.type === 'SET_PASS_IN_ADVANCE' ||
+    action.type === 'SEND_CHAT'
+  ) {
+    return result;
+  }
+
+  if (action.type === 'SET_COMBAT_AUTO_RESOLVE') {
+    if (!skipAutoCombatAdvance && newState.activeCombat && (newState.activeCombat.autoResolvePlayerIds?.length || 0) > 0) {
+      return { success: true, newState: advanceAutoResolveCombatSteps(newState) };
+    }
     return result;
   }
 
@@ -5335,6 +5508,16 @@ export function executeAction(state: GameState, action: GameAction): ActionResul
   }
 
   commitReplayStep(newState, actionType, summary, action.playerId, state, actionData);
+
+  if (
+    !skipAutoCombatAdvance &&
+    (action.type === 'RESOLVE_COMBAT_STEP' || action.type === 'REROLL_COMBAT_DIE') &&
+    newState.activeCombat &&
+    (newState.activeCombat.autoResolvePlayerIds?.length || 0) > 0
+  ) {
+    return { success: true, newState: advanceAutoResolveCombatSteps(newState) };
+  }
+
   return result;
 }
 

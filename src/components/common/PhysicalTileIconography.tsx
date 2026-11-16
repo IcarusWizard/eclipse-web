@@ -143,7 +143,8 @@ export const PowerCostBadge: React.FC<{
 export interface DiceGraphicProps {
   color: 'yellow' | 'orange' | 'blue' | 'red' | 'purple' | string;
   count?: number;
-  size?: 'xs' | 'sm' | 'md' | 'lg';
+  size?: 'xxs' | 'xs' | 'sm' | 'md' | 'lg';
+  layout?: 'row' | 'triangle';
   className?: string;
 }
 
@@ -151,12 +152,15 @@ export const DiceGraphic: React.FC<DiceGraphicProps> = ({
   color,
   count = 1,
   size = 'md',
+  layout = 'row',
   className = '',
 }) => {
   const normColor = color.toLowerCase();
 
   const sizeDims =
-    size === 'xs'
+    size === 'xxs'
+      ? 'w-[13px] h-[13px] rounded-[3px]'
+      : size === 'xs'
       ? 'w-[18px] h-[18px] rounded-[4px]'
       : size === 'sm'
       ? 'w-6 h-6 rounded-[5px]'
@@ -164,7 +168,7 @@ export const DiceGraphic: React.FC<DiceGraphicProps> = ({
       ? 'w-11 h-11 rounded-[9px]'
       : 'w-9 h-9 rounded-[8px]';
 
-  const pipSize = size === 'xs' ? 6 : size === 'sm' ? 8 : size === 'lg' ? 15 : 12;
+  const pipSize = size === 'xxs' ? 4 : size === 'xs' ? 6 : size === 'sm' ? 8 : size === 'lg' ? 15 : 12;
 
   let bgClass = 'bg-amber-400 border-amber-300 shadow-amber-950/60';
   let pipFill = '#111827';
@@ -227,8 +231,26 @@ export const DiceGraphic: React.FC<DiceGraphicProps> = ({
     </div>
   );
 
+  if (count === 3 && layout === 'triangle') {
+    const triGap = size === 'xs' || size === 'xxs' ? 'gap-0.5' : 'gap-1';
+    return (
+      <div
+        data-dice-layout="triangle"
+        className={`inline-flex flex-col items-center justify-center ${triGap} ${className}`}
+      >
+        <div className="flex items-center justify-center">
+          {renderSingleDie(0)}
+        </div>
+        <div className={`flex items-center justify-center ${triGap}`}>
+          {renderSingleDie(1)}
+          {renderSingleDie(2)}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className={`inline-flex items-center ${size === 'xs' ? 'gap-1' : 'gap-1.5'} ${className}`}>
+    <div className={`inline-flex items-center ${size === 'xxs' || size === 'xs' ? 'gap-0.5' : 'gap-1.5'} ${className}`}>
       {Array.from({ length: count }).map((_, i) => renderSingleDie(i))}
     </div>
   );
@@ -820,9 +842,15 @@ export const MissileGraphic: React.FC<{
   const missileWidth = size === 'sm' ? 26 : size === 'lg' ? 44 : 34;
   const missileHeight = size === 'sm' ? 8 : size === 'lg' ? 14 : 10;
   const diceSize =
-    size === 'sm' && primary.count > 1
+    size === 'sm'
+      ? primary.count >= 3
+        ? 'xxs'
+        : primary.count > 1
+        ? 'xs'
+        : 'sm'
+      : primary.count >= 3
       ? 'xs'
-      : size === 'sm' || primary.count > 2
+      : primary.count > 2
       ? 'sm'
       : size === 'lg'
       ? 'md'
@@ -878,6 +906,7 @@ export const MissileGraphic: React.FC<{
           color={primary.color}
           count={primary.count}
           size={diceSize}
+          layout="row"
         />
       </div>
 
@@ -1768,6 +1797,7 @@ export const ShipPartTileIconography: React.FC<{
                 key={idx}
                 color={d.color}
                 count={d.count}
+                layout={d.count === 3 ? 'triangle' : 'row'}
                 size={
                   effectiveSize === 'sm' || d.count > 1 || part.dice!.length > 1 || part.hullBonus > 0
                     ? 'sm'
@@ -2030,6 +2060,7 @@ export const ShipPartSlotGraphic: React.FC<{
                   key={idx}
                   color={d.color}
                   count={d.count}
+                  layout={d.count === 3 ? 'triangle' : 'row'}
                   size={isCrowded ? (size === 'sm' ? 'xs' : 'sm') : size}
                 />
               );

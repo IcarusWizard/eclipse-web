@@ -1248,9 +1248,26 @@ const AppContent: React.FC = () => {
     neutralShips?: NeutralShipSelectionConfig,
     isDraftMode?: boolean
   ) => {
+    const user = getCurrentUser();
     const newGame = createInitialGame(playerCount, selectedFactionIds, expansions, neutralShips, isDraftMode);
     newGame.isLocalGame = true;
     (newGame as any).isGameStarted = true;
+    (newGame as any).creatorUserId = user.id;
+    (newGame as any).creatorUsername = user.username || user.name;
+    (newGame as any).creatorRole = user.role;
+    (newGame as any).members = [
+      {
+        userId: user.id,
+        name: user.name,
+        username: user.username || user.name,
+        role: user.role,
+        email: user.email,
+        emailNotifications: user.emailNotifications,
+        seat: 'all' as const,
+        joinedAt: Date.now(),
+        isCreator: true,
+      },
+    ];
     setCurrentSeat('all');
     setState(newGame);
     setSelectedViewIndex(0);
@@ -2063,7 +2080,7 @@ const AppContent: React.FC = () => {
   const handleToggleAutoPass = (targetPlayerId?: string) => {
     const pId = targetPlayerId || (typeof currentSeat === 'number' ? state.players[currentSeat]?.id : activePlayer.id);
     if (!pId || !canActForPlayer(pId)) {
-      showToast('Cannot change auto-pass settings for this player.');
+      showToast(l('Cannot change auto-pass settings for this player.', '无法修改该玩家的自动跳过设置。'));
       return;
     }
     const targetPlayer = state.players.find((p) => p.id === pId);
@@ -2077,16 +2094,21 @@ const AppContent: React.FC = () => {
     });
     if (res.success) {
       setState(res.newState);
-      showToast(`Auto-Pass Reactions ${newSetting ? 'ENABLED' : 'DISABLED'} for ${targetPlayer.name}.`);
+      showToast(
+        l(
+          `Auto-Pass Reactions ${newSetting ? 'ENABLED' : 'DISABLED'} for ${targetPlayer.name}.`,
+          `已为 ${targetPlayer.name} ${newSetting ? '开启' : '关闭'}自动跳过反应。`
+        )
+      );
     } else {
-      showToast(res.error || 'Failed to update auto-pass.');
+      showToast(res.error || l('Failed to update auto-pass.', '更新自动跳过设置失败。'));
     }
   };
 
   const handleTogglePassInAdvance = (targetPlayerId?: string) => {
     const pId = targetPlayerId || (typeof currentSeat === 'number' ? state.players[currentSeat]?.id : activePlayer.id);
     if (!pId || !canActForPlayer(pId)) {
-      showToast('Cannot change Pass in Advance settings for this player.');
+      showToast(l('Cannot change Pass in Advance settings for this player.', '无法修改该玩家的预先跳过设置。'));
       return;
     }
     const targetPlayer = state.players.find((p) => p.id === pId);
@@ -2102,11 +2124,17 @@ const AppContent: React.FC = () => {
       setState(res.newState);
       showToast(
         newSetting
-          ? `Pass in Advance enabled for ${targetPlayer.name} (will pass automatically when your turn arrives).`
-          : `Pass in Advance cancelled for ${targetPlayer.name}.`
+          ? l(
+              `Pass in Advance enabled for ${targetPlayer.name} (will pass automatically when your turn arrives).`,
+              `已为 ${targetPlayer.name} 开启预先跳过（轮到你的回合时将自动跳过）。`
+            )
+          : l(
+              `Pass in Advance cancelled for ${targetPlayer.name}.`,
+              `已取消 ${targetPlayer.name} 的预先跳过。`
+            )
       );
     } else {
-      showToast(res.error || 'Failed to update Pass in Advance.');
+      showToast(res.error || l('Failed to update Pass in Advance.', '更新预先跳过设置失败。'));
     }
   };
 
@@ -2596,55 +2624,75 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Auto-Resolve Combat
-  const handleAutoResolveCombat = () => {
+  // Auto-Resolve Combat (per-player opt-in; finishes full battle when PvE or when all human combatants enable it)
+  const handleAutoResolveCombat = (targetPlayerId?: string) => {
     if (isSpectator) {
       showToast('Spectators cannot auto-resolve combat.');
       return;
     }
     if (!state.activeCombat) return;
-    let currentState = state;
-    let iterations = 0;
-    while (currentState.activeCombat && iterations < 100) {
-      iterations++;
-      const isResolved = currentState.activeCombat.stage === 'resolved';
-      let commandingId = activePlayer.id;
-      if (currentState.activeCombat.pendingDamageAssignment) {
-        commandingId = currentState.activeCombat.pendingDamageAssignment.attackerOwnerId;
-      } else if (!isResolved) {
-        const sec = currentState.sectors.find((s) => s.id === currentState.activeCombat!.sectorId);
-        if (sec) {
-          const units = buildCombatUnitsForSector(
-            sec,
-            currentState.players,
-            currentState.activeCombat.participatingPlayerIds,
-            currentState.neutralShipBlueprints,
-            currentState.expansions
-          );
-          const defenderId = currentState.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, currentState.players);
-          const aliveUnits = sortUnitsByInitiative(
-            units.filter((u) => u.currentDamage < u.maxHull),
-            defenderId
-          );
-          const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
-          const activeGroup = getActiveCombatGroup(currentState.activeCombat, groups);
-          if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
-            commandingId = activeGroup.ownerId;
+
+    let actorId = targetPlayerId;
+    if (!actorId) {
+      if (typeof currentSeat === 'number' && state.players[currentSeat]) {
+        actorId = state.players[currentSeat]!.id;
+      } else {
+        const autoIds = state.activeCombat.autoResolvePlayerIds || [];
+        if (state.activeCombat.pendingDamageAssignment) {
+          actorId = state.activeCombat.pendingDamageAssignment.attackerOwnerId;
+        } else {
+          const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
+          if (sec) {
+            const units = buildCombatUnitsForSector(
+              sec,
+              state.players,
+              state.activeCombat.participatingPlayerIds,
+              state.neutralShipBlueprints,
+              state.expansions
+            );
+            const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
+            const aliveUnits = sortUnitsByInitiative(
+              units.filter((u) => u.currentDamage < u.maxHull),
+              defenderId
+            );
+            const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
+            const activeGroup = getActiveCombatGroup(state.activeCombat, groups);
+            if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
+              actorId = activeGroup.ownerId;
+            }
+          }
+          if (!actorId) {
+            const humanParticipants = (state.activeCombat.participatingPlayerIds || []).filter((id) =>
+              state.players.some((p) => p.id === id)
+            );
+            actorId = humanParticipants.find((id) => !autoIds.includes(id)) || humanParticipants[0] || activePlayer.id;
           }
         }
       }
-
-      const res = executeAction(currentState, {
-        type: 'RESOLVE_COMBAT_STEP',
-        playerId: commandingId,
-        sectorId: currentState.activeCombat.sectorId,
-        concludeCombat: isResolved,
-      });
-      if (!res.success) break;
-      currentState = res.newState;
     }
-    setState(currentState);
-    showToast('Combat engagement auto-resolved.');
+
+    const currentlyEnabled = Boolean(state.activeCombat.autoResolvePlayerIds?.includes(actorId));
+    const res = executeAction(state, {
+      type: 'SET_COMBAT_AUTO_RESOLVE',
+      playerId: actorId,
+      enabled: !currentlyEnabled,
+      sectorId: state.activeCombat.sectorId,
+    });
+    if (!res.success) {
+      if (res.error) showToast(res.error);
+      return;
+    }
+    setState(res.newState);
+    if (!res.newState.activeCombat) {
+      showToast('Combat engagement auto-resolved.');
+    } else {
+      const actorName = state.players.find((p) => p.id === actorId)?.name || 'Commander';
+      showToast(
+        !currentlyEnabled
+          ? `${actorName}: Auto-Resolve ON.`
+          : `${actorName}: Auto-Resolve OFF.`
+      );
+    }
   };
 
   // Combat Conquest Flow (Sector Control & Colonization)
@@ -3292,24 +3340,30 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
-        {/* Table Text Chat Drawer (Bottom-Right, next to Chronicle) */}
-        <GameChatDrawer
-          messages={state.chatMessages || []}
-          onSendMessage={handleSendChatMessage}
-          currentSenderLabel={currentSenderInfo.label}
-          currentSenderFactionName={currentSenderInfo.factionName}
-          currentSenderFactionColor={currentSenderInfo.color}
-          currentSenderId={currentSenderInfo.id}
-          tableNumber={(state as any).tableNumber || getTableNumber(state)}
-          players={state.players}
-          members={state.members}
-        />
+        {/* Table Text Chat & Galaxy Chronicle Drawers (Bottom-Right adaptive row) */}
+        <div
+          data-testid="bottom-right-drawers"
+          className="fixed bottom-24 md:bottom-4 right-3.5 md:right-4 z-20 md:z-30 flex items-end gap-2 pointer-events-none"
+        >
+          <GameChatDrawer
+            messages={state.chatMessages || []}
+            onSendMessage={handleSendChatMessage}
+            currentSenderLabel={currentSenderInfo.label}
+            currentSenderFactionName={currentSenderInfo.factionName}
+            currentSenderFactionColor={currentSenderInfo.color}
+            currentSenderId={currentSenderInfo.id}
+            tableNumber={(state as any).tableNumber || getTableNumber(state)}
+            players={state.players}
+            members={state.members}
+            embedded
+          />
 
-        {/* Game Event Log Drawer (Bottom-Right) */}
-        <GameLogDrawer
-          logs={state.log}
-          viewerPlayerId={currentSeat === 'spectator' ? undefined : myPlayerId}
-        />
+          <GameLogDrawer
+            logs={state.log}
+            viewerPlayerId={currentSeat === 'spectator' ? undefined : myPlayerId}
+            embedded
+          />
+        </div>
 
         {/* Bug Report Corner Button (Bottom-Left) */}
         <BugReportCornerButton onClick={() => setIsBugReportOpen(true)} />
@@ -3645,7 +3699,6 @@ const AppContent: React.FC = () => {
       {state.phase === 'GAME_OVER' && (
         <GameOverModal
           state={state}
-          onNewGame={() => setIsNewGameOpen(true)}
           onExitToLobby={handleReturnToLobby}
           onReplayGame={() => handleOpenReplay()}
         />

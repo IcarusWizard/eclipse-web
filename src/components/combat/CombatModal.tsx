@@ -222,7 +222,7 @@ interface CombatModalProps {
     damageAssignments?: CombatDamageAssignment[]
   ) => void;
   onRerollDie?: (rollIndex: number) => void;
-  onAutoResolve?: () => void;
+  onAutoResolve?: (playerId?: string) => void;
   currentSeat?: number | 'all' | 'spectator';
 }
 
@@ -288,6 +288,32 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const myPlayer = isSeatedPlayer ? state.players[currentSeat] : null;
   const isMyShip = isPlayerShip && myPlayer ? effectiveAttackerOwnerId === myPlayer.id : false;
   const canCommandActiveShip = !isSpectator && (isResolved || currentSeat === 'all' || isNpcShip || isMyShip);
+  const autoResolvePlayerIds = combat.autoResolvePlayerIds || [];
+  const participatingHumanPlayers = React.useMemo(() => {
+    const ids = new Set<string>(
+      (combat.participatingPlayerIds || []).filter((id) => state.players.some((p) => p.id === id))
+    );
+    aliveUnits.forEach((u) => {
+      if (state.players.some((p) => p.id === u.ownerId)) ids.add(u.ownerId);
+    });
+    return Array.from(ids)
+      .map((id) => state.players.find((p) => p.id === id)!)
+      .filter(Boolean);
+  }, [combat.participatingPlayerIds, aliveUnits, state.players]);
+  const actingAutoResolvePlayerId =
+    isSeatedPlayer && myPlayer
+      ? participatingHumanPlayers.some((p) => p.id === myPlayer.id)
+        ? myPlayer.id
+        : null
+      : pendingSalvo?.attackerOwnerId ||
+        (isPlayerShip && effectiveAttackerOwnerId
+          ? effectiveAttackerOwnerId
+          : participatingHumanPlayers.find((p) => !autoResolvePlayerIds.includes(p.id))?.id ||
+            participatingHumanPlayers[0]?.id ||
+            null);
+  const isMyAutoResolveOn = Boolean(
+    actingAutoResolvePlayerId && autoResolvePlayerIds.includes(actingAutoResolvePlayerId)
+  );
   const hasWormholeGen = attackerOwner ? playerHasWormholeGenerator(attackerOwner) : false;
 
   const [autoAssignDamage, setAutoAssignDamage] = useState<boolean>(() => {
@@ -1451,64 +1477,107 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   <CheckCircle2 className="w-4 h-4" /> {l('Conclude Engagement & Continue', '结束战斗并继续')}
                 </button>
               )
-            ) : pendingSalvo ? (
-              !canCommandActiveShip ? (
-                <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
-                  <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
-                  <span>
-                    {language === 'zh' ? (
-                      <>
-                        正在等待指挥官 <strong className="text-amber-300">{attackerOwner ? getPlayerDisplayName(attackerOwner) : '攻击方'}</strong> 分配伤害...
-                      </>
-                    ) : (
-                      <>
-                        Waiting for Commander <strong className="text-amber-300">{attackerOwner ? getPlayerDisplayName(attackerOwner) : 'attacker'}</strong> to assign damage...
-                      </>
-                    )}
-                  </span>
-                </div>
-              ) : (
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={handleAutoFillAssignments}
-                    className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition cursor-pointer"
-                  >
-                    {l('Auto-Fill', '自动填充')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={handleConfirmDamage}
-                    disabled={!canCommandActiveShip}
-                    className="flex items-center justify-center gap-2 px-6 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl shadow-cyan-950 transition cursor-pointer"
-                  >
-                    <CheckCircle2 className="w-4 h-4" /> {l('Confirm Damage', '确认伤害分配')}
-                  </button>
-                </div>
-              )
             ) : (
               <>
-                {/* Auto-assign damage toggle */}
-                <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
-                  <input
-                    type="checkbox"
-                    checked={autoAssignDamage}
-                    onChange={(e) => handleToggleAutoAssign(e.target.checked)}
-                    className="rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
-                  />
-                  <span className="text-[11px] font-medium text-slate-300">{l('Auto-assign', '自动分配伤害')}</span>
-                </label>
-
-                {/* Auto-Resolve Option */}
-                {onAutoResolve && !isAlreadyRetreating && !isSpectator && (
-                  <button
-                    type="button"
-                    onClick={onAutoResolve}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition shadow cursor-pointer"
+                {autoResolvePlayerIds.length > 0 && (
+                  <span
+                    data-testid="combat-auto-resolve-status"
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-950/60 border border-amber-500/40 text-amber-300 text-[10px] font-bold"
                   >
-                    <Zap className="w-3.5 h-3.5 text-amber-400" /> {l('Auto-Resolve', '一键自动结算')}
-                  </button>
+                    <Zap className="w-3 h-3 text-amber-400" />
+                    {l('Auto-Resolve:', '自动结算：')}{' '}
+                    {autoResolvePlayerIds
+                      .map((id) => {
+                        const p = state.players.find((pl) => pl.id === id);
+                        return p ? getPlayerDisplayName(p) : id;
+                      })
+                      .join(', ')}
+                  </span>
                 )}
+
+                {pendingSalvo ? (
+                  !canCommandActiveShip ? (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {onAutoResolve && !isSpectator && actingAutoResolvePlayerId && (!isAlreadyRetreating || isMyAutoResolveOn) && (
+                        <button
+                          type="button"
+                          onClick={() => onAutoResolve(actingAutoResolvePlayerId)}
+                          className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs tracking-wider uppercase border transition shadow cursor-pointer ${
+                            isMyAutoResolveOn
+                              ? 'bg-emerald-950/80 hover:bg-emerald-900 border-emerald-500/70 text-emerald-300'
+                              : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                          }`}
+                        >
+                          <Zap className={`w-3.5 h-3.5 ${isMyAutoResolveOn ? 'text-emerald-400' : 'text-amber-400'}`} />{' '}
+                          {isMyAutoResolveOn
+                            ? l('Auto-Resolve: ON', '自动结算：已开启')
+                            : l('Auto-Resolve', '一键自动结算')}
+                        </button>
+                      )}
+                      <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-slate-800/90 border border-slate-700 text-xs text-slate-300 shadow">
+                        <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+                        <span>
+                          {language === 'zh' ? (
+                            <>
+                              正在等待指挥官 <strong className="text-amber-300">{attackerOwner ? getPlayerDisplayName(attackerOwner) : '攻击方'}</strong> 分配伤害...
+                            </>
+                          ) : (
+                            <>
+                              Waiting for Commander <strong className="text-amber-300">{attackerOwner ? getPlayerDisplayName(attackerOwner) : 'attacker'}</strong> to assign damage...
+                            </>
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <button
+                        type="button"
+                        onClick={handleAutoFillAssignments}
+                        className="px-3 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs tracking-wider uppercase border border-slate-700 transition cursor-pointer"
+                      >
+                        {l('Auto-Fill', '自动填充')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleConfirmDamage}
+                        disabled={!canCommandActiveShip}
+                        className="flex items-center justify-center gap-2 px-6 py-2 rounded-lg bg-cyan-500 hover:bg-cyan-400 disabled:opacity-50 text-slate-950 font-bold text-xs tracking-wider uppercase shadow-xl shadow-cyan-950 transition cursor-pointer"
+                      >
+                        <CheckCircle2 className="w-4 h-4" /> {l('Confirm Damage', '确认伤害分配')}
+                      </button>
+                    </div>
+                  )
+                ) : (
+                  <>
+                    {/* Auto-assign damage toggle */}
+                    <label className="flex items-center gap-1.5 text-xs text-slate-300 cursor-pointer select-none px-2.5 py-1.5 rounded-lg bg-slate-900 border border-slate-800 hover:border-slate-700 transition">
+                      <input
+                        type="checkbox"
+                        checked={autoAssignDamage}
+                        onChange={(e) => handleToggleAutoAssign(e.target.checked)}
+                        className="rounded border-slate-700 bg-slate-950 text-cyan-500 focus:ring-0 w-3.5 h-3.5 cursor-pointer"
+                      />
+                      <span className="text-[11px] font-medium text-slate-300">{l('Auto-assign', '自动分配伤害')}</span>
+                    </label>
+
+                    {/* Auto-Resolve Option (per-player opt-in) */}
+                    {onAutoResolve && !isSpectator && actingAutoResolvePlayerId && (!isAlreadyRetreating || isMyAutoResolveOn) && (
+                      <button
+                        type="button"
+                        onClick={() => onAutoResolve(actingAutoResolvePlayerId)}
+                        className={`flex items-center justify-center gap-1.5 px-3 py-2 rounded-lg font-bold text-xs tracking-wider uppercase border transition shadow cursor-pointer ${
+                          isMyAutoResolveOn
+                            ? 'bg-emerald-950/80 hover:bg-emerald-900 border-emerald-500/70 text-emerald-300'
+                            : 'bg-slate-800 hover:bg-slate-700 text-slate-200 border-slate-700'
+                        }`}
+                      >
+                        <Zap className={`w-3.5 h-3.5 ${isMyAutoResolveOn ? 'text-emerald-400' : 'text-amber-400'}`} />{' '}
+                        {isMyAutoResolveOn
+                          ? l('Auto-Resolve: ON', '自动结算：已开启')
+                          : l('Auto-Resolve', '一键自动结算')}
+                      </button>
+                    )}
 
                 {!canCommandActiveShip ? (
                   <div className="flex items-center gap-2 flex-wrap">
@@ -1585,6 +1654,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                     )}
                   </>
                 )}
+              </>
+            )}
               </>
             )}
           </div>

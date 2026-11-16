@@ -9,6 +9,7 @@ interface GameLogDrawerProps {
   initialOpen?: boolean;
   initialLastCheckedCount?: number;
   viewerPlayerId?: string;
+  embedded?: boolean;
 }
 
 type FilterType = 'all' | 'action' | 'combat' | 'economy' | 'system';
@@ -18,6 +19,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
   initialOpen = false,
   initialLastCheckedCount,
   viewerPlayerId,
+  embedded = false,
 }) => {
   const { language, l } = useLanguage();
   const [isOpen, setIsOpen] = useState<boolean>(initialOpen);
@@ -79,13 +81,19 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
   }, [logs]);
 
   return (
-    <div className="fixed bottom-24 md:bottom-4 right-3.5 md:right-4 z-20 md:z-30 flex flex-col items-end">
+    <div
+      className={
+        embedded
+          ? 'relative flex flex-col items-end pointer-events-auto'
+          : 'fixed bottom-24 md:bottom-4 right-3.5 md:right-4 z-20 md:z-30 flex flex-col items-end'
+      }
+    >
       {/* Drawer Box */}
       {isOpen && (
         <div
-          className={`${
+          className={`${embedded ? 'absolute bottom-full mb-2 right-0' : 'mb-2'} ${
             isExpanded ? 'w-[calc(100vw-28px)] sm:w-[28rem] h-[34rem]' : 'w-[calc(100vw-28px)] sm:w-96 h-80'
-          } bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl p-3 flex flex-col mb-2 backdrop-blur-md transition-all`}
+          } bg-slate-950/95 border border-slate-800 rounded-xl shadow-2xl p-3 flex flex-col backdrop-blur-md transition-all`}
         >
           {/* Header */}
           <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-2">
@@ -261,7 +269,7 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
       <button
         type="button"
         onClick={handleToggle}
-        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold shadow-lg transition-all cursor-pointer relative"
+        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-slate-900/90 hover:bg-slate-800 border border-slate-800 text-slate-300 text-xs font-bold shadow-lg transition-all cursor-pointer relative whitespace-nowrap shrink-0"
       >
         <ScrollText className="w-4 h-4 text-cyan-400" />
         <span>{l(`Chronicle (${logs.length})`, `编年史 (${logs.length})`)}</span>

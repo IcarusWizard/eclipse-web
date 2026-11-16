@@ -932,7 +932,7 @@ export function broadcastTableCancelled(tableId: string): void {
 export function deleteSavedTable(tableId: string): void {
   try {
     const storage = getStorage();
-    let wasLocalGame = false;
+    let wasLocalGame = tableId.startsWith('local-') || tableId.startsWith('local_');
     const raw = storage.getItem(SAVED_TABLES_KEY);
     if (raw) {
       const tables: Record<string, SavedTableSummary> = JSON.parse(raw);
@@ -1399,6 +1399,7 @@ export async function registerTableMember(
         activePlayerName: loaded?.players?.[loaded?.activePlayerIndex]?.name || 'Unknown',
         activePlayerIndex: loaded?.activePlayerIndex ?? 0,
         isGameStarted: loaded ? (loaded as any).isGameStarted : undefined,
+        isLocalGame: Boolean(isLocal || loaded?.isLocalGame || tableId.startsWith('local-') || tableId.startsWith('local_')),
         members: [{ ...member, joinedAt: Date.now() }],
       };
       curMembers = tables[tableId].members!;
@@ -1660,6 +1661,51 @@ export function filterTablesForUser(
 }
 
 export const getUserTables = filterTablesForUser;
+
+/**
+ * Returns true if the table is a browser-local hotseat game (not hosted on the multiplayer server).
+ */
+export function isTableLocalGame(
+  table: Partial<SavedTableSummary> | { id?: string; isLocalGame?: boolean } | null | undefined
+): boolean {
+  if (!table) return false;
+  return Boolean(
+    table.isLocalGame ||
+      (typeof table.id === 'string' && (table.id.startsWith('local-') || table.id.startsWith('local_')))
+  );
+}
+
+/**
+ * Determines whether the given user is allowed to delete a table:
+ * - Browser-local hotseat games can be deleted by any user on that browser.
+ * - Online multiplayer tables stored on the server can only be deleted by an admin.
+ */
+export function canUserDeleteTable(
+  table: Partial<SavedTableSummary> | { id?: string; isLocalGame?: boolean } | null | undefined,
+  user: Pick<UserSession, 'role'> | null | undefined
+): boolean {
+  if (!table) return false;
+  if (isTableLocalGame(table)) return true;
+  return user?.role === 'admin';
+}
+
+/**
+ * Returns the personal tables shown in "My Games" / "My Tables":
+ * - Any browser-local hotseat games on this device
+ * - Online multiplayer tables where the logged-in user holds a seat (excluding invalid guest-created online tables)
+ */
+export function getPersonalTablesForUser(
+  tables: SavedTableSummary[],
+  user: UserSession
+): SavedTableSummary[] {
+  if (user.role === 'guest') {
+    return tables.filter((t) => isTableLocalGame(t));
+  }
+  const memberIds = new Set(filterTablesForUser(tables, user).map((t) => t.id));
+  return tables.filter(
+    (t) => isTableLocalGame(t) || (!isGuestCreatedOnlineTable(t) && memberIds.has(t.id))
+  );
+}
 
 export type TableStatusCategory = 'need_players' | 'running' | 'done';
 

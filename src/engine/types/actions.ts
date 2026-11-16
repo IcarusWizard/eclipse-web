@@ -36,6 +36,7 @@ export type ActionType =
   | 'ACTIVATE_PULSAR'
   | 'RETURN_BLACK_HOLE_SHIP'
   | 'DRAFT_FACTION'
+  | 'SET_COMBAT_AUTO_RESOLVE'
   | 'SEND_CHAT';
 
 export interface BaseAction {
@@ -304,6 +305,12 @@ export interface SetPassInAdvanceAction extends BaseAction {
   enabled: boolean;
 }
 
+export interface SetCombatAutoResolveAction extends BaseAction {
+  type: 'SET_COMBAT_AUTO_RESOLVE';
+  enabled: boolean;
+  sectorId?: string;
+}
+
 export interface SendChatAction extends BaseAction {
   type: 'SEND_CHAT';
   message: string;
@@ -347,4 +354,5 @@ export type GameAction =
   | BetrayAllianceAction
   | SetAutoPassAction
   | SetPassInAdvanceAction
+  | SetCombatAutoResolveAction
   | SendChatAction;

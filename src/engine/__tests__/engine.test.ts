@@ -7334,7 +7334,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         }).not.toThrow();
 
         expect(gameOverHtml).toContain('Exit to Lobby');
-        expect(gameOverHtml).toContain('Start New Galactic War');
+        expect(gameOverHtml).not.toContain('Start New Galactic War');
+        expect(gameOverHtml).not.toContain('开启新银河战争');
       });
 
       it('51. verifies Bug Fixes 107-112: wild planet rendering & star badge, distinct center sector color, ancient orbital colonization on claim, non-blocking combat side window, bankruptcy staging & batch confirmation, and ancient labs discovery tile draw', async () => {
@@ -18631,6 +18632,31 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(p2AfterAutoPass.passInAdvance).toBe(false);
         expect(p1PassRes.newState.log.some((l) => l.message.includes('Pass in Advance'))).toBe(true);
 
+        const React = (await import('react')).default;
+        const { renderToStaticMarkup } = await import('react-dom/server');
+        const { ActionBar } = await import('../../components/layout/ActionBar');
+        const opponentTurnBarHtml = renderToStaticMarkup(
+          React.createElement(ActionBar, {
+            activePlayer: p1,
+            players: stateP1.players,
+            isExploreMode: false,
+            isTurnGated: true,
+            passInAdvance: false,
+            onTogglePassInAdvance: () => {},
+            autoPassReactions: false,
+            onToggleAutoPass: () => {},
+            onAction: () => {},
+            onPass: () => {},
+          })
+        );
+        expect(opponentTurnBarHtml).toContain('Pass in Advance:');
+        expect(opponentTurnBarHtml).toContain('&#x27;s Turn');
+        expect(opponentTurnBarHtml).toContain('pauses automatically if any of your sectors come under attack');
+        expect(opponentTurnBarHtml).not.toContain('Active');
+        expect(opponentTurnBarHtml).not.toContain('Opponent&#x27;s Turn');
+        expect(opponentTurnBarHtml).not.toContain('ADV: OFF');
+        expect(opponentTurnBarHtml).not.toContain('ADV: ON');
+
         // --- 3. Bug 211: Replay Step Combat Logging Details ---
         const combatSec = p1PassRes.newState.sectors.find((s) => s.id === homeSec.id)!;
         combatSec.ships = [
@@ -19955,6 +19981,33 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(closedChatHtml).toContain('data-testid="chat-unread-badge"');
         expect(closedChatHtml).toContain('<span>1</span>');
+
+        // Adaptive embedded mode omits hardcoded fixed right-offset so Chat shifts smoothly next to Chronicle unread badge
+        const { GameLogDrawer } = await import('../../components/layout/GameLogDrawer');
+        const adaptiveBarHtml = renderToString(
+          React.createElement(
+            'div',
+            { className: 'fixed bottom-24 md:bottom-4 right-3.5 md:right-4 flex items-end gap-2' },
+            React.createElement(GameChatDrawer, {
+              messages: sendRes2.newState.chatMessages,
+              onSendMessage: () => {},
+              currentSenderLabel: 'Descendants of Draco (Alice)',
+              currentSenderId: game.players[0]!.id,
+              initialOpen: false,
+              embedded: true,
+            }),
+            React.createElement(GameLogDrawer, {
+              logs: [{ id: 'l1', timestamp: 1000, round: 1, phase: 'ACTION_PHASE', playerId: game.players[1]!.id, message: 'p2 moved', type: 'action' }],
+              initialOpen: false,
+              initialLastCheckedCount: 0,
+              viewerPlayerId: game.players[0]!.id,
+              embedded: true,
+            })
+          )
+        );
+        expect(adaptiveBarHtml).not.toContain('right-[8.8rem]');
+        expect(adaptiveBarHtml).toContain('data-testid="chronicle-unread-badge"');
+        expect(adaptiveBarHtml).toContain('data-testid="chat-unread-badge"');
       });
 
       test('122. verifies Table Chat Bug Fixes: Prevents duplicate Faction (Faction) names & makes Orion Hegemony black color visible', async () => {
@@ -24438,8 +24491,39 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // 2. Real NPC blueprint decomposition & rendered data-layout-rows
         expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.ancient.default)).toHaveLength(3);
         expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.guardian.advanced)).toHaveLength(4);
-        expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.guardian.default)).toHaveLength(5);
+        expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.guardian.default)).toHaveLength(4);
         expect(buildNeutralShipComponents(NEUTRAL_SHIP_BLUEPRINTS.gcds.default)).toHaveLength(5);
+
+        const guardianDefHtml = renderToString(
+          React.createElement(NeutralShipBlueprintLayout, {
+            blueprint: NEUTRAL_SHIP_BLUEPRINTS.guardian.default,
+          })
+        );
+        expect(guardianDefHtml).toContain('data-layout-rows="2-2"');
+        expect(guardianDefHtml).toContain('data-dice-layout="triangle"');
+        expect(guardianDefHtml).toContain('3 HP');
+
+        const {
+          ShipPartSlotGraphic,
+          ShipPartTileIconography,
+        } = await import('../../components/common/PhysicalTileIconography');
+        const ionMissileSmHtml = renderToString(
+          React.createElement(ShipPartSlotGraphic, {
+            part: SHIP_PARTS.ion_missile,
+            size: 'sm',
+          })
+        );
+        expect(ionMissileSmHtml).not.toContain('data-dice-layout="triangle"');
+        expect(ionMissileSmHtml).toContain('w-[13px] h-[13px]');
+
+        const ionMissileTileHtml = renderToString(
+          React.createElement(ShipPartTileIconography, {
+            part: SHIP_PARTS.ion_missile,
+            size: 'md',
+          })
+        );
+        expect(ionMissileTileHtml).not.toContain('data-dice-layout="triangle"');
+        expect(ionMissileTileHtml).toContain('w-[18px] h-[18px]');
 
         const ancientHtml = renderToString(
           React.createElement(NeutralShipBlueprintLayout, {
@@ -25094,6 +25178,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(htmlEn).not.toContain('border-slate-800 p-3 overflow-x-auto');
       expect(htmlEn).toContain('shrink-0 bg-slate-950/60 border-b border-slate-800 p-3');
       expect(htmlEn).toContain('min-h-[180px]');
+      expect(htmlEn).toContain('View Map');
       for (let i = 1; i <= 6; i++) {
         expect(htmlEn).toContain(`#${i}`);
       }
@@ -25110,6 +25195,454 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       );
       expect(htmlZh).toContain('席位与轮抽顺序');
       expect(htmlZh).toContain('当前');
+      expect(htmlZh).toContain('查看星图');
+
+      // HexGalaxyMap renders POS 1..6 and Turn/Draft labels directly on Ring 2 slots during DRAFT_PHASE
+      const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+      const draftMapEn = renderToStaticMarkup(
+        React.createElement(HexGalaxyMap, {
+          state: draftGame6,
+          selectedSectorId: null,
+          onSelectSector: () => {},
+          isExploreMode: false,
+        })
+      );
+      for (let i = 1; i <= 6; i++) {
+        expect(draftMapEn).toContain(`POS ${i}`);
+      }
+      expect(draftMapEn).toContain('T#1 • D#6');
+
+      const draftMapZh = renderToStaticMarkup(
+        React.createElement(LanguageProvider, {
+          initialLanguage: 'zh',
+          children: React.createElement(HexGalaxyMap, {
+            state: draftGame6,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+            isExploreMode: false,
+          }),
+        })
+      );
+      expect(draftMapZh).toContain('位置 1');
+      expect(draftMapZh).toContain('行#1 • 选#6');
+    });
+
+    // Test 172: Table Deletion Rules Across Lobby View My Games and TableSessionModal
+    it('172. allows any local browser user to delete local hotseat games and restricts multiplayer server table deletion to admin', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const {
+        canUserDeleteTable,
+        isTableLocalGame,
+        saveGameState,
+        deleteSavedTable,
+        listSavedTables,
+      } = await import('../rules/persistence');
+      const { saveUserSession, getCurrentUser } = await import('../rules/userSession');
+      const { LobbyView } = await import('../../components/lobby/LobbyView');
+      const { TableSessionModal } = await import('../../components/layout/TableSessionModal');
+
+      const prevUser = getCurrentUser();
+      const prevIds = new Set(listSavedTables().map((t) => t.id));
+
+      // 1. Unit checks for isTableLocalGame & canUserDeleteTable
+      const localSummary = { id: 'local-801', isLocalGame: true };
+      const onlineSummary = { id: 'galaxy-802', isLocalGame: false };
+      expect(isTableLocalGame(localSummary)).toBe(true);
+      expect(isTableLocalGame({ id: 'local_abc' })).toBe(true);
+      expect(isTableLocalGame(onlineSummary)).toBe(false);
+
+      expect(canUserDeleteTable(localSummary, { role: 'guest' })).toBe(true);
+      expect(canUserDeleteTable(localSummary, { role: 'user' })).toBe(true);
+      expect(canUserDeleteTable(localSummary, { role: 'admin' })).toBe(true);
+      expect(canUserDeleteTable(onlineSummary, { role: 'guest' })).toBe(false);
+      expect(canUserDeleteTable(onlineSummary, { role: 'user' })).toBe(false);
+      expect(canUserDeleteTable(onlineSummary, { role: 'admin' })).toBe(true);
+
+      // 2. Save a local game originally created by an older guest ID + an online game created by user u_reg_172
+      const localGame = createInitialGame(2);
+      localGame.id = 'local-801';
+      (localGame as any).tableNumber = 801;
+      localGame.isLocalGame = true;
+      (localGame as any).members = [
+        { userId: 'guest_old_session', username: 'OldGuest', name: 'OldGuest', role: 'guest', seat: 'all', joinedAt: 1000, isCreator: true },
+      ];
+      saveGameState(localGame, true);
+
+      const onlineGame = createInitialGame(2);
+      onlineGame.id = 'galaxy-802';
+      (onlineGame as any).tableNumber = 802;
+      onlineGame.isLocalGame = false;
+      (onlineGame as any).creatorUserId = 'u_reg_172';
+      (onlineGame as any).members = [
+        { userId: 'u_reg_172', username: 'RegPlayer', name: 'RegPlayer', role: 'user', seat: 0, joinedAt: 1000, isCreator: true },
+      ];
+      saveGameState(onlineGame, true);
+
+      try {
+        // Logged in as regular user u_reg_172: can delete local-801 even though old guest created it, CANNOT delete galaxy-802 even though u_reg_172 created it
+        saveUserSession({
+          id: 'u_reg_172',
+          username: 'RegPlayer',
+          name: 'RegPlayer',
+          role: 'user',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        });
+
+        const lobbyUserHtml = renderToStaticMarkup(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+        expect(lobbyUserHtml).toContain('Table #801');
+        expect(lobbyUserHtml).toContain('Table #802');
+        const expectedLocalDeleteCount = listSavedTables().filter((t) => isTableLocalGame(t)).length;
+        const lobbyUserTrashCount = (lobbyUserHtml.match(/title="Delete Table"/g) || []).length;
+        expect(lobbyUserTrashCount).toBe(expectedLocalDeleteCount);
+
+        const sessionUserHtml = renderToStaticMarkup(
+          React.createElement(TableSessionModal, {
+            currentState: onlineGame,
+            onJoinTable: () => {},
+            onNewTable: () => {},
+            onClose: () => {},
+          })
+        );
+        const userSessionTrashCount = (sessionUserHtml.match(/title="Delete saved table"/g) || []).length;
+        expect(userSessionTrashCount).toBe(expectedLocalDeleteCount);
+
+        // Logged in as admin: can delete BOTH local and online multiplayer tables
+        saveUserSession({
+          id: 'u_admin_172',
+          username: 'AdminUser',
+          name: 'AdminUser',
+          role: 'admin',
+          createdAt: Date.now(),
+          lastActiveAt: Date.now(),
+        });
+
+        const lobbyAdminHtml = renderToStaticMarkup(
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        );
+        const lobbyAdminTrashCount = (lobbyAdminHtml.match(/title="Delete Table"/g) || []).length;
+        expect(lobbyAdminTrashCount).toBeGreaterThan(lobbyUserTrashCount);
+
+        const sessionAdminHtml = renderToStaticMarkup(
+          React.createElement(TableSessionModal, {
+            currentState: onlineGame,
+            onJoinTable: () => {},
+            onNewTable: () => {},
+            onClose: () => {},
+          })
+        );
+        const adminSessionTrashCount = (sessionAdminHtml.match(/title="Delete saved table"/g) || []).length;
+        expect(adminSessionTrashCount).toBeGreaterThan(userSessionTrashCount);
+      } finally {
+        if (!prevIds.has('local-801')) deleteSavedTable('local-801');
+        if (!prevIds.has('galaxy-802')) deleteSavedTable('galaxy-802');
+        saveUserSession(prevUser);
+      }
+    });
+
+    // Test 173: Per-Player Combat Auto-Resolve (PvE full resolution vs PvP mutual consent)
+    it('173. resolves PvE completely on Auto-Resolve, while in PvP only auto-fires opted-in player and finishes when both opt in', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+      const {
+        buildCombatUnitsForSector,
+        sortUnitsByInitiative,
+        getCombatShipTypeGroups,
+        getActiveCombatGroup,
+        getSectorDefenderOwnerId,
+      } = await import('../rules/combatEngine');
+
+      // 1. PvE: Player vs Ancient resolves completely when player clicks Auto-Resolve
+      const pveGame = createInitialGame(2);
+      const pvePlayer = pveGame.players[0]!;
+      const pveSec = pveGame.sectors.find((s) => s.ancientsCount > 0) || {
+        ...pveGame.sectors[0]!,
+        id: 'sec-pve-173',
+        sectorNumber: 201,
+        ancientsCount: 1,
+        ships: [],
+      };
+      if (!pveGame.sectors.some((s) => s.id === pveSec.id)) {
+        pveGame.sectors.push(pveSec);
+      }
+      pveSec.ships = [
+        { id: 'pve_dread_1', ownerId: pvePlayer.id, type: 'dreadnought', damage: 0 },
+        { id: 'pve_anc_1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+      ];
+      pveGame.phase = 'COMBAT_PHASE';
+      pveGame.activeCombat = {
+        sectorId: pveSec.id,
+        attackerOwnerId: pvePlayer.id,
+        defenderOwnerId: 'ancient',
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        participatingPlayerIds: [pvePlayer.id, 'ancient'],
+      };
+
+      const pveAutoRes = executeAction(pveGame, {
+        type: 'SET_COMBAT_AUTO_RESOLVE',
+        playerId: pvePlayer.id,
+        enabled: true,
+        sectorId: pveSec.id,
+      });
+      expect(pveAutoRes.success).toBe(true);
+      expect(pveAutoRes.newState.activeCombat).toBeNull();
+
+      // 2. PvP: Player 1 & Player 2 fight; Player 1 opting in only resolves Player 1 turns and waits for Player 2
+      const pvpGame = createInitialGame(2);
+      const p1 = pvpGame.players[0]!;
+      const p2 = pvpGame.players[1]!;
+      // Ensure ships survive round 1 deterministically (3 HP vs max 1 dmg/salvo) and finish quickly (~6 rounds << 100 steps) when both auto-resolve
+      p1.blueprints.dreadnought = {
+        ...p1.blueprints.dreadnought,
+        baseInitiative: 5,
+        slots: [
+          SHIP_PARTS.ion_cannon,
+          SHIP_PARTS.positron_computer,
+          SHIP_PARTS.improved_hull,
+          SHIP_PARTS.fusion_drive,
+          SHIP_PARTS.fusion_source,
+          null,
+          null,
+          null,
+        ],
+      };
+      p2.blueprints.dreadnought = {
+        ...p2.blueprints.dreadnought,
+        baseInitiative: 1,
+        slots: [
+          SHIP_PARTS.ion_cannon,
+          SHIP_PARTS.positron_computer,
+          SHIP_PARTS.improved_hull,
+          SHIP_PARTS.fusion_drive,
+          SHIP_PARTS.fusion_source,
+          null,
+          null,
+          null,
+        ],
+      };
+
+      const pvpSec = {
+        ...pvpGame.sectors.find((s) => s.id === `home_sector_${p2.id}`)!,
+      };
+      const secIdx = pvpGame.sectors.findIndex((s) => s.id === pvpSec.id);
+      pvpSec.discOwner = p2.id;
+      pvpSec.ships = [
+        { id: 'pvp_p1_dread', ownerId: p1.id, type: 'dreadnought' as const, damage: 0 },
+        { id: 'pvp_p2_dread', ownerId: p2.id, type: 'dreadnought' as const, damage: 0 },
+      ];
+      pvpGame.sectors[secIdx] = pvpSec;
+      pvpGame.phase = 'COMBAT_PHASE';
+      pvpGame.activeCombat = {
+        sectorId: pvpSec.id,
+        attackerOwnerId: p1.id,
+        defenderOwnerId: p2.id,
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        participatingPlayerIds: [p1.id, p2.id],
+      };
+
+      // Player 1 enables Auto-Resolve on Player 1's turn
+      const afterP1Auto = executeAction(pvpGame, {
+        type: 'SET_COMBAT_AUTO_RESOLVE',
+        playerId: p1.id,
+        enabled: true,
+        sectorId: pvpSec.id,
+      });
+      expect(afterP1Auto.success).toBe(true);
+      expect(afterP1Auto.newState.activeCombat).not.toBeNull();
+      expect(afterP1Auto.newState.activeCombat!.autoResolvePlayerIds).toEqual([p1.id]);
+
+      // Must pause right on Player 2's turn so Player 2 retains manual control!
+      const sAfterP1 = afterP1Auto.newState;
+      const unitsAfterP1 = buildCombatUnitsForSector(sAfterP1.sectors[secIdx]!, sAfterP1.players);
+      const defId = getSectorDefenderOwnerId(sAfterP1.sectors[secIdx]!, sAfterP1.players);
+      const groupsAfterP1 = getCombatShipTypeGroups(sortUnitsByInitiative(unitsAfterP1, defId), defId);
+      const activeAfterP1 = getActiveCombatGroup(sAfterP1.activeCombat!, groupsAfterP1);
+      if (sAfterP1.activeCombat!.stage !== 'resolved') {
+        expect(activeAfterP1?.ownerId).toBe(p2.id);
+      }
+
+      // CombatModal UI shows Auto-Resolve: ON for Seat 0 (p1) and opt-in Auto-Resolve + Fire Salvo for Seat 1 (p2)
+      const p1ModalHtml = renderToStaticMarkup(
+        React.createElement(CombatModal, {
+          state: sAfterP1,
+          combat: sAfterP1.activeCombat!,
+          currentSeat: 0,
+          onStepCombat: () => {},
+          onAutoResolve: () => {},
+        })
+      );
+      expect(p1ModalHtml).toContain('Auto-Resolve: ON');
+      expect(p1ModalHtml).toContain('data-testid="combat-auto-resolve-status"');
+
+      const p2ModalHtml = renderToStaticMarkup(
+        React.createElement(CombatModal, {
+          state: sAfterP1,
+          combat: sAfterP1.activeCombat!,
+          currentSeat: 1,
+          onStepCombat: () => {},
+          onAutoResolve: () => {},
+        })
+      );
+      expect(p2ModalHtml).toContain('Auto-Resolve');
+      expect(p2ModalHtml).not.toContain('Auto-Resolve: ON');
+      if (sAfterP1.activeCombat!.stage !== 'resolved') {
+        expect(p2ModalHtml).toContain('Fire Salvo');
+      }
+
+      // Now Player 2 fires manually via RESOLVE_COMBAT_STEP -> engine auto-runs Player 1's next turn and stops back on Player 2!
+      if (sAfterP1.activeCombat!.stage !== 'resolved') {
+        const afterP2ManualFire = executeAction(sAfterP1, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: p2.id,
+          sectorId: pvpSec.id,
+          autoAssign: true,
+        });
+        expect(afterP2ManualFire.success).toBe(true);
+        if (afterP2ManualFire.newState.activeCombat && afterP2ManualFire.newState.activeCombat.stage !== 'resolved') {
+          const unitsR2 = buildCombatUnitsForSector(
+            afterP2ManualFire.newState.sectors[secIdx]!,
+            afterP2ManualFire.newState.players
+          );
+          const groupsR2 = getCombatShipTypeGroups(sortUnitsByInitiative(unitsR2, defId), defId);
+          const activeR2 = getActiveCombatGroup(afterP2ManualFire.newState.activeCombat, groupsR2);
+          expect(activeR2?.ownerId).toBe(p2.id);
+        }
+
+        // Finally, Player 2 ALSO enables Auto-Resolve -> both sides opted in -> full PvP battle completes automatically!
+        const currentBeforeP2Auto = afterP2ManualFire.newState;
+        if (currentBeforeP2Auto.activeCombat) {
+          const afterBothAuto = executeAction(currentBeforeP2Auto, {
+            type: 'SET_COMBAT_AUTO_RESOLVE',
+            playerId: p2.id,
+            enabled: true,
+            sectorId: pvpSec.id,
+          });
+          expect(afterBothAuto.success).toBe(true);
+          expect(afterBothAuto.newState.activeCombat).toBeNull();
+        }
+      }
+
+      // 3. Multi-player sequential combat (hasMoreCombatsInSector): Auto-Resolve from Duel 1 is NOT carried over to Duel 2
+      const threeWayGame = createInitialGame(3);
+      const tp1 = threeWayGame.players[0]!;
+      const tp2 = threeWayGame.players[1]!;
+      const tp3 = threeWayGame.players[2]!;
+      const threeWaySecIdx = threeWayGame.sectors.findIndex((s) => s.id === `home_sector_${tp1.id}`);
+      const threeWaySec = threeWayGame.sectors[threeWaySecIdx]!;
+      threeWaySec.discOwner = tp1.id;
+      threeWaySec.playerEntryOrder = [tp1.id, tp2.id, tp3.id];
+      threeWaySec.ships = [
+        { id: 'tw_p1_int', ownerId: tp1.id, type: 'interceptor' as const, damage: 0 },
+        { id: 'tw_p2_dread', ownerId: tp2.id, type: 'dreadnought' as const, damage: 0 },
+        { id: 'tw_p3_int', ownerId: tp3.id, type: 'interceptor' as const, damage: 0 },
+      ];
+      threeWayGame.phase = 'COMBAT_PHASE';
+      threeWayGame.activeCombat = {
+        sectorId: threeWaySec.id,
+        attackerOwnerId: tp3.id,
+        defenderOwnerId: tp2.id,
+        roundNumber: 1,
+        stage: 'resolved',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        participatingPlayerIds: [tp2.id, tp3.id],
+        autoResolvePlayerIds: [tp2.id, tp3.id],
+      };
+      // Remove tp3 ship so Duel 1 concludes with tp2 vs remaining tp1 in Duel 2
+      threeWaySec.ships = [
+        { id: 'tw_p1_int', ownerId: tp1.id, type: 'interceptor' as const, damage: 0 },
+        { id: 'tw_p2_dread', ownerId: tp2.id, type: 'dreadnought' as const, damage: 0 },
+      ];
+      const duelTransitionRes = executeAction(threeWayGame, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: tp2.id,
+        sectorId: threeWaySec.id,
+        concludeCombat: true,
+      });
+      expect(duelTransitionRes.success).toBe(true);
+      expect(duelTransitionRes.newState.activeCombat).not.toBeNull();
+      expect(duelTransitionRes.newState.activeCombat!.participatingPlayerIds).toContain(tp2.id);
+      expect(duelTransitionRes.newState.activeCombat!.participatingPlayerIds).toContain(tp1.id);
+      expect(duelTransitionRes.newState.activeCombat!.autoResolvePlayerIds || []).toEqual([]);
+
+      // 4. Within the same engaged pair (A vs B), missile -> regular stage transition preserves Auto-Resolve
+      const missilePvpGame = createInitialGame(2);
+      const mp1 = missilePvpGame.players[0]!;
+      const mp2 = missilePvpGame.players[1]!;
+      mp1.blueprints.cruiser = {
+        ...mp1.blueprints.cruiser,
+        slots: [
+          SHIP_PARTS.plasma_missile,
+          SHIP_PARTS.ion_cannon,
+          SHIP_PARTS.positron_computer,
+          SHIP_PARTS.improved_hull,
+          SHIP_PARTS.fusion_drive,
+          SHIP_PARTS.fusion_source,
+        ],
+      };
+      mp2.blueprints.cruiser = {
+        ...mp2.blueprints.cruiser,
+        slots: [
+          SHIP_PARTS.ion_cannon,
+          SHIP_PARTS.positron_computer,
+          SHIP_PARTS.improved_hull,
+          SHIP_PARTS.improved_hull,
+          SHIP_PARTS.fusion_drive,
+          SHIP_PARTS.fusion_source,
+        ],
+      };
+      const missileSecIdx = missilePvpGame.sectors.findIndex((s) => s.id === `home_sector_${mp2.id}`);
+      const missileSec = missilePvpGame.sectors[missileSecIdx]!;
+      missileSec.ships = [
+        { id: 'ms_p1_cru', ownerId: mp1.id, type: 'cruiser' as const, damage: 0 },
+        { id: 'ms_p2_cru', ownerId: mp2.id, type: 'cruiser' as const, damage: 0 },
+      ];
+      missilePvpGame.phase = 'COMBAT_PHASE';
+      missilePvpGame.activeCombat = {
+        sectorId: missileSec.id,
+        attackerOwnerId: mp1.id,
+        defenderOwnerId: mp2.id,
+        roundNumber: 1,
+        stage: 'missile',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        missileFiredShipIds: [],
+        participatingPlayerIds: [mp1.id, mp2.id],
+      };
+      const afterMp1MissileAuto = executeAction(missilePvpGame, {
+        type: 'SET_COMBAT_AUTO_RESOLVE',
+        playerId: mp1.id,
+        enabled: true,
+        sectorId: missileSec.id,
+      });
+      expect(afterMp1MissileAuto.success).toBe(true);
+      if (afterMp1MissileAuto.newState.activeCombat) {
+        expect(afterMp1MissileAuto.newState.activeCombat.autoResolvePlayerIds).toEqual([mp1.id]);
+      }
     });
   });
 });

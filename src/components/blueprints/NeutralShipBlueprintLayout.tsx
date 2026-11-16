@@ -21,7 +21,7 @@ function splitChunkedTotal(total: number, maxPerChunk: number, preferBalancedPai
 
 /**
  * Decomposes an NPC ship blueprint into discrete square-box ShipPart modules
- * matching Eclipse component iconography (Computer, Shield, Hull chunks up to 3, Weapons up to 2 dice per tile).
+ * matching Eclipse component iconography (Computer, Shield, Hull chunks up to 3, Weapons up to 2 dice or 3 dice in a triangle tile).
  */
 export function buildNeutralShipComponents(blueprint: NeutralShipBlueprint): ShipPart[] {
   const parts: ShipPart[] = [];
@@ -81,7 +81,7 @@ export function buildNeutralShipComponents(blueprint: NeutralShipBlueprint): Shi
   orderedWeapons.forEach((weapon, wIdx) => {
     const colorTitle = weapon.color.charAt(0).toUpperCase() + weapon.color.slice(1);
     const kindLabel = weapon.isMissile ? 'Missile' : 'Cannon';
-    const diceChunks = splitChunkedTotal(weapon.count, 2);
+    const diceChunks = weapon.count === 3 ? [3] : splitChunkedTotal(weapon.count, 2);
     diceChunks.forEach((diceCount, cIdx) => {
       parts.push({
         id: `${keyPrefix}_weapon_${wIdx}_${cIdx}`,

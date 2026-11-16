@@ -77,6 +77,7 @@ export interface CombatState {
   participatingPlayerIds?: string[];
   missileFiredShipIds?: string[];
   pendingDamageAssignment?: PendingDamageAssignment | null;
+  autoResolvePlayerIds?: string[];
 }
 
 export interface PendingReputationDraw {

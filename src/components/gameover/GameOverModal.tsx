@@ -1,18 +1,18 @@
 import React, { useState } from 'react';
 import { GameState } from '../../engine/types/state';
 import { getFactionDisplayColor } from '../../engine/rules/gameReducer';
-import { Trophy, RefreshCw, Award, Star, Home, Eye, Minimize2, Maximize2, History } from 'lucide-react';
+import { Trophy, Award, Star, Home, Eye, Minimize2, Maximize2, History } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateFactionName } from '../../i18n/catalogTranslations';
 
 interface GameOverModalProps {
   state: GameState;
-  onNewGame: () => void;
+  onNewGame?: () => void;
   onExitToLobby?: () => void;
   onReplayGame?: () => void;
 }
 
-export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, onExitToLobby, onReplayGame }) => {
+export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onExitToLobby, onReplayGame }) => {
   const { l, language } = useLanguage();
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
   const winner = state.players.find((p) => p.id === state.winnerId);
@@ -177,12 +177,6 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onNewGame, 
               <History className="w-4 h-4 text-indigo-200" /> {l('Replay Game', '对局回放')}
             </button>
           )}
-          <button
-            onClick={onNewGame}
-            className="flex items-center gap-2 px-6 py-3 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold text-sm uppercase tracking-wider shadow-lg shadow-amber-950 transition-all cursor-pointer"
-          >
-            <RefreshCw className="w-4 h-4" /> {l('Start New Galactic War', '开启新银河战争')}
-          </button>
         </div>
       </div>
     </div>
