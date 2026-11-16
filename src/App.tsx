@@ -764,6 +764,13 @@ const AppContent: React.FC = () => {
     isLocalGame?: boolean
   ) => {
     const user = getCurrentUser();
+    if (!isLocalGame && user.role === 'guest') {
+      showToast(l(
+        'Guest players cannot create online multiplayer games. Please log in or start a Local Game.',
+        '游客无法创建联机对局，请先登录或创建本地热座对局。'
+      ));
+      return;
+    }
     const effectiveSeat = isLocalGame ? 'all' : (typeof seat === 'number' ? seat : 0);
     const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips, isDraftMode);
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
@@ -771,6 +778,7 @@ const AppContent: React.FC = () => {
     newGame.id = tableId;
     (newGame as any).creatorUserId = user.id;
     (newGame as any).creatorUsername = user.username || user.name;
+    (newGame as any).creatorRole = user.role;
     (newGame as any).isGameStarted = isLocalGame ? true : false;
     newGame.isLocalGame = Boolean(isLocalGame);
     const initialMember = {
@@ -787,7 +795,7 @@ const AppContent: React.FC = () => {
     (newGame as any).members = [initialMember];
     saveGameState(newGame);
     if (!isLocalGame) {
-      registerTableMember(tableId, initialMember).then((res) => {
+      registerTableMember(tableId, initialMember, false, true).then((res) => {
         if (res.success && res.members) {
           setState((prev) => ({ ...prev, members: res.members }));
         }

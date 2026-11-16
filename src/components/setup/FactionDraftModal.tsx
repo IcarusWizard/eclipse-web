@@ -71,15 +71,15 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5">
-      <div className="bg-slate-900 border-2 border-indigo-500/80 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[92vh] text-slate-100 animate-in fade-in zoom-in-95 duration-150">
+      <div className="bg-slate-900 border-2 border-indigo-500/80 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[94vh] text-slate-100 animate-in fade-in zoom-in-95 duration-150">
         {/* Header */}
-        <div className="flex items-center justify-between p-4 border-b border-indigo-950 bg-slate-950">
-          <div className="flex items-center gap-3">
-            <div className="p-2 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-400">
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 border-b border-indigo-950 bg-slate-950">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="p-2 rounded-xl bg-indigo-500/20 border border-indigo-500/40 text-indigo-400 shrink-0">
               <Compass className="w-5 h-5" />
             </div>
-            <div>
-              <div className="flex items-center gap-2">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
                 <h2 className="text-base font-bold text-indigo-300 font-display">
                   {l('OFFICIAL FACTION DRAFT', '官方规则种族轮抽')}
                 </h2>
@@ -96,7 +96,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap shrink-0">
             {!isCurrentDrafter && (
               <span className="px-2.5 py-1 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
                 {currentSeat === 'spectator'
@@ -116,11 +116,12 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           </div>
         </div>
 
+        <div className="flex-1 min-h-0 flex flex-col overflow-y-auto scrollbar-thin">
         {/* Seating & Draft Order Bar */}
-        <div className="bg-slate-950/60 border-b border-slate-800 p-3 overflow-x-auto">
-          <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex items-center justify-between">
+        <div className="shrink-0 bg-slate-950/60 border-b border-slate-800 p-3">
+          <div className="text-[10px] uppercase font-bold text-slate-400 tracking-wider mb-2 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
             <span className="flex items-center gap-1.5">
-              <Users className="w-3.5 h-3.5 text-indigo-400" />
+              <Users className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
               {l('Table Seating & Drafting Sequence', '席位与轮抽顺序')}
             </span>
             <span className="text-slate-500">
@@ -128,7 +129,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
             </span>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-2">
             {draft.draftOrder.map((pId, draftIdx) => {
               const p = state.players.find((pl) => pl.id === pId) || {
                 id: pId,
@@ -145,7 +146,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
               return (
                 <div
                   key={pId}
-                  className={`p-2 rounded-xl border text-xs flex flex-col justify-between transition ${
+                  className={`min-w-0 p-2 rounded-xl border text-xs flex flex-col justify-between transition ${
                     isCurrent
                       ? 'bg-indigo-950/80 border-indigo-400 ring-2 ring-indigo-500/40 shadow-md'
                       : hasDrafted
@@ -153,7 +154,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                       : 'bg-slate-950/40 border-slate-800 text-slate-500'
                   }`}
                 >
-                  <div className="flex items-center justify-between mb-1">
+                  <div className="flex items-center justify-between gap-1 mb-1">
                     <div className="flex items-center gap-1.5 min-w-0">
                       <span
                         className="w-2.5 h-2.5 rounded-full shrink-0 border border-white/30"
@@ -164,7 +165,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                       </span>
                     </div>
                     {isCurrent && (
-                      <span className="animate-pulse text-[9px] px-1 py-0.2 bg-indigo-500 text-slate-950 font-black rounded">
+                      <span className="shrink-0 whitespace-nowrap animate-pulse text-[9px] px-1 py-0.5 bg-indigo-500 text-slate-950 font-black rounded">
                         {l('NOW', '当前')}
                       </span>
                     )}
@@ -206,8 +207,8 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
         </div>
 
         {/* Faction Filter Tabs */}
-        <div className="flex items-center justify-between px-4 py-2 bg-slate-900 border-b border-slate-800">
-          <div className="flex items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-2 px-4 py-2 bg-slate-900 border-b border-slate-800">
+          <div className="flex flex-wrap items-center gap-1 bg-slate-950 p-1 rounded-xl border border-slate-800">
             <button
               type="button"
               onClick={() => setCategoryFilter('all')}
@@ -256,7 +257,7 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
         </div>
 
         {/* Factions Grid */}
-        <div className="p-4 overflow-y-auto space-y-3 flex-1 scrollbar-thin">
+        <div className="p-4 overflow-y-auto space-y-3 flex-1 min-h-[180px] scrollbar-thin">
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredFactions.map((f) => {
               const isAvailable = draft.availableFactionIds.includes(f.id);
@@ -388,8 +389,10 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           </div>
         </div>
 
+        </div>
+
         {/* Footer */}
-        <div className="flex items-center justify-between p-4 border-t border-slate-800 bg-slate-950">
+        <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 border-t border-slate-800 bg-slate-950">
           <div className="text-xs text-slate-400">
             {l('Selected Pick for', '当前选择属于')} <strong className="text-white">{currentDrafter.name}</strong>:{' '}
             {selectedFaction ? (

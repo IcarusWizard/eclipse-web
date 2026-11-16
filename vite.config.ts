@@ -835,6 +835,19 @@ function tableStoragePlugin(): Plugin {
       return;
     }
 
+    const isGuestTableServer = (data: any): boolean => {
+      if (!data || data.isLocalGame) return false;
+      if (data.creatorRole === 'guest') return true;
+      if (typeof data.creatorUserId === 'string' && data.creatorUserId.startsWith('guest_')) return true;
+      const members = Array.isArray(data.members) ? data.members : [];
+      return members.some(
+        (m: any) =>
+          m &&
+          m.seat !== 'spectator' &&
+          (m.role === 'guest' || (typeof m.userId === 'string' && m.userId.startsWith('guest_')))
+      );
+    };
+
     if (urlPath === '/api/tables' || urlPath.startsWith('/api/tables/')) {
       ensureDir();
       const parts = urlPath.split('/').filter(Boolean); // ['api', 'tables', optionalId, optionalAction]
@@ -982,6 +995,19 @@ function tableStoragePlugin(): Plugin {
               return;
             }
             tableData.members = (tableData.members || []).filter((m: any) => m && m.seat !== 'spectator');
+
+            const isGuestMember =
+              member.role === 'guest' ||
+              (typeof member.userId === 'string' && member.userId.startsWith('guest_'));
+            if (!tableData.isLocalGame && isGuestMember && member.seat !== 'spectator') {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({
+                success: false,
+                error: 'Guest players can only join online multiplayer games as a spectator.',
+              }));
+              return;
+            }
 
             const isGameRunning =
               tableData.isGameStarted === true ||
@@ -1185,6 +1211,7 @@ function tableStoragePlugin(): Plugin {
               const content = fs.readFileSync(path.join(TABLES_DIR, file), 'utf-8');
               const data = JSON.parse(content);
               if (data.isLocalGame) continue;
+              if (isGuestTableServer(data)) continue;
               const activePlayer = data.players?.[data.activePlayerIndex];
               let effectiveActiveSeat = typeof data.activePlayerIndex === 'number' ? data.activePlayerIndex : 0;
               if (data.phase === 'COMBAT_PHASE' && data.combat?.activePlayerId) {
@@ -1308,6 +1335,7 @@ function tableStoragePlugin(): Plugin {
               const content = fs.readFileSync(path.join(TABLES_DIR, file), 'utf-8');
               const data = JSON.parse(content);
               if (data.isLocalGame) continue;
+              if (isGuestTableServer(data)) continue;
               if (data.id === targetParam || (!isNaN(num) && data.tableNumber === num)) {
                 candidates.push(data);
               }
@@ -1351,6 +1379,12 @@ function tableStoragePlugin(): Plugin {
               res.statusCode = 400;
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ success: false, error: 'Local games cannot be hosted on the server' }));
+              return;
+            }
+            if (isGuestTableServer(data)) {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Guest players cannot create or host online multiplayer games' }));
               return;
             }
             const tableId = targetParam || data.id;

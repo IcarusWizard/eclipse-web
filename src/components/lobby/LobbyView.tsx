@@ -2,7 +2,8 @@ import React, { useState, useEffect } from 'react';
 import {
   listSavedTables,
   deleteSavedTable,
-  fetchSavedTablesFromServer,
+  fetchSavedTablesFromServerWithStatus,
+  isGuestCreatedOnlineTable,
   SavedTableSummary,
   loadTable,
   loadTableByNumber,
@@ -138,8 +139,10 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   const refreshTables = async () => {
     try {
       const localTables = listSavedTables();
-      const remoteTables = await fetchSavedTablesFromServer();
-      const merged = mergeTableSummaries(localTables, remoteTables);
+      const remoteResult = await fetchSavedTablesFromServerWithStatus();
+      const merged = mergeTableSummaries(localTables, remoteResult.tables, {
+        pruneMissingRemote: remoteResult.ok,
+      });
       setSavedTables((prev) => {
         if (areTableSummariesEqual(prev, merged)) {
           return prev;
@@ -427,12 +430,18 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
 
     try {
       const num = parseInt(id.replace(/\D/g, ''), 10);
-      let loaded = loadTable(id) || (num ? loadTableByNumber(num) : null);
-      if (!loaded) {
-        loaded = await fetchTableFromServer(id);
-      }
-      if (!loaded && num) {
+      const isExplicitLocalId = id.startsWith('local-') || id.startsWith('local_');
+      let loaded = isExplicitLocalId
+        ? loadTable(id) || (num ? loadTableByNumber(num) : null)
+        : await fetchTableFromServer(id);
+      if (!loaded && !isExplicitLocalId && num) {
         loaded = await fetchTableFromServer(String(num));
+      }
+      if (!loaded) {
+        const localFallback = loadTable(id) || (num ? loadTableByNumber(num) : null);
+        if (localFallback?.isLocalGame) {
+          loaded = localFallback;
+        }
       }
       if (!loaded) {
         setJoinError(l(`Table "${id}" does not exist.`, `牌桌 "${id}" 不存在。`));
@@ -472,13 +481,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       }
       const regRes = await registerTableMember(targetId, {
         userId: currentUser.id,
+        name: currentUser.name,
         username: currentUser.username,
         role: currentUser.role,
         email: currentUser.email,
         emailNotifications: currentUser.emailNotifications,
         seat: effectiveSeat,
         joinedAt: Date.now(),
-      }, isLocal);
+      }, isLocal, true);
       if (!regRes.success && regRes.error) {
         setJoinError(regRes.error);
         setIsJoining(false);
@@ -521,13 +531,14 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     }
     const regRes = await registerTableMember(tableId, {
       userId: currentUser.id,
+      name: currentUser.name,
       username: currentUser.username,
       role: currentUser.role,
       email: currentUser.email,
       emailNotifications: currentUser.emailNotifications,
       seat: effectiveSeat,
       joinedAt: Date.now(),
-    }, isLocal);
+    }, isLocal, true);
     if (!regRes.success && regRes.error) {
       alert(regRes.error);
       return;
@@ -558,15 +569,19 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
   };
 
   // Filtered Lists
-  // 1. Tables waiting for players (not started yet, online tables only)
+  // 1. Tables waiting for players (not started yet, online tables only, never guest-created)
   const waitingTables = savedTables.filter(
-    (t) => !t.isLocalGame && getTableStatusCategory(t) === 'need_players' && t.phase !== 'GAME_OVER'
+    (t) =>
+      !t.isLocalGame &&
+      !isGuestCreatedOnlineTable(t) &&
+      getTableStatusCategory(t) === 'need_players' &&
+      t.phase !== 'GAME_OVER'
   );
 
-  // 2. User's personal tables (logged in users see personal tables; guests see their local hotseat games)
+  // 2. User's personal tables (logged in users see personal tables excluding guest-created online tables; guests see their local hotseat games)
   const isUserLoggedIn = currentUser.role !== 'guest';
   const myTables = isUserLoggedIn
-    ? filterTablesForUser(savedTables, currentUser)
+    ? filterTablesForUser(savedTables, currentUser).filter((t) => !isGuestCreatedOnlineTable(t))
     : savedTables.filter((t) => t.isLocalGame);
   const myTurnCount = myTables.filter((t) => isPlayerTurnAtTable(t, currentUser)).length;
 

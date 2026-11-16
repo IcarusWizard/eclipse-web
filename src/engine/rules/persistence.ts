@@ -170,12 +170,45 @@ export function safeSetStorageItem(storage: any, key: string, value: string): bo
   }
 }
 
+const INITIAL_GLOBAL_FETCH = typeof globalThis !== 'undefined' ? globalThis.fetch : undefined;
+
+/**
+ * Only perform server HTTP requests when running in a browser window, when a test
+ * explicitly overrides globalThis.fetch, or when SERVER_BASE_URL is explicitly configured.
+ * Prevents CLI unit tests from writing phantom tables into localhost:3000 server_data.
+ */
+function canPerformServerFetch(): boolean {
+  if (typeof fetch === 'undefined') return false;
+  if (typeof window !== 'undefined' && window.location?.origin) return true;
+  if (typeof globalThis !== 'undefined' && globalThis.fetch !== INITIAL_GLOBAL_FETCH) return true;
+  const proc = (globalThis as any).process;
+  if (proc?.env?.SERVER_BASE_URL) return true;
+  return false;
+}
+
+/**
+ * Returns true if an online (non-local) table was created by or has a non-spectator seat held by a guest.
+ */
+export function isGuestCreatedOnlineTable(table: Partial<SavedTableSummary> & Record<string, any> | null | undefined): boolean {
+  if (!table || table.isLocalGame) return false;
+  if (table.creatorRole === 'guest') return true;
+  if (typeof table.creatorUserId === 'string' && table.creatorUserId.startsWith('guest_')) return true;
+  const members = Array.isArray(table.members) ? table.members : [];
+  return members.some(
+    (m: any) =>
+      m &&
+      m.seat !== 'spectator' &&
+      (m.role === 'guest' || (typeof m.userId === 'string' && m.userId.startsWith('guest_')))
+  );
+}
+
 export function resolveApiUrl(path: string): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
     return path;
   }
-  if (typeof process !== 'undefined') {
-    const base = process.env?.SERVER_BASE_URL || 'http://127.0.0.1:3000';
+  const proc = (globalThis as any).process;
+  if (proc) {
+    const base = proc.env?.SERVER_BASE_URL || 'http://127.0.0.1:3000';
     return `${base}${path.startsWith('/') ? path : '/' + path}`;
   }
   return path;
@@ -186,7 +219,8 @@ export function resolveApiUrl(path: string): string {
  */
 export async function persistTableToServer(state: GameState): Promise<boolean> {
   if (!state || !state.id || state.isLocalGame) return true;
-  if (typeof fetch === 'undefined') return false;
+  if (isGuestCreatedOnlineTable(state as any)) return false;
+  if (!canPerformServerFetch()) return false;
   try {
     if (Array.isArray(state.replaySteps) && state.replaySteps.length > 0) {
       state.replaySteps = compactReplaySteps(state.replaySteps);
@@ -373,7 +407,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
   }
 
   // 3. Persist to server API with keepalive: true if within 64KB limit (independent of localStorage)
-  if (!skipBroadcast && typeof fetch !== 'undefined' && !state.isLocalGame) {
+  if (!skipBroadcast && canPerformServerFetch() && !state.isLocalGame && !isGuestCreatedOnlineTable(state as any)) {
     try {
       const serverPayload = JSON.stringify(state);
       const useKeepalive = serverPayload.length <= 64000;
@@ -616,7 +650,7 @@ export async function fetchTableFromServer(
   ifNoneMatch?: string | number
 ): Promise<GameState | null> {
   try {
-    if (typeof fetch === 'undefined') return null;
+    if (!canPerformServerFetch()) return null;
     const replayParam = includeReplay ? 'includeReplay=true' : 'includeReplay=false';
     const url = resolveApiUrl(`/api/tables/${encodeURIComponent(String(tableIdentifier))}?${replayParam}`);
     const headers: Record<string, string> = {};
@@ -637,38 +671,58 @@ export async function fetchTableFromServer(
 }
 
 /**
+ * Fetches all saved table summaries from the server storage API along with reachability status.
+ */
+export async function fetchSavedTablesFromServerWithStatus(): Promise<{ ok: boolean; tables: SavedTableSummary[] }> {
+  try {
+    if (!canPerformServerFetch()) return { ok: false, tables: [] };
+    const res = await fetch(resolveApiUrl('/api/tables'));
+    if (!res.ok) return { ok: false, tables: [] };
+    const data = await res.json();
+    if (data && data.success && Array.isArray(data.tables)) {
+      const sanitized = (data.tables as SavedTableSummary[]).filter(
+        (t) => t && t.id && !isGuestCreatedOnlineTable(t)
+      );
+      return { ok: true, tables: sanitized };
+    }
+  } catch {}
+  return { ok: false, tables: [] };
+}
+
+/**
  * Fetches all saved table summaries from the server storage API.
  */
 export async function fetchSavedTablesFromServer(): Promise<SavedTableSummary[]> {
-  try {
-    if (typeof fetch === 'undefined') return [];
-    const res = await fetch(resolveApiUrl('/api/tables'));
-    if (!res.ok) return [];
-    const data = await res.json();
-    if (data && data.success && Array.isArray(data.tables)) {
-      return data.tables as SavedTableSummary[];
-    }
-  } catch {}
-  return [];
+  const res = await fetchSavedTablesFromServerWithStatus();
+  return res.tables;
 }
 
 /**
  * Merges local and remote table summaries, giving precedence to whichever has the newer savedAt timestamp,
  * while preserving vital local properties (e.g. stateJson, isGameStarted) and updating localStorage.
+ * When options.pruneMissingRemote is true, non-local tables absent from remoteList are removed.
  */
 export function mergeTableSummaries(
   localList: SavedTableSummary[],
-  remoteList: SavedTableSummary[]
+  remoteList: SavedTableSummary[],
+  options?: { pruneMissingRemote?: boolean }
 ): SavedTableSummary[] {
+  const pruneMissingRemote = Boolean(options?.pruneMissingRemote);
+  const remoteIds = new Set(remoteList.filter((r) => r && r.id).map((r) => r.id));
+
   const map = new Map<string, SavedTableSummary>();
   for (const local of localList) {
-    if (local && local.id) {
-      map.set(local.id, local);
+    if (!local || !local.id) continue;
+    if (isGuestCreatedOnlineTable(local)) continue;
+    if (pruneMissingRemote && !local.isLocalGame && !remoteIds.has(local.id)) {
+      continue;
     }
+    map.set(local.id, local);
   }
 
   for (const remote of remoteList) {
     if (!remote || !remote.id) continue;
+    if (isGuestCreatedOnlineTable(remote)) continue;
     const local = map.get(remote.id);
     if (!local) {
       map.set(remote.id, remote);
@@ -800,6 +854,15 @@ export function mergeTableSummaries(
     const raw = storage.getItem(SAVED_TABLES_KEY);
     const storedMap: Record<string, SavedTableSummary> = raw ? JSON.parse(raw) : {};
     let updated = false;
+    if (pruneMissingRemote) {
+      for (const k of Object.keys(storedMap)) {
+        const entry = storedMap[k];
+        if (!entry || isGuestCreatedOnlineTable(entry) || (!entry.isLocalGame && !remoteIds.has(k))) {
+          delete storedMap[k];
+          updated = true;
+        }
+      }
+    }
     for (const item of merged) {
       const existing = storedMap[item.id];
       if (!existing || (Number(item.savedAt) || 0) >= (Number(existing.savedAt) || 0)) {
@@ -899,7 +962,7 @@ export function deleteSavedTable(tableId: string): void {
 
     broadcastTableCancelled(tableId);
 
-    if (typeof fetch !== 'undefined' && !wasLocalGame) {
+    if (canPerformServerFetch() && !wasLocalGame) {
       fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}`), { method: 'DELETE' }).catch(() => {});
     }
   } catch (err) {
@@ -1170,7 +1233,9 @@ export async function registerTableMember(
       };
     }
 
-    if (enforceGuestRestriction && !isLocal && member.role === 'guest' && member.seat !== 'spectator') {
+    const isGuestMember =
+      member.role === 'guest' || (typeof member.userId === 'string' && member.userId.startsWith('guest_'));
+    if (enforceGuestRestriction && !isLocal && isGuestMember && member.seat !== 'spectator') {
       return {
         success: false,
         error: 'Guest players can only join online multiplayer games as a spectator. Please log in or register to take a player seat.',
@@ -1245,7 +1310,7 @@ export async function registerTableMember(
         }
       }
 
-      if (!isLocal && typeof fetch !== 'undefined') {
+      if (!isLocal && canPerformServerFetch()) {
         const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/join`), {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -1340,7 +1405,7 @@ export async function registerTableMember(
       storage.setItem(SAVED_TABLES_KEY, JSON.stringify(tables));
     }
 
-    if (!isLocal && typeof fetch !== 'undefined') {
+    if (!isLocal && canPerformServerFetch()) {
       const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/join`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1440,7 +1505,7 @@ export async function adminReassignTableSeat(
       }
     }
 
-    if (!isLocal && typeof fetch !== 'undefined') {
+    if (!isLocal && canPerformServerFetch()) {
       const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/admin/reassign-seat`), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1538,7 +1603,7 @@ export async function leaveTable(
     }
 
     // Call server endpoint if available
-    if (typeof fetch !== 'undefined' && !tables[tableId]?.isLocalGame) {
+    if (canPerformServerFetch() && !tables[tableId]?.isLocalGame) {
       try {
         const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/leave`), {
           method: 'POST',

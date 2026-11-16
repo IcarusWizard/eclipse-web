@@ -24989,6 +24989,128 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(mapHtml).toContain('<rect');
       });
     });
+
+    // =========================================================================
+    // Test 170: Lobby Sync Pruning, Guest Online Table Exclusion, & Test Network Isolation
+    // =========================================================================
+    describe('170. Server Table Sync Pruning & Guest Online Table Filtering', () => {
+      it('prunes phantom localStorage online tables missing from server, blocks guest online tables, and skips unmocked CLI fetch', async () => {
+        const {
+          mergeTableSummaries,
+          isGuestCreatedOnlineTable,
+          registerTableMember,
+          persistTableToServer,
+        } = await import('../rules/persistence');
+
+        // 1. Prunes stale non-local tables absent from remoteList while keeping local hotseat tables
+        const remoteReal: SavedTableSummary = {
+          id: 'galaxy-live-1',
+          tableNumber: 1,
+          savedAt: 2000,
+          round: 2,
+          maxRounds: 8,
+          phase: 'ACTION_PHASE',
+          playerCount: 2,
+          playerNames: ['Alice (Terran)', 'Bob (Orion)'],
+          activePlayerName: 'Alice',
+          isLocalGame: false,
+          members: [{ userId: 'u_alice', name: 'Alice', username: 'Alice', role: 'user', seat: 0, joinedAt: 1000 }],
+        };
+        const stalePhantomOnline: SavedTableSummary = {
+          ...remoteReal,
+          id: 'galaxy-deleted-999',
+          tableNumber: 999,
+          isLocalGame: false,
+        };
+        const localHotseat: SavedTableSummary = {
+          ...remoteReal,
+          id: 'local-42',
+          tableNumber: 42,
+          isLocalGame: true,
+          members: [{ userId: 'guest_1', name: 'Guest-1', username: 'Guest-1', role: 'guest', seat: 'all', joinedAt: 1000 }],
+        };
+
+        const prunedMerged = mergeTableSummaries(
+          [stalePhantomOnline, localHotseat],
+          [remoteReal],
+          { pruneMissingRemote: true }
+        );
+        expect(prunedMerged.some((t) => t.id === 'galaxy-deleted-999')).toBe(false);
+        expect(prunedMerged.some((t) => t.id === 'galaxy-live-1')).toBe(true);
+        expect(prunedMerged.some((t) => t.id === 'local-42')).toBe(true);
+
+        // 2. Guest-created / guest-seated online tables are detected & excluded from server/lobby merge
+        const guestOnlineTable: SavedTableSummary = {
+          ...remoteReal,
+          id: 'galaxy-105-guest',
+          isLocalGame: false,
+          members: [{ userId: 'guest_6973', name: 'Guest-6973', username: 'Guest-6973', role: 'guest', seat: 0, isCreator: true, joinedAt: 1000 }],
+        };
+        expect(isGuestCreatedOnlineTable(guestOnlineTable)).toBe(true);
+        expect(isGuestCreatedOnlineTable(localHotseat)).toBe(false);
+        expect(isGuestCreatedOnlineTable(remoteReal)).toBe(false);
+
+        // Merge skips guest online tables even if returned from legacy data
+        const mergedWithoutGuest = mergeTableSummaries([], [remoteReal, guestOnlineTable], {
+          pruneMissingRemote: true,
+        });
+        expect(mergedWithoutGuest.map((t) => t.id)).toEqual(['galaxy-live-1']);
+
+        // 3. registerTableMember with enforceGuestRestriction blocks guest online seat
+        const defaultBlocked = await registerTableMember('galaxy-test-guest-block', {
+          userId: 'guest_9001',
+          name: 'Guest-9001',
+          username: 'Guest-9001',
+          role: 'guest',
+          seat: 0,
+          joinedAt: Date.now(),
+        }, false, true);
+        expect(defaultBlocked.success).toBe(false);
+
+        // 4. Unmocked persistTableToServer in CLI unit test returns false without writing to localhost:3000
+        const sampleGame = createInitialGame(2);
+        const persistRes = await persistTableToServer(sampleGame);
+        expect(persistRes).toBe(false);
+      });
+    });
+
+    // Test 171: FactionDraftModal Table Seating & Drafting Sequence Full Visibility Layout
+    it('171. renders FactionDraftModal Table Seating & Drafting Sequence without vertical clipping or overflow-x-auto', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { FactionDraftModal } = await import('../../components/setup/FactionDraftModal');
+      const draftGame6 = createInitialGame(6, undefined, ['galactic_events'], undefined, true);
+      expect(draftGame6.factionDraft?.draftOrder.length).toBe(6);
+
+      const htmlEn = renderToStaticMarkup(
+        React.createElement(FactionDraftModal, {
+          state: draftGame6,
+          onDraftFaction: () => {},
+        })
+      );
+
+      expect(htmlEn).toContain('Table Seating &amp; Drafting Sequence');
+      expect(htmlEn).toContain('grid-cols-2 sm:grid-cols-3 lg:grid-cols-6');
+      expect(htmlEn).not.toContain('border-slate-800 p-3 overflow-x-auto');
+      expect(htmlEn).toContain('shrink-0 bg-slate-950/60 border-b border-slate-800 p-3');
+      expect(htmlEn).toContain('min-h-[180px]');
+      for (let i = 1; i <= 6; i++) {
+        expect(htmlEn).toContain(`#${i}`);
+      }
+
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const htmlZh = renderToStaticMarkup(
+        React.createElement(LanguageProvider, {
+          initialLanguage: 'zh',
+          children: React.createElement(FactionDraftModal, {
+            state: draftGame6,
+            onDraftFaction: () => {},
+          }),
+        })
+      );
+      expect(htmlZh).toContain('席位与轮抽顺序');
+      expect(htmlZh).toContain('当前');
+    });
   });
 });
 
