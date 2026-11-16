@@ -359,7 +359,10 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     safeSetStorageItem(storage, ACTIVE_GAME_KEY, storageStateJson);
     const activePlayer = state.players[state.activePlayerIndex];
     let effectiveActiveIndex = typeof state.activePlayerIndex === 'number' ? state.activePlayerIndex : 0;
-    if (state.phase === 'COMBAT_PHASE' && (state as any).combat?.activePlayerId) {
+    if (state.pendingDiplomacyProposal?.targetId) {
+      const dIdx = state.players.findIndex((p) => p.id === state.pendingDiplomacyProposal!.targetId);
+      if (dIdx >= 0) effectiveActiveIndex = dIdx;
+    } else if (state.phase === 'COMBAT_PHASE' && (state as any).combat?.activePlayerId) {
       const cIdx = state.players.findIndex((p) => p.id === (state as any).combat.activePlayerId);
       if (cIdx >= 0) effectiveActiveIndex = cIdx;
     }
@@ -1778,11 +1781,17 @@ export function isPlayerTurnAtTable(
     return false; // Spectator or unassigned seat
   }
 
-  // 1. If in combat phase and stateJson is available, check combat activePlayerId
-  if (table.phase === 'COMBAT_PHASE' && table.stateJson) {
+  // 1. If a diplomatic proposal or combat decision is pending in stateJson, that target player must act first
+  if (table.stateJson) {
     try {
       const parsed = JSON.parse(table.stateJson);
-      if (parsed.combat?.activePlayerId) {
+      if (parsed.pendingDiplomacyProposal?.targetId) {
+        const dIdx = parsed.players?.findIndex((p: any) => p.id === parsed.pendingDiplomacyProposal.targetId);
+        if (typeof dIdx === 'number' && dIdx >= 0) {
+          return dIdx === mySeat;
+        }
+      }
+      if (table.phase === 'COMBAT_PHASE' && parsed.combat?.activePlayerId) {
         const cIdx = parsed.players?.findIndex((p: any) => p.id === parsed.combat.activePlayerId);
         if (typeof cIdx === 'number' && cIdx >= 0) {
           return cIdx === mySeat;

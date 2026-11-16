@@ -25878,6 +25878,138 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(modalHtml).toContain('Exchange (+1 VP)');
     });
   });
+
+  describe('176. Pending Diplomacy Proposal Blocking & Minimizable DiplomacyModal', () => {
+    it('blocks initiating/other player actions until target responds and renders Minimize control on DiplomacyModal', async () => {
+      const game = createInitialGame(4);
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+
+      // Connect p1 and p2 sectors so diplomacy is legal
+      const s1 = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+      const s2 = game.sectors.find((s) => s.id === `home_sector_${p2.id}`)!;
+      s2.coord = { q: s1.coord.q + 1, r: s1.coord.r };
+      s1.wormholes = [true, true, true, true, true, true];
+      s2.wormholes = [true, true, true, true, true, true];
+
+      const proposeRes = executeAction(game, {
+        type: 'PROPOSE_DIPLOMACY',
+        playerId: p1.id,
+        targetPlayerId: p2.id,
+        initiatorCube: 'money',
+      });
+      expect(proposeRes.success).toBe(true);
+      expect(proposeRes.newState.pendingDiplomacyProposal).toEqual({
+        initiatorId: p1.id,
+        targetId: p2.id,
+        initiatorCube: 'money',
+      });
+
+      // Initiator must wait until target responds before performing PASS, BUILD, EXPLORE, or another proposal
+      const passBlocked = executeAction(proposeRes.newState, { type: 'PASS', playerId: p1.id });
+      expect(passBlocked.success).toBe(false);
+      expect(passBlocked.error).toContain('Waiting for');
+
+      const buildBlocked = executeAction(proposeRes.newState, {
+        type: 'BUILD',
+        playerId: p1.id,
+        items: [{ sectorId: s1.id, itemType: 'interceptor' }],
+      });
+      expect(buildBlocked.success).toBe(false);
+      expect(buildBlocked.error).toContain('Waiting for');
+
+      const secondProposeBlocked = executeAction(proposeRes.newState, {
+        type: 'PROPOSE_DIPLOMACY',
+        playerId: p1.id,
+        targetPlayerId: game.players[2]!.id,
+        initiatorCube: 'money',
+      });
+      expect(secondProposeBlocked.success).toBe(false);
+
+      // Chat remains allowed while proposal is pending
+      const chatRes = executeAction(proposeRes.newState, {
+        type: 'SEND_CHAT',
+        playerId: p1.id,
+        message: 'Check Sector 203!',
+      });
+      expect(chatRes.success).toBe(true);
+
+      // Lobby turn detection (used for "Your Turn" highlights) points to invited target player p2 (seat 1) while pending
+      const { isPlayerTurnAtTable } = await import('../rules/persistence');
+      const proposalTableSummary: any = {
+        id: proposeRes.newState.id,
+        tableNumber: 192,
+        savedAt: Date.now(),
+        round: proposeRes.newState.round,
+        maxRounds: proposeRes.newState.maxRounds,
+        phase: proposeRes.newState.phase,
+        playerCount: 4,
+        playerNames: proposeRes.newState.players.map((p) => p.name),
+        activePlayerName: p1.name,
+        activePlayerIndex: 0,
+        isGameStarted: true,
+        stateJson: JSON.stringify(proposeRes.newState),
+        members: [
+          { userId: 'u1', username: 'user1', seat: 0 },
+          { userId: 'u2', username: 'user2', seat: 1 },
+        ],
+      };
+      expect(
+        isPlayerTurnAtTable(proposalTableSummary, {
+          id: 'u2',
+          username: 'user2',
+          name: 'User 2',
+          role: 'user',
+          createdAt: 0,
+          lastActiveAt: 0,
+        })
+      ).toBe(true);
+      expect(
+        isPlayerTurnAtTable(proposalTableSummary, {
+          id: 'u1',
+          username: 'user1',
+          name: 'User 1',
+          role: 'user',
+          createdAt: 0,
+          lastActiveAt: 0,
+        })
+      ).toBe(false);
+
+      // Response DiplomacyModal exposes Minimize button (without top-right X accidental decline)
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { DiplomacyModal } = await import('../../components/diplomacy/DiplomacyModal');
+
+      const responseHtml = renderToString(
+        React.createElement(DiplomacyModal, {
+          isOpen: true,
+          initiator: p1,
+          target: p2,
+          isProposalResponse: true,
+          pendingInitiatorCube: 'money',
+          onClose: () => {},
+          onRespond: () => {},
+        })
+      );
+      expect(responseHtml).toContain('Minimize');
+      expect(responseHtml).toContain('Minimize to inspect the galaxy map');
+      expect(responseHtml).toContain('Decline Proposal');
+      expect(responseHtml).toContain('Accept Proposal');
+
+      // Once target responds, pendingDiplomacyProposal clears and p1 can pass normally
+      const acceptRes = executeAction(proposeRes.newState, {
+        type: 'RESPOND_DIPLOMACY',
+        playerId: p2.id,
+        accept: true,
+        targetCube: 'science',
+      });
+      expect(acceptRes.success).toBe(true);
+      expect(acceptRes.newState.pendingDiplomacyProposal).toBeNull();
+
+      const passAfter = executeAction(acceptRes.newState, { type: 'PASS', playerId: p1.id });
+      expect(passAfter.success).toBe(true);
+    });
+  });
 });
 
 

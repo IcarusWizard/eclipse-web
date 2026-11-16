@@ -501,6 +501,9 @@ const AppContent: React.FC = () => {
       state.phase !== 'UPKEEP_PHASE' &&
       state.activePlayerIndex !== currentSeat);
 
+  // Block all other player actions until an open Diplomatic Proposal is accepted or declined
+  const isActionsLocked = isTurnGated || Boolean(state.pendingDiplomacyProposal);
+
   const myControlledPlayer =
     typeof currentSeat === 'number' && state.players[currentSeat]
       ? state.players[currentSeat]
@@ -568,8 +571,8 @@ const AppContent: React.FC = () => {
       if (combatDecisionPlayerId && (currentSeat === 'all' || myId === combatDecisionPlayerId)) {
         offTurnDecisionKey = `combat:${state.activeCombat.sectorId}:${state.activeCombat.round}:${state.activeCombat.stage}:${state.activeCombat.currentTurnIndex}:${state.activeCombat.pendingDamageAssignment ? 'dmg' : 'turn'}`;
       }
-    } else if (state.pendingDiplomacyProposal && (currentSeat === 'all' || state.pendingDiplomacyProposal.targetPlayerId === myId)) {
-      offTurnDecisionKey = `diplomacy:${state.pendingDiplomacyProposal.proposalId || state.pendingDiplomacyProposal.proposerPlayerId}`;
+    } else if (state.pendingDiplomacyProposal && (currentSeat === 'all' || state.pendingDiplomacyProposal.targetId === myId)) {
+      offTurnDecisionKey = `diplomacy:${state.pendingDiplomacyProposal.initiatorId}:${state.pendingDiplomacyProposal.targetId}`;
     } else if (state.pendingCombatConquest && (currentSeat === 'all' || state.pendingCombatConquest.playerId === myId)) {
       offTurnDecisionKey = `conquest:${state.pendingCombatConquest.sectorId}`;
     } else if (
@@ -1552,18 +1555,18 @@ const AppContent: React.FC = () => {
   const hasPulsarAvailable = useMemo(() => {
     return (
       isMyTurn &&
-      !isTurnGated &&
+      !isActionsLocked &&
       !activePlayer.hasPassed &&
       state.phase === 'ACTION_PHASE' &&
       controlledPulsarSectors.some(
         (s) => !state.galacticEvents?.pulsars?.[s.id]?.activatedThisRound
       )
     );
-  }, [isMyTurn, isTurnGated, activePlayer.hasPassed, state.phase, controlledPulsarSectors, state.galacticEvents]);
+  }, [isMyTurn, isActionsLocked, activePlayer.hasPassed, state.phase, controlledPulsarSectors, state.galacticEvents]);
 
   // Bug 190 & 191: Auto-prompt for Black Hole ship return on player's first turn of the round
   useEffect(() => {
-    if (!isMyTurn || isTurnGated || state.phase !== 'ACTION_PHASE') return;
+    if (!isMyTurn || isActionsLocked || state.phase !== 'ACTION_PHASE') return;
     const readyShip = state.galacticEvents?.blackHoleDelayedShips?.find(
       (s) =>
         s.ownerId === myPlayerId &&
@@ -1578,7 +1581,7 @@ const AppContent: React.FC = () => {
     }
   }, [
     isMyTurn,
-    isTurnGated,
+    isActionsLocked,
     state.phase,
     state.round,
     state.galacticEvents?.blackHoleDelayedShips,
@@ -1604,7 +1607,7 @@ const AppContent: React.FC = () => {
     sectorId: string
   ) => {
     const pSec = state.sectors.find((s) => s.id === sectorId);
-    if (!pSec || pSec.discOwner !== myPlayerId || !isMyTurn || isTurnGated || !canActForPlayer(pSec.discOwner)) {
+    if (!pSec || pSec.discOwner !== myPlayerId || !isMyTurn || isActionsLocked || !canActForPlayer(pSec.discOwner)) {
       showToast('Only the commander controlling this Pulsar sector can perform the Pulsar action.');
       setPulsarSectorIdForModal(null);
       return;
@@ -2239,6 +2242,7 @@ const AppContent: React.FC = () => {
     });
     if (res.success) {
       setState(res.newState);
+      setIsExploreMode(false);
       showToast(`Alliance proposal sent to ${targetPlayer?.name || 'Commander'}!`);
     } else {
       showToast(res.error || 'Failed to propose alliance.');
@@ -3012,7 +3016,7 @@ const AppContent: React.FC = () => {
           onSelectSector={(s) => setSelectedSector(s)}
           isExploreMode={isExploreMode}
           onExploreTarget={handleExploreTarget}
-          onColonizePlanet={!isTurnGated ? handleColonizePlanet : undefined}
+          onColonizePlanet={!isActionsLocked ? handleColonizePlanet : undefined}
           effectivePlayerId={effectiveColonizingPlayer.id}
           currentSeat={currentSeat}
           pendingExplore={
@@ -3120,14 +3124,14 @@ const AppContent: React.FC = () => {
             onOpenTrade={() => setIsTradeOpen(true)}
             onOpenPhysicalBoard={() => setIsPhysicalBoardOpen(true)}
             onOpenCombatSimulator={() => setIsCombatSimulatorOpen(true)}
-            onConvertColonyShip={!isTurnGated ? handleConvertColonyShip : undefined}
+            onConvertColonyShip={!isActionsLocked ? handleConvertColonyShip : undefined}
             hideOpponentReputation={hideOpponentReputation}
             allPlayers={state.players}
             traitorPlayerId={state.traitorPlayerId}
             gamePhase={state.phase}
             warpedUniverse={state.warpedUniverse}
-            onInitiateDiplomacy={!isTurnGated ? handleExchangeAmbassador : undefined}
-            onBetrayAlliance={!isTurnGated ? handleBetrayAlliance : undefined}
+            onInitiateDiplomacy={!isActionsLocked ? handleExchangeAmbassador : undefined}
+            onBetrayAlliance={!isActionsLocked ? handleBetrayAlliance : undefined}
             delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
             onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
             minorSpeciesSupply={state.minorSpeciesSupply}
@@ -3143,14 +3147,14 @@ const AppContent: React.FC = () => {
               players={state.players}
               activePlayer={effectiveColonizingPlayer}
               neutralShipBlueprints={state.neutralShipBlueprints}
-              onColonizePlanet={!isTurnGated ? handleColonizePlanet : undefined}
-              onAbandonInfluence={!isTurnGated ? handleAbandonInfluence : undefined}
+              onColonizePlanet={!isActionsLocked ? handleColonizePlanet : undefined}
+              onAbandonInfluence={!isActionsLocked ? handleAbandonInfluence : undefined}
               onClose={() => setSelectedSector(null)}
               pendingBankruptcy={state.pendingBankruptcy}
               stagedAbandonedSectorIds={stagedBankruptcySectors}
-              onToggleAbandonSector={!isTurnGated ? handleToggleAbandonSectorBankruptcy : undefined}
+              onToggleAbandonSector={!isActionsLocked ? handleToggleAbandonSectorBankruptcy : undefined}
               onActivatePulsar={
-                isMyTurn && !isTurnGated && (state.sectors.find((s) => s.id === selectedSector.id) || selectedSector).discOwner === myPlayerId
+                isMyTurn && !isActionsLocked && (state.sectors.find((s) => s.id === selectedSector.id) || selectedSector).discOwner === myPlayerId
                   ? (secId) => setPulsarSectorIdForModal(secId)
                   : undefined
               }
@@ -3161,12 +3165,12 @@ const AppContent: React.FC = () => {
               }
               currentRound={state.round}
               blackHoleDelayedShips={state.galacticEvents?.blackHoleDelayedShips}
-              onReturnBlackHoleShip={!isTurnGated ? (ship) => setSelectedBlackHoleShipForReturn(ship) : undefined}
+              onReturnBlackHoleShip={!isActionsLocked ? (ship) => setSelectedBlackHoleShipForReturn(ship) : undefined}
             />
           </div>
         )}
 
-        {/* Action Bar (Bottom-Center) - Hidden during exploration, building, moving, and influence so command dock takes focus */}
+        {/* Action Bar (Bottom-Center) - Hidden during exploration, building, moving, influence, or pending diplomacy so command dock/waiting state takes focus */}
         {state.phase === 'ACTION_PHASE' &&
           !pendingExploreCoords &&
           !state.pendingDiscovery &&
@@ -3174,6 +3178,7 @@ const AppContent: React.FC = () => {
           !state.pendingCombatConquest &&
           !state.pendingReputationDraw &&
           !state.pendingArtifactReward &&
+          !state.pendingDiplomacyProposal &&
           !isBuildOpen &&
           !isMoveOpen &&
           !isInfluenceOpen && (
@@ -3188,7 +3193,7 @@ const AppContent: React.FC = () => {
             onOpenMove={() => setIsMoveOpen(true)}
             onOpenInfluence={() => setIsInfluenceOpen(true)}
             onPass={handlePass}
-            isTurnGated={isTurnGated}
+            isTurnGated={isActionsLocked}
             isSpectator={isSpectator}
             pendingConfirmation={state.pendingActionConfirmation}
             pendingExploreActivations={state.pendingExploreActivations}
@@ -3403,7 +3408,7 @@ const AppContent: React.FC = () => {
           activeExpansions={state.expansions}
           initialShipType={blueprintShipType}
           pulsarSectorId={activePulsarSectorId ?? undefined}
-          readOnly={!canActForPlayer(viewedPlayer.id) || isTurnGated}
+          readOnly={!canActForPlayer(viewedPlayer.id) || isActionsLocked}
           onSaveBlueprint={handleSaveBlueprint}
           onClose={() => {
             setIsBlueprintOpen(false);
@@ -3477,7 +3482,7 @@ const AppContent: React.FC = () => {
       {isTradeOpen && (
         <TradeModal
           player={viewedPlayer}
-          readOnly={!canActForPlayer(viewedPlayer.id) || isTurnGated}
+          readOnly={!canActForPlayer(viewedPlayer.id) || isActionsLocked}
           onTrade={handleTrade}
           onClose={() => setIsTradeOpen(false)}
         />
@@ -3730,9 +3735,9 @@ const AppContent: React.FC = () => {
           hideOpponentReputation={hideOpponentReputation}
           traitorPlayerId={state.traitorPlayerId}
           warpedUniverse={state.warpedUniverse}
-          onExchangeAmbassador={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleExchangeAmbassador : undefined}
-          onBetrayAlliance={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleBetrayAlliance : undefined}
-          onConvertColonyShip={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleConvertColonyShip : undefined}
+          onExchangeAmbassador={!isActionsLocked && canActForPlayer(viewedPlayer.id) ? handleExchangeAmbassador : undefined}
+          onBetrayAlliance={!isActionsLocked && canActForPlayer(viewedPlayer.id) ? handleBetrayAlliance : undefined}
+          onConvertColonyShip={!isActionsLocked && canActForPlayer(viewedPlayer.id) ? handleConvertColonyShip : undefined}
         />
       )}
 
@@ -3870,9 +3875,17 @@ const AppContent: React.FC = () => {
           <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-6 py-4 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-pulse">
             <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
             <div>
-              <div className="font-bold text-indigo-300">Diplomatic Envoy Proposal</div>
+              <div className="font-bold text-indigo-300">{l('Diplomatic Envoy Proposal', '外交使节提案')}</div>
               <div className="text-xs text-slate-300">
-                Waiting for <strong className="text-white">{state.players.find((p) => p.id === state.pendingDiplomacyProposal!.targetId)?.name || 'Target Player'}</strong> to respond to proposal from <strong className="text-white">{state.players.find((p) => p.id === state.pendingDiplomacyProposal!.initiatorId)?.name || 'Initiator'}</strong>...
+                {language === 'zh' ? (
+                  <>
+                    正在等待 <strong className="text-white">{state.players.find((p) => p.id === state.pendingDiplomacyProposal!.targetId)?.name || '目标玩家'}</strong> 回应来自 <strong className="text-white">{state.players.find((p) => p.id === state.pendingDiplomacyProposal!.initiatorId)?.name || '发起方'}</strong> 的结盟提案...
+                  </>
+                ) : (
+                  <>
+                    Waiting for <strong className="text-white">{state.players.find((p) => p.id === state.pendingDiplomacyProposal!.targetId)?.name || 'Target Player'}</strong> to respond to proposal from <strong className="text-white">{state.players.find((p) => p.id === state.pendingDiplomacyProposal!.initiatorId)?.name || 'Initiator'}</strong>...
+                  </>
+                )}
               </div>
             </div>
           </div>

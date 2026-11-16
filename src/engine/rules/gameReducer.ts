@@ -711,6 +711,22 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     };
   }
 
+  // Pending diplomacy proposal: initiator/other actions must wait until the target commander accepts or declines
+  if (
+    state.pendingDiplomacyProposal &&
+    action.type !== 'RESPOND_DIPLOMACY' &&
+    action.type !== 'SET_AUTO_PASS' &&
+    action.type !== 'SET_PASS_IN_ADVANCE' &&
+    action.type !== 'SET_COMBAT_AUTO_RESOLVE'
+  ) {
+    const targetName =
+      state.players.find((p) => p.id === state.pendingDiplomacyProposal!.targetId)?.name || 'the invited commander';
+    return {
+      valid: false,
+      error: `Waiting for ${targetName} to respond to the Diplomatic Proposal before taking another action.`,
+    };
+  }
+
   // If an action is pending confirmation, only CONFIRM_TURN_ACTION, REVERT_TURN_ACTION, or intermediate choices (like COLONIZE) are permitted
   if (state.pendingActionConfirmation) {
     if (
@@ -722,7 +738,6 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CLAIM_REPUTATION_TILE' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'COLONIZE' &&
-      action.type !== 'PROPOSE_DIPLOMACY' &&
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'CONVERT_COLONY_SHIP' &&
       action.type !== 'REROLL_COMBAT_DIE' &&

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { PlayerState } from '../../engine/types/player';
-import { Handshake, Coins, FlaskConical, Hammer, Check, X, ShieldAlert, ArrowRight } from 'lucide-react';
+import { Handshake, Coins, FlaskConical, Hammer, Check, X, ShieldAlert, ArrowRight, Minimize2, Maximize2 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateFactionName, translateResourceType } from '../../i18n/catalogTranslations';
 
@@ -34,6 +34,7 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
 }) => {
   const { l, language } = useLanguage();
   const [step, setStep] = useState<'PROMPT' | 'SELECT_CUBES'>('PROMPT');
+  const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
   // Choose default cube for player with available stock
   const getDefaultCube = (p: PlayerState): PopulationResourceType => {
@@ -49,12 +50,44 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setStep('PROMPT');
+      setIsMinimized(false);
       setInitiatorCube(getDefaultCube(initiator));
       setTargetCube(getDefaultCube(target));
     }
-  }, [isOpen, initiator.id, target.id]);
+  }, [isOpen, initiator.id, target.id, isProposalResponse]);
 
   if (!isOpen) return null;
+
+  if (isMinimized) {
+    return (
+      <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 animate-in fade-in slide-in-from-top-4 duration-200">
+        <div className="flex items-center gap-3 px-4 py-2.5 bg-slate-950/95 border-2 border-indigo-500 rounded-full shadow-2xl backdrop-blur-md text-white">
+          <Handshake className="w-4 h-4 text-indigo-400 shrink-0" />
+          <span className="font-bold text-xs sm:text-sm tracking-wide text-indigo-200">
+            {isProposalResponse
+              ? l(
+                  `AMBASSADOR PROPOSAL: ${initiator.name} → ${target.name}`,
+                  `大使结盟提案：${initiator.name} → ${target.name}`
+                )
+              : l(
+                  `DIPLOMACY WITH ${target.name}`,
+                  `与 ${target.name} 发起外交`
+                )}
+          </span>
+          <div className="h-4 w-px bg-slate-800" />
+          <button
+            type="button"
+            onClick={() => setIsMinimized(false)}
+            className="px-3.5 py-1 bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-500 hover:to-indigo-600 text-white rounded-full text-xs font-bold transition-all shadow-md shadow-indigo-950/50 flex items-center gap-1.5 cursor-pointer"
+            title={l('Return to diplomacy window', '返回外交窗口')}
+          >
+            <Maximize2 className="w-3.5 h-3.5" />
+            <span>{isProposalResponse ? l('Review Proposal', '查看提案') : l('Resume', '返回')}</span>
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   const initiatorMoneyCubes = initiator.population.money.cubesOnBoard;
   const initiatorSciCubes = initiator.population.science.cubesOnBoard;
@@ -115,12 +148,27 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
               </p>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
-          >
-            <X className="w-5 h-5" />
-          </button>
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={() => setIsMinimized(true)}
+              className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-semibold text-indigo-200 hover:text-white bg-indigo-950/70 hover:bg-indigo-900/80 border border-indigo-700/60 transition-colors cursor-pointer"
+              title={l('Minimize to inspect the galaxy map', '最小化以查看星系地图')}
+            >
+              <Minimize2 className="w-3.5 h-3.5" />
+              <span>{l('Minimize', '最小化')}</span>
+            </button>
+            {!isProposalResponse && (
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-1.5 rounded-lg text-slate-400 hover:text-white hover:bg-slate-800 transition-colors"
+                title={l('Cancel', '取消')}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Modal Body */}
@@ -442,10 +490,10 @@ export const DiplomacyModal: React.FC<DiplomacyModalProps> = ({
                 <div className="flex items-center gap-2">
                   <button
                     type="button"
-                    onClick={onClose}
+                    onClick={() => (isProposalResponse && onRespond ? onRespond(false) : onClose())}
                     className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 font-semibold text-xs transition"
                   >
-                    {l('Cancel', '取消')}
+                    {isProposalResponse ? l('Decline Proposal', '拒绝提案') : l('Cancel', '取消')}
                   </button>
                   <button
                     type="button"

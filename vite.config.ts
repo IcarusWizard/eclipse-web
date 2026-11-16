@@ -141,6 +141,7 @@ function tableStoragePlugin(): Plugin {
     factionName,
     round,
     phase,
+    diplomacyFromName,
   }: {
     toEmail: string;
     username: string;
@@ -150,6 +151,7 @@ function tableStoragePlugin(): Plugin {
     factionName?: string;
     round?: number;
     phase?: string;
+    diplomacyFromName?: string;
   }) {
     const env = getEnvConfig();
     const host = env.SMTP_HOST || 'smtp-relay.brevo.com';
@@ -173,10 +175,13 @@ function tableStoragePlugin(): Plugin {
       auth: { user, pass },
     });
 
+    const isDiplomacyReminder = Boolean(diplomacyFromName);
     const mailOptions = {
       from,
       to: toEmail,
-      subject: `[Eclipse: Second Dawn] Commander ${username}, it's your turn on Table #${tableNumber}!`,
+      subject: isDiplomacyReminder
+        ? `[Eclipse: Second Dawn] Commander ${username}, Ambassador Proposal on Table #${tableNumber}!`
+        : `[Eclipse: Second Dawn] Commander ${username}, it's your turn on Table #${tableNumber}!`,
       html: `
         <!DOCTYPE html>
         <html>
@@ -208,8 +213,16 @@ function tableStoragePlugin(): Plugin {
             </div>
             <div class="content">
               <div class="alert-box">
-                <strong style="color: #38bdf8; font-size: 15px;">Commander ${username}, the galaxy awaits your orders!</strong>
-                <p style="margin: 6px 0 0; color: #cbd5e1; font-size: 13px;">It is now your turn to command the <b>${factionName || 'Fleet'}</b> on Table #${tableNumber}.</p>
+                <strong style="color: #38bdf8; font-size: 15px;">${
+                  isDiplomacyReminder
+                    ? `Commander ${username}, a Diplomatic Proposal awaits your response!`
+                    : `Commander ${username}, the galaxy awaits your orders!`
+                }</strong>
+                <p style="margin: 6px 0 0; color: #cbd5e1; font-size: 13px;">${
+                  isDiplomacyReminder
+                    ? `<b>${diplomacyFromName}</b> has proposed an Ambassador Exchange with <b>${factionName || 'your empire'}</b> on Table #${tableNumber}. Accept or decline to resume the turn.`
+                    : `It is now your turn to command the <b>${factionName || 'Fleet'}</b> on Table #${tableNumber}.`
+                }</p>
               </div>
 
               <table class="info-table">
@@ -252,6 +265,19 @@ function tableStoragePlugin(): Plugin {
       console.error(`[Turn Reminder] ❌ Error sending email to ${toEmail}:`, err?.message || err);
       return { success: false, error: err?.message || 'Email delivery failed' };
     }
+  }
+
+  function getEffectiveDecisionSeat(stateObj: any): number {
+    if (!stateObj || !Array.isArray(stateObj.players)) return -1;
+    if (stateObj.pendingDiplomacyProposal?.targetId) {
+      const dIdx = stateObj.players.findIndex((p: any) => p.id === stateObj.pendingDiplomacyProposal.targetId);
+      if (dIdx >= 0) return dIdx;
+    }
+    if (stateObj.phase === 'COMBAT_PHASE' && stateObj.combat?.activePlayerId) {
+      const cIdx = stateObj.players.findIndex((p: any) => p.id === stateObj.combat.activePlayerId);
+      if (cIdx >= 0) return cIdx;
+    }
+    return typeof stateObj.activePlayerIndex === 'number' ? stateObj.activePlayerIndex : -1;
   }
 
   function ensureDir() {
@@ -1213,11 +1239,7 @@ function tableStoragePlugin(): Plugin {
               if (data.isLocalGame) continue;
               if (isGuestTableServer(data)) continue;
               const activePlayer = data.players?.[data.activePlayerIndex];
-              let effectiveActiveSeat = typeof data.activePlayerIndex === 'number' ? data.activePlayerIndex : 0;
-              if (data.phase === 'COMBAT_PHASE' && data.combat?.activePlayerId) {
-                const cIdx = data.players?.findIndex((p: any) => p.id === data.combat.activePlayerId);
-                if (typeof cIdx === 'number' && cIdx >= 0) effectiveActiveSeat = cIdx;
-              }
+              const effectiveActiveSeat = Math.max(0, getEffectiveDecisionSeat(data));
               const isGameStarted =
                 typeof data.isGameStarted === 'boolean'
                   ? data.isGameStarted
@@ -1468,22 +1490,23 @@ function tableStoragePlugin(): Plugin {
               Array.isArray(data.players) &&
               data.players.length > 0
             ) {
-              let targetSeat = typeof data.activePlayerIndex === 'number' ? data.activePlayerIndex : -1;
-              if (data.phase === 'COMBAT_PHASE' && data.combat?.activePlayerId) {
-                const cIdx = data.players.findIndex((p: any) => p.id === data.combat.activePlayerId);
-                if (cIdx >= 0) targetSeat = cIdx;
-              }
+              const targetSeat = getEffectiveDecisionSeat(data);
+              const oldSeat = getEffectiveDecisionSeat(existing);
 
-              let oldSeat = typeof existing.activePlayerIndex === 'number' ? existing.activePlayerIndex : -1;
-              if (existing.phase === 'COMBAT_PHASE' && existing.combat?.activePlayerId) {
-                const oIdx = existing.players?.findIndex((p: any) => p.id === existing.combat.activePlayerId);
-                if (oIdx >= 0) oldSeat = oIdx;
-              }
-
-              const isTurnTransition = (oldSeat !== targetSeat) || (existing.phase !== data.phase && data.phase === 'ACTION_PHASE');
+              const isNewProposalForSameOrOther =
+                Boolean(data.pendingDiplomacyProposal?.targetId) &&
+                (existing.pendingDiplomacyProposal?.initiatorId !== data.pendingDiplomacyProposal.initiatorId ||
+                  existing.pendingDiplomacyProposal?.targetId !== data.pendingDiplomacyProposal.targetId);
+              const isTurnTransition =
+                oldSeat !== targetSeat ||
+                (existing.phase !== data.phase && data.phase === 'ACTION_PHASE') ||
+                isNewProposalForSameOrOther;
               if (isTurnTransition && targetSeat >= 0 && targetSeat < data.players.length) {
                 const targetPlayer = data.players[targetSeat];
                 const targetMember = data.members?.find((m: any) => m.seat === targetSeat);
+                const diplomacyFromName = data.pendingDiplomacyProposal?.initiatorId
+                  ? data.players.find((p: any) => p.id === data.pendingDiplomacyProposal.initiatorId)?.name || 'Another Commander'
+                  : undefined;
 
                 let targetEmail = targetMember?.email;
                 let targetUserId = targetMember?.userId;
@@ -1509,7 +1532,12 @@ function tableStoragePlugin(): Plugin {
                 if (targetEmail && emailNotifications) {
                   const online = isUserOnline(targetUserId, tableId);
                   if (!online) {
-                    const reminderKey = `${tableId}:${targetSeat}:${data.round}:${data.phase}`;
+                    const diploTag = data.pendingDiplomacyProposal?.targetId
+                      ? `diplo:${data.pendingDiplomacyProposal.initiatorId}:${data.pendingDiplomacyProposal.targetId}`
+                      : existing.pendingDiplomacyProposal?.targetId
+                      ? 'diplo_resolved'
+                      : 'turn';
+                    const reminderKey = `${tableId}:${targetSeat}:${data.round}:${data.phase}:${diploTag}`;
                     const now = Date.now();
                     const lastSent = lastTurnReminderSent.get(reminderKey) || 0;
                     // Deduplicate within 5 minutes for the exact same turn
@@ -1524,6 +1552,7 @@ function tableStoragePlugin(): Plugin {
                         factionName: targetPlayer?.faction?.name || targetPlayer?.name,
                         round: data.round,
                         phase: data.phase,
+                        diplomacyFromName,
                       }).then((res) => {
                         recentReminders.push({
                           id: `rem_${Date.now()}`,
