@@ -1737,12 +1737,12 @@ const AppContent: React.FC = () => {
     for (const m of currentActivationMoves) {
       const fromSec = state.sectors.find((s) => s.id === m.fromSectorId);
       const toSec = state.sectors.find((s) => s.id === m.toSectorId);
-      if (fromSec && toSec && !areSectorsConnected(fromSec, toSec, hasWormholeGen)) {
+      if (fromSec && toSec && !areSectorsConnected(fromSec, toSec, hasWormholeGen, state.warpedUniverse?.conduits)) {
         return true;
       }
     }
     return false;
-  }, [currentShipHasJumpDrive, currentActivationMoves, state.sectors, hasWormholeGen]);
+  }, [currentShipHasJumpDrive, currentActivationMoves, state.sectors, hasWormholeGen, state.warpedUniverse?.conduits]);
 
   const currentSimSubsector = useMemo(() => {
     if (!currentMoveShip || !currentSimSector || !currentSimSector.isNebula) return undefined;
@@ -3125,6 +3125,7 @@ const AppContent: React.FC = () => {
             allPlayers={state.players}
             traitorPlayerId={state.traitorPlayerId}
             gamePhase={state.phase}
+            warpedUniverse={state.warpedUniverse}
             onInitiateDiplomacy={!isTurnGated ? handleExchangeAmbassador : undefined}
             onBetrayAlliance={!isTurnGated ? handleBetrayAlliance : undefined}
             delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
@@ -3465,6 +3466,7 @@ const AppContent: React.FC = () => {
           onFinishActivation={handleFinishCurrentActivation}
           onMove={handleMove}
           pulsarSectorId={activePulsarSectorId ?? undefined}
+          warpConduits={state.warpedUniverse?.conduits}
           onClose={() => {
             setIsMoveOpen(false);
             setActivePulsarSectorId(null);
@@ -3727,6 +3729,7 @@ const AppContent: React.FC = () => {
           }}
           hideOpponentReputation={hideOpponentReputation}
           traitorPlayerId={state.traitorPlayerId}
+          warpedUniverse={state.warpedUniverse}
           onExchangeAmbassador={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleExchangeAmbassador : undefined}
           onBetrayAlliance={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleBetrayAlliance : undefined}
           onConvertColonyShip={!isTurnGated && canActForPlayer(viewedPlayer.id) ? handleConvertColonyShip : undefined}

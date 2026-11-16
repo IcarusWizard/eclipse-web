@@ -25793,6 +25793,91 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(guardianCoords4p).toEqual(['-2,0', '2,0']);
     });
   });
+
+  describe('175. Warped Universe Conduit Diplomacy (PlayerBoard & PhysicalPlayerBoardModal)', () => {
+    it('allows exchanging ambassadors across Warped Universe conduits and enables Exchange UI controls when warpedUniverse is passed', async () => {
+      const game = createInitialGame(4, ['descendants_of_draco', 'enlightened_of_lyra', 'planta', 'orion_hegemony'], ['warped_universe']);
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+
+      // Place Draco Sector 203 at (2,-1) and Lyra Sector 106 at (0,1), connected via Conduit Line 2 (edges 2 and 0)
+      game.sectors.push(
+        {
+          id: 'test_conduit_sec_203',
+          sectorNumber: 203,
+          name: 'Conduit East End',
+          ring: 2,
+          coord: { q: 2, r: -1 },
+          rotation: 2,
+          wormholes: [true, true, false, true, false, true], // rotated +2 => edge 2 is base edge 0 (true)
+          planets: [],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          discOwner: p1.id,
+          ships: [],
+        },
+        {
+          id: 'test_conduit_sec_106',
+          sectorNumber: 106,
+          name: 'Conduit South End',
+          ring: 1,
+          coord: { q: 0, r: 1 },
+          rotation: 5,
+          wormholes: [true, true, true, true, false, false], // rotated +5 => edge 0 is base edge 1 (true)
+          planets: [],
+          victoryPoints: 2,
+          hasArtifact: false,
+          hasDiscovery: false,
+          ancientsCount: 0,
+          discOwner: p2.id,
+          ships: [],
+        }
+      );
+
+      expect(canExchangeAmbassadors(game, p1.id, p2.id).canExchange).toBe(true);
+
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+      const boardHtml = renderToString(
+        React.createElement(PlayerBoard, {
+          player: p1,
+          isActive: true,
+          sectors: game.sectors,
+          allPlayers: game.players,
+          traitorPlayerId: game.traitorPlayerId,
+          gamePhase: game.phase,
+          warpedUniverse: game.warpedUniverse,
+          onInitiateDiplomacy: () => {},
+          onOpenBlueprints: () => {},
+          onOpenTechMarket: () => {},
+          onOpenTrade: () => {},
+        })
+      );
+      expect(boardHtml).toContain('Exchange');
+      expect(boardHtml).toContain(p2.name);
+
+      const modalHtml = renderToString(
+        React.createElement(PhysicalPlayerBoardModal, {
+          player: p1,
+          players: game.players,
+          activePlayerId: p1.id,
+          sectors: game.sectors,
+          warpedUniverse: game.warpedUniverse,
+          onExchangeAmbassador: () => {},
+          onClose: () => {},
+          onSelectPlayer: () => {},
+          onOpenBlueprintEditor: () => {},
+          onOpenTechMarket: () => {},
+        })
+      );
+      expect(modalHtml).toContain('Exchange (+1 VP)');
+    });
+  });
 });
 
 

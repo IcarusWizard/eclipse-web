@@ -5,6 +5,7 @@ import { getMaxMoveActivations, playerHasWormholeGenerator } from '../../engine/
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { areSectorsConnected, getEdgeBetween } from '../../engine/rules/hexMath';
 import { getNebulaSubsectorForOuterEdge } from '../../engine/rules/galacticEvents';
+import type { WarpConduit } from '../../engine/rules/warpedUniverse';
 import {
   Rocket,
   ArrowRight,
@@ -62,6 +63,7 @@ export interface MoveModalProps {
   onMove: (moves: MoveStepPayload[], pulsarSectorId?: string) => void;
   onClose: () => void;
   pulsarSectorId?: string;
+  warpConduits?: WarpConduit[];
 }
 
 export const MoveModal: React.FC<MoveModalProps> = ({
@@ -84,6 +86,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   onMove,
   onClose,
   pulsarSectorId,
+  warpConduits,
 }) => {
   const { language, l } = useLanguage();
   const isPulsarActive = Boolean(pulsarSectorId);
@@ -432,7 +435,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                   ) : connectedDestinations.length > 0 ? (
                     <div className="flex items-center gap-1.5 flex-wrap">
                       {connectedDestinations.map((sec) => {
-                        const hasWormhole = currentSimSector ? areSectorsConnected(currentSimSector, sec, hasWormholeGen) : true;
+                        const hasWormhole = currentSimSector ? areSectorsConnected(currentSimSector, sec, hasWormholeGen, warpConduits) : true;
                         const nebulaTargetSub = sec.isNebula && currentSimSector
                           ? (() => {
                               const edge = getEdgeBetween(currentSimSector.coord, sec.coord);

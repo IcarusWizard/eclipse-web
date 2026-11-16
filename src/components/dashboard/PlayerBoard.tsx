@@ -52,6 +52,7 @@ interface PlayerBoardProps {
   allPlayers?: PlayerState[];
   traitorPlayerId?: string | null;
   gamePhase?: string;
+  warpedUniverse?: { conduits: any } | null;
   onInitiateDiplomacy?: (targetPlayerId: string) => void;
   onBetrayAlliance?: (targetPlayerId: string) => void;
   delayedBlackHoleShips?: import('../../engine/rules/galacticEvents').BlackHoleDelayedShip[];
@@ -74,6 +75,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   allPlayers = [],
   traitorPlayerId = null,
   gamePhase = 'ACTION_PHASE',
+  warpedUniverse,
   onInitiateDiplomacy,
   onBetrayAlliance,
   delayedBlackHoleShips = [],
@@ -677,7 +679,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 .map((other) => {
                   const isAllied = player.ambassadorTiles?.includes(other.id);
                   const check = canExchangeAmbassadors(
-                    { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors },
+                    { phase: gamePhase, traitorPlayerId, players: allPlayers, sectors, warpedUniverse: warpedUniverse ?? undefined },
                     player.id,
                     other.id
                   );

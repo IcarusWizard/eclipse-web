@@ -391,9 +391,16 @@ export const ExploreModal: React.FC<ExploreModalProps> = ({
                   if (!hasWh) return null;
                   const edgePos = getHexEdgeCenter(17, 17, 14, edge);
                   const neighborCoord = getNeighborCoord(simulatedTile.coord, edge);
-                  const isConn = areCoordsEqual(neighborCoord, sourceSector.coord)
+                  const isDirectNeighbor = areCoordsEqual(neighborCoord, sourceSector.coord);
+                  const isConn = isDirectNeighbor
                     ? areSectorsConnected(simulatedTile, sourceSector, hasWormholeGen)
-                    : false;
+                    : (warpConduits?.some(
+                        (c) =>
+                          (areCoordsEqual(simulatedTile.coord, c.coordA) && c.edgeA === edge && areCoordsEqual(sourceSector.coord, c.coordB)) ||
+                          (areCoordsEqual(simulatedTile.coord, c.coordB) && c.edgeB === edge && areCoordsEqual(sourceSector.coord, c.coordA))
+                      )
+                      ? areSectorsConnected(simulatedTile, sourceSector, hasWormholeGen, warpConduits)
+                      : false);
                   return (
                     <g
                       key={`mini_wh_${edge}`}

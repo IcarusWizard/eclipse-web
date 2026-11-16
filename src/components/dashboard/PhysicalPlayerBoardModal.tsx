@@ -70,6 +70,7 @@ interface PhysicalPlayerBoardModalProps {
   onOpenTechMarket: () => void;
   hideOpponentReputation?: boolean;
   traitorPlayerId?: string | null;
+  warpedUniverse?: { conduits: any } | null;
   onExchangeAmbassador?: (targetPlayerId: string) => void;
   onBetrayAlliance?: (targetPlayerId: string) => void;
   onConvertColonyShip?: (resource: 'money' | 'science' | 'materials') => void;
@@ -88,6 +89,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
   onOpenTechMarket,
   hideOpponentReputation = false,
   traitorPlayerId,
+  warpedUniverse,
   onExchangeAmbassador,
   onBetrayAlliance,
   onConvertColonyShip,
@@ -806,7 +808,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   {players.filter((other) => other.id !== player.id).map((other) => {
                     const isAllied = player.ambassadorTiles?.includes(other.id);
                     const check = canExchangeAmbassadors(
-                      { phase: 'ACTION_PHASE', traitorPlayerId, players, sectors },
+                      { phase: 'ACTION_PHASE', traitorPlayerId, players, sectors, warpedUniverse: warpedUniverse ?? undefined },
                       player.id,
                       other.id
                     );

@@ -497,7 +497,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
         if (s.id === sector.id) return false;
         if (s.discOwner !== attackerOwner.id) return false;
         if (s.ships.some((sh) => sh.ownerId !== attackerOwner.id)) return false;
-        return areSectorsConnected(sector, s, hasWormholeGen);
+        return areSectorsConnected(sector, s, hasWormholeGen, state.warpedUniverse?.conduits);
       })
     : [];
 
