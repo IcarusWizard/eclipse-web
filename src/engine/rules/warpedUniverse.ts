@@ -206,32 +206,32 @@ export function createLargeWarpSectorPlacement(sliceIndex: number): LargeWarpSec
  */
 export function getWarpedUniverseStartingCoords(playerCount: number): HexCoord[] {
   if (playerCount === 5) {
-    // Balanced 5-player layout: standard 6-fold grid with South (0, 2) occupied by Warp Sector
+    // Balanced 5-player layout: strictly clockwise around center with South (0, 2) occupied by Warp Sector
     return [
-      { q: 0, r: -2 }, // Player 1 (North)
-      { q: 2, r: -2 }, // Player 2 (North-East)
-      { q: 2, r: 0 },  // Player 3 (East)
-      { q: -2, r: 0 }, // Player 4 (West)
-      { q: -2, r: 2 }, // Player 5 (South-West)
+      { q: 0, r: -2 }, // Pos 1 (11 o'clock / North-West)
+      { q: 2, r: -2 }, // Pos 2 (1 o'clock / North-East)
+      { q: 2, r: 0 },  // Pos 3 (3 o'clock / East)
+      { q: -2, r: 2 }, // Pos 4 (7 o'clock / South-West)
+      { q: -2, r: 0 }, // Pos 5 (9 o'clock / West)
     ];
   }
 
   if (playerCount === 3) {
-    // Tighter 3-player layout: 3 players alternating at 120-degree intervals with 3 Warp Sectors
+    // Tighter 3-player layout: 3 players alternating at 120-degree intervals clockwise with 3 Warp Sectors
     return [
-      { q: 0, r: 2 },  // Player 1 (South)
-      { q: -2, r: 0 }, // Player 2 (North-West)
-      { q: 2, r: -2 }, // Player 3 (North-East)
+      { q: 0, r: 2 },  // Pos 1 (5 o'clock / South-East)
+      { q: -2, r: 0 }, // Pos 2 (9 o'clock / West)
+      { q: 2, r: -2 }, // Pos 3 (1 o'clock / North-East)
     ];
   }
 
   if (playerCount === 4) {
-    // Tighter 4-player layout: 2 top, 2 bottom, 2 Warp Sectors on East & West
+    // Tighter 4-player layout: strictly clockwise around center with 2 Warp Sectors on East & West
     return [
-      { q: 0, r: -2 }, // Player 1 (North)
-      { q: 2, r: -2 }, // Player 2 (North-East)
-      { q: -2, r: 2 }, // Player 3 (South-West)
-      { q: 0, r: 2 },  // Player 4 (South)
+      { q: 0, r: -2 }, // Pos 1 (11 o'clock / North-West)
+      { q: 2, r: -2 }, // Pos 2 (1 o'clock / North-East)
+      { q: 0, r: 2 },  // Pos 3 (5 o'clock / South-East)
+      { q: -2, r: 2 }, // Pos 4 (7 o'clock / South-West)
     ];
   }
 

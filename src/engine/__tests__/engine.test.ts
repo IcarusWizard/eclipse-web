@@ -11073,12 +11073,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // Guardian sectors strictly excluded per rulebook page 1
         expect(game5p.sectors.some((s) => s.guardianCount || s.sectorNumber === 271 || s.sectorNumber === 272)).toBe(false);
 
-        // Verify 5p home sector coordinates
+        // Verify 5p home sector coordinates (strictly clockwise around center)
         const homeCoords5p = game5p.players.map((p) => {
           const home = game5p.sectors.find((s) => s.id === `home_sector_${p.id}`);
           return home ? `${home.coord.q},${home.coord.r}` : '';
         });
-        expect(homeCoords5p).toEqual(['0,-2', '2,-2', '2,0', '-2,0', '-2,2']);
+        expect(homeCoords5p).toEqual(['0,-2', '2,-2', '2,0', '-2,2', '-2,0']);
         // Verify South (0, 2) is NOT a player home sector (it is occupied by Large Warp Sector)
         expect(homeCoords5p.includes('0,2')).toBe(false);
 
@@ -11101,6 +11101,124 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(game4p.warpedUniverse?.layoutVariant).toBe('tighter_2p_4p');
         expect(game4p.warpedUniverse?.warpSectors.length).toBe(2);
         expect(game4p.warpedUniverse?.conduits.length).toBe(24);
+        const homeCoords4p = game4p.players.map((p) => {
+          const home = game4p.sectors.find((s) => s.id === `home_sector_${p.id}`);
+          return home ? `${home.coord.q},${home.coord.r}` : '';
+        });
+        expect(homeCoords4p).toEqual(['0,-2', '2,-2', '0,2', '-2,2']);
+
+        // Verify Warped Universe 4p & 5p Draft Mode follow strict clockwise turn order & counter-clockwise draft order
+        const clockwiseAngle = (c: { q: number; r: number }) => {
+          const x = Math.sqrt(3) * (c.q + c.r / 2);
+          const y = 1.5 * c.r;
+          // Clockwise degrees starting from straight up (0 deg at north, increasing clockwise 0..360)
+          return ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360;
+        };
+        for (const pCount of [3, 4, 5]) {
+          const warpedDraft = createInitialGame(pCount, undefined, ['warped_universe'], undefined, true);
+          const turnAngles = warpedDraft.turnOrder.map((pId) => {
+            const sec = warpedDraft.sectors.find((s) => s.discOwner === pId)!;
+            return clockwiseAngle(sec.coord);
+          });
+          // Shifting so turnAngles[0] is baseline 0, subsequent angles must be strictly increasing in (0, 360)
+          const normalizedClockwise = turnAngles.map((a) => (a - turnAngles[0]! + 360) % 360);
+          for (let idx = 1; idx < normalizedClockwise.length; idx++) {
+            expect(normalizedClockwise[idx]!).toBeGreaterThan(normalizedClockwise[idx - 1]!);
+          }
+          expect(warpedDraft.factionDraft!.draftOrder).toEqual([...warpedDraft.turnOrder].reverse());
+
+          // Complete draft WITHOUT turn_order expansion and verify both Round 1 ACTION_PHASE
+          // and Round 2 (post-cleanup) turn order remain strictly clockwise around (0, 0).
+          let draftPlay = warpedDraft;
+          for (const drafterId of warpedDraft.factionDraft!.draftOrder) {
+            const pickId = draftPlay.factionDraft!.availableFactionIds[0]!;
+            const res = executeAction(draftPlay, {
+              type: 'DRAFT_FACTION',
+              playerId: drafterId,
+              factionId: pickId,
+            });
+            expect(res.success).toBe(true);
+            draftPlay = res.newState;
+          }
+          expect(draftPlay.phase).toBe('ACTION_PHASE');
+          expect(draftPlay.expansions?.includes('turn_order')).toBe(false);
+
+          const initialClockwiseOrder = [...draftPlay.turnOrder];
+          expect(draftPlay.players[draftPlay.activePlayerIndex]!.id).toBe(initialClockwiseOrder[0]);
+
+          // Step through Round 1 passes: activePlayerIndex must follow clockwise turnOrder, not players array index
+          let r1State = draftPlay;
+          for (let step = 0; step < initialClockwiseOrder.length; step++) {
+            const currentPlayer = r1State.players[r1State.activePlayerIndex]!;
+            expect(currentPlayer.id).toBe(initialClockwiseOrder[step]);
+            const passRes = executeAction(r1State, { type: 'PASS', playerId: currentPlayer.id });
+            expect(passRes.success).toBe(true);
+            r1State = passRes.newState;
+          }
+          expect(r1State.round).toBe(2);
+          expect(r1State.phase).toBe('ACTION_PHASE');
+          expect(r1State.turnOrder).toEqual(initialClockwiseOrder);
+
+          // Step through Round 2 passes and verify active order stays clockwise
+          let r2State = r1State;
+          for (let step = 0; step < initialClockwiseOrder.length; step++) {
+            const currentPlayer = r2State.players[r2State.activePlayerIndex]!;
+            expect(currentPlayer.id).toBe(initialClockwiseOrder[step]);
+            const passRes = executeAction(r2State, { type: 'PASS', playerId: currentPlayer.id });
+            expect(passRes.success).toBe(true);
+            r2State = passRes.newState;
+          }
+          expect(r2State.round).toBe(3);
+        }
+
+        // Also test non-draft 4p Warped Universe without turn_order: Round 1 & Round 2 must advance clockwise around (0, 0)
+        const nonDraft4p = createInitialGame(4, undefined, ['warped_universe']);
+        const nonDraft4pAngles = nonDraft4p.turnOrder.map((pId) => {
+          const home = nonDraft4p.sectors.find((s) => s.id === `home_sector_${pId}`)!;
+          return clockwiseAngle(home.coord);
+        });
+        const nonDraftNormalized = nonDraft4pAngles.map((a) => (a - nonDraft4pAngles[0]! + 360) % 360);
+        for (let idx = 1; idx < nonDraftNormalized.length; idx++) {
+          expect(nonDraftNormalized[idx]!).toBeGreaterThan(nonDraftNormalized[idx - 1]!);
+        }
+        let ndState = nonDraft4p;
+        for (let step = 0; step < 4; step++) {
+          const active = ndState.players[ndState.activePlayerIndex]!;
+          expect(active.id).toBe(nonDraft4p.turnOrder[step]);
+          const res = executeAction(ndState, { type: 'PASS', playerId: active.id });
+          expect(res.success).toBe(true);
+          ndState = res.newState;
+        }
+        expect(ndState.round).toBe(2);
+        expect(ndState.turnOrder).toEqual(nonDraft4p.turnOrder);
+
+        // Simulate an already-running 4p Warped Universe game created on an older server where
+        // player_3 (-2,2) and player_4 (0,2) were swapped and turnOrder was [p1, p2, p3, p4].
+        const legacyWarped = structuredClone(nonDraft4p);
+        const h3 = legacyWarped.sectors.find((s) => s.id === 'home_sector_player_3')!;
+        const h4 = legacyWarped.sectors.find((s) => s.id === 'home_sector_player_4')!;
+        const oldH3Coord = { ...h3.coord };
+        h3.coord = { ...h4.coord }; // player_3 now sits at (-2, 2) = 7 o'clock
+        h4.coord = oldH3Coord;      // player_4 now sits at (0, 2) = 5 o'clock
+        legacyWarped.turnOrder = ['player_1', 'player_2', 'player_3', 'player_4'];
+        legacyWarped.activePlayerIndex = 1; // Currently player_2's turn (1 o'clock)
+
+        // Next action/pass by player_2 must self-heal turnOrder & advance clockwise to player_4 (5 o'clock), not player_3
+        const legacyStep1 = executeAction(legacyWarped, { type: 'PASS', playerId: 'player_2' });
+        expect(legacyStep1.success).toBe(true);
+        expect(legacyStep1.newState.players[legacyStep1.newState.activePlayerIndex]!.id).toBe('player_4');
+        expect(legacyStep1.newState.turnOrder).toEqual(['player_1', 'player_2', 'player_4', 'player_3']);
+
+        const legacyStep2 = executeAction(legacyStep1.newState, { type: 'PASS', playerId: 'player_4' });
+        expect(legacyStep2.newState.players[legacyStep2.newState.activePlayerIndex]!.id).toBe('player_3');
+
+        const legacyStep3 = executeAction(legacyStep2.newState, { type: 'PASS', playerId: 'player_3' });
+        expect(legacyStep3.newState.players[legacyStep3.newState.activePlayerIndex]!.id).toBe('player_1');
+
+        const legacyStep4 = executeAction(legacyStep3.newState, { type: 'PASS', playerId: 'player_1' });
+        expect(legacyStep4.newState.round).toBe(2);
+        // player_2 passed first -> Round 2 continues strictly clockwise from player_2: p2 -> p4 -> p3 -> p1
+        expect(legacyStep4.newState.turnOrder).toEqual(['player_2', 'player_4', 'player_3', 'player_1']);
 
         const game2p = createInitialGame(2, undefined, ['warped_universe']);
         expect(game2p.warpedUniverse?.active).toBe(true);
@@ -25643,6 +25761,36 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       if (afterMp1MissileAuto.newState.activeCombat) {
         expect(afterMp1MissileAuto.newState.activeCombat.autoResolvePlayerIds).toEqual([mp1.id]);
       }
+    });
+  });
+
+  describe('174. Standard Ring 2 Home & Guardian Sector Placement (2p-6p)', () => {
+    it('places players on the 6 canonical Ring 2 corners and fills only the remaining (6 - N) spots with Guardian sectors', () => {
+      const canonicalKeys = new Set(['0,-2', '2,-2', '2,0', '0,2', '-2,2', '-2,0']);
+
+      for (const count of [2, 3, 4, 5, 6]) {
+        for (const isDraft of [false, true]) {
+          const game = createInitialGame(count, undefined, [], undefined, isDraft);
+          const guardians = game.sectors.filter((s) => (s.guardiansCount ?? 0) > 0);
+          expect(guardians.length).toBe(6 - count);
+
+          const playerStartSectors = isDraft
+            ? game.sectors.filter((s) => s.id.startsWith('draft_slot_'))
+            : game.sectors.filter((s) => s.id.startsWith('home_sector_'));
+          expect(playerStartSectors.length).toBe(count);
+
+          const occupiedKeys = [...playerStartSectors, ...guardians].map((s) => `${s.coord.q},${s.coord.r}`);
+          expect(new Set(occupiedKeys)).toEqual(canonicalKeys);
+        }
+      }
+
+      // 4p specifically leaves East (2,0) and West (-2,0) as the 2 symmetric Guardian sectors
+      const game4p = createInitialGame(4);
+      const guardianCoords4p = game4p.sectors
+        .filter((s) => (s.guardiansCount ?? 0) > 0)
+        .map((s) => `${s.coord.q},${s.coord.r}`)
+        .sort();
+      expect(guardianCoords4p).toEqual(['-2,0', '2,0']);
     });
   });
 });

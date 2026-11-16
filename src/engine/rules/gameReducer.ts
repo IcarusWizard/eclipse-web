@@ -413,20 +413,64 @@ export function canExchangeAmbassadors(
 }
 
 /**
+ * Computes the geometric clockwise player seating ring around (0, 0) from homeworld sector coordinates
+ * when Warped Universe is active without the 'turn_order' expansion.
+ * Returns null if 'turn_order' is enabled or if homeworld coordinates are unavailable.
+ */
+function getClockwiseWarpedPlayerRing(state: GameState): string[] | null {
+  if (!state.warpedUniverse?.active || state.expansions?.includes('turn_order')) {
+    return null;
+  }
+  if (!state.sectors || state.players.length < 2) return null;
+
+  const angles: Array<{ id: string; angle: number }> = [];
+  for (const player of state.players) {
+    const homeSector =
+      state.sectors.find((s) => s.id === `home_sector_${player.id}`) ??
+      state.sectors.find((s) => s.discOwner === player.id);
+    if (!homeSector || (homeSector.coord.q === 0 && homeSector.coord.r === 0)) {
+      return null;
+    }
+    const x = Math.sqrt(3) * (homeSector.coord.q + homeSector.coord.r / 2);
+    const y = 1.5 * homeSector.coord.r;
+    const angle = ((Math.atan2(x, -y) * 180) / Math.PI + 360) % 360;
+    angles.push({ id: player.id, angle });
+  }
+
+  angles.sort((a, b) => a.angle - b.angle);
+  return angles.map((entry) => entry.id);
+}
+
+function buildRingTurnOrder(state: GameState, ringIds: string[], startPlayerId?: string): string[] {
+  const ringStartIdx = startPlayerId ? Math.max(0, ringIds.indexOf(startPlayerId)) : 0;
+  const order: string[] = [];
+  for (let i = 0; i < ringIds.length; i++) {
+    const pId = ringIds[(ringStartIdx + i) % ringIds.length];
+    const player = state.players.find((p) => p.id === pId);
+    if (player && !player.isEliminated) {
+      order.push(pId);
+    }
+  }
+  return order;
+}
+
+/**
  * Computes the index in state.players of the next active player during ACTION_PHASE.
  * If the 'turn_order' expansion is enabled, turn progression strictly follows state.turnOrder
  * (which represents the physical Turn Order Track).
- * In base game, turns advance clockwise according to the order of state.players.
+ * For Warped Universe without 'turn_order', follows geometric clockwise homeworld seating so
+ * even tables created before coordinate reordering rotate clockwise.
  */
 export function getNextActivePlayerIndex(state: GameState): number {
-  if (state.expansions?.includes('turn_order') && state.turnOrder && state.turnOrder.length > 0) {
+  const effectiveOrder = getClockwiseWarpedPlayerRing(state) ?? state.turnOrder;
+  if (effectiveOrder && effectiveOrder.length > 0) {
     const currentActivePlayer = state.players[state.activePlayerIndex];
-    const currentIdxInTurnOrder = currentActivePlayer ? state.turnOrder.indexOf(currentActivePlayer.id) : -1;
+    const currentIdxInTurnOrder = currentActivePlayer ? effectiveOrder.indexOf(currentActivePlayer.id) : -1;
     const startIndex = currentIdxInTurnOrder !== -1 ? currentIdxInTurnOrder : 0;
 
-    for (let step = 1; step <= state.turnOrder.length; step++) {
-      const nextOrderIdx = (startIndex + step) % state.turnOrder.length;
-      const nextPlayerId = state.turnOrder[nextOrderIdx];
+    for (let step = 1; step <= effectiveOrder.length; step++) {
+      const nextOrderIdx = (startIndex + step) % effectiveOrder.length;
+      const nextPlayerId = effectiveOrder[nextOrderIdx];
       const playerIdx = state.players.findIndex((p) => p.id === nextPlayerId);
       if (playerIdx !== -1 && !state.players[playerIdx].isEliminated) {
         return playerIdx;
@@ -500,6 +544,19 @@ export function advanceTurnOrAutoPass(state: GameState): void {
     state.resolvedCombatSectorIds = [];
     checkAndTriggerCombat(state);
     return;
+  }
+
+  // Self-heal stale turnOrder on older Warped Universe saves so HUD and turn rotation agree
+  const warpedRing = getClockwiseWarpedPlayerRing(state);
+  if (warpedRing) {
+    const anchorId =
+      (state.firstPlayerIndex >= 0 ? state.players[state.firstPlayerIndex]?.id : undefined) ??
+      state.turnOrder?.[0] ??
+      warpedRing[0];
+    const syncedOrder = buildRingTurnOrder(state, warpedRing, anchorId);
+    if (syncedOrder.length > 0) {
+      state.turnOrder = syncedOrder;
+    }
   }
 
   state.activePlayerIndex = getNextActivePlayerIndex(state);
@@ -5036,6 +5093,13 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       if (draft.currentDraftIndex >= draft.draftOrder.length) {
         newState.phase = 'ACTION_PHASE';
+        const warpedRing = getClockwiseWarpedPlayerRing(newState);
+        if (warpedRing) {
+          const syncedOrder = buildRingTurnOrder(newState, warpedRing, newState.turnOrder[0] ?? warpedRing[0]);
+          if (syncedOrder.length > 0) {
+            newState.turnOrder = syncedOrder;
+          }
+        }
         newState.activePlayerIndex = newState.players.findIndex((p) => p.id === newState.turnOrder[0]);
         newState.firstPlayerIndex = newState.activePlayerIndex;
 
@@ -6711,22 +6775,34 @@ export function transitionToCleanup(state: GameState): void {
     }
     for (const p of state.players) p.isFirstPasser = false;
   } else {
-    // Base game: first passer becomes first player, rotation is clockwise
+    // Base game: first passer becomes first player, rotation is clockwise around the galaxy
     const firstPasserIndex = state.players.findIndex((p) => p.isFirstPasser);
     if (firstPasserIndex !== -1) {
       state.firstPlayerIndex = firstPasserIndex;
       state.activePlayerIndex = firstPasserIndex;
       for (const p of state.players) p.isFirstPasser = false;
     }
-    // Update base game turnOrder clockwise from firstPlayerIndex
-    const baseTurnOrder: string[] = [];
-    const n = state.players.length;
+    // Update base game turnOrder clockwise from firstPlayerIndex.
+    // For Warped Universe, always use geometric homeworld angles so existing pre-fix games self-heal;
+    // in standard draft mode, sort by assignedPositions rather than state.players array order.
     const startIdx = state.firstPlayerIndex >= 0 ? state.firstPlayerIndex : 0;
-    for (let i = 0; i < n; i++) {
-      const idx = (startIdx + i) % n;
-      if (!state.players[idx].isEliminated) {
-        baseTurnOrder.push(state.players[idx].id);
-      }
+    const firstPlayerId = state.players[startIdx]?.id;
+    const warpedRing = getClockwiseWarpedPlayerRing(state);
+    const assignedPositions = state.factionDraft?.assignedPositions;
+    let baseTurnOrder: string[];
+    if (warpedRing) {
+      baseTurnOrder = buildRingTurnOrder(state, warpedRing, firstPlayerId);
+    } else if (assignedPositions && Object.keys(assignedPositions).length > 0) {
+      const ringIds = [...state.players]
+        .sort((a, b) => (assignedPositions[a.id] ?? 0) - (assignedPositions[b.id] ?? 0))
+        .map((p) => p.id);
+      baseTurnOrder = buildRingTurnOrder(state, ringIds, firstPlayerId);
+    } else {
+      baseTurnOrder = buildRingTurnOrder(
+        state,
+        state.players.map((p) => p.id),
+        firstPlayerId
+      );
     }
     state.turnOrder = baseTurnOrder;
   }
