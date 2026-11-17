@@ -280,6 +280,21 @@ function tableStoragePlugin(): Plugin {
     return typeof stateObj.activePlayerIndex === 'number' ? stateObj.activePlayerIndex : -1;
   }
 
+  function mergeChatMessageLists(existingMsgs: any[], incomingMsgs: any[]): any[] {
+    const map = new Map<string, any>();
+    for (const list of [existingMsgs, incomingMsgs]) {
+      if (!Array.isArray(list)) continue;
+      for (const msg of list) {
+        if (!msg || !msg.text) continue;
+        const key = msg.id || `${msg.senderPlayerId || 'sys'}:${msg.timestamp}:${msg.text}`;
+        if (!map.has(key)) {
+          map.set(key, msg);
+        }
+      }
+    }
+    return Array.from(map.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+  }
+
   function ensureDir() {
     if (!fs.existsSync(TABLES_DIR)) {
       fs.mkdirSync(TABLES_DIR, { recursive: true });
@@ -1431,6 +1446,21 @@ function tableStoragePlugin(): Plugin {
             if (fs.existsSync(filePath)) {
               try {
                 existing = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
+
+                // Lightweight chat-only sync (preserves existing confirmed board state when sender is previewing an unconfirmed action)
+                if (data.chatOnly) {
+                  existing.chatMessages = mergeChatMessageLists(existing.chatMessages, data.chatMessages);
+                  existing.savedAt = data.savedAt;
+                  saveTableFile(filePath, existing);
+                  res.statusCode = 200;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(JSON.stringify({ success: true, tableId: existing.id || resolvedTableId, tableNumber: existing.tableNumber }));
+                  return;
+                }
+
+                // Always merge chatMessages monotonically so concurrent turn saves never erase recent chat messages
+                data.chatMessages = mergeChatMessageLists(existing.chatMessages, data.chatMessages);
+
                 if (Array.isArray(data.members)) {
                   data.members = [...data.members];
                 } else if (existing?.members && Array.isArray(existing.members)) {

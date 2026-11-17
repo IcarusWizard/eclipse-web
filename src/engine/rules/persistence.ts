@@ -1,6 +1,25 @@
-import { GameState } from '../types/state';
+import { GameState, ChatMessage } from '../types/state';
 import { TableMember, UserSession } from '../types/user';
 import { isReplayAvailable, compactReplaySteps } from './replay';
+
+/**
+ * Merges two chat message arrays by message id (falling back to sender/timestamp/text),
+ * preserving chronological order so concurrent saves never overwrite messages from other seats.
+ */
+export function mergeChatMessages(a?: ChatMessage[], b?: ChatMessage[]): ChatMessage[] {
+  const map = new Map<string, ChatMessage>();
+  for (const list of [a, b]) {
+    if (!Array.isArray(list)) continue;
+    for (const msg of list) {
+      if (!msg || !msg.text) continue;
+      const key = msg.id || `${msg.senderPlayerId || 'sys'}:${msg.timestamp}:${msg.text}`;
+      if (!map.has(key)) {
+        map.set(key, msg);
+      }
+    }
+  }
+  return Array.from(map.values()).sort((x, y) => (x.timestamp || 0) - (y.timestamp || 0));
+}
 
 export interface SavedTableSummary {
   id: string;
@@ -282,7 +301,11 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
   // Other players / tabs only see the action after the player has confirmed it.
   // Never persist unconfirmed actions to shared localStorage (which triggers storage events to other tabs)
   // or broadcast / upload them.
-  if (state.pendingActionConfirmation) {
+  if (
+    state.pendingActionConfirmation &&
+    !state.pendingDiplomacyProposal &&
+    state.pendingActionConfirmation.canRevert !== false
+  ) {
     return;
   }
 
@@ -425,6 +448,51 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
     } catch (err) {
       console.warn('Failed to initiate server save:', err);
     }
+  }
+}
+
+/**
+ * Persists chat messages without overwriting the confirmed game state on storage/server
+ * (used when the active player sends a chat message while an unconfirmed turn action is pending).
+ */
+export function persistChatOnlyUpdate(
+  tableId: string,
+  chatMessages: ChatMessage[],
+  isLocalGame: boolean = false
+): void {
+  if (!tableId || !Array.isArray(chatMessages)) return;
+  try {
+    const storage = getStorage();
+    const activeRaw = storage.getItem(ACTIVE_GAME_KEY);
+    if (activeRaw) {
+      const parsed = JSON.parse(activeRaw);
+      if (parsed?.id === tableId) {
+        parsed.chatMessages = mergeChatMessages(parsed.chatMessages, chatMessages);
+        safeSetStorageItem(storage, ACTIVE_GAME_KEY, JSON.stringify(parsed));
+      }
+    }
+    const tablesRaw = storage.getItem(SAVED_TABLES_KEY);
+    if (tablesRaw) {
+      const tables = JSON.parse(tablesRaw);
+      if (tables?.[tableId]?.stateJson) {
+        const tableState = JSON.parse(tables[tableId].stateJson);
+        tableState.chatMessages = mergeChatMessages(tableState.chatMessages, chatMessages);
+        tables[tableId].stateJson = JSON.stringify(tableState);
+        safeSetStorageItem(storage, SAVED_TABLES_KEY, JSON.stringify(tables));
+      }
+    }
+  } catch (err) {
+    console.warn('Failed to update chat messages in localStorage:', err);
+  }
+
+  if (canPerformServerFetch() && !isLocalGame) {
+    fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tableId, chatOnly: true, chatMessages }),
+    }).catch((err) => {
+      console.warn('Failed to persist chat-only update to server:', err);
+    });
   }
 }
 
@@ -1007,34 +1075,42 @@ export function subscribeToGameSync(
     lastKnownSavedAt = initial.savedAt;
   }
 
+  const applyRemoteServerState = (remote: GameState | null) => {
+    if (!remote) return;
+    const currentLocal = loadTable(targetIdStr);
+    const remoteTime = Number(remote.savedAt) || 0;
+    const localTime = Math.max(Number(currentLocal?.savedAt) || 0, Number(initial?.savedAt) || 0);
+
+    // Anti-Regression Protection: Never overwrite newer local confirmed state with older server state!
+    if (localTime > remoteTime) {
+      if (currentLocal) {
+        const merged = mergeChatMessages(currentLocal.chatMessages, remote.chatMessages);
+        if (merged.length !== (currentLocal.chatMessages?.length || 0)) {
+          currentLocal.chatMessages = merged;
+          saveGameState(currentLocal, true);
+          callback(currentLocal);
+        }
+        persistTableToServer(currentLocal).catch(() => {});
+      }
+      return;
+    }
+
+    if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
+    remote.chatMessages = mergeChatMessages(currentLocal?.chatMessages, remote.chatMessages);
+    if ((!remote.replaySteps || remote.replaySteps.length === 0) && (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)) {
+      remote.replaySteps = currentLocal?.replaySteps || initial?.replaySteps || [];
+    }
+    const fp = getStateFingerprint(remote);
+    if (fp !== lastKnownFingerprint) {
+      lastKnownFingerprint = fp;
+      saveGameState(remote, true);
+      callback(remote);
+    }
+  };
+
   // 1. Check server storage immediately on subscribe for fast multi-device join (lightweight live state without 1MB+ replay history)
   fetchTableFromServer(targetIdStr, false, lastKnownSavedAt)
-    .then((remote) => {
-      if (remote) {
-        const currentLocal = loadTable(targetIdStr);
-        const remoteTime = Number(remote.savedAt) || 0;
-        const localTime = Math.max(Number(currentLocal?.savedAt) || 0, Number(initial?.savedAt) || 0);
-
-        // Anti-Regression Protection: Never overwrite newer local confirmed state with older server state!
-        if (localTime > remoteTime) {
-          if (currentLocal) {
-            persistTableToServer(currentLocal).catch(() => {});
-          }
-          return;
-        }
-
-        if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
-        if ((!remote.replaySteps || remote.replaySteps.length === 0) && (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)) {
-          remote.replaySteps = currentLocal?.replaySteps || initial?.replaySteps || [];
-        }
-        const fp = getStateFingerprint(remote);
-        if (fp !== lastKnownFingerprint) {
-          lastKnownFingerprint = fp;
-          saveGameState(remote, true);
-          callback(remote);
-        }
-      }
-    })
+    .then(applyRemoteServerState)
     .catch(() => {});
 
   // 2. BroadcastChannel message listener (0ms instant cross-tab sync)
@@ -1099,30 +1175,7 @@ export function subscribeToGameSync(
     isPolling = true;
     try {
       const remote = await fetchTableFromServer(targetIdStr, false, lastKnownSavedAt);
-      if (remote) {
-        const currentLocal = loadTable(targetIdStr);
-        const remoteTime = Number(remote.savedAt) || 0;
-        const localTime = Math.max(Number(currentLocal?.savedAt) || 0, Number(initial?.savedAt) || 0);
-
-        // Anti-Regression Protection
-        if (localTime > remoteTime) {
-          if (currentLocal) {
-            persistTableToServer(currentLocal).catch(() => {});
-          }
-          return;
-        }
-
-        if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
-        if ((!remote.replaySteps || remote.replaySteps.length === 0) && (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)) {
-          remote.replaySteps = currentLocal?.replaySteps || initial?.replaySteps || [];
-        }
-        const fp = getStateFingerprint(remote);
-        if (fp !== lastKnownFingerprint) {
-          lastKnownFingerprint = fp;
-          saveGameState(remote, true);
-          callback(remote);
-        }
-      }
+      applyRemoteServerState(remote);
     } catch {} finally {
       isPolling = false;
     }

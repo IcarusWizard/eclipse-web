@@ -32,6 +32,7 @@ import {
   BlackHoleDelayedShip,
 } from './galacticEvents';
 import { areCoordsEqual, areCoordsAdjacent, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors, getExplorableHexes } from './hexMath';
+import { mergeChatMessages } from './persistence';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
@@ -738,6 +739,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CLAIM_REPUTATION_TILE' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'COLONIZE' &&
+      action.type !== 'PROPOSE_DIPLOMACY' &&
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'CONVERT_COLONY_SHIP' &&
       action.type !== 'REROLL_COMBAT_DIE' &&
@@ -788,14 +790,34 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
   }
 
+  // Pending drawn sector tile choice (Keep/Discard): player must resolve it before taking any other action or exploring elsewhere
+  if (state.pendingExplore && state.phase === 'ACTION_PHASE') {
+    if (
+      action.type !== 'EXPLORE' &&
+      action.type !== 'SET_AUTO_PASS' &&
+      action.type !== 'SET_PASS_IN_ADVANCE' &&
+      action.type !== 'SET_COMBAT_AUTO_RESOLVE'
+    ) {
+      return {
+        valid: false,
+        error: 'Must keep or discard the currently revealed explore tile before taking another action.',
+      };
+    }
+    if (action.type === 'EXPLORE' && action.playerId !== state.pendingExplore.playerId) {
+      return { valid: false, error: 'Only the exploring player can resolve this revealed sector.' };
+    }
+  }
+
   // Pending explore activations (e.g. Planta multi-explore): must finish or cancel explore before taking another action or passing (Bug 114)
   if (state.pendingExploreActivations && state.pendingExploreActivations > 0) {
     if (
+      action.type !== 'START_EXPLORE' &&
       action.type !== 'EXPLORE' &&
       action.type !== 'FINISH_EXPLORE' &&
       action.type !== 'COLONIZE' &&
       action.type !== 'TRADE' &&
       action.type !== 'DISCOVERY_CHOICE' &&
+      action.type !== 'EXPLORE_CONTROL' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'CONFIRM_TURN_ACTION' &&
       action.type !== 'REVERT_TURN_ACTION' &&
@@ -813,7 +835,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
   }
 
-  // Pending discovery or explore sector control: must resolve exploration before taking another action or passing
+  // Pending discovery or explore sector control: must resolve exploration before taking another action, passing, or proposing diplomacy
   if ((state.pendingDiscovery || state.pendingExploreControl) && state.phase === 'ACTION_PHASE') {
     if (
       action.type === 'EXPLORE' ||
@@ -822,7 +844,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type === 'MOVE' ||
       action.type === 'RESEARCH' ||
       action.type === 'INFLUENCE' ||
-      action.type === 'PASS'
+      action.type === 'PASS' ||
+      action.type === 'PROPOSE_DIPLOMACY' ||
+      action.type === 'DIPLOMACY_EXCHANGE'
     ) {
       return {
         valid: false,
@@ -835,6 +859,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
   const isPassedPlayer = player.hasPassed || state.passedPlayerIds.includes(player.id);
   if (isPassedPlayer) {
     if (
+      action.type === 'START_EXPLORE' ||
       action.type === 'EXPLORE' ||
       action.type === 'RESEARCH' ||
       action.type === 'INFLUENCE'
@@ -846,46 +871,47 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
   }
 
-  switch (action.type) {
-    case 'EXPLORE': {
-      // 1. Check if source coord exists and is controlled or contains player's ship, OR any adjacent sector to targetCoord has player presence (Bug 167)
-      const sourceSector = action.fromCoord ? state.sectors.find((s) => areCoordsEqual(s.coord, action.fromCoord)) : null;
-      const hasPresenceInSource = Boolean(
-        sourceSector && (
-          sourceSector.discOwner === action.playerId ||
-          sourceSector.ships.some((ship) => ship.ownerId === action.playerId)
-        )
-      );
+  const validateExplorePlacement = (
+    fromCoord: { q: number; r: number } | undefined,
+    targetCoord: { q: number; r: number },
+    isSecondOpt?: boolean,
+    checkDeckNonEmpty: boolean = true
+  ): { valid: boolean; error?: string } => {
+    const sourceSector = fromCoord ? state.sectors.find((s) => areCoordsEqual(s.coord, fromCoord)) : null;
+    const hasPresenceInSource = Boolean(
+      sourceSector && (
+        sourceSector.discOwner === action.playerId ||
+        sourceSector.ships.some((ship) => ship.ownerId === action.playerId)
+      )
+    );
 
-      const hasAnyAdjacentPresence = state.sectors.some((s) => {
-        const isAdj = areCoordsAdjacent(s.coord, action.targetCoord) ||
-          Boolean(state.warpedUniverse?.conduits?.some(
-            (c) =>
-              (areCoordsEqual(s.coord, c.coordA) && areCoordsEqual(action.targetCoord, c.coordB)) ||
-              (areCoordsEqual(s.coord, c.coordB) && areCoordsEqual(action.targetCoord, c.coordA))
-          ));
-        if (!isAdj) return false;
-        return s.discOwner === action.playerId || s.ships.some((ship) => ship.ownerId === action.playerId);
-      });
+    const hasAnyAdjacentPresence = state.sectors.some((s) => {
+      const isAdj = areCoordsAdjacent(s.coord, targetCoord) ||
+        Boolean(state.warpedUniverse?.conduits?.some(
+          (c) =>
+            (areCoordsEqual(s.coord, c.coordA) && areCoordsEqual(targetCoord, c.coordB)) ||
+            (areCoordsEqual(s.coord, c.coordB) && areCoordsEqual(targetCoord, c.coordA))
+        ));
+      if (!isAdj) return false;
+      return s.discOwner === action.playerId || s.ships.some((ship) => ship.ownerId === action.playerId);
+    });
 
-      if (!hasPresenceInSource && !hasAnyAdjacentPresence) {
-        return { valid: false, error: 'Must have a ship or influence disc in an adjacent sector to explore.' };
-      }
+    if (!hasPresenceInSource && !hasAnyAdjacentPresence) {
+      return { valid: false, error: 'Must have a ship or influence disc in an adjacent sector to explore.' };
+    }
 
-      // 2. Check target coord is empty
-      const targetExists = state.sectors.some((s) => areCoordsEqual(s.coord, action.targetCoord));
-      if (targetExists) {
-        return { valid: false, error: 'Target coordinate already contains an explored sector.' };
-      }
+    const targetExists = state.sectors.some((s) => areCoordsEqual(s.coord, targetCoord));
+    if (targetExists) {
+      return { valid: false, error: 'Target coordinate already contains an explored sector.' };
+    }
 
-      // 3. Must have available disc to take action (unless it is a free second activation, e.g. Planta)
-      const isSecondActivation = action.isSecondActivation || (state.pendingExploreActivations && state.pendingExploreActivations > 0);
-      if (!isSecondActivation && player.influenceTrack.discsOnTrack <= 0) {
-        return { valid: false, error: 'No influence discs remaining on track to activate Explore.' };
-      }
+    const isSecondActivation = Boolean(isSecondOpt || (state.pendingExploreActivations && state.pendingExploreActivations > 0));
+    if (!isSecondActivation && player.influenceTrack.discsOnTrack <= 0) {
+      return { valid: false, error: 'No influence discs remaining on track to activate Explore.' };
+    }
 
-      // 4. Sector deck must not be exhausted for target ring
-      const ring = getRingFromCoord(action.targetCoord);
+    if (checkDeckNonEmpty) {
+      const ring = getRingFromCoord(targetCoord);
       const deck =
         ring === 1
           ? state.sectorDecks?.ring1
@@ -895,8 +921,24 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!deck || deck.length === 0) {
         return { valid: false, error: `No Ring ${ring} sector tiles remaining in the stack.` };
       }
+    }
 
-      return { valid: true };
+    return { valid: true };
+  };
+
+  switch (action.type) {
+    case 'START_EXPLORE': {
+      return validateExplorePlacement(action.fromCoord, action.targetCoord, action.isSecondActivation, true);
+    }
+
+    case 'EXPLORE': {
+      if (state.pendingExplore) {
+        if (!areCoordsEqual(state.pendingExplore.targetCoord, action.targetCoord)) {
+          return { valid: false, error: 'Must resolve the currently revealed sector coordinate first.' };
+        }
+        return validateExplorePlacement(action.fromCoord, action.targetCoord, action.isSecondActivation, false);
+      }
+      return validateExplorePlacement(action.fromCoord, action.targetCoord, action.isSecondActivation, true);
     }
 
     case 'FINISH_EXPLORE': {
@@ -2113,7 +2155,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!state.pendingActionConfirmation.canRevert) {
         return {
           valid: false,
-          error: 'This action cannot be reverted because it revealed hidden information (e.g. exploration or discovery tile).',
+          error: 'This action cannot be reverted because it revealed hidden information or committed a Diplomatic Proposal.',
         };
       }
       if (!state.pendingActionConfirmation.snapshot) {
@@ -2771,8 +2813,36 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
   let influenceRefreshesRemaining: number | undefined;
 
   switch (action.type) {
+    case 'START_EXPLORE': {
+      const ring = getRingFromCoord(action.targetCoord);
+      const deck = ring === 1 ? newState.sectorDecks.ring1 : ring === 2 ? newState.sectorDecks.ring2 : newState.sectorDecks.ring3;
+      const isDraco = player.faction.id === 'descendants_of_draco';
+      const drawnTiles: SectorTile[] = [];
+      if (isDraco && deck.length >= 2) {
+        drawnTiles.push(deck.pop()!, deck.pop()!);
+      } else if (deck.length >= 1) {
+        drawnTiles.push(deck.pop()!);
+      }
+      if (drawnTiles.length === 0) {
+        return { success: false, newState: state, error: `No Ring ${ring} sector tiles remaining in the stack.` };
+      }
+      newState.pendingExplore = {
+        tile: drawnTiles[0]!,
+        tiles: drawnTiles.length > 1 ? drawnTiles : undefined,
+        fromCoord: action.fromCoord,
+        targetCoord: action.targetCoord,
+        playerId: player.id,
+        isSecondActivation: Boolean(action.isSecondActivation || (newState.pendingExploreActivations && newState.pendingExploreActivations > 0)),
+      };
+      return { success: true, newState };
+    }
+
     case 'EXPLORE': {
-      const isSecondActivation = action.isSecondActivation || (newState.pendingExploreActivations && newState.pendingExploreActivations > 0);
+      const isSecondActivation = Boolean(
+        action.isSecondActivation ||
+        newState.pendingExplore?.isSecondActivation ||
+        (newState.pendingExploreActivations && newState.pendingExploreActivations > 0)
+      );
       if (isSecondActivation) {
         newState.pendingExploreActivations = 0;
       } else {
@@ -2793,10 +2863,23 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       let drawnTile: SectorTile | undefined;
       const isDraco = player.faction.id === 'descendants_of_draco';
 
-      // Draco Explore Ability: draw 2 tiles, choose 1, place other at bottom of deck
-      if (isDraco && deck.length >= 2) {
-        const tileTop = deck.pop()!;
-        const tileSecond = deck.pop()!;
+      let tilePair: SectorTile[] | null = null;
+      if (newState.pendingExplore && newState.pendingExplore.playerId === player.id) {
+        const revealedTiles = newState.pendingExplore.tiles || [newState.pendingExplore.tile];
+        newState.pendingExplore = null;
+        if (revealedTiles.length >= 2) {
+          tilePair = revealedTiles;
+        } else {
+          drawnTile = revealedTiles[0];
+        }
+      } else if (isDraco && deck.length >= 2) {
+        tilePair = [deck.pop()!, deck.pop()!];
+      } else {
+        drawnTile = deck.pop();
+      }
+
+      if (tilePair && tilePair.length >= 2) {
+        const [tileTop, tileSecond] = tilePair as [SectorTile, SectorTile];
         const pickIndex = action.chosenTileIndex ?? 0;
         if (pickIndex === 1) {
           drawnTile = tileSecond;
@@ -2807,8 +2890,6 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           deck.unshift(tileSecond);
           addLog(`${player.name} (Draco) drew 2 tiles, chose Sector ${drawnTile.sectorNumber}, and placed Sector ${tileSecond.sectorNumber} at bottom of deck.`);
         }
-      } else {
-        drawnTile = deck.pop();
       }
 
       if (!drawnTile) {
@@ -3454,6 +3535,15 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
     case 'PROPOSE_DIPLOMACY': {
       const targetPlayer = newState.players.find((p) => p.id === action.targetPlayerId);
+      // If proposing diplomacy mid-confirmation (e.g. after Explore/Influence revealed a connection),
+      // lock the pending action so it persists to the server and can no longer be reverted.
+      if (newState.pendingActionConfirmation) {
+        newState.pendingActionConfirmation = {
+          ...newState.pendingActionConfirmation,
+          canRevert: false,
+          snapshot: undefined,
+        };
+      }
       newState.pendingDiplomacyProposal = {
         initiatorId: action.playerId,
         targetId: action.targetPlayerId,
@@ -4867,6 +4957,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       const conf = state.pendingActionConfirmation!;
       const restoredState: GameState = JSON.parse(conf.snapshot!);
       restoredState.pendingActionConfirmation = null;
+      // Preserve any chat messages sent or received while the action preview was open
+      restoredState.chatMessages = mergeChatMessages(restoredState.chatMessages, state.chatMessages);
       const actingPlayer = restoredState.players.find((p) => p.id === conf.playerId);
       if (actingPlayer) {
         restoredState.log.unshift({
@@ -5494,11 +5586,12 @@ export function executeAction(
     return result;
   }
 
-  // Pure client UI setting toggles and chat messages do not record standalone replay steps
+  // Pure client UI setting toggles, drawn tile preview step, and chat messages do not record standalone replay steps
   if (
     action.type === 'SET_AUTO_PASS' ||
     action.type === 'SET_PASS_IN_ADVANCE' ||
-    action.type === 'SEND_CHAT'
+    action.type === 'SEND_CHAT' ||
+    action.type === 'START_EXPLORE'
   ) {
     return result;
   }

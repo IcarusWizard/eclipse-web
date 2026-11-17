@@ -120,23 +120,26 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
     shipsByOwner.set(ship.ownerId, list);
   }
 
-  const isDraco = activePlayer?.faction?.id === 'descendants_of_draco';
+  const isShipGroupContested = (ships: SectorShip[]) => {
+    const owners = Array.from(new Set(ships.map((s) => s.ownerId)));
+    if (owners.length <= 1) return false;
+    if (owners.length === 2 && owners.includes('ancient')) {
+      const otherOwner = owners.find((o) => o !== 'ancient');
+      const otherPlayer = players.find((p) => p.id === otherOwner);
+      if (otherPlayer?.faction?.id === 'descendants_of_draco') return false;
+    }
+    return true;
+  };
+
+  const hasHostilePresenceOverControl =
+    Boolean(sector.discOwner) &&
+    sector.ships.some((s) => s.ownerId.startsWith('player_') && s.ownerId !== sector.discOwner);
+
   const hasHostiles = sector.isNebula
-    ? ([1, 2, 3] as const).some((sub) => {
-        const shipsInSub = sector.ships.filter((s) => (s.subsector || 1) === sub);
-        const playerInSub = shipsInSub.some((s) => s.ownerId === activePlayer.id);
-        const hostilesInSub = shipsInSub.filter((s) => {
-          if (s.ownerId === activePlayer.id) return false;
-          if (s.ownerId === 'ancient') return !isDraco;
-          return true;
-        });
-        return playerInSub && hostilesInSub.length > 0;
-      })
-    : (
-        shipsByOwner.size > 1 ||
-        (!isDraco && (sector.ancientsCount > 0 || sector.ships.some((s) => s.ownerId === 'ancient'))) ||
-        sector.ships.some((s) => s.ownerId === 'gcds' || s.ownerId === 'guardian')
-      );
+    ? ([1, 2, 3] as const).some((sub) =>
+        isShipGroupContested(sector.ships.filter((s) => (s.subsector || 1) === sub))
+      )
+    : isShipGroupContested(sector.ships) || hasHostilePresenceOverControl;
 
   const hasFriendlyShips = sector.ships.some((s) => s.ownerId === activePlayer.id);
   const isBankruptcyActive = Boolean(

@@ -70,6 +70,8 @@ import {
   loadActiveGameState,
   saveGameState,
   persistTableToServer,
+  persistChatOnlyUpdate,
+  mergeChatMessages,
   loadTable,
   subscribeToGameSync,
   getTableNumber,
@@ -119,6 +121,8 @@ const AppContent: React.FC = () => {
 
   const isRemoteSyncRef = React.useRef<boolean>(false);
   const lastStateFingerprintRef = React.useRef<string>(getStateFingerprint(state));
+  const latestStateRef = React.useRef(state);
+  latestStateRef.current = state;
 
   // Auto-save game state to localStorage on local state changes
   useEffect(() => {
@@ -138,10 +142,6 @@ const AppContent: React.FC = () => {
   const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
   const [isCombatSimulatorOpen, setIsCombatSimulatorOpen] = useState<boolean>(false);
   const [isExploreMode, setIsExploreMode] = useState<boolean>(false);
-  const [pendingExploreCoords, setPendingExploreCoords] = useState<{
-    from: HexCoord;
-    target: HexCoord;
-  } | null>(null);
   const [exploreRotation, setExploreRotation] = useState<number>(0);
   const [dracoSelectedTileIndex, setDracoSelectedTileIndex] = useState<number>(0);
   const [isBlueprintOpen, setIsBlueprintOpen] = useState<boolean>(false);
@@ -501,8 +501,28 @@ const AppContent: React.FC = () => {
       state.phase !== 'UPKEEP_PHASE' &&
       state.activePlayerIndex !== currentSeat);
 
-  // Block all other player actions until an open Diplomatic Proposal is accepted or declined
-  const isActionsLocked = isTurnGated || Boolean(state.pendingDiplomacyProposal);
+  const pendingExploreCoords = React.useMemo(() => {
+    if (!state.pendingExplore) return null;
+    return {
+      from: state.pendingExplore.fromCoord,
+      target: state.pendingExplore.targetCoord,
+    };
+  }, [state.pendingExplore]);
+
+  const canActOnPendingExplore = Boolean(
+    state.pendingExplore && canActForPlayer(state.pendingExplore.playerId)
+  );
+
+  // Block side-panel/map actions & diplomacy while waiting on a proposal or resolving a mid-action modal step (Explore preview, Discovery, Sector Control, etc.)
+  const isActionsLocked =
+    isTurnGated ||
+    Boolean(state.pendingDiplomacyProposal) ||
+    Boolean(state.pendingExplore) ||
+    Boolean(state.pendingDiscovery) ||
+    Boolean(state.pendingExploreControl) ||
+    Boolean(state.pendingCombatConquest) ||
+    Boolean(state.pendingReputationDraw) ||
+    Boolean(state.pendingArtifactReward);
 
   const myControlledPlayer =
     typeof currentSeat === 'number' && state.players[currentSeat]
@@ -705,23 +725,44 @@ const AppContent: React.FC = () => {
     if (!tableTarget) return;
 
     const unsubscribe = subscribeToGameSync(tableTarget, (remoteState) => {
-      // Never adopt unconfirmed intermediate actions from other players
-      if (remoteState.pendingActionConfirmation) {
+      // Never adopt revertible unconfirmed previews from other players;
+      // once locked (canRevert === false) or carrying a diplomacy proposal, sync it across seats.
+      if (
+        remoteState.pendingActionConfirmation &&
+        !remoteState.pendingDiplomacyProposal &&
+        remoteState.pendingActionConfirmation.canRevert !== false
+      ) {
         return;
       }
 
-      // Bug 87 & 93: Only protect if THIS seat has an active unconfirmed action that this player is editing
+      // Always merge incoming chat messages even when active player has an unconfirmed local preview open
+      const currentLocalState = latestStateRef.current;
+      const mergedChat = mergeChatMessages(currentLocalState?.chatMessages, remoteState.chatMessages);
+      if (mergedChat.length !== (currentLocalState?.chatMessages?.length || 0)) {
+        remoteState = { ...remoteState, chatMessages: mergedChat };
+      } else if (currentLocalState?.chatMessages && currentLocalState.chatMessages.length > (remoteState.chatMessages?.length || 0)) {
+        remoteState = { ...remoteState, chatMessages: mergedChat };
+      }
+
+      // Bug 87 & 93: Only protect if THIS seat has an active revertible unconfirmed action that this player is editing
       const isMyPendingAction =
         !!pendingActionRef.current &&
+        pendingActionRef.current.canRevert !== false &&
         (currentSeat === 'all' ||
-          pendingActionRef.current.playerId === state.players[currentSeat as number]?.id);
+          pendingActionRef.current.playerId === currentLocalState?.players?.[currentSeat as number]?.id);
       if (isMyPendingAction) {
+        if (mergedChat.length !== (currentLocalState?.chatMessages?.length || 0)) {
+          setState((prev) => ({ ...prev, chatMessages: mergeChatMessages(prev.chatMessages, mergedChat) }));
+        }
         return;
       }
 
-      const remoteTime = Number(remoteState.savedAt) || 0;
-      const localTime = Number(state.savedAt) || 0;
-      if (localTime > remoteTime && !state.pendingActionConfirmation) {
+      const remoteTime = Number((remoteState as any).savedAt) || 0;
+      const localTime = Number((currentLocalState as any)?.savedAt) || 0;
+      if (localTime > remoteTime && !currentLocalState?.pendingActionConfirmation) {
+        if (mergedChat.length !== (currentLocalState?.chatMessages?.length || 0)) {
+          setState((prev) => ({ ...prev, chatMessages: mergeChatMessages(prev.chatMessages, mergedChat) }));
+        }
         return;
       }
 
@@ -1302,35 +1343,101 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Explore flow: User clicks an explorable hex on map
+  // Explore flow: User clicks an explorable hex on map -> persists drawn tile in state.pendingExplore immediately
   const handleExploreTarget = (fromCoord: HexCoord, targetCoord: HexCoord) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
       return;
     }
-    const ring = getRingFromCoord(targetCoord);
-    const deck =
-      ring === 1
-        ? state.sectorDecks.ring1
-        : ring === 2
-        ? state.sectorDecks.ring2
-        : state.sectorDecks.ring3;
-    if (!deck || deck.length === 0) {
-      showToast(`No Ring ${ring} sectors remaining in the stack!`);
+    const isSecond = Boolean(state.pendingExploreActivations && state.pendingExploreActivations > 0);
+    const res = executeAction(state, {
+      type: 'START_EXPLORE',
+      playerId: activePlayer.id,
+      fromCoord,
+      targetCoord,
+      isSecondActivation: isSecond,
+    });
+    if (!res.success) {
+      showToast(res.error || 'Exploration failed.');
       return;
     }
 
-    setPendingExploreCoords({ from: fromCoord, target: targetCoord });
-    const candidate = deck[deck.length - 1];
-    const source = state.sectors.find((s) => areCoordsEqual(s.coord, fromCoord));
-    const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
+    lastStateFingerprintRef.current = getStateFingerprint(res.newState);
+    saveGameState(res.newState);
+    persistTableToServer(res.newState).catch(() => {});
+    setState(res.newState);
 
-    const defaultRotation = (source && candidate)
-      ? findLegalExploreRotation(source, candidate, targetCoord, hasWormholeGen, state.sectors, activePlayer?.id, state.warpedUniverse?.conduits)
+    const drawn = res.newState.pendingExplore?.tile;
+    const source = res.newState.sectors.find((s) => areCoordsEqual(s.coord, fromCoord));
+    const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
+    const defaultRotation = (source && drawn)
+      ? findLegalExploreRotation(source, drawn, targetCoord, hasWormholeGen, res.newState.sectors, activePlayer?.id, res.newState.warpedUniverse?.conduits)
       : 0;
 
+    setDracoSelectedTileIndex(0);
     setExploreRotation(defaultRotation);
     setIsExploreMode(false);
+  };
+
+  // Ensure legal default rotation whenever state.pendingExplore is restored (e.g., on page reload or Revert)
+  useEffect(() => {
+    const pe = state.pendingExplore;
+    if (!pe) return;
+    const explorer = state.players.find((p) => p.id === pe.playerId) || activePlayer;
+    const source = state.sectors.find((s) => areCoordsEqual(s.coord, pe.fromCoord));
+    if (!source || !pe.tile) return;
+    const hasWormholeGen = explorer ? playerHasWormholeGenerator(explorer) : false;
+    const defaultRot = findLegalExploreRotation(
+      source,
+      pe.tile,
+      pe.targetCoord,
+      hasWormholeGen,
+      state.sectors,
+      explorer?.id,
+      state.warpedUniverse?.conduits
+    );
+    setDracoSelectedTileIndex(0);
+    setExploreRotation(defaultRot);
+  }, [state.pendingExplore?.playerId, state.pendingExplore?.targetCoord?.q, state.pendingExplore?.targetCoord?.r, state.pendingExplore?.tile?.id]);
+
+  const executePendingExploreDecision = (opts: {
+    rotation: number;
+    claimInfluence: boolean;
+    discard?: boolean;
+    chosenTileIndex?: number;
+  }) => {
+    if (!pendingExploreCoords) return;
+    const actorId = state.pendingExplore?.playerId || activePlayer.id;
+    if (!canActForPlayer(actorId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
+    const isSecond = Boolean(
+      state.pendingExplore?.isSecondActivation ||
+      (state.pendingExploreActivations && state.pendingExploreActivations > 0)
+    );
+    const res = executeAction(state, {
+      type: 'EXPLORE',
+      playerId: actorId,
+      fromCoord: pendingExploreCoords.from,
+      targetCoord: pendingExploreCoords.target,
+      rotation: opts.rotation,
+      claimInfluence: opts.claimInfluence,
+      discard: opts.discard,
+      chosenTileIndex: opts.chosenTileIndex,
+      isSecondActivation: isSecond,
+      requireConfirmation: true,
+    });
+
+    if (res.success) {
+      setState(res.newState);
+      if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
+        setIsExploreMode(true);
+        showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
+      }
+    } else {
+      showToast(res.error || 'Exploration failed.');
+    }
   };
 
   const handleConfirmExplorePlacement = (
@@ -1338,64 +1445,11 @@ const AppContent: React.FC = () => {
     claimInfluence: boolean,
     chosenTileIndex?: number
   ) => {
-    if (!pendingExploreCoords) return;
-    if (!canActForPlayer(activePlayer.id)) {
-      showToast('Spectators cannot perform actions.');
-      return;
-    }
-    const isSecond = !!(state.pendingExploreActivations && state.pendingExploreActivations > 0);
-    const res = executeAction(state, {
-      type: 'EXPLORE',
-      playerId: activePlayer.id,
-      fromCoord: pendingExploreCoords.from,
-      targetCoord: pendingExploreCoords.target,
-      rotation,
-      claimInfluence,
-      chosenTileIndex,
-      isSecondActivation: isSecond,
-      requireConfirmation: true,
-    });
-
-    if (res.success) {
-      setState(res.newState);
-      setPendingExploreCoords(null);
-      if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
-        setIsExploreMode(true);
-        showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
-      }
-    } else {
-      showToast(res.error || 'Exploration failed.');
-    }
+    executePendingExploreDecision({ rotation, claimInfluence, chosenTileIndex });
   };
 
   const handleDiscardExploreTile = (chosenTileIndex?: number) => {
-    if (!pendingExploreCoords) return;
-    if (!canActForPlayer(activePlayer.id)) {
-      showToast('Spectators cannot perform actions.');
-      return;
-    }
-    const isSecond = !!(state.pendingExploreActivations && state.pendingExploreActivations > 0);
-    const res = executeAction(state, {
-      type: 'EXPLORE',
-      playerId: activePlayer.id,
-      fromCoord: pendingExploreCoords.from,
-      targetCoord: pendingExploreCoords.target,
-      rotation: 0,
-      discard: true,
-      chosenTileIndex,
-      isSecondActivation: isSecond,
-      requireConfirmation: true,
-    });
-    if (res.success) {
-      setState(res.newState);
-      setPendingExploreCoords(null);
-      if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
-        setIsExploreMode(true);
-        showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
-      }
-    } else {
-      showToast(res.error || 'Exploration failed.');
-    }
+    executePendingExploreDecision({ rotation: 0, claimInfluence: false, discard: true, chosenTileIndex });
   };
 
   const handleFinishExplore = () => {
@@ -1412,7 +1466,6 @@ const AppContent: React.FC = () => {
       setState(res.newState);
       saveGameState(res.newState);
       setIsExploreMode(false);
-      setPendingExploreCoords(null);
       showToast('Finished exploration and passed turn.');
     } else {
       showToast(res.error || 'Could not finish exploration.');
@@ -2182,7 +2235,21 @@ const AppContent: React.FC = () => {
     });
 
     if (res.success) {
-      saveGameState(res.newState);
+      const hasRevertiblePending =
+        Boolean(res.newState.pendingActionConfirmation) &&
+        !res.newState.pendingDiplomacyProposal &&
+        res.newState.pendingActionConfirmation!.canRevert !== false;
+      if (hasRevertiblePending) {
+        // Persist chat messages without exposing the unconfirmed turn action preview
+        persistChatOnlyUpdate(
+          res.newState.id,
+          res.newState.chatMessages || [],
+          Boolean(res.newState.isLocalGame)
+        );
+      } else {
+        saveGameState(res.newState);
+      }
+      lastStateFingerprintRef.current = getStateFingerprint(res.newState);
       setState(res.newState);
     }
   };
@@ -2241,6 +2308,8 @@ const AppContent: React.FC = () => {
       initiatorCube,
     });
     if (res.success) {
+      saveGameState(res.newState);
+      persistTableToServer(res.newState).catch(() => {});
       setState(res.newState);
       setIsExploreMode(false);
       showToast(`Alliance proposal sent to ${targetPlayer?.name || 'Commander'}!`);
@@ -2264,6 +2333,8 @@ const AppContent: React.FC = () => {
       targetCube,
     });
     if (res.success) {
+      saveGameState(res.newState);
+      persistTableToServer(res.newState).catch(() => {});
       setState(res.newState);
       if (accept) {
         showToast('Alliance established! Ambassadors exchanged (+1 VP each).');
@@ -2365,10 +2436,8 @@ const AppContent: React.FC = () => {
       persistTableToServer(res.newState).catch(() => {});
       setState(res.newState);
       if (res.newState.pendingDiscovery) {
-        setPendingExploreCoords(null);
         showToast('Reverted to discovery tile decision.');
-      } else if (conf.actionType === 'EXPLORE' && conf.exploreTargetCoord && conf.exploreFromCoord) {
-        setPendingExploreCoords({ from: conf.exploreFromCoord, target: conf.exploreTargetCoord });
+      } else if (res.newState.pendingExplore) {
         showToast('Exploration reverted to tile decision.');
       } else {
         showToast('Action reverted.');
@@ -2778,33 +2847,16 @@ const AppContent: React.FC = () => {
     }
   };
 
-  // Find candidate tile for exploration preview if pending
+  // Candidate tile(s) from persisted state.pendingExplore
   const candidateTile = React.useMemo(() => {
-    if (!pendingExploreCoords) return null;
-    const ring = getRingFromCoord(pendingExploreCoords.target);
-    const deck =
-      ring === 1
-        ? state.sectorDecks.ring1
-        : ring === 2
-        ? state.sectorDecks.ring2
-        : state.sectorDecks.ring3;
-    return deck[deck.length - 1] || null;
-  }, [pendingExploreCoords, state.sectorDecks]);
+    if (!state.pendingExplore) return null;
+    return state.pendingExplore.tile || null;
+  }, [state.pendingExplore]);
 
   const candidateTiles = React.useMemo(() => {
-    if (!pendingExploreCoords) return undefined;
-    const ring = getRingFromCoord(pendingExploreCoords.target);
-    const deck =
-      ring === 1
-        ? state.sectorDecks.ring1
-        : ring === 2
-        ? state.sectorDecks.ring2
-        : state.sectorDecks.ring3;
-    if (activePlayer.faction.id === 'descendants_of_draco' && deck.length >= 2) {
-      return [deck[deck.length - 1], deck[deck.length - 2]];
-    }
-    return undefined;
-  }, [pendingExploreCoords, state.sectorDecks, activePlayer.faction.id]);
+    if (!state.pendingExplore?.tiles || state.pendingExplore.tiles.length < 2) return undefined;
+    return state.pendingExplore.tiles;
+  }, [state.pendingExplore]);
 
   const activeCandidateTile = React.useMemo(() => {
     if (candidateTiles && candidateTiles[dracoSelectedTileIndex]) {
@@ -3020,7 +3072,7 @@ const AppContent: React.FC = () => {
           effectivePlayerId={effectiveColonizingPlayer.id}
           currentSeat={currentSeat}
           pendingExplore={
-            pendingExploreCoords && activeCandidateTile
+            canActOnPendingExplore && pendingExploreCoords && activeCandidateTile
               ? {
                   from: pendingExploreCoords.from,
                   target: pendingExploreCoords.target,
@@ -3383,23 +3435,36 @@ const AppContent: React.FC = () => {
       </div>
 
       {/* Modals & Overlays */}
-      {pendingExploreCoords && candidateTile && sourceSector && (
-        <ExploreModal
-          player={activePlayer}
-          sectors={state.sectors}
-          warpConduits={state.warpedUniverse?.conduits}
-          fromCoord={pendingExploreCoords.from}
-          targetCoord={pendingExploreCoords.target}
-          candidateTile={candidateTile}
-          candidateTiles={candidateTiles}
-          selectedDracoIndex={dracoSelectedTileIndex}
-          onSelectDracoIndex={setDracoSelectedTileIndex}
-          sourceSector={sourceSector}
-          rotation={exploreRotation}
-          onRotate={setExploreRotation}
-          onConfirmPlacement={handleConfirmExplorePlacement}
-          onDiscard={handleDiscardExploreTile}
-        />
+      {state.pendingExplore && pendingExploreCoords && candidateTile && sourceSector && (
+        canActOnPendingExplore ? (
+          <ExploreModal
+            player={state.players.find((p) => p.id === state.pendingExplore!.playerId) || activePlayer}
+            sectors={state.sectors}
+            warpConduits={state.warpedUniverse?.conduits}
+            fromCoord={pendingExploreCoords.from}
+            targetCoord={pendingExploreCoords.target}
+            candidateTile={candidateTile}
+            candidateTiles={candidateTiles}
+            selectedDracoIndex={dracoSelectedTileIndex}
+            onSelectDracoIndex={setDracoSelectedTileIndex}
+            sourceSector={sourceSector}
+            rotation={exploreRotation}
+            onRotate={setExploreRotation}
+            onConfirmPlacement={handleConfirmExplorePlacement}
+            onDiscard={handleDiscardExploreTile}
+          />
+        ) : (
+          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-cyan-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-pulse">
+            <Sparkles className="w-5 h-5 text-cyan-400 shrink-0" />
+            <span>
+              {l('Waiting for', '正在等待')}{' '}
+              <strong className="text-cyan-300">
+                {state.players.find((p) => p.id === state.pendingExplore!.playerId)?.name || 'Commander'}
+              </strong>{' '}
+              {l('to keep or discard an explored sector...', '决定保留或弃置探索星区...')}
+            </span>
+          </div>
+        )
       )}
 
       {isBlueprintOpen && (

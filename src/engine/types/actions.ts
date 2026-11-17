@@ -7,6 +7,7 @@ import { CombatDamageAssignment } from './state';
 import type { MinorSpeciesId } from '../rules/minorSpecies';
 
 export type ActionType =
+  | 'START_EXPLORE'
   | 'EXPLORE'
   | 'FINISH_EXPLORE'
   | 'RESEARCH'
@@ -42,6 +43,13 @@ export type ActionType =
 export interface BaseAction {
   playerId: string;
   requireConfirmation?: boolean;
+}
+
+export interface StartExploreAction extends BaseAction {
+  type: 'START_EXPLORE';
+  fromCoord: HexCoord;
+  targetCoord: HexCoord;
+  isSecondActivation?: boolean;
 }
 
 export interface ExploreAction extends BaseAction {
@@ -320,6 +328,7 @@ export interface SendChatAction extends BaseAction {
 }
 
 export type GameAction =
+  | StartExploreAction
   | ExploreAction
   | FinishExploreAction
   | ResearchAction

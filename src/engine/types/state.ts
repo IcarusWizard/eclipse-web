@@ -98,9 +98,11 @@ export interface GameLogEntry {
 
 export interface PendingExplore {
   tile: SectorTile;
+  tiles?: SectorTile[]; // For Descendants of Draco (2 drawn tiles: [top, second])
   targetCoord: HexCoord;
   fromCoord: HexCoord;
   playerId: string;
+  isSecondActivation?: boolean;
 }
 
 export interface PendingDiscovery {

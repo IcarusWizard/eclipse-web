@@ -26009,6 +26009,460 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       const passAfter = executeAction(acceptRes.newState, { type: 'PASS', playerId: p1.id });
       expect(passAfter.success).toBe(true);
     });
+
+    it('allows proposing diplomacy after an unconfirmed main action (e.g. Influence/Explore), locks canRevert=false, and persists to storage', async () => {
+      const { saveGameState, loadActiveGameState, getStorage } = await import('../rules/persistence');
+      getStorage().clear();
+
+      const game = createInitialGame(4);
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+
+      // Place an uncontrolled explored sector adjacent to both p1 and p2
+      const s1 = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+      const s2 = game.sectors.find((s) => s.id === `home_sector_${p2.id}`)!;
+      const bridgeCoord = { q: s1.coord.q + 1, r: s1.coord.r };
+      s2.coord = { q: bridgeCoord.q + 1, r: bridgeCoord.r };
+      s1.wormholes = [true, true, true, true, true, true];
+      s2.wormholes = [true, true, true, true, true, true];
+      game.sectors.push({
+        id: 'test_bridge_sec',
+        sectorNumber: 201,
+        name: 'Bridge Sector',
+        ring: 2,
+        coord: bridgeCoord,
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        discOwner: undefined,
+        ships: [],
+      });
+
+      // Player 1 performs INFLUENCE with requireConfirmation=true claiming Bridge Sector, creating pendingActionConfirmation (canRevert=true)
+      const infRes = executeAction(game, {
+        type: 'INFLUENCE',
+        playerId: p1.id,
+        claimSectors: ['test_bridge_sec'],
+        requireConfirmation: true,
+      });
+      expect(infRes.success).toBe(true);
+      expect(infRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
+
+      // Now connected to p2 via Bridge Sector -> Player 1 proposes diplomacy BEFORE Confirm & End Turn
+      const propAfterInf = executeAction(infRes.newState, {
+        type: 'PROPOSE_DIPLOMACY',
+        playerId: p1.id,
+        targetPlayerId: p2.id,
+        initiatorCube: 'money',
+      });
+      expect(propAfterInf.success).toBe(true);
+      expect(propAfterInf.newState.pendingDiplomacyProposal?.targetId).toBe(p2.id);
+      // Pending action must be permanently locked (non-reversible) once diplomacy proposal is sent
+      expect(propAfterInf.newState.pendingActionConfirmation?.canRevert).toBe(false);
+      expect(propAfterInf.newState.pendingActionConfirmation?.snapshot).toBeUndefined();
+
+      // Persisting state now works (not blocked by pendingActionConfirmation) so target can receive the proposal
+      saveGameState(propAfterInf.newState);
+      const savedMidProposal = loadActiveGameState();
+      expect(savedMidProposal?.pendingDiplomacyProposal?.targetId).toBe(p2.id);
+      expect(savedMidProposal?.pendingActionConfirmation?.canRevert).toBe(false);
+
+      // Neither Confirm nor Revert is allowed while waiting for p2's response
+      expect(
+        executeAction(propAfterInf.newState, { type: 'CONFIRM_TURN_ACTION', playerId: p1.id }).success
+      ).toBe(false);
+      expect(
+        executeAction(propAfterInf.newState, { type: 'REVERT_TURN_ACTION', playerId: p1.id }).success
+      ).toBe(false);
+
+      // Even if p2 declines, Player 1 still cannot revert the committed Influence action
+      const declineAfterInf = executeAction(propAfterInf.newState, {
+        type: 'RESPOND_DIPLOMACY',
+        playerId: p2.id,
+        accept: false,
+      });
+      expect(declineAfterInf.success).toBe(true);
+      expect(declineAfterInf.newState.pendingDiplomacyProposal).toBeNull();
+      expect(declineAfterInf.newState.pendingActionConfirmation?.canRevert).toBe(false);
+
+      const revertAttemptAfterDecline = executeAction(declineAfterInf.newState, {
+        type: 'REVERT_TURN_ACTION',
+        playerId: p1.id,
+      });
+      expect(revertAttemptAfterDecline.success).toBe(false);
+
+      // Confirm & End Turn now completes cleanly and advances the turn
+      const confirmRes = executeAction(declineAfterInf.newState, {
+        type: 'CONFIRM_TURN_ACTION',
+        playerId: p1.id,
+      });
+      expect(confirmRes.success).toBe(true);
+      expect(confirmRes.newState.pendingActionConfirmation).toBeNull();
+      expect(confirmRes.newState.activePlayerIndex).toBe(1);
+    });
+
+    it('blocks diplomacy mid-discovery/control sub-steps and preserves Step 4 (Planta) diplomacy if Explore #2 is reverted', () => {
+      const game = createInitialGame(4, ['planta', 'terran_alliance', 'orion_hegemony', 'hydran_progress']);
+      const planta = game.players[0]!;
+      const terran = game.players[1]!;
+
+      const sPlanta = game.sectors.find((s) => s.id === `home_sector_${planta.id}`)!; // (0, -2)
+      const sTerran = game.sectors.find((s) => s.id === `home_sector_${terran.id}`)!; // (2, -2)
+      sPlanta.wormholes = [true, true, true, true, true, true];
+      sTerran.wormholes = [true, true, true, true, true, true];
+
+      // Put a guaranteed peaceful discovery Ring 2 tile and empty Ring 2 tile on top of ring2 deck
+      const peacefulDiscTile = {
+        id: 'test_disc_sec',
+        sectorNumber: 205,
+        name: 'Peaceful Ruin',
+        ring: 2 as const,
+        coord: { q: 0, r: 0 },
+        rotation: 0 as const,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: true,
+        ancientsCount: 0,
+        ships: [],
+      };
+      const emptyTile = {
+        id: 'test_empty_sec2',
+        sectorNumber: 206,
+        name: 'Open Space',
+        ring: 2 as const,
+        coord: { q: 0, r: 0 },
+        rotation: 0 as const,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      game.sectorDecks.ring2.push(emptyTile, peacefulDiscTile);
+
+      // Step 3a: Planta explores #1 into open Ring 2 hex (1, -2) -> connects Planta to Terran (2, -2), triggers pendingDiscovery
+      const exp1 = executeAction(game, {
+        type: 'EXPLORE',
+        playerId: planta.id,
+        fromCoord: sPlanta.coord,
+        targetCoord: { q: 1, r: -2 },
+        rotation: 0,
+        claimInfluence: true,
+        requireConfirmation: true,
+      });
+      expect(exp1.success).toBe(true);
+      expect(exp1.newState.pendingDiscovery).toBeDefined();
+
+      // Diplomacy blocked during pendingDiscovery
+      const duringDisc = executeAction(exp1.newState, {
+        type: 'PROPOSE_DIPLOMACY',
+        playerId: planta.id,
+        targetPlayerId: terran.id,
+        initiatorCube: 'money',
+      });
+      expect(duringDisc.success).toBe(false);
+
+      // Resolve Discovery -> triggers pendingExploreControl
+      const afterDisc = executeAction(exp1.newState, {
+        type: 'DISCOVERY_CHOICE',
+        playerId: planta.id,
+        sectorId: exp1.newState.pendingDiscovery!.sectorId,
+        keepForVictoryPoints: true,
+      });
+      expect(afterDisc.success).toBe(true);
+      expect(afterDisc.newState.pendingExploreControl).toBeDefined();
+
+      // Diplomacy blocked during pendingExploreControl
+      const duringCtrl = executeAction(afterDisc.newState, {
+        type: 'PROPOSE_DIPLOMACY',
+        playerId: planta.id,
+        targetPlayerId: terran.id,
+        initiatorCube: 'money',
+      });
+      expect(duringCtrl.success).toBe(false);
+
+      // Finish Control -> Planta is now in Step 4 (pendingExploreActivations = 1)
+      const placedSectorId = afterDisc.newState.pendingExploreControl!.sectorId;
+      const afterCtrl = executeAction(afterDisc.newState, {
+        type: 'EXPLORE_CONTROL',
+        playerId: planta.id,
+        sectorId: placedSectorId,
+        claimInfluence: true,
+      });
+      expect(afterCtrl.success).toBe(true);
+      expect(afterCtrl.newState.pendingExploreControl).toBeNull();
+      expect(afterCtrl.newState.pendingExploreActivations).toBe(1);
+
+      // Propose & Accept diplomacy between Explore #1 and Explore #2 (Step 4)
+      const propStep4 = executeAction(afterCtrl.newState, {
+        type: 'PROPOSE_DIPLOMACY',
+        playerId: planta.id,
+        targetPlayerId: terran.id,
+        initiatorCube: 'money',
+      });
+      expect(propStep4.success).toBe(true);
+
+      const accStep4 = executeAction(propStep4.newState, {
+        type: 'RESPOND_DIPLOMACY',
+        playerId: terran.id,
+        accept: true,
+        targetCube: 'science',
+      });
+      expect(accStep4.success).toBe(true);
+      expect(accStep4.newState.players[0]!.ambassadorTiles).toContain(terran.id);
+
+      // Planta continues with Explore #2 into (-1, -1), then clicks Revert -> reverts ONLY Explore #2, keeping Alliance & Explore #1!
+      const exp2 = executeAction(accStep4.newState, {
+        type: 'EXPLORE',
+        playerId: planta.id,
+        fromCoord: sPlanta.coord,
+        targetCoord: { q: -1, r: -1 },
+        rotation: 0,
+        claimInfluence: true,
+        isSecondActivation: true,
+        requireConfirmation: true,
+      });
+      expect(exp2.success).toBe(true);
+      expect(exp2.newState.pendingActionConfirmation?.canRevert).toBe(true);
+
+      const rev2 = executeAction(exp2.newState, {
+        type: 'REVERT_TURN_ACTION',
+        playerId: planta.id,
+      });
+      expect(rev2.success).toBe(true);
+      expect(rev2.newState.sectors.some((s) => s.id === emptyTile.id)).toBe(false); // Explore #2 undone
+      expect(rev2.newState.sectors.some((s) => s.id === placedSectorId)).toBe(true); // Explore #1 kept
+      expect(rev2.newState.players[0]!.ambassadorTiles).toContain(terran.id); // Alliance kept
+    });
+  });
+
+  describe('177. Chat Persistence, Concurrent Merge & Revert Preservation', () => {
+    it('merges concurrent chat streams chronologically without losing messages across REVERT_TURN_ACTION or unconfirmed previews', async () => {
+      const { mergeChatMessages, saveGameState, loadActiveGameState, persistChatOnlyUpdate, getStorage } = await import('../rules/persistence');
+      getStorage().clear();
+
+      // 1. Concurrent merge preserves messages from both players chronologically & deduplicates by id
+      const streamA = [
+        { id: 'c1', senderPlayerId: 'player_1', senderName: 'P1', text: 'First', timestamp: 1000 },
+        { id: 'c2', senderPlayerId: 'player_1', senderName: 'P1', text: 'Third', timestamp: 3000 },
+      ];
+      const streamB = [
+        { id: 'c1', senderPlayerId: 'player_1', senderName: 'P1', text: 'First', timestamp: 1000 },
+        { id: 'c3', senderPlayerId: 'player_2', senderName: 'P2', text: 'Second (concurrent)', timestamp: 2000 },
+      ];
+      expect(mergeChatMessages(streamA, streamB).map((m) => m.id)).toEqual(['c1', 'c3', 'c2']);
+
+      // 2. Sending chat while holding a revertible pendingActionConfirmation persists chat and survives REVERT_TURN_ACTION
+      const game = createInitialGame(2);
+      const p1 = game.players[0]!;
+      saveGameState(game);
+
+      const buildRes = executeAction(game, {
+        type: 'BUILD',
+        playerId: p1.id,
+        items: [{ sectorId: `home_sector_${p1.id}`, itemType: 'interceptor' }],
+        requireConfirmation: true,
+      });
+      expect(buildRes.success).toBe(true);
+      expect(buildRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
+
+      const chatRes = executeAction(buildRes.newState, {
+        type: 'SEND_CHAT',
+        playerId: p1.id,
+        message: 'Testing chat during preview',
+      });
+      expect(chatRes.success).toBe(true);
+      expect(chatRes.newState.chatMessages?.length).toBe(1);
+
+      persistChatOnlyUpdate(chatRes.newState.id, chatRes.newState.chatMessages || [], false);
+      const storedAfterChat = loadActiveGameState();
+      expect(storedAfterChat?.chatMessages?.map((m) => m.text)).toEqual(['Testing chat during preview']);
+      expect(storedAfterChat?.pendingActionConfirmation).toBeFalsy();
+
+      const reverted = executeAction(chatRes.newState, {
+        type: 'REVERT_TURN_ACTION',
+        playerId: p1.id,
+      });
+      expect(reverted.success).toBe(true);
+      expect(reverted.newState.chatMessages?.map((m) => m.text)).toEqual(['Testing chat during preview']);
+    });
+  });
+
+  describe('178. SectorInspector Contested Alert Accuracy', () => {
+    it('does not show Contested Sector alert on uncontested GCDS/Guardian/Ancient sectors when no player ships share the hex', async () => {
+      const game = createInitialGame(4, ['terran_alliance', 'descendants_of_draco', 'orion_hegemony', 'planta']);
+      const terran = game.players[0]!;
+      const draco = game.players[1]!;
+      const center = game.sectors.find((s) => s.sectorNumber === 1)!;
+      const guardian = game.sectors.find((s) => (s.guardiansCount ?? 0) > 0)!;
+
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { SectorInspector } = await import('../../components/map/SectorInspector');
+
+      // Galactic Center with only GCDS (no player ship): NOT contested
+      const centerAloneHtml = renderToString(
+        React.createElement(SectorInspector, {
+          sector: center,
+          players: game.players,
+          activePlayer: terran,
+          onClose: () => {},
+        })
+      );
+      expect(centerAloneHtml).not.toContain('Contested Sector! Combat will resolve during Combat Phase.');
+
+      // Guardian sector with only Guardian (no player ship): NOT contested
+      const guardianAloneHtml = renderToString(
+        React.createElement(SectorInspector, {
+          sector: guardian,
+          players: game.players,
+          activePlayer: terran,
+          onClose: () => {},
+        })
+      );
+      expect(guardianAloneHtml).not.toContain('Contested Sector! Combat will resolve during Combat Phase.');
+
+      // Galactic Center once a player ship moves in alongside GCDS: contested!
+      const centerWithPlayer = {
+        ...center,
+        ships: [...center.ships, { id: 'p1_int', ownerId: terran.id, type: 'interceptor' as const, damage: 0 }],
+      };
+      const centerContestedHtml = renderToString(
+        React.createElement(SectorInspector, {
+          sector: centerWithPlayer,
+          players: game.players,
+          activePlayer: terran,
+          onClose: () => {},
+        })
+      );
+      expect(centerContestedHtml).toContain('Contested Sector! Combat will resolve during Combat Phase.');
+
+      // Draco sharing a hex with Ancients alone: NOT contested
+      const ancientSecWithDraco = {
+        ...guardian,
+        id: 'test_ancient_draco',
+        ancientsCount: 1,
+        guardiansCount: 0,
+        ships: [
+          { id: 'anc_1', ownerId: 'ancient', type: 'ancient' as const, damage: 0 },
+          { id: 'draco_1', ownerId: draco.id, type: 'interceptor' as const, damage: 0 },
+        ],
+      };
+      const dracoHtml = renderToString(
+        React.createElement(SectorInspector, {
+          sector: ancientSecWithDraco,
+          players: game.players,
+          activePlayer: draco,
+          onClose: () => {},
+        })
+      );
+      expect(dracoHtml).not.toContain('Contested Sector! Combat will resolve during Combat Phase.');
+    });
+  });
+
+  describe('179. Persisted Explore Tile Draw & Refresh/Revert Protection', () => {
+    it('persists START_EXPLORE in state.pendingExplore, blocks other actions/re-explore, and restores pendingExplore on REVERT_TURN_ACTION across reloads', async () => {
+      const { saveGameState, loadActiveGameState, getStorage } = await import('../rules/persistence');
+      getStorage().clear();
+
+      const game = createInitialGame(2);
+      const p1 = game.players[0]!;
+      const p1Home = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+      const targetCoord = { q: p1Home.coord.q + 1, r: p1Home.coord.r };
+
+      // Make top tile in Ring 2 deck deterministic (no discovery so EXPLORE goes straight to Confirm/Revert)
+      const safeTileIdx = game.sectorDecks.ring2.findIndex((t) => !t.hasDiscovery);
+      const safeTile = game.sectorDecks.ring2.splice(safeTileIdx, 1)[0]!;
+      safeTile.wormholes = [true, true, true, true, true, true];
+      game.sectorDecks.ring2.push(safeTile);
+      const ring2Before = game.sectorDecks.ring2.length;
+
+      // 1. Clicking hex executes START_EXPLORE and persists pendingExplore
+      const startRes = executeAction(game, {
+        type: 'START_EXPLORE',
+        playerId: p1.id,
+        fromCoord: p1Home.coord,
+        targetCoord,
+      });
+      expect(startRes.success).toBe(true);
+      expect(startRes.newState.pendingExplore?.tile.id).toBe(safeTile.id);
+      expect(startRes.newState.pendingExplore?.targetCoord).toEqual(targetCoord);
+      expect(startRes.newState.sectorDecks.ring2.length).toBe(ring2Before - 1);
+
+      saveGameState(startRes.newState);
+      const reloadedMidDraw = loadActiveGameState();
+      expect(reloadedMidDraw?.pendingExplore?.tile.id).toBe(safeTile.id);
+
+      // Cannot start a different explore hex or take PASS/BUILD before resolving the revealed tile
+      expect(
+        executeAction(startRes.newState, {
+          type: 'START_EXPLORE',
+          playerId: p1.id,
+          fromCoord: p1Home.coord,
+          targetCoord: { q: p1Home.coord.q, r: p1Home.coord.r + 1 },
+        }).success
+      ).toBe(false);
+      expect(executeAction(startRes.newState, { type: 'PASS', playerId: p1.id }).success).toBe(false);
+
+      // 2. Keeping the tile resolves pendingExplore and sets pendingActionConfirmation (canRevert=true)
+      const keepRes = executeAction(startRes.newState, {
+        type: 'EXPLORE',
+        playerId: p1.id,
+        fromCoord: p1Home.coord,
+        targetCoord,
+        rotation: 0,
+        claimInfluence: true,
+        requireConfirmation: true,
+      });
+      expect(keepRes.success).toBe(true);
+      expect(keepRes.newState.pendingExplore).toBeNull();
+      expect(keepRes.newState.pendingActionConfirmation?.canRevert).toBe(true);
+
+      // 3. Reverting EXPLORE restores state.pendingExplore (NOT action bar), surviving browser reload!
+      const revRes = executeAction(keepRes.newState, {
+        type: 'REVERT_TURN_ACTION',
+        playerId: p1.id,
+      });
+      expect(revRes.success).toBe(true);
+      expect(revRes.newState.pendingActionConfirmation).toBeNull();
+      expect(revRes.newState.pendingExplore?.tile.id).toBe(safeTile.id);
+      expect(revRes.newState.pendingExplore?.targetCoord).toEqual(targetCoord);
+      expect(revRes.newState.sectorDecks.ring2.length).toBe(ring2Before - 1);
+
+      saveGameState(revRes.newState);
+      const reloadedAfterRevert = loadActiveGameState();
+      expect(reloadedAfterRevert?.pendingExplore?.tile.id).toBe(safeTile.id);
+      expect(executeAction(reloadedAfterRevert!, { type: 'PASS', playerId: p1.id }).success).toBe(false);
+
+      // 4. Discarding & confirming cleanly finishes turn
+      const discardRes = executeAction(revRes.newState, {
+        type: 'EXPLORE',
+        playerId: p1.id,
+        fromCoord: p1Home.coord,
+        targetCoord,
+        rotation: 0,
+        discard: true,
+        requireConfirmation: true,
+      });
+      expect(discardRes.success).toBe(true);
+      expect(discardRes.newState.pendingExplore).toBeNull();
+      expect(discardRes.newState.sectorDecks.ring2.length).toBe(ring2Before);
+
+      const confirmRes = executeAction(discardRes.newState, {
+        type: 'CONFIRM_TURN_ACTION',
+        playerId: p1.id,
+      });
+      expect(confirmRes.success).toBe(true);
+      expect(confirmRes.newState.activePlayerIndex).toBe(1);
+    });
   });
 });
 
