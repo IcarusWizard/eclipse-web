@@ -2806,6 +2806,32 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     });
   };
 
+  // Defer auto-finishing extra explore activations while discovery/control/artifact sub-modals are open,
+  // since taking control of or receiving a ship in the newly explored sector can unlock new explore targets.
+  const autoFinishExploreActivationsIfExhausted = () => {
+    if (
+      newState.pendingExploreActivations &&
+      newState.pendingExploreActivations > 0 &&
+      !newState.pendingDiscovery &&
+      !newState.pendingExploreControl &&
+      !newState.pendingArtifactReward
+    ) {
+      const hasWormholeGen = playerHasWormholeGenerator(player);
+      const explorable = getExplorableHexes(
+        newState.sectors,
+        player.id,
+        hasWormholeGen,
+        newState.sectorDecks,
+        newState.warpedUniverse?.conduits,
+        newState.warpedUniverse?.warpSectors
+      );
+      if (explorable.length === 0) {
+        newState.pendingExploreActivations = 0;
+        addLog(`${player.name} has no further valid sectors to explore; exploration finished.`);
+      }
+    }
+  };
+
   const snapshotJson = action.requireConfirmation
     ? JSON.stringify({ ...state, pendingActionConfirmation: null })
     : undefined;
@@ -3005,22 +3031,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         addLog(`${player.name} discarded explored sector tile from Ring ${ring} to the bottom of the stack.`);
       }
 
-      // If player has pending explore activations remaining, verify if any valid target hexes exist on galaxy (Bug 114)
-      if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
-        const hasWormholeGen = playerHasWormholeGenerator(player);
-        const explorable = getExplorableHexes(
-          newState.sectors,
-          player.id,
-          hasWormholeGen,
-          newState.sectorDecks,
-          newState.warpedUniverse?.conduits,
-          newState.warpedUniverse?.warpSectors
-        );
-        if (explorable.length === 0) {
-          newState.pendingExploreActivations = 0;
-          addLog(`${player.name} has no further valid sectors to explore; exploration finished.`);
-        }
-      }
+      // If player has pending explore activations remaining and no discovery/control sub-decision is pending,
+      // verify whether any valid target hexes exist on the galaxy (Bug 114).
+      autoFinishExploreActivationsIfExhausted();
 
       break;
     }
@@ -4186,6 +4199,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       const discoverySnapshot = state.pendingExploreControl.discoverySnapshot;
       newState.pendingExploreControl = null;
 
+      autoFinishExploreActivationsIfExhausted();
       if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
         return { success: true, newState };
       }
@@ -5345,6 +5359,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     if (player.hasPassed || newState.passedPlayerIds.includes(player.id)) {
       newState.pendingExploreActivations = 0;
     }
+    autoFinishExploreActivationsIfExhausted();
     if (newState.pendingExploreActivations && newState.pendingExploreActivations > 0) {
       // Multiple explore activations (e.g. Planta): do not advance turn yet!
       return { success: true, newState };

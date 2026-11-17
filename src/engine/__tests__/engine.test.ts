@@ -26463,6 +26463,177 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(confirmRes.success).toBe(true);
       expect(confirmRes.newState.activePlayerIndex).toBe(1);
     });
+
+    it('261. Planta keeps 2nd explore activation when Discovery+Control on 1st sector unlocks further explore targets', () => {
+      const state = createInitialGame(2, ['planta', 'terran_federation']);
+      state.phase = 'ACTION_PHASE';
+      state.activePlayerIndex = 0;
+      const planta = state.players[0]!;
+      planta.influenceTrack.discsOnTrack = 5;
+
+      // Clear Planta presence everywhere except a single sector at (0, -2) whose ONLY wormhole points to (0, -3)
+      for (const sec of state.sectors) {
+        if (sec.discOwner === planta.id) sec.discOwner = undefined;
+        sec.ships = sec.ships.filter((s) => s.ownerId !== planta.id);
+      }
+      const sourceCoord = { q: 0, r: -2 };
+      const firstTarget = { q: 0, r: -3 };
+      const secondTarget = { q: 1, r: -3 };
+      const sourceSector = state.sectors.find((s) => areCoordsEqual(s.coord, sourceCoord)) || {
+        id: 'test_planta_src_312',
+        sectorNumber: 226,
+        name: 'Source',
+        coord: sourceCoord,
+        rotation: 0,
+        ring: 2 as const,
+        wormholes: [false, false, false, false, true, false],
+        planets: [],
+        ancientsCount: 0,
+        hasDiscovery: false,
+        discoveryClaimed: false,
+        vpValue: 1,
+        ships: [],
+        discOwner: planta.id,
+      };
+      sourceSector.discOwner = planta.id;
+      sourceSector.rotation = 0;
+      sourceSector.wormholes = [false, false, false, false, true, false];
+      if (!state.sectors.some((s) => s.id === sourceSector.id)) {
+        state.sectors.push(sourceSector);
+      }
+      // Remove any pre-placed sectors on firstTarget/secondTarget just in case
+      state.sectors = state.sectors.filter(
+        (s) => !areCoordsEqual(s.coord, firstTarget) && !areCoordsEqual(s.coord, secondTarget)
+      );
+
+      // Prepare two Ring 3 tiles:
+      // 1) Revealed first (popped from end of deck): hasDiscovery=true, ancientsCount=0, wormholes on edge 1 (connects to edge 4 of (0,-2)) and edge 0 (opens toward (1,-3))
+      // 2) Second tile for chaining explore from firstTarget -> secondTarget
+      const chainedRing3Tile = {
+        id: 'test_chain_tile_2',
+        sectorNumber: 398,
+        name: 'Chained Target',
+        coord: { q: 0, r: 0 },
+        rotation: 0,
+        ring: 3 as const,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        ancientsCount: 0,
+        hasDiscovery: false,
+        discoveryClaimed: false,
+        vpValue: 1,
+        ships: [],
+      };
+      const firstRing3Tile = {
+        id: 'test_disc_tile_312',
+        sectorNumber: 312,
+        name: 'Gamma 312',
+        coord: { q: 0, r: 0 },
+        rotation: 0,
+        ring: 3 as const,
+        wormholes: [true, true, false, false, false, false],
+        planets: [{ id: 'p312_1', resource: 'materials' as const, isAdvanced: false }],
+        ancientsCount: 0,
+        hasDiscovery: true,
+        discoveryClaimed: false,
+        vpValue: 2,
+        ships: [],
+      };
+      state.sectorDecks.ring3 = [chainedRing3Tile, firstRing3Tile];
+      state.discoveryBag = [{ id: 'disc_vp_test', name: 'Test Artifact', vp: 2, description: '+2 VP' }];
+
+      // 1. Planta starts & resolves 1st Explore into (0, -3) with immediate discovery tile
+      const start1 = executeAction(state, {
+        type: 'START_EXPLORE',
+        playerId: planta.id,
+        fromCoord: sourceCoord,
+        targetCoord: firstTarget,
+      });
+      expect(start1.success).toBe(true);
+
+      const exp1 = executeAction(start1.newState, {
+        type: 'EXPLORE',
+        playerId: planta.id,
+        fromCoord: sourceCoord,
+        targetCoord: firstTarget,
+        rotation: 0,
+        claimInfluence: true,
+        requireConfirmation: true,
+      });
+      expect(exp1.success).toBe(true);
+      expect(exp1.newState.pendingDiscovery).toBeDefined();
+      // Crucial: must NOT prematurely finish Planta's 2nd explore before Discovery + Sector Control are resolved!
+      expect(exp1.newState.pendingExploreActivations).toBe(1);
+
+      // 2. Resolve Discovery -> triggers pendingExploreControl
+      const disc1 = executeAction(exp1.newState, {
+        type: 'DISCOVERY_CHOICE',
+        playerId: planta.id,
+        sectorId: firstRing3Tile.id,
+        keepForVictoryPoints: true,
+        requireConfirmation: true,
+      });
+      expect(disc1.success).toBe(true);
+      expect(disc1.newState.pendingExploreControl).toBeDefined();
+      expect(disc1.newState.pendingExploreActivations).toBe(1);
+
+      // 3a. Declining control when NO other explorable hexes exist cleanly auto-finishes exploration
+      const declineCtrl = executeAction(disc1.newState, {
+        type: 'EXPLORE_CONTROL',
+        playerId: planta.id,
+        sectorId: firstRing3Tile.id,
+        claimInfluence: false,
+        requireConfirmation: true,
+      });
+      expect(declineCtrl.success).toBe(true);
+      expect(declineCtrl.newState.pendingExploreActivations).toBe(0);
+      expect(declineCtrl.newState.pendingActionConfirmation).toBeDefined();
+
+      // 3b. Taking control of Sector 312 unlocks secondTarget (1, -3) -> keeps pendingExploreActivations === 1!
+      const claimCtrl = executeAction(disc1.newState, {
+        type: 'EXPLORE_CONTROL',
+        playerId: planta.id,
+        sectorId: firstRing3Tile.id,
+        claimInfluence: true,
+        requireConfirmation: true,
+      });
+      expect(claimCtrl.success).toBe(true);
+      expect(claimCtrl.newState.pendingExploreControl).toBeNull();
+      expect(claimCtrl.newState.pendingActionConfirmation).toBeFalsy();
+      expect(claimCtrl.newState.pendingExploreActivations).toBe(1);
+
+      // 4. Planta chains 2nd Explore FROM newly controlled Sector 312 into (1, -3)
+      const start2 = executeAction(claimCtrl.newState, {
+        type: 'START_EXPLORE',
+        playerId: planta.id,
+        fromCoord: firstTarget,
+        targetCoord: secondTarget,
+        isSecondActivation: true,
+      });
+      expect(start2.success).toBe(true);
+      expect(start2.newState.pendingExplore?.isSecondActivation).toBe(true);
+
+      const exp2 = executeAction(start2.newState, {
+        type: 'EXPLORE',
+        playerId: planta.id,
+        fromCoord: firstTarget,
+        targetCoord: secondTarget,
+        rotation: 0,
+        claimInfluence: true,
+        isSecondActivation: true,
+        requireConfirmation: true,
+      });
+      expect(exp2.success).toBe(true);
+      expect(exp2.newState.pendingExploreActivations).toBe(0);
+      expect(exp2.newState.pendingActionConfirmation).toBeDefined();
+
+      const confirm2 = executeAction(exp2.newState, {
+        type: 'CONFIRM_TURN_ACTION',
+        playerId: planta.id,
+      });
+      expect(confirm2.success).toBe(true);
+      expect(confirm2.newState.activePlayerIndex).toBe(1);
+    });
   });
 });
 

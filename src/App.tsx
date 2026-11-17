@@ -524,6 +524,18 @@ const AppContent: React.FC = () => {
     Boolean(state.pendingReputationDraw) ||
     Boolean(state.pendingArtifactReward);
 
+  // Automatically keep Explore target highlights active whenever extra Explore activations (e.g. Planta)
+  // remain ready after Discovery / Sector Control / Diplomacy / page refresh.
+  const effectiveExploreMode =
+    isExploreMode ||
+    (state.phase === 'ACTION_PHASE' &&
+      Boolean(state.pendingExploreActivations && state.pendingExploreActivations > 0) &&
+      !isActionsLocked &&
+      !state.pendingActionConfirmation &&
+      !isBuildOpen &&
+      !isMoveOpen &&
+      !isInfluenceOpen);
+
   const myControlledPlayer =
     typeof currentSeat === 'number' && state.players[currentSeat]
       ? state.players[currentSeat]
@@ -1431,7 +1443,13 @@ const AppContent: React.FC = () => {
 
     if (res.success) {
       setState(res.newState);
-      if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
+      if (
+        res.newState.pendingExploreActivations &&
+        res.newState.pendingExploreActivations > 0 &&
+        !res.newState.pendingDiscovery &&
+        !res.newState.pendingExploreControl &&
+        !res.newState.pendingArtifactReward
+      ) {
         setIsExploreMode(true);
         showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
       }
@@ -2505,7 +2523,14 @@ const AppContent: React.FC = () => {
     });
     if (res.success) {
       setState(res.newState);
-      if (claimInfluence) {
+      if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
+        setIsExploreMode(true);
+        showToast(
+          claimInfluence
+            ? 'Influence Disc placed! 🌿 Planta Expansion: 1 Explore Activation remaining — select an adjacent hex on the map.'
+            : 'Sector left uncontrolled. 🌿 Planta Expansion: 1 Explore Activation remaining — select an adjacent hex on the map.'
+        );
+      } else if (claimInfluence) {
         showToast('Influence Disc placed on sector!');
       } else {
         showToast('Sector left uncontrolled.');
@@ -3066,7 +3091,7 @@ const AppContent: React.FC = () => {
           state={state}
           selectedSectorId={selectedSector?.id || null}
           onSelectSector={(s) => setSelectedSector(s)}
-          isExploreMode={isExploreMode}
+          isExploreMode={effectiveExploreMode}
           onExploreTarget={handleExploreTarget}
           onColonizePlanet={!isActionsLocked ? handleColonizePlanet : undefined}
           effectivePlayerId={effectiveColonizingPlayer.id}
@@ -3237,7 +3262,7 @@ const AppContent: React.FC = () => {
           <ActionBar
             activePlayer={activePlayer}
             players={state.players}
-            isExploreMode={isExploreMode}
+            isExploreMode={effectiveExploreMode}
             onToggleExplore={handleToggleExplore}
             onOpenResearch={() => setIsTechMarketOpen(true)}
             onOpenUpgrade={() => setIsBlueprintOpen(true)}
