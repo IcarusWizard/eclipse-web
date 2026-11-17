@@ -16,6 +16,7 @@ import {
   Loader2,
   ChevronDown,
   ChevronUp,
+  Mail,
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateFactionName, translateGamePhase } from '../../i18n/catalogTranslations';
@@ -28,6 +29,13 @@ interface AdminManageSeatsModalProps {
   currentSeat: number | 'all' | 'spectator' | undefined;
   onTakeSeat: (seatIndex: number) => void;
   onReassignSeat: (seatIndex: number, targetUser: RegisteredUserProfile) => Promise<{ success: boolean; error?: string }>;
+  onSendReminder?: (seatIndex: number) => Promise<{
+    success: boolean;
+    mock?: boolean;
+    email?: string;
+    username?: string;
+    error?: string;
+  }>;
 }
 
 export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
@@ -38,6 +46,7 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
   currentSeat,
   onTakeSeat,
   onReassignSeat,
+  onSendReminder,
 }) => {
   const { l, language } = useLanguage();
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserProfile[]>([]);
@@ -46,6 +55,7 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
   const [selectedUserBySeat, setSelectedUserBySeat] = useState<Record<number, string>>({});
   const [searchQueryBySeat, setSearchQueryBySeat] = useState<Record<number, string>>({});
   const [isSubmittingSeat, setIsSubmittingSeat] = useState<number | null>(null);
+  const [isSendingReminderSeat, setIsSendingReminderSeat] = useState<number | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
 
@@ -102,6 +112,35 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
       setTimeout(() => setSuccessToast(null), 4000);
     } else {
       setErrorToast(res.error || l('Failed to reassign seat.', '重新分配席位失败。'));
+    }
+  };
+
+  const handleManualSendReminder = async (seatIdx: number) => {
+    if (!onSendReminder) return;
+    setIsSendingReminderSeat(seatIdx);
+    setErrorToast(null);
+    setSuccessToast(null);
+
+    const res = await onSendReminder(seatIdx);
+    setIsSendingReminderSeat(null);
+
+    if (res.success) {
+      const recipientLabel = res.username || l(`Seat ${seatIdx + 1}`, `${seatIdx + 1} 号位`);
+      const emailSuffix = res.email ? ` (${res.email})` : '';
+      setSuccessToast(
+        res.mock
+          ? l(
+              `Reminder logged in mock mode (no SMTP) for ${recipientLabel}${emailSuffix}.`,
+              `已为 ${recipientLabel}${emailSuffix} 记录提醒日志（未配置 SMTP，模拟模式）。`
+            )
+          : l(
+              `Turn reminder email sent to ${recipientLabel}${emailSuffix}!`,
+              `已向 ${recipientLabel}${emailSuffix} 发送回合提醒邮件！`
+            )
+      );
+      setTimeout(() => setSuccessToast(null), 5000);
+    } else {
+      setErrorToast(res.error || l('Failed to send reminder email.', '发送提醒邮件失败。'));
     }
   };
 
@@ -258,7 +297,28 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
                     )}
 
                     {/* Action Buttons */}
-                    <div className="flex items-center gap-1.5">
+                    <div className="flex items-center gap-1.5 flex-wrap">
+                      {onSendReminder && occupant && (
+                        <button
+                          type="button"
+                          data-testid={`admin-send-reminder-${sIdx + 1}`}
+                          disabled={isSendingReminderSeat === sIdx}
+                          onClick={() => handleManualSendReminder(sIdx)}
+                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-500 disabled:opacity-50 disabled:cursor-not-allowed text-white text-xs font-bold transition shadow cursor-pointer"
+                          title={l(
+                            'Manually send a turn reminder email to this player',
+                            '手动向该玩家发送回合提醒邮件'
+                          )}
+                        >
+                          {isSendingReminderSeat === sIdx ? (
+                            <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                          ) : (
+                            <Mail className="w-3.5 h-3.5" />
+                          )}
+                          <span>{l('Send Email', '发邮件提醒')}</span>
+                        </button>
+                      )}
+
                       {!isMe && (
                         <button
                           type="button"

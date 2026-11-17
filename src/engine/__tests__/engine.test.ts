@@ -26635,6 +26635,56 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(confirm2.newState.activePlayerIndex).toBe(1);
     });
   });
+
+  describe('180. Admin Manual Turn Reminder Email', () => {
+    it('262. validates admin/online guards in adminSendTableReminder and renders Send Email controls in AdminManageSeatsModal', async () => {
+      const { adminSendTableReminder } = await import('../rules/persistence');
+      const { AdminManageSeatsModal } = await import('../../components/admin/AdminManageSeatsModal');
+      const { renderToString } = await import('react-dom/server');
+      const React = await import('react');
+
+      // 1. Local tables reject manual email reminder
+      const localRes = await adminSendTableReminder(
+        'local-1',
+        0,
+        { id: 'admin_1', role: 'admin' },
+        true
+      );
+      expect(localRes.success).toBe(false);
+      expect(localRes.error).toContain('online multiplayer tables');
+
+      // 2. Non-admin users are rejected
+      const nonAdminRes = await adminSendTableReminder(
+        'galaxy-192',
+        0,
+        { id: 'user_1', role: 'user' },
+        false
+      );
+      expect(nonAdminRes.success).toBe(false);
+      expect(nonAdminRes.error).toContain('Only administrators');
+
+      // 3. AdminManageSeatsModal renders Send Email button on occupied seats when onSendReminder is supplied
+      const state = createInitialGame(2, ['planta', 'terran_federation']);
+      state.members = [
+        { userId: 'usr_1', username: 'PlantaCmdr', role: 'user', seat: 0, joinedAt: Date.now() },
+      ];
+      const html = renderToString(
+        React.createElement(AdminManageSeatsModal, {
+          isOpen: true,
+          onClose: () => {},
+          state,
+          currentUser: { id: 'admin_1', username: 'Admin', role: 'admin', isGuest: false },
+          currentSeat: 'spectator',
+          onTakeSeat: () => {},
+          onReassignSeat: async () => ({ success: true }),
+          onSendReminder: async () => ({ success: true, email: 'p@example.com', username: 'PlantaCmdr' }),
+        })
+      );
+      expect(html).toContain('admin-send-reminder-1');
+      expect(html).not.toContain('admin-send-reminder-2');
+      expect(html).toContain('Send Email');
+    });
+  });
 });
 
 

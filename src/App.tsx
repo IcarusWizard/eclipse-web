@@ -79,6 +79,7 @@ import {
   getStateFingerprint,
   registerTableMember,
   adminReassignTableSeat,
+  adminSendTableReminder,
   isSeatTaken,
   canUserUseHotseat,
   deleteSavedTable,
@@ -1109,6 +1110,26 @@ const AppContent: React.FC = () => {
       return { success: true };
     }
     return { success: false, error: res.error || 'Failed to reassign seat.' };
+  };
+
+  const handleAdminSendReminder = async (seatIndex: number) => {
+    if (currentUser.role !== 'admin') {
+      return { success: false, error: 'Administrator role required to send manual reminders.' };
+    }
+    const res = await adminSendTableReminder(
+      state.id,
+      seatIndex,
+      currentUser,
+      state.isLocalGame
+    );
+    if (res.success) {
+      showToast(
+        res.mock
+          ? `Reminder logged (mock SMTP) for ${res.username || `Seat ${seatIndex + 1}`}`
+          : `Turn reminder sent to ${res.username || `Seat ${seatIndex + 1}`}${res.email ? ` (${res.email})` : ''}!`
+      );
+    }
+    return res;
   };
 
   const handleAllocateArtifactReward = (resources: { money: number; science: number; materials: number }) => {
@@ -3883,6 +3904,7 @@ const AppContent: React.FC = () => {
             handleChangeSeat(sIdx);
           }}
           onReassignSeat={handleAdminReassignSeat}
+          onSendReminder={handleAdminSendReminder}
         />
       )}
 

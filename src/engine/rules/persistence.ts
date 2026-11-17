@@ -1598,6 +1598,61 @@ export async function adminReassignTableSeat(
 }
 
 /**
+ * Administrator manually sends a turn reminder email to the registered user in a given seat.
+ */
+export async function adminSendTableReminder(
+  tableId: string,
+  seatIndex: number,
+  adminUser: { id: string; role: string },
+  isLocal?: boolean
+): Promise<{
+  success: boolean;
+  mock?: boolean;
+  email?: string;
+  username?: string;
+  messageId?: string;
+  error?: string;
+}> {
+  if (isLocal) {
+    return { success: false, error: 'Email reminders are only available for online multiplayer tables.' };
+  }
+  if (!adminUser?.id || adminUser.role !== 'admin') {
+    return { success: false, error: 'Only administrators can send manual turn reminders.' };
+  }
+  if (!canPerformServerFetch()) {
+    return { success: false, error: 'Server fetch unavailable in this environment.' };
+  }
+
+  try {
+    const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/admin/send-reminder`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adminUserId: adminUser.id,
+        seat: seatIndex,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      return {
+        success: false,
+        error: data?.error || `Failed to send reminder email (HTTP ${res.status}).`,
+      };
+    }
+    return {
+      success: true,
+      mock: Boolean(data.mock),
+      email: data.email,
+      username: data.username,
+      messageId: data.messageId,
+    };
+  } catch (err: any) {
+    console.error('Failed to send manual reminder:', err);
+    return { success: false, error: err?.message || 'Failed to send reminder email.' };
+  }
+}
+
+/**
  * Vacates a user's seat and detaches them from the table members list.
  */
 export async function leaveTable(

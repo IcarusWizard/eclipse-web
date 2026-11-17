@@ -307,6 +307,76 @@ function tableStoragePlugin(): Plugin {
     }
   }
 
+  function isAdminUserId(adminUserId?: string): boolean {
+    if (!adminUserId) return false;
+    if (adminUserId === 'admin_root' && getAdminHash() !== null) {
+      return true;
+    }
+    ensureUsersDir();
+    const adminFiles = fs.readdirSync(USERS_DIR).filter((f) => f.endsWith('.json'));
+    for (const f of adminFiles) {
+      try {
+        const u = JSON.parse(fs.readFileSync(path.join(USERS_DIR, f), 'utf-8'));
+        if (u.id === adminUserId && u.role === 'admin') {
+          return true;
+        }
+      } catch {}
+    }
+    return false;
+  }
+
+  function findTableByParam(targetParam: string): { filePath: string; tableData: any } | null {
+    ensureDir();
+    const directFile = path.join(TABLES_DIR, `${targetParam}.json`);
+    if (fs.existsSync(directFile)) {
+      try {
+        return { filePath: directFile, tableData: JSON.parse(fs.readFileSync(directFile, 'utf-8')) };
+      } catch {}
+    }
+    const galaxyFile = path.join(TABLES_DIR, `galaxy-${targetParam}.json`);
+    if (fs.existsSync(galaxyFile)) {
+      try {
+        return { filePath: galaxyFile, tableData: JSON.parse(fs.readFileSync(galaxyFile, 'utf-8')) };
+      } catch {}
+    }
+    const num = parseInt(targetParam, 10);
+    const files = fs.readdirSync(TABLES_DIR).filter((f) => f.endsWith('.json'));
+    for (const f of files) {
+      try {
+        const fp = path.join(TABLES_DIR, f);
+        const c = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+        if (c.id === targetParam || (!isNaN(num) && c.tableNumber === num)) {
+          return { filePath: fp, tableData: c };
+        }
+      } catch {}
+    }
+    return null;
+  }
+
+  function resolveMemberContact(targetMember: any, fallbackUsername: string) {
+    let targetEmail = targetMember?.email;
+    const targetUserId = targetMember?.userId;
+    let targetUsername = targetMember?.username || fallbackUsername;
+    let emailNotifications = targetMember?.emailNotifications !== false;
+
+    if (targetUserId) {
+      try {
+        ensureUsersDir();
+        const files = fs.readdirSync(USERS_DIR).filter((f) => f.endsWith('.json'));
+        for (const f of files) {
+          const u = JSON.parse(fs.readFileSync(path.join(USERS_DIR, f), 'utf-8'));
+          if (u.id === targetUserId) {
+            if (!targetEmail) targetEmail = u.email;
+            if (typeof u.emailNotifications === 'boolean') emailNotifications = u.emailNotifications;
+            if (u.username) targetUsername = u.username;
+            break;
+          }
+        }
+      } catch {}
+    }
+    return { targetEmail, targetUserId, targetUsername, emailNotifications };
+  }
+
   function saveTableFile(filePath: string, tableData: any) {
     if (Array.isArray(tableData.replaySteps) && tableData.replaySteps.length > 0) {
       tableData.replaySteps = compactReplaySteps(tableData.replaySteps);
@@ -911,47 +981,21 @@ function tableStoragePlugin(): Plugin {
             }
 
             // Verify admin permissions
-            ensureUsersDir();
-            const adminFiles = fs.readdirSync(USERS_DIR).filter((f) => f.endsWith('.json'));
-            let isAdmin = false;
-            for (const f of adminFiles) {
-              try {
-                const u = JSON.parse(fs.readFileSync(path.join(USERS_DIR, f), 'utf-8'));
-                if (u.id === adminUserId && u.role === 'admin') {
-                  isAdmin = true;
-                  break;
-                }
-              } catch {}
-            }
-            if (!isAdmin) {
+            if (!isAdminUserId(adminUserId)) {
               res.statusCode = 403;
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ success: false, error: 'Only administrators can reassign player seats.' }));
               return;
             }
 
-            const filePath = path.join(TABLES_DIR, `${targetParam}.json`);
-            let tableData: any = null;
-            if (fs.existsSync(filePath)) {
-              tableData = JSON.parse(fs.readFileSync(filePath, 'utf-8'));
-            }
-            if (!tableData) {
-              const num = parseInt(targetParam, 10);
-              const files = fs.readdirSync(TABLES_DIR).filter((f) => f.endsWith('.json'));
-              for (const f of files) {
-                const c = JSON.parse(fs.readFileSync(path.join(TABLES_DIR, f), 'utf-8'));
-                if (c.id === targetParam || (!isNaN(num) && c.tableNumber === num)) {
-                  tableData = c;
-                  break;
-                }
-              }
-            }
-            if (!tableData) {
+            const foundTable = findTableByParam(targetParam);
+            if (!foundTable) {
               res.statusCode = 404;
               res.setHeader('Content-Type', 'application/json');
               res.end(JSON.stringify({ success: false, error: 'Table not found.' }));
               return;
             }
+            const tableData = foundTable.tableData;
 
             if (!tableData.players || seat < 0 || seat >= tableData.players.length) {
               res.statusCode = 400;
@@ -983,12 +1027,122 @@ function tableStoragePlugin(): Plugin {
             }
 
             tableData.savedAt = Date.now();
-            const targetPath = path.join(TABLES_DIR, `${tableData.id}.json`);
+            const targetPath = foundTable.filePath || path.join(TABLES_DIR, `${tableData.id}.json`);
             saveTableFile(targetPath, tableData);
 
             res.statusCode = 200;
             res.setHeader('Content-Type', 'application/json');
             res.end(JSON.stringify({ success: true, members: tableData.members, players: tableData.players }));
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: err?.message || 'Server error' }));
+          }
+        });
+        return;
+      }
+
+      // 0a-2. POST /api/tables/:id/admin/send-reminder -> administrator manually sends a turn reminder email to a player seat
+      if (req.method === 'POST' && targetParam && parts[3] === 'admin' && parts[4] === 'send-reminder') {
+        let body = '';
+        req.on('data', (chunk: any) => {
+          body += chunk;
+        });
+        req.on('end', async () => {
+          try {
+            const { adminUserId, seat } = JSON.parse(body || '{}');
+            if (typeof seat !== 'number') {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Missing required seat index.' }));
+              return;
+            }
+            if (!isAdminUserId(adminUserId)) {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Only administrators can send manual turn reminders.' }));
+              return;
+            }
+
+            const foundTable = findTableByParam(targetParam);
+            if (!foundTable) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Table not found.' }));
+              return;
+            }
+            const tableData = foundTable.tableData;
+            if (!tableData.players || seat < 0 || seat >= tableData.players.length) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: `Invalid seat index ${seat}.` }));
+              return;
+            }
+
+            const targetPlayer = tableData.players[seat];
+            const targetMember = tableData.members?.find((m: any) => m && m.seat === seat);
+            if (!targetMember) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: `No player is currently assigned to Seat ${seat + 1}.` }));
+              return;
+            }
+
+            const { targetEmail, targetUsername } = resolveMemberContact(
+              targetMember,
+              targetPlayer?.name || `Commander ${seat + 1}`
+            );
+            if (!targetEmail) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: `User ${targetUsername} has no registered email address.` }));
+              return;
+            }
+
+            const resolvedTableId = tableData.id || targetParam;
+            const diplomacyFromName =
+              tableData.pendingDiplomacyProposal?.targetId === targetPlayer?.id &&
+              tableData.pendingDiplomacyProposal?.initiatorId
+                ? tableData.players.find((p: any) => p.id === tableData.pendingDiplomacyProposal.initiatorId)?.name || 'Another Commander'
+                : undefined;
+
+            const mailRes = await sendTurnReminderEmail({
+              toEmail: targetEmail,
+              username: targetUsername,
+              tableNumber: tableData.tableNumber || resolvedTableId,
+              tableId: resolvedTableId,
+              seatIndex: seat,
+              factionName: targetPlayer?.faction?.name || targetPlayer?.name,
+              round: tableData.round,
+              phase: tableData.phase,
+              diplomacyFromName,
+            });
+
+            recentReminders.push({
+              id: `rem_${Date.now()}`,
+              to: targetEmail,
+              username: targetUsername,
+              tableNumber: tableData.tableNumber || resolvedTableId,
+              seat,
+              round: tableData.round,
+              phase: tableData.phase,
+              sentAt: Date.now(),
+              manual: true,
+              success: mailRes.success,
+            });
+
+            res.statusCode = mailRes.success ? 200 : 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                success: mailRes.success,
+                mock: Boolean((mailRes as any).mock),
+                email: targetEmail,
+                username: targetUsername,
+                messageId: (mailRes as any).messageId,
+                error: (mailRes as any).error,
+              })
+            );
           } catch (err: any) {
             res.statusCode = 500;
             res.setHeader('Content-Type', 'application/json');
@@ -1538,26 +1692,10 @@ function tableStoragePlugin(): Plugin {
                   ? data.players.find((p: any) => p.id === data.pendingDiplomacyProposal.initiatorId)?.name || 'Another Commander'
                   : undefined;
 
-                let targetEmail = targetMember?.email;
-                let targetUserId = targetMember?.userId;
-                let targetUsername = targetMember?.username || targetPlayer?.name || `Commander ${targetSeat + 1}`;
-                let emailNotifications = targetMember?.emailNotifications !== false;
-
-                // Look up user account if email not directly on member
-                if (targetUserId) {
-                  try {
-                    const files = fs.readdirSync(USERS_DIR).filter((f) => f.endsWith('.json'));
-                    for (const f of files) {
-                      const u = JSON.parse(fs.readFileSync(path.join(USERS_DIR, f), 'utf-8'));
-                      if (u.id === targetUserId) {
-                        if (!targetEmail) targetEmail = u.email;
-                        if (typeof u.emailNotifications === 'boolean') emailNotifications = u.emailNotifications;
-                        if (u.username) targetUsername = u.username;
-                        break;
-                      }
-                    }
-                  } catch {}
-                }
+                const { targetEmail, targetUserId, targetUsername, emailNotifications } = resolveMemberContact(
+                  targetMember,
+                  targetPlayer?.name || `Commander ${targetSeat + 1}`
+                );
 
                 if (targetEmail && emailNotifications) {
                   const online = isUserOnline(targetUserId, tableId);
