@@ -195,6 +195,20 @@ function tableStoragePlugin(): Plugin {
     return false;
   }
 
+  function buildOnlineByUserId(tableId?: string | null): Record<string, boolean> {
+    const result: Record<string, boolean> = {};
+    if (!tableId) return result;
+    const found = findTableByParam(tableId);
+    const resolvedTableId = found?.tableData?.id || tableId;
+    const members = Array.isArray(found?.tableData?.members) ? found.tableData.members : [];
+    for (const m of members) {
+      if (m && m.userId) {
+        result[m.userId] = isUserOnline(m.userId, resolvedTableId);
+      }
+    }
+    return result;
+  }
+
   async function sendTurnReminderEmail({
     toEmail,
     username,
@@ -526,7 +540,13 @@ function tableStoragePlugin(): Plugin {
           }
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
-          res.end(JSON.stringify({ success: true, isOnline: true }));
+          res.end(
+            JSON.stringify({
+              success: true,
+              isOnline: true,
+              onlineByUserId: buildOnlineByUserId(tableId),
+            })
+          );
         } catch {
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');
@@ -546,6 +566,18 @@ function tableStoragePlugin(): Plugin {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'application/json');
       res.end(JSON.stringify({ success: true, isOnline: online, lastSeen: userId ? userPresence.get(userId) || null : null }));
+      return;
+    }
+
+    // Presence 3: Batch table member online status
+    if (urlPath === '/api/presence/table' && req.method === 'GET') {
+      const qIndex = rawUrl.indexOf('?');
+      const params = new URLSearchParams(qIndex >= 0 ? rawUrl.substring(qIndex) : '');
+      const tableId = params.get('tableId');
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-store');
+      res.end(JSON.stringify({ success: true, onlineByUserId: buildOnlineByUserId(tableId) }));
       return;
     }
 

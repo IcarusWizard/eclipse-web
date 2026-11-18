@@ -27868,6 +27868,113 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       );
       expect(boardHtml).toContain('👑 1st');
     });
+
+    it('278. renders full circle for online players and eclipse symbol for offline players in Header, PlayerBoard, and TableWaitingRoom', async () => {
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { Header } = await import('../../components/layout/Header');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { TableWaitingRoom } = await import('../../components/lobby/TableWaitingRoom');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { isPlayerSeatOnline } = await import('../../components/common/PlayerPresenceIcon');
+
+      const game = createInitialGame(2, ['terran_federation', 'orion_hegemony']);
+      game.isLocalGame = false;
+      game.members = [
+        { userId: 'u_online', username: 'Alice', name: 'Alice', role: 'user', seat: 0, joinedAt: 1000 },
+        { userId: 'u_offline', username: 'Bob', name: 'Bob', role: 'user', seat: 1, joinedAt: 1001 },
+      ];
+      const onlineByUserId = { u_online: true, u_offline: false };
+
+      expect(
+        isPlayerSeatOnline({
+          isLocalGame: false,
+          seatOccupant: game.members[0],
+          currentUserId: 'viewer_other',
+          onlineByUserId,
+        })
+      ).toBe(true);
+      expect(
+        isPlayerSeatOnline({
+          isLocalGame: false,
+          seatOccupant: game.members[1],
+          currentUserId: 'viewer_other',
+          onlineByUserId,
+        })
+      ).toBe(false);
+      // Local games & AI bots stay online
+      expect(
+        isPlayerSeatOnline({ isLocalGame: true, seatOccupant: null, onlineByUserId })
+      ).toBe(true);
+      expect(
+        isPlayerSeatOnline({ isLocalGame: false, isBot: true, seatOccupant: null, onlineByUserId })
+      ).toBe(true);
+
+      const headerHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(Header, {
+            state: game,
+            currentUser: { id: 'u_online', username: 'Alice', name: 'Alice', role: 'user', createdAt: 0, lastActiveAt: 0 },
+            currentSeat: 0,
+            selectedViewIndex: 0,
+            onlineByUserId,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onOpenGallery: () => {},
+          })
+        )
+      );
+      expect(headerHtml).toContain(`data-testid="header-presence-${game.players[0]!.id}"`);
+      expect(headerHtml).toContain(`data-presence="online"`);
+      expect(headerHtml).toContain(`data-testid="header-presence-${game.players[1]!.id}"`);
+      expect(headerHtml).toContain(`data-presence="offline"`);
+      expect(headerHtml).toContain('• Online');
+      expect(headerHtml).toContain('• Offline');
+
+      const offlineBoardHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PlayerBoard, {
+            player: game.players[1]!,
+            isActive: false,
+            sectors: game.sectors,
+            allPlayers: game.players,
+            isLocalGame: false,
+            members: game.members,
+            currentUserId: 'u_online',
+            onlineByUserId,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(offlineBoardHtml).toContain(`data-testid="board-presence-${game.players[1]!.id}"`);
+      expect(offlineBoardHtml).toContain('data-presence="offline"');
+
+      const waitingHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(TableWaitingRoom, {
+            state: game,
+            currentSeat: 0,
+            currentUser: { id: 'u_online', username: 'Alice', name: 'Alice', role: 'user', createdAt: 0, lastActiveAt: 0 },
+            onlineByUserId,
+            onStartGame: () => {},
+            onClaimSeat: () => {},
+            onReturnToLobby: () => {},
+          })
+        )
+      );
+      expect(waitingHtml).toContain('data-testid="waiting-presence-0"');
+      expect(waitingHtml).toContain('data-presence="online"');
+      expect(waitingHtml).toContain('data-testid="waiting-presence-1"');
+      expect(waitingHtml).toContain('data-presence="offline"');
+    });
   });
 });
 

@@ -1835,6 +1835,47 @@ export async function fetchServerAppVersion(): Promise<AppVersionInfo | null> {
 }
 
 /**
+ * Sends a presence heartbeat for the signed-in user and returns online status map for table members.
+ */
+export async function pingTablePresence(
+  userId: string,
+  tableId: string
+): Promise<Record<string, boolean> | null> {
+  if (!canPerformServerFetch() || !userId || !tableId) return null;
+  try {
+    const res = await fetch(resolveApiUrl('/api/presence'), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ userId, tableId }),
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (data && data.success && data.onlineByUserId && typeof data.onlineByUserId === 'object') {
+      return data.onlineByUserId as Record<string, boolean>;
+    }
+  } catch {}
+  return null;
+}
+
+/**
+ * Fetches current online presence map for all members of a table (read-only, safe for guests/spectators).
+ */
+export async function fetchTablePresence(tableId: string): Promise<Record<string, boolean> | null> {
+  if (!canPerformServerFetch() || !tableId) return null;
+  try {
+    const res = await fetch(resolveApiUrl(`/api/presence/table?tableId=${encodeURIComponent(tableId)}&_t=${Date.now()}`), {
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (data && data.success && data.onlineByUserId && typeof data.onlineByUserId === 'object') {
+      return data.onlineByUserId as Record<string, boolean>;
+    }
+  } catch {}
+  return null;
+}
+
+/**
  * Vacates a user's seat and detaches them from the table members list.
  */
 export async function leaveTable(

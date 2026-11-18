@@ -95,6 +95,8 @@ import {
   deleteSavedTable,
   getTableOccupiedSeats,
   leaveTable,
+  pingTablePresence,
+  fetchTablePresence,
 } from './engine/rules/persistence';
 import {
   isClientOutdated,
@@ -1010,25 +1012,31 @@ const AppContent: React.FC = () => {
     return unsubscribe;
   }, [inGame, state.id]);
 
-  // Active Player Presence Heartbeat (pings server every 20s while tab is open)
+  const [onlineByUserId, setOnlineByUserId] = useState<Record<string, boolean> | undefined>(undefined);
+
+  // Active Player Presence Heartbeat (pings server every 20s while tab is open and syncs table member online map)
   useEffect(() => {
-    if (!inGame || !currentUser || currentUser.role === 'guest' || (state as any)?.isLocalGame) return;
-    const sendPing = () => {
-      if (typeof fetch !== 'undefined') {
-        fetch('/api/presence', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: currentUser.id,
-            tableId: state.id,
-          }),
-        }).catch(() => {});
+    if (!inGame || !state.id || (state as any)?.isLocalGame) {
+      setOnlineByUserId(undefined);
+      return;
+    }
+    let cancelled = false;
+    const syncPresence = async () => {
+      const nextMap =
+        currentUser && currentUser.role !== 'guest'
+          ? await pingTablePresence(currentUser.id, state.id)
+          : await fetchTablePresence(state.id);
+      if (!cancelled && nextMap) {
+        setOnlineByUserId(nextMap);
       }
     };
-    sendPing();
-    const interval = setInterval(sendPing, 20000);
-    return () => clearInterval(interval);
-  }, [inGame, currentUser?.id, state.id, (state as any)?.isLocalGame]);
+    syncPresence();
+    const interval = setInterval(syncPresence, 20000);
+    return () => {
+      cancelled = true;
+      clearInterval(interval);
+    };
+  }, [inGame, currentUser?.id, currentUser?.role, state.id, (state as any)?.isLocalGame]);
 
   const handleStartNewGameFromLobby = (
     playerCount: number,
@@ -3410,6 +3418,7 @@ const AppContent: React.FC = () => {
           onOpenCombatSimulator={() => setIsCombatSimulatorOpen(true)}
           onUpdateState={(remoteState) => setState(remoteState)}
           onOpenLogin={() => setIsUserModalOpen(true)}
+          onlineByUserId={!state.isLocalGame ? onlineByUserId : undefined}
         />
         {renderUserLoginModal()}
         <GalacticGalleryModal
@@ -3456,6 +3465,7 @@ const AppContent: React.FC = () => {
         state={state}
         selectedViewIndex={selectedViewIndex}
         onSelectActiveViewPlayer={(idx) => setSelectedViewIndex(idx)}
+        onlineByUserId={!state.isLocalGame ? onlineByUserId : undefined}
         onNewGame={() => setIsNewGameOpen(true)}
         onOpenTechTray={() => setIsTechMarketOpen(true)}
         onOpenPlayerBoard={() => setIsPhysicalBoardOpen(true)}
@@ -3650,6 +3660,10 @@ const AppContent: React.FC = () => {
             onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
             minorSpeciesSupply={state.minorSpeciesSupply}
             hasMinorSpeciesExpansion={Boolean(state.expansions?.includes('minor_species'))}
+            isLocalGame={Boolean(state.isLocalGame)}
+            members={state.members}
+            currentUserId={currentUser?.id}
+            onlineByUserId={!state.isLocalGame ? onlineByUserId : undefined}
           />
         </div>
 

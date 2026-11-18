@@ -18,6 +18,7 @@ import {
 import { UserSession } from '../../engine/types/user';
 import { UserLoginModal } from '../auth/UserLoginModal';
 import { LanguageSwitcher } from '../common/LanguageSwitcher';
+import { PlayerPresenceIcon, isPlayerSeatOnline } from '../common/PlayerPresenceIcon';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateGamePhase } from '../../i18n/catalogTranslations';
 import {
@@ -67,6 +68,7 @@ interface HeaderProps {
   currentSeat?: number | 'all' | 'spectator';
   onChangeSeat?: (seat: number | 'all' | 'spectator') => void;
   initialDrawerOpen?: boolean;
+  onlineByUserId?: Record<string, boolean>;
 }
 
 export const Header: React.FC<HeaderProps> = ({
@@ -91,6 +93,7 @@ export const Header: React.FC<HeaderProps> = ({
   currentSeat = 'all',
   onChangeSeat,
   initialDrawerOpen = false,
+  onlineByUserId,
 }) => {
   const { language, l } = useLanguage();
   const [isDrawerOpen, setIsDrawerOpen] = useState(initialDrawerOpen);
@@ -278,6 +281,14 @@ export const Header: React.FC<HeaderProps> = ({
               const occupantTag = seatOccupant
                 ? ` [Commander: ${seatOccupant.username || seatOccupant.name}]`
                 : '';
+              const isSeatOnline = isPlayerSeatOnline({
+                isLocalGame: state.isLocalGame,
+                isBot: p.isBot,
+                seatOccupant,
+                currentUserId: currentUser?.id,
+                onlineByUserId,
+              });
+              const presenceTag = state.isLocalGame || p.isBot ? '' : (isSeatOnline ? ' • Online' : ' • Offline');
               const displayName = getPlayerDisplayName(p);
               const isPassed = Boolean(p.hasPassed || passIdx !== -1);
               const isNextStartPlayer = Boolean(
@@ -287,8 +298,8 @@ export const Header: React.FC<HeaderProps> = ({
               const traitorTag = isTraitor ? ' [TRAITOR]' : '';
               const passedTag = isPassed ? (isNextStartPlayer ? ' [PASSED 1st • NEXT START]' : ' [PASSED]') : '';
               const titleText = isSecretRep
-                ? `${displayName}${occupantTag}${traitorTag}${passedTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
-                : `${displayName}${occupantTag}${traitorTag}${passedTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
+                ? `${displayName}${occupantTag}${traitorTag}${passedTag}${presenceTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
+                : `${displayName}${occupantTag}${traitorTag}${passedTag}${presenceTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
 
               return (
                 <button
@@ -301,9 +312,12 @@ export const Header: React.FC<HeaderProps> = ({
                   } ${isPassed ? 'opacity-45' : ''}`}
                   title={titleText}
                 >
-                  <div
-                    className="w-2.5 h-2.5 rounded-full shrink-0"
-                    style={{ backgroundColor: p.color }}
+                  <PlayerPresenceIcon
+                    color={p.color}
+                    isOnline={isSeatOnline}
+                    size={11}
+                    title={isSeatOnline ? l('Online', '在线') : l('Offline (Eclipse)', '离线（蚀）')}
+                    testId={`header-presence-${p.id}`}
                   />
                   <span className={`hidden sm:inline ${isPassed ? 'text-slate-500 line-through decoration-slate-500/70' : ''}`}>
                     {getPlayerDisplayName(p, { short: true })}

@@ -57,6 +57,7 @@ import {
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { LanguageSwitcher } from '../common/LanguageSwitcher';
+import { PlayerPresenceIcon, isPlayerSeatOnline } from '../common/PlayerPresenceIcon';
 import {
   translateFactionName,
   translateFactionTrait,
@@ -76,6 +77,7 @@ export interface TableWaitingRoomProps {
   onCancelTable?: () => void;
   onLeaveTable?: () => void;
   onOpenLogin?: () => void;
+  onlineByUserId?: Record<string, boolean>;
 }
 
 export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
@@ -91,6 +93,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
   onCancelTable,
   onLeaveTable,
   onOpenLogin,
+  onlineByUserId,
 }) => {
   const { language, l } = useLanguage();
   const [copied, setCopied] = useState<boolean>(false);
@@ -645,10 +648,24 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
 
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2">
-                        <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0 shadow-sm border border-slate-600/80"
-                          style={{ backgroundColor: player?.faction?.defaultColor || '#38bdf8' }}
-                        />
+                        {(() => {
+                          const seatOnline = isPlayerSeatOnline({
+                            isLocalGame: state.isLocalGame,
+                            isBot: player?.isBot,
+                            seatOccupant: occupant,
+                            currentUserId: currentUser?.id,
+                            onlineByUserId,
+                          });
+                          return (
+                            <PlayerPresenceIcon
+                              color={player?.faction?.defaultColor || '#38bdf8'}
+                              isOnline={seatOnline}
+                              size={11}
+                              title={seatOnline ? l('Online', '在线') : l('Offline (Eclipse)', '离线（蚀）')}
+                              testId={`waiting-presence-${sIdx}`}
+                            />
+                          );
+                        })()}
                         <span className="text-sm font-bold text-white truncate">
                           {isOccupied ? occupant?.username || occupant?.name : l('Waiting for commander...', '等待指挥官入座...')}
                         </span>

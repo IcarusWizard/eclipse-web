@@ -28,6 +28,7 @@ import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 import { ALL_MINOR_SPECIES_TILES, MinorSpeciesTile } from '../../engine/rules/minorSpecies';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { ShipTypeIcon } from '../common/ShipTypeIcon';
+import { PlayerPresenceIcon, isPlayerSeatOnline } from '../common/PlayerPresenceIcon';
 import {
   translateFactionName,
   translateFactionTrait,
@@ -59,6 +60,10 @@ interface PlayerBoardProps {
   onOpenMinorSpecies?: () => void;
   minorSpeciesSupply?: any[];
   hasMinorSpeciesExpansion?: boolean;
+  isLocalGame?: boolean;
+  members?: any[];
+  currentUserId?: string;
+  onlineByUserId?: Record<string, boolean>;
 }
 
 export const PlayerBoard: React.FC<PlayerBoardProps> = ({
@@ -82,6 +87,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   onOpenMinorSpecies,
   minorSpeciesSupply = [],
   hasMinorSpeciesExpansion = false,
+  isLocalGame = false,
+  members = [],
+  currentUserId,
+  onlineByUserId,
 }) => {
   const { language, l } = useLanguage();
   const [isCollapsed, setIsCollapsed] = useState<boolean>(() => {
@@ -115,6 +124,15 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
     `Traitor Tile: ${traitorVpPenalty} VP penalty. Diplomacy broken.`,
     `背叛者板块：${traitorVpPenalty} VP 惩罚。外交已破裂。`
   );
+  const playerSeatIndex = allPlayers.findIndex((p) => p.id === player.id);
+  const playerSeatOccupant = playerSeatIndex >= 0 ? (members || []).find((m: any) => m?.seat === playerSeatIndex) : null;
+  const isBoardPlayerOnline = isPlayerSeatOnline({
+    isLocalGame,
+    isBot: player.isBot,
+    seatOccupant: playerSeatOccupant,
+    currentUserId,
+    onlineByUserId,
+  });
 
   // Collapsed compact mini-HUD
   if (isCollapsed) {
@@ -129,9 +147,12 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         <div className="flex items-center justify-between gap-2">
           {/* Faction dot & Player Name */}
           <div className="flex items-center gap-2 min-w-0">
-            <div
-              className="w-3 h-3 rounded-full ring-2 ring-white/20 shrink-0"
-              style={{ backgroundColor: player.color }}
+            <PlayerPresenceIcon
+              color={player.color}
+              isOnline={isBoardPlayerOnline}
+              size={12}
+              title={isBoardPlayerOnline ? l('Online', '在线') : l('Offline (Eclipse)', '离线（蚀）')}
+              testId={`board-presence-${player.id}`}
             />
             <span
               className="font-bold text-xs text-slate-100 font-display truncate"
@@ -375,9 +396,12 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
       {/* Player Header */}
       <div className="flex items-center justify-between border-b border-slate-800 pb-2.5 mb-2.5">
         <div className="flex items-center gap-2 min-w-0">
-          <div
-            className="w-3.5 h-3.5 rounded-full ring-2 ring-white/20 shrink-0"
-            style={{ backgroundColor: player.color }}
+          <PlayerPresenceIcon
+            color={player.color}
+            isOnline={isBoardPlayerOnline}
+            size={14}
+            title={isBoardPlayerOnline ? l('Online', '在线') : l('Offline (Eclipse)', '离线（蚀）')}
+            testId={`board-presence-${player.id}`}
           />
           <div className="min-w-0">
             <div className="font-bold text-xs sm:text-sm text-slate-100 flex items-center gap-1.5 font-display truncate">
