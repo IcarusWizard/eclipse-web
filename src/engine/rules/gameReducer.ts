@@ -414,6 +414,143 @@ export function canExchangeAmbassadors(
 }
 
 /**
+ * Returns IDs of allied players whose ship or Influence Disc (control) shares a sector
+ * with `player`'s ships at the end of movement (Act of Aggression, Rulebook p. 15).
+ */
+export function getMoveAggressionAllyIds(sectors: SectorTile[], player: PlayerState): string[] {
+  const playerSectorsWithShips = sectors.filter((s) => s.ships.some((sh) => sh.ownerId === player.id));
+  const currentAllies = [...(player.ambassadorTiles || [])].filter(
+    (id) => !id.startsWith('minor_species_') && id !== player.id
+  );
+  const broken: string[] = [];
+
+  for (const allyId of currentAllies) {
+    const endedInAllySpace = playerSectorsWithShips.some((s) => {
+      const allyControls = s.discOwner === allyId;
+      const allyHasShips = s.isNebula
+        ? s.ships.some(
+            (mySh) =>
+              mySh.ownerId === player.id &&
+              s.ships.some(
+                (allySh) => allySh.ownerId === allyId && (allySh.subsector ?? 1) === (mySh.subsector ?? 1)
+              )
+          )
+        : s.ships.some((sh) => sh.ownerId === allyId);
+      return allyControls || allyHasShips;
+    });
+    if (endedInAllySpace) {
+      broken.push(allyId);
+    }
+  }
+  return broken;
+}
+
+function findOpenPopulationTrack(
+  player: PlayerState,
+  preferred?: 'money' | 'science' | 'material'
+): 'money' | 'science' | 'material' | null {
+  const order: Array<'money' | 'science' | 'material'> = preferred
+    ? [preferred, 'money', 'science', 'material']
+    : ['money', 'science', 'material'];
+  for (const track of order) {
+    if (player.population[track].cubesOnBoard < 11) {
+      return track;
+    }
+  }
+  return null;
+}
+
+function resolveAlliancesBreak(
+  state: GameState,
+  aggressor: PlayerState,
+  allyIds: string[],
+  addLog: (message: string, type?: GameLogEntry['type']) => void,
+  deferCubeSelection: boolean
+): void {
+  const pendingAggressorReturns: PendingAmbassadorCubeReturn[] = [];
+  const pendingAllyReturns: PendingAmbassadorCubeReturn[] = [];
+
+  for (const allyId of allyIds) {
+    if (!aggressor.ambassadorTiles?.includes(allyId)) continue;
+    const allyPlayer = state.players.find((p) => p.id === allyId);
+
+    aggressor.ambassadorTiles = (aggressor.ambassadorTiles || []).filter((id) => id !== allyId);
+    const aggPreferred = aggressor.ambassadorCubes?.[allyId];
+    if (aggressor.ambassadorCubes?.[allyId]) {
+      delete aggressor.ambassadorCubes[allyId];
+    }
+
+    let allyPreferred: 'money' | 'science' | 'material' | undefined;
+    if (allyPlayer) {
+      allyPlayer.ambassadorTiles = (allyPlayer.ambassadorTiles || []).filter((id) => id !== aggressor.id);
+      allyPreferred = allyPlayer.ambassadorCubes?.[aggressor.id];
+      if (allyPlayer.ambassadorCubes?.[aggressor.id]) {
+        delete allyPlayer.ambassadorCubes[aggressor.id];
+      }
+    }
+
+    state.traitorPlayerId = aggressor.id;
+    addLog(
+      `⚔️ ${aggressor.name} ended movement in allied space of ${allyPlayer?.name || allyId}, breaking the alliance and claiming the Traitor Tile (-2 VP)!`,
+      'combat'
+    );
+
+    if (deferCubeSelection) {
+      if (findOpenPopulationTrack(aggressor, aggPreferred) !== null) {
+        pendingAggressorReturns.push({
+          playerId: aggressor.id,
+          formerAllyId: allyId,
+          formerAllyName: allyPlayer?.name || allyId,
+          preferredTrack: aggPreferred,
+        });
+      }
+      if (allyPlayer && findOpenPopulationTrack(allyPlayer, allyPreferred) !== null) {
+        pendingAllyReturns.push({
+          playerId: allyPlayer.id,
+          formerAllyId: aggressor.id,
+          formerAllyName: aggressor.name,
+          preferredTrack: allyPreferred,
+        });
+      }
+    } else {
+      const aggTrack = findOpenPopulationTrack(aggressor, aggPreferred);
+      if (aggTrack) {
+        aggressor.population[aggTrack].cubesOnBoard = Math.min(11, aggressor.population[aggTrack].cubesOnBoard + 1);
+      }
+      if (allyPlayer) {
+        const allyTrack = findOpenPopulationTrack(allyPlayer, allyPreferred);
+        if (allyTrack) {
+          allyPlayer.population[allyTrack].cubesOnBoard = Math.min(11, allyPlayer.population[allyTrack].cubesOnBoard + 1);
+        }
+      }
+    }
+  }
+
+  if (deferCubeSelection && (pendingAggressorReturns.length > 0 || pendingAllyReturns.length > 0)) {
+    state.pendingAmbassadorCubeReturns = [
+      ...(state.pendingAmbassadorCubeReturns || []),
+      ...pendingAggressorReturns,
+      ...pendingAllyReturns,
+    ];
+  }
+}
+
+function flushPendingAmbassadorCubeReturns(state: GameState): void {
+  if (!state.pendingAmbassadorCubeReturns || state.pendingAmbassadorCubeReturns.length === 0) {
+    return;
+  }
+  for (const entry of state.pendingAmbassadorCubeReturns) {
+    const p = state.players.find((pl) => pl.id === entry.playerId);
+    if (!p) continue;
+    const openTrack = findOpenPopulationTrack(p, entry.preferredTrack);
+    if (openTrack) {
+      p.population[openTrack].cubesOnBoard = Math.min(11, p.population[openTrack].cubesOnBoard + 1);
+    }
+  }
+  state.pendingAmbassadorCubeReturns = null;
+}
+
+/**
  * Computes the geometric clockwise player seating ring around (0, 0) from homeworld sector coordinates
  * when Warped Universe is active without the 'turn_order' expansion.
  * Returns null if 'turn_order' is enabled or if homeworld coordinates are unavailable.
@@ -746,6 +883,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
+      action.type !== 'RETURN_AMBASSADOR_CUBE' &&
       action.type !== 'READY_FOR_UPKEEP' &&
       action.type !== 'SET_AUTO_PASS' &&
       action.type !== 'SET_PASS_IN_ADVANCE' &&
@@ -781,6 +919,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
+      action.type !== 'RETURN_AMBASSADOR_CUBE' &&
       action.type !== 'READY_FOR_UPKEEP' &&
       action.type !== 'SET_AUTO_PASS' &&
       action.type !== 'SET_PASS_IN_ADVANCE' &&
@@ -853,6 +992,21 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         error: 'Must resolve current exploration (discovery tile & sector control) before taking another action.',
       };
     }
+  }
+
+  // Pending Ambassador cube return choice: that player must pick which track receives their cube before taking other actions
+  if (
+    state.pendingAmbassadorCubeReturns?.some((r) => r.playerId === action.playerId) &&
+    action.type !== 'RETURN_AMBASSADOR_CUBE' &&
+    action.type !== 'RESPOND_DIPLOMACY' &&
+    action.type !== 'SET_AUTO_PASS' &&
+    action.type !== 'SET_PASS_IN_ADVANCE' &&
+    action.type !== 'SET_COMBAT_AUTO_RESOLVE'
+  ) {
+    return {
+      valid: false,
+      error: 'Please choose which Population Track to return your Ambassador cube to before taking another action.',
+    };
   }
 
   // Reaction constraints for passed players: can only take Reaction actions (Build 1, Move 1, Upgrade 1) or Pass
@@ -1892,18 +2046,28 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
 
     case 'BETRAY_ALLIANCE': {
-      if (state.phase && state.phase !== 'ACTION_PHASE') {
-        return { valid: false, error: 'Diplomatic relations can only be betrayed during the Action Phase.' };
+      return {
+        valid: false,
+        error:
+          'Diplomatic relations cannot be broken manually with a button. Under official rules, you only break an alliance by ending a Move action with your ship(s) in a sector containing that ally\'s ship or Influence Disc (control).',
+      };
+    }
+
+    case 'RETURN_AMBASSADOR_CUBE': {
+      const pending = state.pendingAmbassadorCubeReturns?.find(
+        (r) => r.playerId === action.playerId && r.formerAllyId === action.formerAllyId
+      );
+      if (!pending) {
+        return { valid: false, error: 'No pending Ambassador cube return found for this player.' };
       }
-      if (!action.targetPlayerId) {
-        return { valid: false, error: 'Must specify a target ally to betray.' };
+      if (action.resource !== 'money' && action.resource !== 'science' && action.resource !== 'material') {
+        return { valid: false, error: 'Invalid population track resource.' };
       }
-      const targetPlayer = state.players.find((p) => p.id === action.targetPlayerId);
-      if (!targetPlayer) {
-        return { valid: false, error: 'Target player not found.' };
-      }
-      if (!player.ambassadorTiles?.includes(action.targetPlayerId)) {
-        return { valid: false, error: `You do not have an active alliance with ${targetPlayer.name}.` };
+      if (player.population[action.resource].cubesOnBoard >= 11) {
+        return {
+          valid: false,
+          error: `Your ${action.resource.toUpperCase()} population track is already full (11 cubes). Please pick another track.`,
+        };
       }
       return { valid: true };
     }
@@ -2789,7 +2953,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     action.type !== 'REROLL_COMBAT_DIE' &&
     action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
     action.type !== 'CLAIM_MINOR_SPECIES' &&
-    action.type !== 'BETRAY_ALLIANCE'
+    action.type !== 'BETRAY_ALLIANCE' &&
+    action.type !== 'RETURN_AMBASSADOR_CUBE'
   ) {
     newState.consecutivePasses = 0;
   }
@@ -3464,43 +3629,12 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         }
       }
 
-      // Check if player ended movement in allied player's territory (Act of Aggression, Rulebook p. 15)
-      // "An Act Of Aggression is defined as having any number of your Ships in a Sector where the other player
-      // has a Ship or Control at the end of your Action. Moving through an opponent's Sectors is not an Act of Aggression
-      // if your Ships remain Unpinned!"
-      const playerSectorsWithShips = newState.sectors.filter((s) => s.ships.some((sh) => sh.ownerId === player.id));
-      const currentAllies = [...(player.ambassadorTiles || [])].filter((id) => id.startsWith('player_') && id !== player.id);
-
-      for (const allyId of currentAllies) {
-        const endedInAllySpace = playerSectorsWithShips.some((s) => {
-          const allyControls = s.discOwner === allyId;
-          const allyHasShips = s.ships.some((sh) => sh.ownerId === allyId);
-          const allyHasPlanet = s.planets.some((p) => p.colonizedBy === allyId);
-          return allyControls || allyHasShips || allyHasPlanet;
-        });
-
-        if (endedInAllySpace) {
-          const allyPlayer = newState.players.find((p) => p.id === allyId);
-          player.ambassadorTiles = (player.ambassadorTiles || []).filter((id) => id !== allyId);
-          if (player.ambassadorCubes?.[allyId]) {
-            const pRes = player.ambassadorCubes[allyId];
-            player.population[pRes].cubesOnBoard = Math.min(11, player.population[pRes].cubesOnBoard + 1);
-            delete player.ambassadorCubes[allyId];
-          }
-          if (allyPlayer) {
-            allyPlayer.ambassadorTiles = (allyPlayer.ambassadorTiles || []).filter((id) => id !== player.id);
-            if (allyPlayer.ambassadorCubes?.[player.id]) {
-              const allyRes = allyPlayer.ambassadorCubes[player.id];
-              allyPlayer.population[allyRes].cubesOnBoard = Math.min(11, allyPlayer.population[allyRes].cubesOnBoard + 1);
-              delete allyPlayer.ambassadorCubes[player.id];
-            }
-          }
-          newState.traitorPlayerId = player.id;
-          addLog(
-            `⚔️ ${player.name} ended movement in allied space of ${allyPlayer?.name || allyId}, breaking the alliance and claiming the Traitor Tile (-2 VP)!`,
-            'combat'
-          );
-        }
+      // Check if player ended movement in allied player's territory (Act of Aggression, Rulebook p. 15).
+      // When action.requireConfirmation is true (UI flow), defer breaking the alliance & returning cubes
+      // until the player confirms & ends their Move action in CONFIRM_TURN_ACTION.
+      const aggressionAllyIds = getMoveAggressionAllyIds(newState.sectors, player);
+      if (!action.requireConfirmation && aggressionAllyIds.length > 0) {
+        resolveAlliancesBreak(newState, player, aggressionAllyIds, addLog, false);
       }
       break;
     }
@@ -4962,8 +5096,41 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         timestamp: Date.now(),
       };
 
+      // Resolve any deferred Act of Aggression alliance break after the Move action is confirmed
+      if (conf.betrayalAllyIds && conf.betrayalAllyIds.length > 0 && actingPlayer) {
+        resolveAlliancesBreak(newState, actingPlayer, conf.betrayalAllyIds, addLog, true);
+      }
+
       // Advance turn or proceed to combat phase if all passed consecutively (with auto-pass reactions)
       advanceTurnOrAutoPass(newState);
+      return { success: true, newState };
+    }
+
+    case 'RETURN_AMBASSADOR_CUBE': {
+      const idx = (newState.pendingAmbassadorCubeReturns || []).findIndex(
+        (r) => r.playerId === player.id && r.formerAllyId === action.formerAllyId
+      );
+      if (idx < 0) {
+        return { success: false, newState: state, error: 'No pending Ambassador cube return found.' };
+      }
+      const entry = newState.pendingAmbassadorCubeReturns![idx]!;
+      if (player.population[action.resource].cubesOnBoard >= 11) {
+        return {
+          success: false,
+          newState: state,
+          error: `Your ${action.resource.toUpperCase()} population track is already full.`,
+        };
+      }
+      player.population[action.resource].cubesOnBoard = Math.min(
+        11,
+        player.population[action.resource].cubesOnBoard + 1
+      );
+      const remaining = (newState.pendingAmbassadorCubeReturns || []).filter((_, i) => i !== idx);
+      newState.pendingAmbassadorCubeReturns = remaining.length > 0 ? remaining : null;
+      addLog(
+        `📦 ${player.name} returned an Ambassador cube (from former alliance with ${entry.formerAllyName}) to their ${action.resource.toUpperCase()} track.`,
+        'economy'
+      );
       return { success: true, newState };
     }
 
@@ -5252,12 +5419,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     }
 
     case 'SET_AUTO_PASS': {
+      // Private player toggle: intentionally omitted from public Chronicle (state.log) so opponents cannot infer reaction plans.
       const autoPassAct = action as SetAutoPassAction;
       player.autoPassReactions = autoPassAct.enabled;
-      addLog(
-        `${player.name} turned Auto-Pass Reactions ${autoPassAct.enabled ? 'ON' : 'OFF'}.`,
-        'system'
-      );
       // If enabled, and it is currently this player's reaction turn, and they have already passed and not invaded:
       const isPlayerTurn =
         newState.phase === 'ACTION_PHASE' &&
@@ -5272,7 +5436,6 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       ) {
         if (isPlayerInvaded(newState, player.id)) {
           player.autoPassReactions = false;
-          addLog(`⚠️ Auto-pass cannot be activated: enemy fleet invasion detected!`, 'system');
         } else {
           advanceTurnOrAutoPass(newState);
         }
@@ -5281,12 +5444,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     }
 
     case 'SET_PASS_IN_ADVANCE': {
+      // Private player toggle: intentionally omitted from public Chronicle (state.log) so opponents cannot infer passing plans.
       const passInAdvAct = action as SetPassInAdvanceAction;
       player.passInAdvance = passInAdvAct.enabled;
-      addLog(
-        `${player.name} ${passInAdvAct.enabled ? 'enabled Pass in Advance' : 'cancelled Pass in Advance'}.`,
-        'system'
-      );
       const isPlayerTurn =
         newState.phase === 'ACTION_PHASE' &&
         newState.activePlayerIndex === newState.players.findIndex((p) => p.id === player.id);
@@ -5422,6 +5582,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       const exploreAct = action.type === 'EXPLORE' ? (action as ExploreAction) : undefined;
 
+      const moveBetrayalAllyIds =
+        action.type === 'MOVE' ? getMoveAggressionAllyIds(newState.sectors, player) : undefined;
+
       newState.pendingActionConfirmation = {
         actionType: (action.type === 'DISCOVERY_CHOICE' || action.type === 'EXPLORE_CONTROL') ? 'EXPLORE' : action.type,
         playerId: action.playerId,
@@ -5432,6 +5595,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         exploreFromCoord: exploreAct?.fromCoord,
         actionPayload: action,
         influenceRefreshesRemaining: action.type === 'INFLUENCE' ? influenceRefreshesRemaining : undefined,
+        betrayalAllyIds:
+          moveBetrayalAllyIds && moveBetrayalAllyIds.length > 0 ? moveBetrayalAllyIds : undefined,
       };
       return { success: true, newState };
     }
@@ -6565,6 +6730,7 @@ export function transitionToUpkeep(state: GameState, immediate: boolean = false)
 
 export function executeUpkeepCalculations(state: GameState): void {
   state.upkeepReadyPlayers = undefined;
+  flushPendingAmbassadorCubeReturns(state);
 
   for (let i = 0; i < state.players.length; i++) {
     const p = state.players[i]!;

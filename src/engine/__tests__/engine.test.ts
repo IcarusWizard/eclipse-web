@@ -14554,11 +14554,43 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         // All 4 slots are full: max reputation tiles is 2, and reputation track is full
         expect(getMaxReputationTilesForPlayer(hydran)).toBe(2);
 
-        // Betrayal is triggered: Hydran betrays ally1 (the one in amb_only slot 0)
-        const betrayRes = executeAction(gameHydran, {
+        // Standalone manual BETRAY_ALLIANCE action must be rejected under official rules
+        const manualBetrayRes = executeAction(gameHydran, {
           type: 'BETRAY_ALLIANCE',
           playerId: hydran.id,
           targetPlayerId: ally1.id,
+        });
+        expect(manualBetrayRes.success).toBe(false);
+
+        // Betrayal is triggered officially by ending a MOVE in ally1's controlled/ship-occupied sector
+        gameHydran.phase = 'ACTION_PHASE';
+        gameHydran.activePlayerIndex = 0;
+        hydran.influenceTrack.discsOnTrack = Math.max(1, hydran.influenceTrack.discsOnTrack);
+        const hydranSec = gameHydran.sectors.find((s) => s.discOwner === hydran.id)!;
+        const ally1Sec = gameHydran.sectors.find((s) => s.discOwner === ally1.id)!;
+        hydranSec.coord = { q: 1, r: 0 };
+        hydranSec.wormholes = [true, true, true, true, true, true];
+        ally1Sec.coord = { q: 2, r: 0 };
+        ally1Sec.wormholes = [true, true, true, true, true, true];
+        ally1Sec.ships = [];
+        // Remove any conflicting sector at (2, 0) / (1, 0)
+        gameHydran.sectors = gameHydran.sectors.filter(
+          (s) => s.id === hydranSec.id || s.id === ally1Sec.id || (s.coord.q !== 1 && s.coord.q !== 2) || s.coord.r !== 0
+        );
+        const hydranInterceptor = { id: 'hyd_betray_int', ownerId: hydran.id, type: 'interceptor' as const, damage: 0 };
+        hydranSec.ships = [hydranInterceptor];
+
+        const betrayRes = executeAction(gameHydran, {
+          type: 'MOVE',
+          playerId: hydran.id,
+          moves: [
+            {
+              shipId: hydranInterceptor.id,
+              fromSectorId: hydranSec.id,
+              toSectorId: ally1Sec.id,
+              activationIndex: 0,
+            },
+          ],
         });
         expect(betrayRes.success).toBe(true);
 
@@ -14640,7 +14672,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         );
         expect(modal2pHtml).toContain('Diplomatic Relations (Ambassador Exchange) are only allowed in games with 4 or more players');
 
-        // In 4p game with active alliance, shows Allied (+1 VP) and Betray button
+        // In 4p game with active alliance, shows Allied (+1 VP) without a standalone Betray button
         const modal4pHtml = renderToString(
           React.createElement(PhysicalPlayerBoardModal, {
             player: postBetrayHydran,
@@ -14651,11 +14683,10 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
             onSelectPlayer: () => {},
             onOpenBlueprintEditor: () => {},
             onOpenTechMarket: () => {},
-            onBetrayAlliance: () => {},
           })
         );
         expect(modal4pHtml).toContain('Allied (+1 VP)');
-        expect(modal4pHtml).toContain('Betray');
+        expect(modal4pHtml).not.toContain('>Betray<');
       });
 
       it('85. verifies Hotseat function is restricted strictly to administrators across rules and UI', async () => {
@@ -26814,6 +26845,626 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(modalHtml).toContain('admin-revert-previous-turn');
       expect(modalHtml).toContain('Revert Current Turn');
       expect(modalHtml).toContain('Revert Previous Turn');
+    });
+  });
+
+  describe('182. Client Code Version Check & Safe Auto-Reload', () => {
+    it('264. detects stale entryScript or newer server version without interrupting mid-action modals or looping', async () => {
+      const {
+        extractEntryScriptFromHtml,
+        isClientOutdated,
+        canPerformSafeAutoReload,
+        buildCacheBustedReloadUrl,
+      } = await import('../rules/appVersion');
+
+      // 1. Parse hashed bundle script from dist/index.html markup
+      const sampleHtml = '<html><head><script type="module" crossorigin src="/assets/index-Abc123.js"></script></head></html>';
+      expect(extractEntryScriptFromHtml(sampleHtml)).toBe('/assets/index-Abc123.js');
+      expect(extractEntryScriptFromHtml('<script type="module" src="/src/main.tsx"></script>')).toBeNull();
+
+      // 2. Outdated detection: cached old index.html entryScript mismatch OR server version mismatch
+      expect(
+        isClientOutdated(
+          { bootVersion: 'v1', loadedEntryScript: '/assets/index-OLD.js' },
+          { version: 'v1', entryScript: '/assets/index-NEW.js' }
+        )
+      ).toBe(true);
+      expect(
+        isClientOutdated(
+          { bootVersion: 'v1', loadedEntryScript: '/assets/index-NEW.js' },
+          { version: 'v2', entryScript: '/assets/index-NEW.js' }
+        )
+      ).toBe(true);
+      expect(
+        isClientOutdated(
+          { bootVersion: 'v2', loadedEntryScript: '/assets/index-NEW.js' },
+          { version: 'v2', entryScript: '/assets/index-NEW.js' }
+        )
+      ).toBe(false);
+
+      // 3. Safe auto-reload guard: allows clean reload, blocks loops and active mid-action sub-steps
+      const cleanState = createInitialGame(2, ['planta', 'terran_federation']);
+      expect(canPerformSafeAutoReload(cleanState, 'v2', null, false)).toBe(true);
+      expect(canPerformSafeAutoReload(cleanState, 'v2', 'v2', false)).toBe(false); // Prevent reload loop!
+      expect(canPerformSafeAutoReload(cleanState, 'v2', 'v1', true)).toBe(false); // Modal open
+
+      const midDiscovery = {
+        ...cleanState,
+        pendingDiscovery: { sectorId: 's1', discovery: { id: 'd1', name: 'A', description: 'B' }, playerId: 'p1' },
+      };
+      expect(canPerformSafeAutoReload(midDiscovery, 'v2', null, false)).toBe(false);
+
+      const midConfirmation = {
+        ...cleanState,
+        pendingActionConfirmation: {
+          actionType: 'EXPLORE' as const,
+          playerId: 'p1',
+          description: 'Explore',
+          canRevert: true,
+          snapshot: '{}',
+        },
+      };
+      expect(canPerformSafeAutoReload(midConfirmation, 'v2', null, false)).toBe(false);
+
+      // 4. Cache-busting URL preserves ?table & ?seat query params
+      expect(buildCacheBustedReloadUrl('http://localhost:3000/?table=192&seat=2', 'v2')).toBe(
+        'http://localhost:3000/?table=192&seat=2&_v=v2'
+      );
+    });
+  });
+
+  describe('183. Persistent Chat Unread Count Across Refreshes', () => {
+    it('265. remembers viewed chat message count per table in localStorage so unread badge does not reappear after refresh', async () => {
+      const { GameChatDrawer } = await import('../../components/layout/GameChatDrawer');
+      const { renderToString } = await import('react-dom/server');
+      const React = await import('react');
+
+      const messages = [
+        { id: 'c1', senderPlayerId: 'player_2', senderName: 'Bob', text: 'First msg', timestamp: 1000 },
+        { id: 'c2', senderPlayerId: 'player_2', senderName: 'Bob', text: 'Second msg', timestamp: 2000 },
+      ];
+
+      const origWindow = (globalThis as any).window;
+      const store: Record<string, string> = {};
+      (globalThis as any).window = {
+        localStorage: {
+          getItem: (k: string) => (k in store ? store[k]! : null),
+          setItem: (k: string, v: string) => {
+            store[k] = v;
+          },
+          removeItem: (k: string) => {
+            delete store[k];
+          },
+        },
+      };
+
+      try {
+        // Before ever reading -> shows 2 unread messages
+        const beforeHtml = renderToString(
+          React.createElement(GameChatDrawer, {
+            messages,
+            onSendMessage: () => {},
+            currentSenderLabel: 'Alice',
+            currentSenderId: 'player_1',
+            tableId: 'galaxy-192',
+            tableNumber: 192,
+            initialOpen: false,
+          })
+        );
+        expect(beforeHtml).toContain('data-testid="chat-unread-badge"');
+        expect(beforeHtml).toContain('<span>2</span>');
+
+        // After player has read all 2 messages on this table -> refresh hides badge
+        store['eclipse_chat_read_v1:galaxy-192:player_1'] = '2';
+        const afterRefreshHtml = renderToString(
+          React.createElement(GameChatDrawer, {
+            messages,
+            onSendMessage: () => {},
+            currentSenderLabel: 'Alice',
+            currentSenderId: 'player_1',
+            tableId: 'galaxy-192',
+            tableNumber: 192,
+            initialOpen: false,
+          })
+        );
+        expect(afterRefreshHtml).not.toContain('data-testid="chat-unread-badge"');
+
+        // If a 3rd message arrives from Bob while closed -> badge shows only 1 new message
+        const withNewMsg = [
+          ...messages,
+          { id: 'c3', senderPlayerId: 'player_2', senderName: 'Bob', text: 'Third msg', timestamp: 3000 },
+        ];
+        const newMsgHtml = renderToString(
+          React.createElement(GameChatDrawer, {
+            messages: withNewMsg,
+            onSendMessage: () => {},
+            currentSenderLabel: 'Alice',
+            currentSenderId: 'player_1',
+            tableId: 'galaxy-192',
+            tableNumber: 192,
+            initialOpen: false,
+          })
+        );
+        expect(newMsgHtml).toContain('data-testid="chat-unread-badge"');
+        expect(newMsgHtml).toContain('<span>1</span>');
+      } finally {
+        (globalThis as any).window = origWindow;
+      }
+    });
+  });
+
+  describe('184. Official Act of Aggression Diplomacy Breaking Only', () => {
+    it('266. disallows manual betrayal button/action and breaks alliance only when MOVE ends in ally ship or control sector', async () => {
+      const { renderToString } = await import('react-dom/server');
+      const React = await import('react');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { MoveModal } = await import('../../components/actions/MoveModal');
+
+      const game = createInitialGame(4, ['terran_federation', 'planta', 'orion_hegemony', 'mechanema']);
+      game.phase = 'ACTION_PHASE';
+      game.activePlayerIndex = 0;
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+
+      p1.ambassadorTiles = [p2.id];
+      p2.ambassadorTiles = [p1.id];
+      p1.ambassadorCubes = { [p2.id]: 'money' };
+      p2.ambassadorCubes = { [p1.id]: 'science' };
+
+      // 1. Standalone BETRAY_ALLIANCE fails and PlayerBoard omits Betray button
+      expect(executeAction(game, { type: 'BETRAY_ALLIANCE', playerId: p1.id, targetPlayerId: p2.id }).success).toBe(false);
+      const pbHtml = renderToString(
+        React.createElement(PlayerBoard, {
+          player: p1,
+          allPlayers: game.players,
+          sectors: game.sectors,
+          isActive: true,
+        })
+      );
+      expect(pbHtml).toContain('Allied');
+      expect(pbHtml).not.toContain('>Betray<');
+
+      // 2. Setup 3 collinear sectors: secA (p1 speed-2 ship) -> secAlly (p2 control disc, 0 ships) -> secDest (empty)
+      const secA = {
+        id: 'sec_agg_a',
+        sectorNumber: 201,
+        name: 'A',
+        ring: 1 as const,
+        coord: { q: 1, r: 0 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        discOwner: p1.id,
+        ships: [{ id: 'p1_fast_int', ownerId: p1.id, type: 'interceptor' as const, damage: 0 }],
+      };
+      const secAllyControl = {
+        id: 'sec_agg_ally',
+        sectorNumber: 202,
+        name: 'AllyCtrl',
+        ring: 2 as const,
+        coord: { q: 2, r: 0 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        discOwner: p2.id,
+        ships: [],
+      };
+      const secDest = {
+        id: 'sec_agg_dest',
+        sectorNumber: 203,
+        name: 'Dest',
+        ring: 3 as const,
+        coord: { q: 3, r: 0 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      // Give p1 Drive Speed 2 (Fusion Drive / Nuclear Drive + bonus or Ion Drive -> use fusion_drive)
+      p1.blueprints.interceptor.slots[2] = {
+        id: 'fusion_drive',
+        name: 'Fusion Drive',
+        category: 'drive',
+        powerProduced: 0,
+        powerConsumed: 2,
+        initiativeBonus: 2,
+        computerBonus: 0,
+        shieldBonus: 0,
+        hullBonus: 0,
+        driveSpeed: 2,
+      };
+      p1.blueprints.interceptor.slots[1] = {
+        id: 'fusion_source',
+        name: 'Fusion Source',
+        category: 'reactor',
+        powerProduced: 6,
+        powerConsumed: 0,
+        initiativeBonus: 0,
+        computerBonus: 0,
+        shieldBonus: 0,
+        hullBonus: 0,
+      };
+      game.sectors = [secA, secAllyControl, secDest];
+
+      // Moving THROUGH secAllyControl without ending there does NOT break alliance
+      const flyThroughRes = executeAction(game, {
+        type: 'MOVE',
+        playerId: p1.id,
+        moves: [
+          { shipId: 'p1_fast_int', fromSectorId: secA.id, toSectorId: secAllyControl.id, activationIndex: 0 },
+          { shipId: 'p1_fast_int', fromSectorId: secAllyControl.id, toSectorId: secDest.id, activationIndex: 0 },
+        ],
+      });
+      expect(flyThroughRes.success).toBe(true);
+      expect(flyThroughRes.newState.traitorPlayerId).toBeUndefined();
+      expect(flyThroughRes.newState.players[0]!.ambassadorTiles).toContain(p2.id);
+
+      // 3. Ending a MOVE in secAllyControl (ally's control disc) breaks alliance + grants Traitor Tile
+      const modalWarnHtml = renderToString(
+        React.createElement(MoveModal, {
+          player: p1,
+          sectors: game.sectors,
+          playerShips: [{ ship: secA.ships[0]!, initialSector: secA }],
+          simulatedShipSector: new Map([['p1_fast_int', secAllyControl]]),
+          connectedDestinations: [secAllyControl],
+          plannedMoves: [{ shipId: 'p1_fast_int', fromSectorId: secA.id, toSectorId: secAllyControl.id, activationIndex: 0 }],
+          activeActivationIndex: 0,
+          currentShipDriveSpeed: 2,
+          movePointsUsedInCurrentActivation: 1,
+          isShipPinned: () => false,
+          onAddMove: () => {},
+          onRemoveMove: () => {},
+          onClearMoves: () => {},
+          selectedShipId: 'p1_fast_int',
+          onSelectShipId: () => {},
+          onFinishActivation: () => {},
+          onMove: () => {},
+          onClose: () => {},
+        })
+      );
+      expect(modalWarnHtml).toContain('move-betrayal-warning');
+
+      const endOnCtrlRes = executeAction(game, {
+        type: 'MOVE',
+        playerId: p1.id,
+        moves: [{ shipId: 'p1_fast_int', fromSectorId: secA.id, toSectorId: secAllyControl.id, activationIndex: 0 }],
+      });
+      expect(endOnCtrlRes.success).toBe(true);
+      expect(endOnCtrlRes.newState.traitorPlayerId).toBe(p1.id);
+      expect(endOnCtrlRes.newState.players[0]!.ambassadorTiles).not.toContain(p2.id);
+      expect(endOnCtrlRes.newState.players[1]!.ambassadorTiles).not.toContain(p1.id);
+
+      // 4. Ending a MOVE in an uncontrolled sector containing only ally's SHIP also breaks alliance
+      const uncontrolledShipSec = {
+        ...secAllyControl,
+        id: 'sec_agg_ship_only',
+        discOwner: undefined,
+        ships: [{ id: 'p2_guard_ship', ownerId: p2.id, type: 'interceptor' as const, damage: 0 }],
+      };
+      const gameShipOnly = JSON.parse(JSON.stringify(game));
+      gameShipOnly.sectors = [secA, uncontrolledShipSec];
+      const endOnShipRes = executeAction(gameShipOnly, {
+        type: 'MOVE',
+        playerId: p1.id,
+        moves: [{ shipId: 'p1_fast_int', fromSectorId: secA.id, toSectorId: uncontrolledShipSec.id, activationIndex: 0 }],
+      });
+      expect(endOnShipRes.success).toBe(true);
+      expect(endOnShipRes.newState.traitorPlayerId).toBe(p1.id);
+      expect(endOnShipRes.newState.players[0]!.ambassadorTiles).not.toContain(p2.id);
+    });
+
+    it('267. defers betrayal until CONFIRM_TURN_ACTION, prompts final confirmation modal, and lets both players pick returned population track', async () => {
+      const { renderToString } = await import('react-dom/server');
+      const React = await import('react');
+      const {
+        BetrayalConfirmationModal,
+        ReturnAmbassadorCubeModal,
+      } = await import('../../components/diplomacy/BetrayalResolutionModals');
+
+      const game = createInitialGame(4, ['terran_federation', 'planta', 'orion_hegemony', 'mechanema']);
+      game.phase = 'ACTION_PHASE';
+      game.activePlayerIndex = 0;
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+
+      p1.ambassadorTiles = [p2.id];
+      p2.ambassadorTiles = [p1.id];
+      p1.ambassadorCubes = { [p2.id]: 'money' };
+      p2.ambassadorCubes = { [p1.id]: 'science' };
+      // Ensure tracks have open space (< 11) so any track can receive a returned cube
+      p1.population.money.cubesOnBoard = 9;
+      p1.population.science.cubesOnBoard = 8;
+      p1.population.material.cubesOnBoard = 7;
+      p2.population.money.cubesOnBoard = 9;
+      p2.population.science.cubesOnBoard = 8;
+      p2.population.material.cubesOnBoard = 9;
+
+      const secA = {
+        id: 'sec_def_a',
+        sectorNumber: 201,
+        name: 'A',
+        ring: 1 as const,
+        coord: { q: 1, r: 0 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        discOwner: p1.id,
+        ships: [{ id: 'p1_int_def', ownerId: p1.id, type: 'interceptor' as const, damage: 0 }],
+      };
+      const secAlly = {
+        id: 'sec_def_ally',
+        sectorNumber: 202,
+        name: 'Ally',
+        ring: 2 as const,
+        coord: { q: 2, r: 0 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        discOwner: p2.id,
+        ships: [],
+      };
+      game.sectors = [secA, secAlly];
+
+      // 1. MOVE with requireConfirmation=true defers breaking alliance until CONFIRM_TURN_ACTION
+      const previewMove = executeAction(game, {
+        type: 'MOVE',
+        playerId: p1.id,
+        moves: [{ shipId: 'p1_int_def', fromSectorId: secA.id, toSectorId: secAlly.id, activationIndex: 0 }],
+        requireConfirmation: true,
+      });
+      expect(previewMove.success).toBe(true);
+      expect(previewMove.newState.pendingActionConfirmation?.betrayalAllyIds).toEqual([p2.id]);
+      // Still allied and NO traitor yet during unconfirmed preview!
+      expect(previewMove.newState.traitorPlayerId).toBeUndefined();
+      expect(previewMove.newState.players[0]!.ambassadorTiles).toContain(p2.id);
+      expect(previewMove.newState.players[1]!.ambassadorTiles).toContain(p1.id);
+
+      // Final confirmation popup renders broken alliance details
+      const confirmModalHtml = renderToString(
+        React.createElement(BetrayalConfirmationModal, {
+          isOpen: true,
+          allies: [p2],
+          onCancel: () => {},
+          onConfirm: () => {},
+        })
+      );
+      expect(confirmModalHtml).toContain('betrayal-confirmation-modal');
+      expect(confirmModalHtml).toContain('Confirm Move &amp; Break Alliance');
+      expect(confirmModalHtml).toContain(p2.name);
+
+      // 2. Reverting cancels without breaking alliance
+      const rev = executeAction(previewMove.newState, { type: 'REVERT_TURN_ACTION', playerId: p1.id });
+      expect(rev.success).toBe(true);
+      expect(rev.newState.traitorPlayerId).toBeUndefined();
+      expect(rev.newState.players[0]!.ambassadorTiles).toContain(p2.id);
+
+      // 3. Confirming MOVE resolves betrayal and queues cube return track choices for both p1 and p2
+      const conf = executeAction(previewMove.newState, {
+        type: 'CONFIRM_TURN_ACTION',
+        playerId: p1.id,
+      });
+      expect(conf.success).toBe(true);
+      expect(conf.newState.traitorPlayerId).toBe(p1.id);
+      expect(conf.newState.players[0]!.ambassadorTiles).not.toContain(p2.id);
+      expect(conf.newState.players[1]!.ambassadorTiles).not.toContain(p1.id);
+      expect(conf.newState.pendingAmbassadorCubeReturns?.length).toBe(2);
+
+      const p1Pending = conf.newState.pendingAmbassadorCubeReturns!.find((r) => r.playerId === p1.id)!;
+      const p2Pending = conf.newState.pendingAmbassadorCubeReturns!.find((r) => r.playerId === p2.id)!;
+      expect(p1Pending).toBeDefined();
+      expect(p2Pending).toBeDefined();
+
+      // Player with pending cube return (now active p2) must pick track before taking next action (e.g. PASS)
+      const blockedPass = executeAction(conf.newState, { type: 'PASS', playerId: p2.id });
+      expect(blockedPass.success).toBe(false);
+      expect(blockedPass.error).toContain('Population Track');
+
+      // ReturnAmbassadorCubeModal renders all 3 track choices
+      const cubeModalHtml = renderToString(
+        React.createElement(ReturnAmbassadorCubeModal, {
+          player: conf.newState.players[0]!,
+          pending: p1Pending,
+          onConfirm: () => {},
+        })
+      );
+      expect(cubeModalHtml).toContain('return-ambassador-cube-modal');
+      expect(cubeModalHtml).toContain('return-cube-track-money');
+      expect(cubeModalHtml).toContain('return-cube-track-science');
+      expect(cubeModalHtml).toContain('return-cube-track-material');
+
+      // p1 originally gave 'money' cube, now chooses to return cube to 'material' (7 -> 8)
+      const ret1 = executeAction(conf.newState, {
+        type: 'RETURN_AMBASSADOR_CUBE',
+        playerId: p1.id,
+        formerAllyId: p2.id,
+        resource: 'material',
+      });
+      expect(ret1.success).toBe(true);
+      expect(ret1.newState.players[0]!.population.material.cubesOnBoard).toBe(8);
+      expect(ret1.newState.players[0]!.population.money.cubesOnBoard).toBe(9);
+      expect(ret1.newState.pendingAmbassadorCubeReturns?.length).toBe(1);
+
+      // p2 originally gave 'science' cube, chooses to return cube to 'money' (9 -> 10)
+      const ret2 = executeAction(ret1.newState, {
+        type: 'RETURN_AMBASSADOR_CUBE',
+        playerId: p2.id,
+        formerAllyId: p1.id,
+        resource: 'money',
+      });
+      expect(ret2.success).toBe(true);
+      expect(ret2.newState.players[1]!.population.money.cubesOnBoard).toBe(10);
+      expect(ret2.newState.players[1]!.population.science.cubesOnBoard).toBe(8);
+      expect(ret2.newState.pendingAmbassadorCubeReturns).toBeNull();
+    });
+  });
+
+  describe('185. Hidden Information Protection for Auto-Pass & Pass-in-Advance Toggles', () => {
+    it('268. does not log SET_AUTO_PASS or SET_PASS_IN_ADVANCE toggles into public Chronicle', () => {
+      const game = createInitialGame(2, ['terran_federation', 'planta']);
+      game.phase = 'ACTION_PHASE';
+      game.activePlayerIndex = 0;
+      const p2 = game.players[1]!;
+      const initialLogLen = game.log.length;
+      const initialReplayLen = game.replaySteps?.length || 0;
+
+      // Toggle Pass in Advance ON and OFF for non-active player
+      const passAdvOn = executeAction(game, {
+        type: 'SET_PASS_IN_ADVANCE',
+        playerId: p2.id,
+        enabled: true,
+      });
+      expect(passAdvOn.success).toBe(true);
+      expect(passAdvOn.newState.players[1]!.passInAdvance).toBe(true);
+      expect(passAdvOn.newState.log.length).toBe(initialLogLen);
+      expect(passAdvOn.newState.replaySteps?.length || 0).toBe(initialReplayLen);
+
+      const passAdvOff = executeAction(passAdvOn.newState, {
+        type: 'SET_PASS_IN_ADVANCE',
+        playerId: p2.id,
+        enabled: false,
+      });
+      expect(passAdvOff.success).toBe(true);
+      expect(passAdvOff.newState.players[1]!.passInAdvance).toBe(false);
+      expect(passAdvOff.newState.log.length).toBe(initialLogLen);
+
+      // Toggle Auto-Pass Reactions ON and OFF
+      const autoOn = executeAction(passAdvOff.newState, {
+        type: 'SET_AUTO_PASS',
+        playerId: p2.id,
+        enabled: true,
+      });
+      expect(autoOn.success).toBe(true);
+      expect(autoOn.newState.players[1]!.autoPassReactions).toBe(true);
+      expect(autoOn.newState.log.length).toBe(initialLogLen);
+
+      const autoOff = executeAction(autoOn.newState, {
+        type: 'SET_AUTO_PASS',
+        playerId: p2.id,
+        enabled: false,
+      });
+      expect(autoOff.success).toBe(true);
+      expect(autoOff.newState.players[1]!.autoPassReactions).toBe(false);
+      expect(autoOff.newState.log.length).toBe(initialLogLen);
+      expect(autoOff.newState.replaySteps?.length || 0).toBe(initialReplayLen);
+    });
+
+    it('269. Top-left PlayerBoard displays Traitor Tile banner for the traitor player, reminds others in Ambassadors panel, and shows dagger in Header', async () => {
+      const game = createInitialGame(3, ['terran_federation', 'orion_hegemony', 'rho_indi_syndicate']);
+      const terran = game.players[0]!;
+      const orion = game.players[1]!;
+      const rhoIndi = game.players[2]!;
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { Header } = await import('../../components/layout/Header');
+
+      // 1. Orion holds Traitor Tile, viewed from Terran's (non-traitor) top-left PlayerBoard:
+      //    No Traitor banner on Terran's board, but Orion's row in Ambassadors reminds who holds Traitor Tile
+      const viewingTerranWithOrionTraitor = renderToString(
+        React.createElement(PlayerBoard, {
+          player: terran,
+          isActive: true,
+          sectors: game.sectors,
+          traitorPlayerId: orion.id,
+          allPlayers: game.players,
+          onOpenBlueprints: () => {},
+          onOpenTechMarket: () => {},
+          onOpenTrade: () => {},
+        })
+      );
+      expect(viewingTerranWithOrionTraitor).not.toContain('🗡️ Traitor Tile');
+      expect(viewingTerranWithOrionTraitor).toContain('🗡️ Traitor (-2)');
+
+      // 2. Orion holds Traitor Tile, viewed from Orion's own top-left PlayerBoard -> displays Traitor Tile banner + badge
+      const viewingOrionTraitorSelf = renderToString(
+        React.createElement(PlayerBoard, {
+          player: orion,
+          isActive: false,
+          sectors: game.sectors,
+          traitorPlayerId: orion.id,
+          allPlayers: game.players,
+          onOpenBlueprints: () => {},
+          onOpenTechMarket: () => {},
+          onOpenTrade: () => {},
+        })
+      );
+      expect(viewingOrionTraitorSelf).toContain('🗡️ Traitor Tile');
+      expect(viewingOrionTraitorSelf).toContain('🗡️ Traitor (-2)');
+      expect(viewingOrionTraitorSelf).toContain('-2 VP • Diplomacy forbidden');
+      expect(viewingOrionTraitorSelf.indexOf('🗡️ Traitor Tile')).toBeLessThan(
+        viewingOrionTraitorSelf.indexOf('Ambassadors')
+      );
+      expect(viewingOrionTraitorSelf.indexOf('MONEY')).toBeLessThan(
+        viewingOrionTraitorSelf.indexOf('🗡️ Traitor Tile')
+      );
+
+      // 3. Rho Indi Syndicate holds Traitor Tile -> Ambassadors reminder & Rho Indi banner show (0) / 0 VP penalty
+      const viewingTerranWithRhoTraitor = renderToString(
+        React.createElement(PlayerBoard, {
+          player: terran,
+          isActive: true,
+          sectors: game.sectors,
+          traitorPlayerId: rhoIndi.id,
+          allPlayers: game.players,
+          onOpenBlueprints: () => {},
+          onOpenTechMarket: () => {},
+          onOpenTrade: () => {},
+        })
+      );
+      expect(viewingTerranWithRhoTraitor).not.toContain('🗡️ Traitor Tile');
+      expect(viewingTerranWithRhoTraitor).toContain('🗡️ Traitor (0)');
+
+      const viewingRhoTraitorSelf = renderToString(
+        React.createElement(PlayerBoard, {
+          player: rhoIndi,
+          isActive: false,
+          sectors: game.sectors,
+          traitorPlayerId: rhoIndi.id,
+          allPlayers: game.players,
+          onOpenBlueprints: () => {},
+          onOpenTechMarket: () => {},
+          onOpenTrade: () => {},
+        })
+      );
+      expect(viewingRhoTraitorSelf).toContain('🗡️ Traitor Tile');
+      expect(viewingRhoTraitorSelf).toContain('🗡️ Traitor (0)');
+      expect(viewingRhoTraitorSelf).toContain('0 VP • Diplomacy forbidden');
+
+      // 4. Header player pill highlights traitor with dagger
+      game.traitorPlayerId = orion.id;
+      const headerHtml = renderToString(
+        React.createElement(Header, {
+          state: game,
+          currentUser: { id: 'u1', username: 'testuser', name: 'Test User', role: 'user', createdAt: 0, lastActiveAt: 0 },
+          currentSeat: 0,
+          selectedViewIndex: 0,
+          onSelectActiveViewPlayer: () => {},
+          onNewGame: () => {},
+          onOpenGallery: () => {},
+        })
+      );
+      expect(headerHtml).toContain('[TRAITOR]');
+      expect(headerHtml).toContain('Holds Traitor Tile');
     });
   });
 });

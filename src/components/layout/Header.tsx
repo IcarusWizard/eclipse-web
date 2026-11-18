@@ -279,9 +279,11 @@ export const Header: React.FC<HeaderProps> = ({
                 ? ` [Commander: ${seatOccupant.username || seatOccupant.name}]`
                 : '';
               const displayName = getPlayerDisplayName(p);
+              const isTraitor = state.traitorPlayerId === p.id;
+              const traitorTag = isTraitor ? ' [TRAITOR]' : '';
               const titleText = isSecretRep
-                ? `${displayName}${occupantTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
-                : `${displayName}${occupantTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
+                ? `${displayName}${occupantTag}${traitorTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
+                : `${displayName}${occupantTag}${traitorTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
 
               return (
                 <button
@@ -299,6 +301,14 @@ export const Header: React.FC<HeaderProps> = ({
                     style={{ backgroundColor: p.color }}
                   />
                   <span className="hidden sm:inline">{getPlayerDisplayName(p, { short: true })}</span>
+                  {isTraitor && (
+                    <span
+                      className="text-[10px] leading-none text-rose-300 shrink-0"
+                      title={l('Holds Traitor Tile', '持有背叛者板块')}
+                    >
+                      🗡️
+                    </span>
+                  )}
                   <span className="text-[10px] text-amber-400 font-mono font-bold">
                     {displayVP}
                   </span>

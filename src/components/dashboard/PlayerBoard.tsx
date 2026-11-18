@@ -105,6 +105,17 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   const occupiedSlotCount = trackSlots.filter((s) => Boolean(s.tile)).length;
   const totalShipsDeployed = deployed.interceptor + deployed.cruiser + deployed.dreadnought + deployed.starbase;
 
+  const traitorPlayer = traitorPlayerId
+    ? allPlayers.find((p) => p.id === traitorPlayerId) || (traitorPlayerId === player.id ? player : null)
+    : null;
+  const isSelfTraitor = traitorPlayer?.id === player.id;
+  const traitorVpPenalty = traitorPlayer?.faction.id === 'rho_indi_syndicate' ? 0 : -2;
+  const traitorSelfBadgeText = l(`🗡️ Traitor (${traitorVpPenalty})`, `🗡️ 背叛者 (${traitorVpPenalty})`);
+  const traitorSelfTooltip = l(
+    `Traitor Tile: ${traitorVpPenalty} VP penalty. Diplomacy broken.`,
+    `背叛者板块：${traitorVpPenalty} VP 惩罚。外交已破裂。`
+  );
+
   // Collapsed compact mini-HUD
   if (isCollapsed) {
     return (
@@ -133,12 +144,12 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 {l('Pass', '已过')}
               </span>
             )}
-            {traitorPlayerId === player.id && (
+            {isSelfTraitor && (
               <span
                 className="text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-600 px-1 py-0.2 rounded uppercase shrink-0 animate-pulse"
-                title={l('Traitor Tile: -2 VP penalty. Diplomacy broken.', '背叛者板块：-2 VP 惩罚。外交已破裂。')}
+                title={traitorSelfTooltip}
               >
-                {l('🗡️ Traitor (-2)', '🗡️ 背叛者 (-2)')}
+                {traitorSelfBadgeText}
               </span>
             )}
           </div>
@@ -311,13 +322,13 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             </div>
           )}
 
-          {/* Traitor Badge */}
-          {traitorPlayerId === player.id && (
+          {/* Traitor Badge (shown on the traitor's own mini-HUD) */}
+          {isSelfTraitor && (
             <div
               className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-rose-950/80 border border-rose-600 text-rose-300 font-bold shrink-0 animate-pulse"
-              title={l('Traitor Tile: -2 VP endgame penalty', '背叛者板块：终局 -2 VP 惩罚')}
+              title={traitorSelfTooltip}
             >
-              <span>{l('🗡️ Traitor (-2)', '🗡️ 背叛者 (-2)')}</span>
+              <span>{traitorSelfBadgeText}</span>
             </div>
           )}
 
@@ -368,12 +379,12 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                   {l('Passed', '已过')}
                 </span>
               )}
-              {traitorPlayerId === player.id && (
+              {isSelfTraitor && (
                 <span
                   className="text-[10px] font-bold bg-rose-950/90 text-rose-300 border border-rose-600 px-1.5 py-0.5 rounded flex items-center gap-1 shadow animate-pulse font-sans"
-                  title={l('Traitor Tile: -2 VP endgame penalty. Diplomacy forbidden.', '背叛者板块：终局 -2 VP 惩罚。禁止外交。')}
+                  title={traitorSelfTooltip}
                 >
-                  {l('🗡️ Traitor (-2)', '🗡️ 背叛者 (-2)')}
+                  {traitorSelfBadgeText}
                 </span>
               )}
             </div>
@@ -630,6 +641,21 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
         </div>
       )}
 
+      {/* Traitor Tile Banner (for the player holding the Traitor Tile, right above Ambassadors panel) */}
+      {isSelfTraitor && (
+        <div
+          className="flex items-center justify-between gap-2 px-2 py-1 mb-2 rounded-lg bg-rose-950/70 border border-rose-600/80 text-[10.5px] text-rose-200 shadow-sm"
+          title={traitorSelfTooltip}
+        >
+          <span className="font-bold text-rose-300 shrink-0">
+            {l('🗡️ Traitor Tile', '🗡️ 背叛者板块')}
+          </span>
+          <span className="font-mono text-[9.5px] text-rose-200 truncate">
+            {l(`${traitorVpPenalty} VP • Diplomacy forbidden`, `${traitorVpPenalty} VP • 禁止外交`)}
+          </span>
+        </div>
+      )}
+
       {/* Ambassadors & Diplomatic Relations (including Minor Species) */}
       {((allPlayers && allPlayers.length > 1) || hasMinorSpeciesExpansion) && (
         <div className="bg-slate-950/60 rounded-lg border border-slate-800/80 p-2 mb-2">
@@ -708,22 +734,15 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                           <span className="text-[9px] text-slate-600 truncate">({otherFactionName})</span>
                         </div>
                         <div className="flex items-center gap-1.5 shrink-0">
-                          <span className="font-mono text-[9.5px] text-slate-500 flex items-center gap-1 shrink-0">
+                          <span
+                            className="font-mono text-[9.5px] text-slate-500 flex items-center gap-1 shrink-0"
+                            title={l(
+                              'Active diplomatic alliance (+1 VP). Only broken if you end a Move action in a sector with their ship or Influence Disc.',
+                              '已建立外交同盟（+1 VP）。只有当你在其飞船或控制圆片所在星区结束移动时才会打破同盟。'
+                            )}
+                          >
                             <Handshake className="w-3 h-3 text-slate-600" /> {l('Allied', '已结盟')} {cubeIcon} (+1★)
                           </span>
-                          {isActive && onBetrayAlliance && (
-                            <button
-                              type="button"
-                              onClick={() => onBetrayAlliance(other.id)}
-                              className="px-1.5 py-0.5 rounded bg-rose-950/70 hover:bg-rose-900 border border-rose-700/60 text-rose-300 hover:text-white text-[9px] font-bold transition cursor-pointer"
-                              title={l(
-                                `Betray alliance with ${other.name} and take Traitor Tile (-2 VP)`,
-                                `背叛与 ${other.name} 的同盟并拿取背叛者板块 (-2 VP)`
-                              )}
-                            >
-                              {l('Betray', '背叛')}
-                            </button>
-                          )}
                         </div>
                       </div>
                     );
@@ -756,23 +775,35 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                     );
                   }
 
+                  const isOtherTraitor = other.id === traitorPlayerId;
+                  const otherTraitorPenalty = other.faction.id === 'rho_indi_syndicate' ? 0 : -2;
                   return (
                     <div
                       key={other.id}
-                      className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/40 border border-slate-900/60 text-slate-600 text-[10.5px] cursor-not-allowed opacity-60"
+                      className={`flex items-center justify-between px-2 py-1 rounded border text-[10.5px] cursor-not-allowed ${
+                        isOtherTraitor
+                          ? 'bg-rose-950/40 border-rose-800/70 text-rose-200 opacity-90'
+                          : 'bg-slate-950/40 border-slate-900/60 text-slate-600 opacity-60'
+                      }`}
                       title={check.reason || l('Not eligible for diplomacy', '暂不可外交')}
                     >
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span
-                          className="w-2.5 h-2.5 rounded-full shrink-0 opacity-30"
+                          className={`w-2.5 h-2.5 rounded-full shrink-0 ${isOtherTraitor ? 'opacity-80' : 'opacity-30'}`}
                           style={{ backgroundColor: other.color }}
                         />
                         <span className="truncate">{other.name}</span>
-                        <span className="text-[9px] text-slate-700 truncate">({otherFactionName})</span>
+                        <span className={`text-[9px] truncate ${isOtherTraitor ? 'text-rose-300/80' : 'text-slate-700'}`}>({otherFactionName})</span>
                       </div>
-                      <span className="text-[9px] text-slate-600 truncate max-w-[130px] font-mono">
-                        {check.reason ? (check.reason.length > 22 ? `${check.reason.slice(0, 20)}…` : check.reason) : l('Ineligible', '不可交换')}
-                      </span>
+                      {isOtherTraitor ? (
+                        <span className="text-[9px] font-bold text-rose-300 shrink-0 font-mono">
+                          {l(`🗡️ Traitor (${otherTraitorPenalty})`, `🗡️ 背叛者 (${otherTraitorPenalty})`)}
+                        </span>
+                      ) : (
+                        <span className="text-[9px] text-slate-600 truncate max-w-[130px] font-mono">
+                          {check.reason ? (check.reason.length > 22 ? `${check.reason.slice(0, 20)}…` : check.reason) : l('Ineligible', '不可交换')}
+                        </span>
+                      )}
                     </div>
                   );
                 })}

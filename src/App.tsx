@@ -62,6 +62,10 @@ import { GameReplayModal } from './components/replay/GameReplayModal';
 import { BugReportModal } from './components/feedback/BugReportModal';
 import { BugReportCornerButton } from './components/feedback/BugReportCornerButton';
 import { DiplomacyModal, PopulationResourceType } from './components/diplomacy/DiplomacyModal';
+import {
+  BetrayalConfirmationModal,
+  ReturnAmbassadorCubeModal,
+} from './components/diplomacy/BetrayalResolutionModals';
 import { TurnOrderTrackModal } from './components/turnOrder/TurnOrderTrackModal';
 import { MinorSpeciesModal } from './components/minorSpecies/MinorSpeciesModal';
 import { MinorSpeciesId } from './engine/rules/minorSpecies';
@@ -82,12 +86,21 @@ import {
   adminSendTableReminder,
   adminGetTurnCheckpoints,
   adminRevertTableTurn,
+  fetchServerAppVersion,
   isSeatTaken,
   canUserUseHotseat,
   deleteSavedTable,
   getTableOccupiedSeats,
   leaveTable,
 } from './engine/rules/persistence';
+import {
+  isClientOutdated,
+  getLoadedEntryScriptFromDom,
+  canPerformSafeAutoReload,
+  buildCacheBustedReloadUrl,
+  getAutoReloadedVersion,
+  markAutoReloadedVersion,
+} from './engine/rules/appVersion';
 import { getCurrentUser, subscribeToUserSession } from './engine/rules/userSession';
 import { UserSession, RegisteredUserProfile } from './engine/types/user';
 import { LanguageProvider, useLanguage } from './i18n/LanguageContext';
@@ -172,8 +185,130 @@ const AppContent: React.FC = () => {
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [newRoundHint, setNewRoundHint] = useState<{ round: number } | null>(null);
   const [showFirstPassModal, setShowFirstPassModal] = useState<boolean>(false);
+  const [showBetrayalConfirmModal, setShowBetrayalConfirmModal] = useState<boolean>(false);
   const [replayState, setReplayState] = useState<GameState | null>(null);
   const [replayTableNumber, setReplayTableNumber] = useState<number | undefined>(undefined);
+  const [updateAvailableVersion, setUpdateAvailableVersion] = useState<string | null>(null);
+  const bootServerVersionRef = React.useRef<string | null>(null);
+  const isUiBusyRef = React.useRef<boolean>(false);
+  isUiBusyRef.current = Boolean(
+    isBuildOpen ||
+      isMoveOpen ||
+      isInfluenceOpen ||
+      isTechMarketOpen ||
+      isBlueprintOpen ||
+      isTradeOpen ||
+      isNewGameOpen ||
+      isManageSeatsOpen
+  );
+
+  // Detect newly deployed server code versions so open tabs or stale HTML caches reload cleanly
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    let isDisposed = false;
+
+    const triggerSafeReload = (targetVersion: string) => {
+      markAutoReloadedVersion(targetVersion);
+      window.location.replace(buildCacheBustedReloadUrl(window.location.href, targetVersion));
+    };
+
+    const checkAppVersion = async () => {
+      const serverInfo = await fetchServerAppVersion();
+      if (isDisposed || !serverInfo || !serverInfo.version) return;
+
+      const loadedEntryScript = getLoadedEntryScriptFromDom(typeof document !== 'undefined' ? document : null);
+      if (!bootServerVersionRef.current && (!loadedEntryScript || !serverInfo.entryScript || loadedEntryScript === serverInfo.entryScript)) {
+        bootServerVersionRef.current = serverInfo.version;
+      }
+
+      const outdated = isClientOutdated(
+        {
+          bootVersion: bootServerVersionRef.current,
+          loadedEntryScript,
+        },
+        serverInfo
+      );
+
+      if (outdated) {
+        if (
+          canPerformSafeAutoReload(
+            latestStateRef.current,
+            serverInfo.version,
+            getAutoReloadedVersion(),
+            isUiBusyRef.current
+          )
+        ) {
+          triggerSafeReload(serverInfo.version);
+        } else {
+          setUpdateAvailableVersion(serverInfo.version);
+        }
+      }
+    };
+
+    checkAppVersion();
+    const intervalId = window.setInterval(checkAppVersion, 30000);
+    const onFocusOrVisible = () => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        checkAppVersion();
+      }
+    };
+    window.addEventListener('focus', onFocusOrVisible);
+    if (typeof document !== 'undefined') {
+      document.addEventListener('visibilitychange', onFocusOrVisible);
+    }
+
+    return () => {
+      isDisposed = true;
+      window.clearInterval(intervalId);
+      window.removeEventListener('focus', onFocusOrVisible);
+      if (typeof document !== 'undefined') {
+        document.removeEventListener('visibilitychange', onFocusOrVisible);
+      }
+    };
+  }, []);
+
+  // If a pending update was deferred while the player finished an action/modal, auto-reload once safe
+  useEffect(() => {
+    if (!updateAvailableVersion || typeof window === 'undefined') return;
+    const isBusy =
+      isBuildOpen ||
+      isMoveOpen ||
+      isInfluenceOpen ||
+      isTechMarketOpen ||
+      isBlueprintOpen ||
+      isTradeOpen ||
+      isNewGameOpen ||
+      isManageSeatsOpen;
+    if (
+      canPerformSafeAutoReload(
+        state,
+        updateAvailableVersion,
+        getAutoReloadedVersion(),
+        isBusy
+      )
+    ) {
+      markAutoReloadedVersion(updateAvailableVersion);
+      window.location.replace(buildCacheBustedReloadUrl(window.location.href, updateAvailableVersion));
+    }
+  }, [
+    updateAvailableVersion,
+    state.pendingExplore,
+    state.pendingDiscovery,
+    state.pendingExploreControl,
+    state.pendingCombatConquest,
+    state.pendingArtifactReward,
+    state.pendingReputationDraw,
+    state.pendingDiplomacyProposal,
+    state.pendingActionConfirmation,
+    isBuildOpen,
+    isMoveOpen,
+    isInfluenceOpen,
+    isTechMarketOpen,
+    isBlueprintOpen,
+    isTradeOpen,
+    isNewGameOpen,
+    isManageSeatsOpen,
+  ]);
 
   const handleOpenReplay = async (tableIdentifier?: string | number) => {
     const target = tableIdentifier || state?.id;
@@ -2231,12 +2366,22 @@ const AppContent: React.FC = () => {
     });
     if (res.success) {
       setState(res.newState);
-      showToast(
-        l(
-          `Auto-Pass Reactions ${newSetting ? 'ENABLED' : 'DISABLED'} for ${targetPlayer.name}.`,
-          `已为 ${targetPlayer.name} ${newSetting ? '开启' : '关闭'}自动跳过反应。`
-        )
-      );
+      const updatedTarget = res.newState.players.find((p) => p.id === pId);
+      if (newSetting && !updatedTarget?.autoPassReactions) {
+        showToast(
+          l(
+            '⚠️ Auto-pass cannot be activated: enemy fleet invasion detected!',
+            '⚠️ 检测到敌军入侵，无法开启自动跳过反应！'
+          )
+        );
+      } else {
+        showToast(
+          l(
+            `Auto-Pass Reactions ${newSetting ? 'ENABLED' : 'DISABLED'} for ${targetPlayer.name}.`,
+            `已为 ${targetPlayer.name} ${newSetting ? '开启' : '关闭'}自动跳过反应。`
+          )
+        );
+      }
     } else {
       showToast(res.error || l('Failed to update auto-pass.', '更新自动跳过设置失败。'));
     }
@@ -2427,28 +2572,6 @@ const AppContent: React.FC = () => {
     }
   };
 
-  const handleBetrayAlliance = (targetPlayerId: string) => {
-    if (!canActForPlayer(activePlayer.id)) {
-      showToast('Spectators cannot perform actions.');
-      return;
-    }
-    const targetPlayer = state.players.find((p) => p.id === targetPlayerId);
-    if (!window.confirm(`Are you sure you want to betray your alliance with ${targetPlayer?.name || targetPlayerId}? You will forfeit the +1 VP ambassador, reclaim your population cube, and take the Traitor Tile (-2 VP).`)) {
-      return;
-    }
-    const res = executeAction(state, {
-      type: 'BETRAY_ALLIANCE',
-      playerId: activePlayer.id,
-      targetPlayerId,
-    });
-    if (res.success) {
-      setState(res.newState);
-      showToast(`Alliance with ${targetPlayer?.name || targetPlayerId} betrayed. Claimed Traitor Tile (-2 VP).`);
-    } else {
-      showToast(res.error || 'Failed to betray alliance.');
-    }
-  };
-
   const handleConfirmDiplomacyExchange = (
     initiatorCube: PopulationResourceType,
     targetCube: PopulationResourceType
@@ -2479,7 +2602,7 @@ const AppContent: React.FC = () => {
   };
 
   // Turn action confirm and revert handlers
-  const handleConfirmTurnAction = () => {
+  const executeConfirmTurnAction = () => {
     if (!state.pendingActionConfirmation) return;
     if (!canActForPlayer(state.pendingActionConfirmation.playerId)) {
       showToast('Spectators cannot confirm actions.');
@@ -2490,17 +2613,78 @@ const AppContent: React.FC = () => {
       playerId: state.pendingActionConfirmation.playerId,
     });
     if (res.success) {
+      setShowBetrayalConfirmModal(false);
       lastStateFingerprintRef.current = getStateFingerprint(res.newState);
       saveGameState(res.newState);
       persistTableToServer(res.newState).catch(() => {});
       setState(res.newState);
-      showToast('Action confirmed and turn passed.');
+      if (
+        res.newState.pendingAmbassadorCubeReturns?.some(
+          (r) => r.playerId === state.pendingActionConfirmation?.playerId
+        )
+      ) {
+        showToast('Move confirmed & alliance broken! Choose which population track gets your cube.');
+      } else {
+        showToast('Action confirmed and turn passed.');
+      }
     } else {
       showToast(res.error || 'Failed to confirm action.');
     }
   };
 
+  const handleConfirmTurnAction = () => {
+    if (!state.pendingActionConfirmation) return;
+    if (!canActForPlayer(state.pendingActionConfirmation.playerId)) {
+      showToast('Spectators cannot confirm actions.');
+      return;
+    }
+    if (
+      state.pendingActionConfirmation.betrayalAllyIds &&
+      state.pendingActionConfirmation.betrayalAllyIds.length > 0
+    ) {
+      setShowBetrayalConfirmModal(true);
+      return;
+    }
+    executeConfirmTurnAction();
+  };
+
+  const activePendingCubeReturn = React.useMemo(() => {
+    const list = state.pendingAmbassadorCubeReturns;
+    if (!list || list.length === 0 || currentSeat === 'spectator') return null;
+    if (typeof currentSeat === 'number' && state.players[currentSeat]) {
+      return list.find((r) => r.playerId === state.players[currentSeat]!.id) || null;
+    }
+    return list[0] || null;
+  }, [state.pendingAmbassadorCubeReturns, currentSeat, state.players]);
+
+  const handleReturnAmbassadorCube = (
+    formerAllyId: string,
+    resource: 'money' | 'science' | 'material'
+  ) => {
+    if (!activePendingCubeReturn) return;
+    if (!canActForPlayer(activePendingCubeReturn.playerId)) {
+      showToast('Only the owning commander can choose where to return this population cube.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'RETURN_AMBASSADOR_CUBE',
+      playerId: activePendingCubeReturn.playerId,
+      formerAllyId,
+      resource,
+    });
+    if (res.success) {
+      lastStateFingerprintRef.current = getStateFingerprint(res.newState);
+      saveGameState(res.newState);
+      persistTableToServer(res.newState).catch(() => {});
+      setState(res.newState);
+      showToast(`Ambassador cube returned to ${resource.toUpperCase()} track!`);
+    } else {
+      showToast(res.error || 'Failed to return Ambassador cube.');
+    }
+  };
+
   const handleRevertTurnAction = () => {
+    setShowBetrayalConfirmModal(false);
     if (!state.pendingActionConfirmation) return;
     const conf = state.pendingActionConfirmation;
     if (!canActForPlayer(conf.playerId)) {
@@ -3128,6 +3312,34 @@ const AppContent: React.FC = () => {
         onOpenManageSeats={() => setIsManageSeatsOpen(true)}
       />
 
+      {/* Outdated Client Version Banner (shown only if mid-action deferred auto-reload or single auto-reload failed) */}
+      {updateAvailableVersion && (
+        <div
+          data-testid="app-update-banner"
+          className="bg-amber-950/95 border-b border-amber-500 px-6 py-2 flex items-center justify-between gap-3 z-50 text-xs text-amber-100"
+        >
+          <div className="flex items-center gap-2 font-semibold">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-400 animate-ping shrink-0" />
+            <span>
+              {l(
+                'A newer game update is live on the server. Reload to run the latest rules.',
+                '服务器已发布新版本游戏代码，请刷新以使用最新规则。'
+              )}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              markAutoReloadedVersion(updateAvailableVersion);
+              window.location.replace(buildCacheBustedReloadUrl(window.location.href, updateAvailableVersion));
+            }}
+            className="px-3 py-1 rounded-lg bg-amber-500 hover:bg-amber-400 text-slate-950 font-black uppercase tracking-wider text-[11px] transition shrink-0 cursor-pointer"
+          >
+            {l('Update & Reload', '立即刷新更新')}
+          </button>
+        </div>
+      )}
+
       {/* Planta 2nd Activation Banner */}
       {Boolean(state.pendingExploreActivations && state.pendingExploreActivations > 0) && (
         <div className="bg-emerald-950/90 border-b border-emerald-600 px-6 py-2 flex items-center justify-between z-40 text-xs text-emerald-200">
@@ -3271,7 +3483,6 @@ const AppContent: React.FC = () => {
             gamePhase={state.phase}
             warpedUniverse={state.warpedUniverse}
             onInitiateDiplomacy={!isActionsLocked ? handleExchangeAmbassador : undefined}
-            onBetrayAlliance={!isActionsLocked ? handleBetrayAlliance : undefined}
             delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
             onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
             minorSpeciesSupply={state.minorSpeciesSupply}
@@ -3498,6 +3709,7 @@ const AppContent: React.FC = () => {
             currentSenderFactionName={currentSenderInfo.factionName}
             currentSenderFactionColor={currentSenderInfo.color}
             currentSenderId={currentSenderInfo.id}
+            tableId={state.id}
             tableNumber={(state as any).tableNumber || getTableNumber(state)}
             players={state.players}
             members={state.members}
@@ -3889,7 +4101,6 @@ const AppContent: React.FC = () => {
           traitorPlayerId={state.traitorPlayerId}
           warpedUniverse={state.warpedUniverse}
           onExchangeAmbassador={!isActionsLocked && canActForPlayer(viewedPlayer.id) ? handleExchangeAmbassador : undefined}
-          onBetrayAlliance={!isActionsLocked && canActForPlayer(viewedPlayer.id) ? handleBetrayAlliance : undefined}
           onConvertColonyShip={!isActionsLocked && canActForPlayer(viewedPlayer.id) ? handleConvertColonyShip : undefined}
         />
       )}
@@ -4111,6 +4322,34 @@ const AppContent: React.FC = () => {
         }}
         onCancel={() => setShowFirstPassModal(false)}
       />
+
+      {/* Act of Aggression / Betrayal Final Confirmation Modal */}
+      <BetrayalConfirmationModal
+        isOpen={Boolean(
+          showBetrayalConfirmModal &&
+            state.pendingActionConfirmation?.betrayalAllyIds &&
+            state.pendingActionConfirmation.betrayalAllyIds.length > 0
+        )}
+        allies={(state.pendingActionConfirmation?.betrayalAllyIds || [])
+          .map((id) => state.players.find((p) => p.id === id))
+          .filter((p): p is NonNullable<typeof p> => Boolean(p))}
+        onCancel={() => setShowBetrayalConfirmModal(false)}
+        onConfirm={executeConfirmTurnAction}
+      />
+
+      {/* Returned Ambassador Cube Population Track Choice Modal */}
+      {activePendingCubeReturn &&
+        (() => {
+          const cubeOwner = state.players.find((p) => p.id === activePendingCubeReturn.playerId);
+          if (!cubeOwner || !canActForPlayer(cubeOwner.id)) return null;
+          return (
+            <ReturnAmbassadorCubeModal
+              player={cubeOwner}
+              pending={activePendingCubeReturn}
+              onConfirm={handleReturnAmbassadorCube}
+            />
+          );
+        })()}
 
       {/* Hostile Invasion Alert for Active Reaction Turn */}
       {state.phase === 'ACTION_PHASE' &&

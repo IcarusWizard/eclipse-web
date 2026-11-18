@@ -17,11 +17,43 @@ interface GameChatDrawerProps {
   currentSenderFactionName?: string;
   currentSenderFactionColor?: string;
   currentSenderId?: string;
+  tableId?: string;
   tableNumber?: number;
   players?: PlayerState[];
   members?: any[];
   initialOpen?: boolean;
   embedded?: boolean;
+}
+
+const CHAT_READ_STORAGE_PREFIX = 'eclipse_chat_read_v1';
+
+function getChatReadStorageKey(tableId?: string, tableNumber?: number, viewerId?: string): string | null {
+  const tableKey = tableId || (tableNumber !== undefined ? `table_${tableNumber}` : null);
+  if (!tableKey) return null;
+  return `${CHAT_READ_STORAGE_PREFIX}:${tableKey}:${viewerId || 'spectator'}`;
+}
+
+function loadPersistedReadCount(storageKey: string | null): number {
+  if (!storageKey) return 0;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      const raw = window.localStorage.getItem(storageKey);
+      if (raw !== null) {
+        const parsed = parseInt(raw, 10);
+        if (!Number.isNaN(parsed) && parsed >= 0) return parsed;
+      }
+    }
+  } catch {}
+  return 0;
+}
+
+function savePersistedReadCount(storageKey: string | null, count: number): void {
+  if (!storageKey) return;
+  try {
+    if (typeof window !== 'undefined' && window.localStorage) {
+      window.localStorage.setItem(storageKey, String(Math.max(0, count)));
+    }
+  } catch {}
 }
 
 export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
@@ -31,6 +63,7 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
   currentSenderFactionName,
   currentSenderFactionColor,
   currentSenderId,
+  tableId,
   tableNumber,
   players,
   members,
@@ -41,41 +74,61 @@ export const GameChatDrawer: React.FC<GameChatDrawerProps> = ({
   const [isOpen, setIsOpen] = useState<boolean>(initialOpen);
   const [isExpanded, setIsExpanded] = useState<boolean>(false);
   const [inputText, setInputText] = useState<string>('');
-  const [lastReadCount, setLastReadCount] = useState<number>(() =>
-    initialOpen ? messages.length : 0
+  const storageKey = useMemo(
+    () => getChatReadStorageKey(tableId, tableNumber, currentSenderId),
+    [tableId, tableNumber, currentSenderId]
   );
+  const [lastReadCount, setLastReadCount] = useState<number>(() =>
+    initialOpen ? messages.length : loadPersistedReadCount(getChatReadStorageKey(tableId, tableNumber, currentSenderId))
+  );
+
+  // Sync read cursor when switching tables or seats
+  useEffect(() => {
+    if (isOpen) {
+      setLastReadCount(messages.length);
+      savePersistedReadCount(storageKey, messages.length);
+    } else {
+      setLastReadCount(loadPersistedReadCount(storageKey));
+    }
+  }, [storageKey]);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLInputElement>(null);
 
   const unreadCount = useMemo(() => {
     if (isOpen) return 0;
-    const diff = Math.max(0, messages.length - lastReadCount);
+    const effectiveRead = Math.min(lastReadCount, messages.length);
+    const diff = Math.max(0, messages.length - effectiveRead);
     if (diff <= 0) return 0;
     if (!currentSenderId) return diff;
     return messages.slice(messages.length - diff).filter((m) => m.senderPlayerId !== currentSenderId).length;
   }, [messages, lastReadCount, isOpen, currentSenderId]);
 
+  const markAllRead = (count: number) => {
+    setLastReadCount(count);
+    savePersistedReadCount(storageKey, count);
+  };
+
   const handleToggle = () => {
     if (!isOpen) {
-      setLastReadCount(messages.length);
+      markAllRead(messages.length);
       setIsOpen(true);
       setTimeout(() => {
         inputRef.current?.focus();
         messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
       }, 50);
     } else {
-      setLastReadCount(messages.length);
+      markAllRead(messages.length);
       setIsOpen(false);
     }
   };
 
   useEffect(() => {
     if (isOpen) {
-      setLastReadCount(messages.length);
+      markAllRead(messages.length);
       messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [messages.length, isOpen]);
+  }, [messages.length, isOpen, storageKey]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();

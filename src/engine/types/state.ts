@@ -191,6 +191,14 @@ export interface PendingActionConfirmation {
   exploreFromCoord?: HexCoord;
   actionPayload?: any; // The original action payload for highlights upon confirmation
   influenceRefreshesRemaining?: number; // Remaining colony ship refreshes from Influence action that can be applied upon colonizing
+  betrayalAllyIds?: string[]; // Allied player IDs whose alliances will break upon confirming a Move ending in their space
+}
+
+export interface PendingAmbassadorCubeReturn {
+  playerId: string;
+  formerAllyId: string;
+  formerAllyName: string;
+  preferredTrack?: 'money' | 'science' | 'material';
 }
 
 export interface ChatMessage {
@@ -267,6 +275,7 @@ export interface GameState {
   pendingReputationDraw?: PendingReputationDraw | null;
   pendingReputationDrawQueue?: PendingReputationDraw[];
   pendingDiplomacyProposal?: DiplomacyProposal | null;
+  pendingAmbassadorCubeReturns?: PendingAmbassadorCubeReturn[] | null;
   pendingExilesOrbitalSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];

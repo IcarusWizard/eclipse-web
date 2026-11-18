@@ -4,9 +4,11 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import path from 'path';
 import fs from 'fs';
+import crypto from 'crypto';
 import { formatBugReportLine } from './src/engine/rules/bugReport.ts';
 import { generateSalt, hashPasswordSync } from './src/engine/rules/passwordUtils.ts';
 import { compactReplaySteps, isReplayAvailable } from './src/engine/rules/replay.ts';
+import { extractEntryScriptFromHtml } from './src/engine/rules/appVersion.ts';
 import {
   updateTurnCheckpointsOnSave,
   getTurnCheckpointsSummary,
@@ -82,6 +84,60 @@ function bugReportPlugin(): Plugin {
     },
     configurePreviewServer(server) {
       server.middlewares.use(handler);
+    },
+  };
+}
+
+function appVersionPlugin(): Plugin {
+  const bootVersion = crypto.createHash('sha256').update(String(Date.now())).digest('hex').slice(0, 12);
+
+  const getBuildInfo = (isPreview: boolean) => {
+    if (isPreview) {
+      const distIndexPath = path.resolve(process.cwd(), 'dist', 'index.html');
+      if (fs.existsSync(distIndexPath)) {
+        try {
+          const html = fs.readFileSync(distIndexPath, 'utf-8');
+          const version = crypto.createHash('sha256').update(html).digest('hex').slice(0, 12);
+          const entryScript = extractEntryScriptFromHtml(html);
+          return { version, entryScript, mode: 'preview' as const };
+        } catch {}
+      }
+      return { version: bootVersion, entryScript: null, mode: 'preview' as const };
+    }
+    return { version: bootVersion, entryScript: null, mode: 'dev' as const };
+  };
+
+  const makeHandler = (isPreview: boolean) => (req: any, res: any, next: any) => {
+    const rawUrl = req.url || '';
+    const urlPath = rawUrl.split('?')[0];
+
+    if (urlPath === '/api/version' && req.method === 'GET') {
+      const info = getBuildInfo(isPreview);
+      res.statusCode = 200;
+      res.setHeader('Content-Type', 'application/json');
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.end(JSON.stringify({ success: true, ...info }));
+      return;
+    }
+
+    // Ensure index.html is never stale-cached by browsers across new builds/deployments
+    if (req.method === 'GET' && (urlPath === '/' || urlPath === '/index.html')) {
+      res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate');
+      res.setHeader('Pragma', 'no-cache');
+      res.setHeader('Expires', '0');
+    }
+
+    next();
+  };
+
+  return {
+    name: 'app-version-plugin',
+    configureServer(server) {
+      server.middlewares.use(makeHandler(false));
+    },
+    configurePreviewServer(server) {
+      server.middlewares.use(makeHandler(true));
     },
   };
 }
@@ -1930,7 +1986,7 @@ function tableStoragePlugin(): Plugin {
 }
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), bugReportPlugin(), tableStoragePlugin()],
+  plugins: [react(), tailwindcss(), appVersionPlugin(), bugReportPlugin(), tableStoragePlugin()],
   resolve: {
     alias: {
       '@': path.resolve(import.meta.dirname, './src'),

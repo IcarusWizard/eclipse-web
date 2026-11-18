@@ -836,22 +836,15 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                         <div>
                           {isAllied ? (
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <span className="px-2 py-1 rounded bg-indigo-900/80 text-indigo-300 text-[10px] font-bold border border-indigo-700/60 flex items-center gap-1 shrink-0">
+                              <span
+                                className="px-2 py-1 rounded bg-indigo-900/80 text-indigo-300 text-[10px] font-bold border border-indigo-700/60 flex items-center gap-1 shrink-0"
+                                title={l(
+                                  'Diplomatic alliance (+1 VP). Only broken when ending a Move action in a sector with their ship or control disc.',
+                                  '已建立外交同盟（+1 VP）。只有当你在其飞船或控制星区结束移动时才会打破同盟并获得背叛者板块。'
+                                )}
+                              >
                                 <Handshake className="w-3 h-3 text-indigo-400" /> {l('Allied (+1 VP)', '已结盟 (+1 VP)')}
                               </span>
-                              {onBetrayAlliance && (isActive || player.id === activePlayerId) && (
-                                <button
-                                  type="button"
-                                  onClick={() => onBetrayAlliance(other.id)}
-                                  className="px-2 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-600/60 text-rose-300 hover:text-white font-bold text-[10px] uppercase tracking-wider transition shadow-sm hover:shadow cursor-pointer flex items-center gap-1 shrink-0"
-                                  title={l(
-                                    `Betray alliance with ${other.name}, reclaim population cube, and take Traitor Tile (-2 VP)`,
-                                    `背叛与 ${other.name} 的同盟，收回人口方块并拿取背叛者板块 (-2 VP)`
-                                  )}
-                                >
-                                  {l('Betray', '背叛')}
-                                </button>
-                              )}
                             </div>
                           ) : canExchange && onExchangeAmbassador && (isActive || player.id === activePlayerId) ? (
                             <button

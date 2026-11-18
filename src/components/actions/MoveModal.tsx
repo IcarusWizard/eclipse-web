@@ -130,6 +130,36 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   const canExecute = plannedMoves.length > 0;
   const [showUnusedWarning, setShowUnusedWarning] = useState(false);
 
+  const allyIds = useMemo(
+    () => (player.ambassadorTiles || []).filter((id) => !id.startsWith('minor_species_') && id !== player.id),
+    [player.ambassadorTiles, player.id]
+  );
+
+  const doesSectorHaveAllyPresence = (sec: SectorTile, targetSubsector?: 1 | 2 | 3): boolean => {
+    if (allyIds.length === 0) return false;
+    if (sec.discOwner && allyIds.includes(sec.discOwner)) return true;
+    if (sec.isNebula) {
+      const sub = targetSubsector ?? 1;
+      return sec.ships.some((sh) => allyIds.includes(sh.ownerId) && (sh.subsector ?? 1) === sub);
+    }
+    return sec.ships.some((sh) => allyIds.includes(sh.ownerId));
+  };
+
+  const willBreakAllianceAtEnd = useMemo(() => {
+    if (plannedMoves.length === 0 || allyIds.length === 0) return false;
+    for (const item of playerShips) {
+      const movesForShip = plannedMoves.filter((m) => m.shipId === item.ship.id);
+      if (movesForShip.length === 0) continue;
+      const finalSec = simulatedShipSector.get(item.ship.id);
+      if (!finalSec) continue;
+      const lastMove = movesForShip[movesForShip.length - 1]!;
+      if (doesSectorHaveAllyPresence(finalSec, lastMove.targetSubsector)) {
+        return true;
+      }
+    }
+    return false;
+  }, [plannedMoves, allyIds, playerShips, simulatedShipSector]);
+
   const handleTriggerMove = () => {
     if (!canExecute) return;
     if (distinctActivationsCount < maxMoves && !showUnusedWarning) {
@@ -444,14 +474,19 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                               return getNebulaSubsectorForOuterEdge(entryEdge, sec.rotation || 0);
                             })()
                           : undefined;
+                        const willBreakAlly = doesSectorHaveAllyPresence(sec, nebulaTargetSub);
                         return (
                           <button
                             key={sec.id}
                             type="button"
                             onClick={() => onAddMove(sec.id)}
-                            className="px-2.5 py-1 rounded-lg bg-emerald-950/70 hover:bg-emerald-900/90 border border-emerald-700/80 text-emerald-300 text-xs font-bold flex items-center gap-1.5 transition-all group shadow-sm"
+                            className={`px-2.5 py-1 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition-all group shadow-sm ${
+                              willBreakAlly
+                                ? 'bg-rose-950/70 hover:bg-rose-900/90 border-rose-600/80 text-rose-200'
+                                : 'bg-emerald-950/70 hover:bg-emerald-900/90 border-emerald-700/80 text-emerald-300'
+                            }`}
                           >
-                            <ArrowRight className="w-3 h-3 text-emerald-400 group-hover:translate-x-0.5 transition-transform" />
+                            <ArrowRight className={`w-3 h-3 group-hover:translate-x-0.5 transition-transform ${willBreakAlly ? 'text-rose-400' : 'text-emerald-400'}`} />
                             <span>
                               {l(`Sector ${sec.sectorNumber}`, `星区 ${sec.sectorNumber}`)}
                               {nebulaTargetSub ? ` ${l(`Sub ${nebulaTargetSub}`, `子区 ${nebulaTargetSub}`)}` : ''}{' '}
@@ -460,6 +495,14 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                                 <span className="text-cyan-300 font-normal ml-1">{l('➔ Sub ', '➔ 子区 ')}{nebulaTargetSub}</span>
                               )}
                             </span>
+                            {willBreakAlly && (
+                              <span
+                                className="text-[9px] px-1 py-0.5 rounded bg-rose-900/90 text-rose-200 border border-rose-500/70 font-mono"
+                                title={l('Ending movement here breaks diplomacy & gives Traitor Tile (-2 VP)', '在此结束移动将打破外交同盟并获得背叛者板块 (-2 VP)')}
+                              >
+                                {l('⚔️ Breaks Alliance', '⚔️ 破盟')}
+                              </span>
+                            )}
                             {!hasWormhole && (
                               <span className="text-[9px] px-1 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono">
                                 {l('Jump ⚡', '跳跃 ⚡')}
@@ -505,6 +548,21 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 <span>{l(`All ${maxMoves} Move activations planned (${plannedMoves.length} steps)! Ready to execute maneuvers.`, `全部 ${maxMoves} 次移动激活已规划完成（共 ${plannedMoves.length} 步）！可以执行机动。`)}</span>
               </div>
             )}
+          </div>
+        )}
+
+        {willBreakAllianceAtEnd && (
+          <div
+            data-testid="move-betrayal-warning"
+            className="px-3 py-2 rounded-xl bg-rose-950/70 border border-rose-500/70 text-rose-200 text-xs font-semibold flex items-center gap-2"
+          >
+            <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
+            <span>
+              {l(
+                'Act of Aggression: Ending movement in an allied sector (ship or control disc) will break your diplomatic alliance and give you the Traitor Tile (-2 VP).',
+                '侵略行为警告：在盟友飞船或控制圆片所在星区结束移动将打破外交同盟，并使你获得背叛者板块（-2 VP）。'
+              )}
+            </span>
           </div>
         )}
 

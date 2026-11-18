@@ -3,6 +3,8 @@ import { TableMember, UserSession } from '../types/user';
 import { isReplayAvailable, compactReplaySteps } from './replay';
 import type { AdminTurnCheckpointInfo } from './turnCheckpoints';
 export type { AdminTurnCheckpointInfo };
+import type { AppVersionInfo } from './appVersion';
+export type { AppVersionInfo };
 
 /**
  * Merges two chat message arrays by message id (falling back to sender/timestamp/text),
@@ -1764,6 +1766,28 @@ export async function adminRevertTableTurn(
     console.error('Failed to revert turn:', err);
     return { success: false, error: err?.message || 'Failed to revert turn.' };
   }
+}
+
+/**
+ * Fetches the active server client/build version without HTTP caching.
+ */
+export async function fetchServerAppVersion(): Promise<AppVersionInfo | null> {
+  if (!canPerformServerFetch()) return null;
+  try {
+    const res = await fetch(resolveApiUrl(`/api/version?_t=${Date.now()}`), {
+      cache: 'no-store',
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    if (data && data.success && data.version) {
+      return {
+        version: String(data.version),
+        entryScript: data.entryScript || null,
+        mode: data.mode,
+      };
+    }
+  } catch {}
+  return null;
 }
 
 /**

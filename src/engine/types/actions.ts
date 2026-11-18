@@ -193,6 +193,12 @@ export interface BetrayAllianceAction extends BaseAction {
   targetPlayerId: string;
 }
 
+export interface ReturnAmbassadorCubeAction extends BaseAction {
+  type: 'RETURN_AMBASSADOR_CUBE';
+  formerAllyId: string;
+  resource: 'money' | 'science' | 'material';
+}
+
 export interface ResolveCombatStepAction extends BaseAction {
   type: 'RESOLVE_COMBAT_STEP';
   sectorId: string;
@@ -361,6 +367,7 @@ export type GameAction =
   | ReturnBlackHoleShipAction
   | DraftFactionAction
   | BetrayAllianceAction
+  | ReturnAmbassadorCubeAction
   | SetAutoPassAction
   | SetPassInAdvanceAction
   | SetCombatAutoResolveAction
