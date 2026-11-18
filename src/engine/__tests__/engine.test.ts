@@ -27678,6 +27678,197 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(stepRes.success).toBe(true);
     });
   });
+
+  describe('187. Invitation Link Login Prompt & Auto-Seat in Waiting Room', () => {
+    it('274. resolves open seat cleanly for authenticated invitees, restores existing seat, and renders Waiting Room Sign-In CTA for guests', async () => {
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { resolveInviteSeatForUser } = await import('../rules/persistence');
+      const { TableWaitingRoom } = await import('../../components/lobby/TableWaitingRoom');
+      const { UserLoginModal } = await import('../../components/auth/UserLoginModal');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+
+      const game = createInitialGame(3, ['terran_federation', 'orion_hegemony', 'planta']);
+      (game as any).isGameStarted = false;
+      game.members = [
+        { userId: 'host_u1', name: 'Host', username: 'host', role: 'user', seat: 0, joinedAt: 1000, isCreator: true },
+      ];
+
+      // Guest stays spectator
+      expect(resolveInviteSeatForUser(game, { id: 'g1', role: 'guest' })).toBe('spectator');
+
+      // New logged-in invitee gets first open seat (seat 1)
+      expect(resolveInviteSeatForUser(game, { id: 'u2', role: 'user' })).toBe(1);
+
+      // Preferred open seat (?seat=2) is honored if vacant
+      expect(resolveInviteSeatForUser(game, { id: 'u2', role: 'user' }, 2)).toBe(2);
+
+      // Preferred seat already taken by host (0) falls back to first open seat (1)
+      expect(resolveInviteSeatForUser(game, { id: 'u2', role: 'user' }, 0)).toBe(1);
+
+      // Already seated user keeps their seat even if invite URL omits ?seat=
+      expect(resolveInviteSeatForUser(game, { id: 'host_u1', role: 'user' })).toBe(0);
+
+      // Full table falls back to spectator
+      game.members.push(
+        { userId: 'u2', name: 'P2', username: 'p2', role: 'user', seat: 1, joinedAt: 1001 },
+        { userId: 'u3', name: 'P3', username: 'p3', role: 'user', seat: 2, joinedAt: 1002 }
+      );
+      expect(resolveInviteSeatForUser(game, { id: 'u4', role: 'user' })).toBe('spectator');
+
+      // TableWaitingRoom renders Sign In button for guest when onOpenLogin is provided
+      const guestHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(TableWaitingRoom, {
+            state: game,
+            currentSeat: 'spectator',
+            currentUser: { id: 'g1', username: 'guest', name: 'Guest', role: 'guest', createdAt: 0, lastActiveAt: 0 },
+            onStartGame: () => {},
+            onClaimSeat: () => {},
+            onReturnToLobby: () => {},
+            onOpenLogin: () => {},
+          })
+        )
+      );
+      expect(guestHtml).toContain('waiting-room-login-btn');
+      expect(guestHtml).toContain('Sign In to Join Seat');
+
+      // UserLoginModal respects defaultTab="user" so invite prompt opens directly on Commander Login
+      const modalHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(UserLoginModal, {
+            currentUser: { id: 'g1', username: 'guest', name: 'Guest', role: 'guest', createdAt: 0, lastActiveAt: 0 },
+            defaultTab: 'user',
+            onUserChanged: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(modalHtml).toContain('Commander Username');
+      expect(modalHtml).toContain('Login as Commander');
+    });
+
+    it('275. dims passed player tab and name (both human and AI bots) on the top Header bar', async () => {
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { Header } = await import('../../components/layout/Header');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+
+      const game = createInitialGame(2, ['terran_federation', 'terran_directorate'], [], undefined, false, [false, true]);
+      game.players[0]!.hasPassed = true;
+      game.players[1]!.hasPassed = true;
+      game.passedPlayerIds = [game.players[0]!.id, game.players[1]!.id];
+
+      const html = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(Header, {
+            state: game,
+            currentUser: { id: 'u1', username: 'u1', name: 'U1', role: 'user', createdAt: 0, lastActiveAt: 0 },
+            currentSeat: 0,
+            selectedViewIndex: 0,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onOpenGallery: () => {},
+          })
+        )
+      );
+      expect(html).toContain('opacity-45');
+      expect(html).toContain('text-slate-500 line-through');
+      expect(html).toContain('[PASSED]');
+    });
+
+    it('276. prioritizes pendingReputationDraw for AI defender before human pendingCombatConquest after losing defense fight', async () => {
+      const { getPriorityActorId, computeBotAction } = await import('../ai/terranBot');
+
+      const game = createInitialGame(2, ['terran_federation', 'terran_directorate'], [], undefined, false, [false, true]);
+      game.isLocalGame = true;
+      const human = game.players[0]!;
+      const bot = game.players[1]!;
+      const botHome = game.sectors.find((s) => s.discOwner === bot.id)!;
+
+      // Exact post-defense-loss state: human won conquest, AI defender must draw Reputation Tile first
+      game.phase = 'COMBAT_PHASE';
+      game.pendingCombatConquest = {
+        sectorId: botHome.id,
+        winnerPlayerId: human.id,
+        canClaimInfluence: true,
+      };
+      game.pendingReputationDraw = {
+        playerId: bot.id,
+        drawnTiles: [1, 3],
+        sectorId: botHome.id,
+      };
+      game.pendingReputationDrawQueue = [
+        { playerId: human.id, drawnTiles: [2, 4], sectorId: botHome.id },
+      ];
+
+      expect(getPriorityActorId(game)).toBe(bot.id);
+      const botRepAct = computeBotAction(game, bot.id);
+      expect(botRepAct?.type).toBe('CLAIM_REPUTATION_TILE');
+      expect((botRepAct as any).selectedTileIndex).toBe(1); // picks highest (3 VP)
+
+      const repRes = executeAction(game, botRepAct!);
+      expect(repRes.success).toBe(true);
+      expect(repRes.newState.players[1]!.reputationTiles).toContain(3);
+      // Priority now cleanly advances to human's Reputation draw
+      expect(getPriorityActorId(repRes.newState)).toBe(human.id);
+    });
+
+    it('277. renders next-round starting player symbol (👑 1st) on the first passer in Header and PlayerBoard', async () => {
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { Header } = await import('../../components/layout/Header');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+
+      const game = createInitialGame(2, ['terran_federation', 'orion_hegemony']);
+      const passRes = executeAction(game, { type: 'PASS', playerId: game.players[0]!.id });
+      expect(passRes.success).toBe(true);
+      const passedState = passRes.newState;
+      expect(passedState.players[0]!.isFirstPasser).toBe(true);
+
+      const headerHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(Header, {
+            state: passedState,
+            currentUser: { id: 'u1', username: 'u1', name: 'U1', role: 'user', createdAt: 0, lastActiveAt: 0 },
+            currentSeat: 0,
+            selectedViewIndex: 0,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onOpenGallery: () => {},
+          })
+        )
+      );
+      expect(headerHtml).toContain('👑 1st');
+      expect(headerHtml).toContain('[PASSED 1st • NEXT START]');
+
+      const boardHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PlayerBoard, {
+            player: passedState.players[0]!,
+            isActive: false,
+            sectors: passedState.sectors,
+            allPlayers: passedState.players,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('👑 1st');
+    });
+  });
 });
 
 

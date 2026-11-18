@@ -38,20 +38,23 @@ interface UserLoginModalProps {
   currentUser: UserSession;
   onUserChanged: (user: UserSession) => void;
   onClose: () => void;
+  defaultTab?: 'guest' | 'user' | 'admin';
 }
 
 export const UserLoginModal: React.FC<UserLoginModalProps> = ({
   currentUser,
   onUserChanged,
   onClose,
+  defaultTab,
 }) => {
   const { l } = useLanguage();
   const [activeTab, setActiveTab] = useState<'guest' | 'user' | 'admin'>(
-    currentUser.role === 'admin'
-      ? 'admin'
-      : currentUser.role === 'user'
-      ? 'user'
-      : 'guest'
+    defaultTab ??
+      (currentUser.role === 'admin'
+        ? 'admin'
+        : currentUser.role === 'user'
+        ? 'user'
+        : 'guest')
   );
 
   // Commander mode: 'login' | 'register'

@@ -57,6 +57,7 @@ import { ArtifactKeyModal } from './components/actions/ArtifactKeyModal';
 import { BankruptcyModal } from './components/actions/BankruptcyModal';
 import { LobbyView } from './components/lobby/LobbyView';
 import { TableWaitingRoom } from './components/lobby/TableWaitingRoom';
+import { UserLoginModal } from './components/auth/UserLoginModal';
 import { GalacticGalleryModal } from './components/gallery/GalacticGalleryModal';
 import { CombatSimulatorModal } from './components/simulator/CombatSimulatorModal';
 import { GameReplayModal } from './components/replay/GameReplayModal';
@@ -89,6 +90,7 @@ import {
   adminRevertTableTurn,
   fetchServerAppVersion,
   isSeatTaken,
+  resolveInviteSeatForUser,
   canUserUseHotseat,
   deleteSavedTable,
   getTableOccupiedSeats,
@@ -392,6 +394,23 @@ const AppContent: React.FC = () => {
   });
 
   const [currentUser, setCurrentUser] = useState<UserSession>(() => getCurrentUser());
+  const [isUserModalOpen, setIsUserModalOpen] = useState<boolean>(false);
+
+  const inviteLinkPendingRef = React.useRef<{ tableId: string; preferredSeat?: number } | null>(
+    (() => {
+      if (typeof window === 'undefined') return null;
+      const p = new URLSearchParams(window.location.search);
+      const tId = p.get('table');
+      if (!tId || tId.startsWith('local-') || tId.startsWith('local_')) return null;
+      const sParam = p.get('seat');
+      const parsedSeat = sParam && sParam !== 'all' && sParam !== 'spectator' ? parseInt(sParam, 10) : NaN;
+      return {
+        tableId: tId,
+        preferredSeat: !isNaN(parsedSeat) ? parsedSeat : undefined,
+      };
+    })()
+  );
+  const promptedGuestLoginForTableRef = React.useRef<string | null>(null);
 
   const [currentSeat, setCurrentSeat] = useState<number | 'all' | 'spectator'>(() => {
     const user = getCurrentUser();
@@ -407,7 +426,11 @@ const AppContent: React.FC = () => {
     const isAdmin = canUserUseHotseat(user.role);
     if (typeof window === 'undefined') return isAdmin ? 'all' : 0;
     const seatParam = params?.get('seat');
+    if (tableParam && user.role === 'guest') {
+      return 'spectator';
+    }
     if (!seatParam || seatParam === 'all') {
+      if (tableParam && !isAdmin) return 'spectator';
       return isAdmin ? 'all' : 0;
     }
     if (seatParam === 'spectator') return 'spectator';
@@ -502,8 +525,12 @@ const AppContent: React.FC = () => {
       lastRegisteredMemberKeyRef.current = regKey;
 
       // Spectator is a temporary seat; who has been the spectator should not be stored.
-      // If the user was previously registered in a permanent seat on this table, vacate it.
+      // If the user was previously registered in a permanent seat on this table, vacate it,
+      // unless an invite link is currently resolving the user's seat on load/login.
       if (currentSeat === 'spectator') {
+        if (inviteLinkPendingRef.current) {
+          return;
+        }
         const wasSeated = members.some((m: any) => m.userId === currentUser.id && m.seat !== 'spectator');
         if (wasSeated) {
           registerTableMember(
@@ -864,8 +891,20 @@ const AppContent: React.FC = () => {
             params.set('table', remote.id);
             window.history.replaceState({}, '', `${window.location.pathname}?${params.toString()}`);
           }
+          if (inviteLinkPendingRef.current) {
+            inviteLinkPendingRef.current.tableId = remote.id;
+          }
 
           const seatParam = params.get('seat');
+          if (!seatParam && currentUser.role !== 'guest') {
+            const existingSeat = (remote.members || []).find(
+              (m: any) => m.userId === currentUser.id && typeof m.seat === 'number'
+            );
+            if (existingSeat && typeof existingSeat.seat === 'number') {
+              setCurrentSeat(existingSeat.seat);
+              setSelectedViewIndex(existingSeat.seat);
+            }
+          }
           if (seatParam && seatParam !== 'all' && seatParam !== 'spectator') {
             const sNum = parseInt(seatParam, 10);
             if (!isNaN(sNum)) {
@@ -3224,6 +3263,63 @@ const AppContent: React.FC = () => {
     return occupied.size < state.players.length;
   }, [inGame, state, state?.members, state?.players?.length, (state as any)?.isGameStarted, (state as any)?.isLocalGame, state?.phase, state?.round]);
 
+  const applyWaitingRoomAutoSeat = (user: UserSession, preferredSeat?: number | null) => {
+    if (!inGame || !isTableWaitingForPlayers || state.isLocalGame || !state.id) return;
+    if (!user || user.role === 'guest') return;
+    const autoSeat = resolveInviteSeatForUser(state, user, preferredSeat);
+    inviteLinkPendingRef.current = null;
+    if (autoSeat !== currentSeat) {
+      setCurrentSeat(autoSeat);
+      if (typeof autoSeat === 'number' && state.players[autoSeat]) {
+        setSelectedViewIndex(autoSeat);
+        showToast(l(`Seated in Seat ${autoSeat + 1}!`, `已自动入座 ${autoSeat + 1} 号位！`));
+      } else if (autoSeat === 'spectator') {
+        showToast(l('All seats are currently taken. Joined as Spectator.', '所有席位已满，当前以观战身份加入。'));
+      }
+      if (typeof window !== 'undefined') {
+        const seatParam = autoSeat === 'all' ? '' : autoSeat === 'spectator' ? '&seat=spectator' : `&seat=${autoSeat}`;
+        window.history.replaceState({}, '', `${window.location.pathname}?table=${state.id}${seatParam}`);
+      }
+    }
+  };
+
+  // Invite link to waiting room: auto-prompt login for guests, and auto-seat once authenticated
+  useEffect(() => {
+    if (!inGame || !isTableWaitingForPlayers || state.isLocalGame || !state.id) return;
+    const pendingInvite = inviteLinkPendingRef.current;
+    if (!pendingInvite) return;
+    const matchesInvite =
+      state.id === pendingInvite.tableId ||
+      String((state as any).tableNumber || '') === pendingInvite.tableId;
+    if (!matchesInvite) return;
+
+    if (currentUser.role === 'guest') {
+      if (promptedGuestLoginForTableRef.current !== state.id) {
+        promptedGuestLoginForTableRef.current = state.id;
+        setIsUserModalOpen(true);
+      }
+      return;
+    }
+
+    applyWaitingRoomAutoSeat(currentUser, pendingInvite.preferredSeat);
+  }, [inGame, isTableWaitingForPlayers, state.id, state.isLocalGame, state.members, currentUser, currentSeat]);
+
+  const renderUserLoginModal = () =>
+    isUserModalOpen ? (
+      <UserLoginModal
+        currentUser={currentUser}
+        defaultTab="user"
+        onUserChanged={(u) => {
+          setCurrentUser(u);
+          setIsUserModalOpen(false);
+          if (inGame && isTableWaitingForPlayers && !state.isLocalGame && u.role !== 'guest') {
+            applyWaitingRoomAutoSeat(u, inviteLinkPendingRef.current?.preferredSeat);
+          }
+        }}
+        onClose={() => setIsUserModalOpen(false)}
+      />
+    ) : null;
+
   if (!inGame) {
     return (
       <>
@@ -3313,7 +3409,9 @@ const AppContent: React.FC = () => {
           onOpenGallery={() => setIsGalleryOpen(true)}
           onOpenCombatSimulator={() => setIsCombatSimulatorOpen(true)}
           onUpdateState={(remoteState) => setState(remoteState)}
+          onOpenLogin={() => setIsUserModalOpen(true)}
         />
+        {renderUserLoginModal()}
         <GalacticGalleryModal
           isOpen={isGalleryOpen}
           onClose={() => setIsGalleryOpen(false)}
@@ -4493,6 +4591,7 @@ const AppContent: React.FC = () => {
           onClose={() => setReplayState(null)}
         />
       )}
+      {renderUserLoginModal()}
     </div>
   );
 };

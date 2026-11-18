@@ -144,6 +144,14 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                 {l('Pass', '已过')}
               </span>
             )}
+            {player.isFirstPasser && (
+              <span
+                className="text-[9px] font-bold bg-amber-950/90 text-amber-300 border border-amber-500/70 px-1 py-0.2 rounded shrink-0"
+                title={l('Passed first — Starting Player next round', '本轮首位跳过 — 下回合起始玩家')}
+              >
+                {l('👑 1st', '👑 首家')}
+              </span>
+            )}
             {isSelfTraitor && (
               <span
                 className="text-[9px] font-bold bg-rose-950 text-rose-300 border border-rose-600 px-1 py-0.2 rounded uppercase shrink-0 animate-pulse"
@@ -385,6 +393,14 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               {player.hasPassed && (
                 <span className="text-[9px] bg-slate-800 text-amber-400 px-1 py-0.2 rounded uppercase font-sans">
                   {l('Passed', '已过')}
+                </span>
+              )}
+              {player.isFirstPasser && (
+                <span
+                  className="text-[9px] font-bold bg-amber-950/90 text-amber-300 border border-amber-500/70 px-1.5 py-0.2 rounded font-sans shrink-0"
+                  title={l('Passed first — Starting Player next round', '本轮首位跳过 — 下回合起始玩家')}
+                >
+                  {l('👑 1st', '👑 下轮起始')}
                 </span>
               )}
               {isSelfTraitor && (

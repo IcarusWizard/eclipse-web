@@ -279,11 +279,16 @@ export const Header: React.FC<HeaderProps> = ({
                 ? ` [Commander: ${seatOccupant.username || seatOccupant.name}]`
                 : '';
               const displayName = getPlayerDisplayName(p);
+              const isPassed = Boolean(p.hasPassed || passIdx !== -1);
+              const isNextStartPlayer = Boolean(
+                p.isFirstPasser || (state as any).firstPlayerPassedThisRound === p.id || passIdx === 0
+              );
               const isTraitor = state.traitorPlayerId === p.id;
               const traitorTag = isTraitor ? ' [TRAITOR]' : '';
+              const passedTag = isPassed ? (isNextStartPlayer ? ' [PASSED 1st • NEXT START]' : ' [PASSED]') : '';
               const titleText = isSecretRep
-                ? `${displayName}${occupantTag}${traitorTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
-                : `${displayName}${occupantTag}${traitorTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
+                ? `${displayName}${occupantTag}${traitorTag}${passedTag} (${knownVP} VP + ${p.reputationTiles.length} secret reputation tile(s))${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`
+                : `${displayName}${occupantTag}${traitorTag}${passedTag} (${b?.total ?? 0} VP)${nextTile ? ` [Next Round Tile #${nextTile}]` : ''}`;
 
               return (
                 <button
@@ -293,14 +298,16 @@ export const Header: React.FC<HeaderProps> = ({
                     isViewed
                       ? 'bg-slate-800 text-white shadow ring-1 ring-slate-700'
                       : 'text-slate-400 hover:text-slate-200'
-                  }`}
+                  } ${isPassed ? 'opacity-45' : ''}`}
                   title={titleText}
                 >
                   <div
                     className="w-2.5 h-2.5 rounded-full shrink-0"
                     style={{ backgroundColor: p.color }}
                   />
-                  <span className="hidden sm:inline">{getPlayerDisplayName(p, { short: true })}</span>
+                  <span className={`hidden sm:inline ${isPassed ? 'text-slate-500 line-through decoration-slate-500/70' : ''}`}>
+                    {getPlayerDisplayName(p, { short: true })}
+                  </span>
                   {p.isBot && (
                     <span
                       className="text-[9px] px-1 py-0.2 rounded bg-emerald-950/90 border border-emerald-600/70 text-emerald-300 font-bold leading-none shrink-0"
@@ -320,14 +327,32 @@ export const Header: React.FC<HeaderProps> = ({
                   <span className="text-[10px] text-amber-400 font-mono font-bold">
                     {displayVP}
                   </span>
-                  {state.expansions?.includes('turn_order') && nextTile && (
+                  {state.expansions?.includes('turn_order') && nextTile ? (
                     <span
-                      className="text-[9px] px-1 py-0.2 rounded font-mono font-bold bg-purple-950 border border-purple-500/60 text-purple-300"
-                      title={`Claimed Next Turn Order Tile #${nextTile}`}
+                      className={`text-[9px] px-1 py-0.2 rounded font-mono font-bold border ${
+                        nextTile === 1
+                          ? 'bg-amber-950/90 border-amber-500/70 text-amber-300'
+                          : 'bg-purple-950 border-purple-500/60 text-purple-300'
+                      }`}
+                      title={
+                        nextTile === 1
+                          ? l('Passed first — Starting Player next round (Tile #1)', '本轮首位跳过 — 下回合起始玩家 (#1)')
+                          : l(`Claimed Next Turn Order Tile #${nextTile}`, `已拿取下回合顺位牌 #${nextTile}`)
+                      }
                     >
-                      #{nextTile}
+                      {nextTile === 1 ? '👑 #1' : `#${nextTile}`}
                     </span>
-                  )}
+                  ) : isNextStartPlayer ? (
+                    <span
+                      className="text-[9px] px-1 py-0.2 rounded font-mono font-bold bg-amber-950/90 border border-amber-500/70 text-amber-300 shrink-0"
+                      title={l(
+                        'Passed first — Starting Player next round (+2 Credits)',
+                        '本轮首位跳过 — 下回合起始玩家 (+2 信用点)'
+                      )}
+                    >
+                      👑 1st
+                    </span>
+                  ) : null}
                   {isTurn && (
                     <span className="w-1.5 h-1.5 rounded-full bg-cyan-400 animate-ping" />
                   )}

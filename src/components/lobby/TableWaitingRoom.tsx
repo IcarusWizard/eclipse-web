@@ -75,6 +75,7 @@ export interface TableWaitingRoomProps {
   onUpdateState?: (newState: GameState) => void;
   onCancelTable?: () => void;
   onLeaveTable?: () => void;
+  onOpenLogin?: () => void;
 }
 
 export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
@@ -89,6 +90,7 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
   onUpdateState,
   onCancelTable,
   onLeaveTable,
+  onOpenLogin,
 }) => {
   const { language, l } = useLanguage();
   const [copied, setCopied] = useState<boolean>(false);
@@ -484,7 +486,25 @@ export const TableWaitingRoom: React.FC<TableWaitingRoomProps> = ({
             </button>
           )}
 
-          <div className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300">
+          {onOpenLogin && currentUser.role === 'guest' && (
+            <button
+              type="button"
+              data-testid="waiting-room-login-btn"
+              onClick={onOpenLogin}
+              className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-slate-950 text-xs font-black tracking-wider uppercase transition shadow shadow-emerald-950/30 cursor-pointer"
+            >
+              <User className="w-3.5 h-3.5" />
+              <span>{l('Sign In to Join Seat', '登录并入座')}</span>
+            </button>
+          )}
+
+          <div
+            onClick={onOpenLogin}
+            className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-800 text-xs font-mono text-slate-300 ${
+              onOpenLogin ? 'cursor-pointer hover:border-slate-600' : ''
+            }`}
+            title={onOpenLogin ? l('Switch account / Sign in', '切换账号 / 登录') : undefined}
+          >
             <User className="w-3.5 h-3.5 text-cyan-400" />
             <span>{currentUser.username}</span>
             <span className="text-[10px] opacity-70 bg-black/40 px-1 py-0.5 rounded">

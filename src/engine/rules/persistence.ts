@@ -1264,6 +1264,50 @@ export function canUserUseHotseat(role?: UserRole | string | null, isLocalGame?:
   return role === 'admin';
 }
 
+/**
+ * Resolves the automatic seat assignment for an authenticated player entering
+ * an online waiting room via an invitation link or after logging in.
+ * Returns their existing numeric seat, the requested open preferredSeat,
+ * the first open non-bot seat, or 'spectator' if full / guest.
+ */
+export function resolveInviteSeatForUser(
+  tableState: Pick<GameState, 'players' | 'members' | 'isLocalGame'>,
+  user: Pick<UserSession, 'id' | 'role'> | null | undefined,
+  preferredSeat?: number | null
+): number | 'all' | 'spectator' {
+  if (tableState.isLocalGame) return 'all';
+  if (!user || user.role === 'guest') return 'spectator';
+
+  const members = tableState.members || [];
+  const players = tableState.players || [];
+
+  const existing = members.find(
+    (m) => m.userId === user.id && typeof m.seat === 'number' && m.seat >= 0 && m.seat < players.length
+  );
+  if (existing && typeof existing.seat === 'number' && !players[existing.seat]?.isBot) {
+    return existing.seat;
+  }
+
+  if (
+    typeof preferredSeat === 'number' &&
+    preferredSeat >= 0 &&
+    preferredSeat < players.length &&
+    !players[preferredSeat]?.isBot &&
+    !isSeatTaken(members, preferredSeat, user.id).isTaken
+  ) {
+    return preferredSeat;
+  }
+
+  for (let idx = 0; idx < players.length; idx++) {
+    if (players[idx]?.isBot) continue;
+    if (!isSeatTaken(members, idx, user.id).isTaken) {
+      return idx;
+    }
+  }
+
+  return 'spectator';
+}
+
 export async function registerTableMember(
   tableId: string,
   member: TableMember,

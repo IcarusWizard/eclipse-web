@@ -153,17 +153,17 @@ export function getPriorityActorId(state: GameState): string | null {
   if (state.pendingExplore) {
     return state.pendingExplore.playerId;
   }
+  if (state.pendingReputationDraw) {
+    return state.pendingReputationDraw.playerId;
+  }
+  if (state.pendingCombatConquest) {
+    return state.pendingCombatConquest.winnerPlayerId;
+  }
   if (state.pendingDiscovery) {
     return state.pendingDiscovery.playerId;
   }
   if (state.pendingExploreControl) {
     return state.pendingExploreControl.playerId;
-  }
-  if (state.pendingCombatConquest) {
-    return state.pendingCombatConquest.winnerPlayerId;
-  }
-  if (state.pendingReputationDraw) {
-    return state.pendingReputationDraw.playerId;
   }
   if (state.pendingArtifactReward) {
     return state.pendingArtifactReward.playerId;
@@ -298,17 +298,17 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
   if (state.pendingExplore?.playerId === player.id) {
     return handlePendingExplore(state, player);
   }
+  if (state.pendingReputationDraw?.playerId === player.id) {
+    return handlePendingReputationDraw(player, state.pendingReputationDraw.drawnTiles);
+  }
+  if (state.pendingCombatConquest?.winnerPlayerId === player.id) {
+    return handlePendingCombatConquest(state, player);
+  }
   if (state.pendingDiscovery?.playerId === player.id) {
     return handlePendingDiscovery(state, player);
   }
   if (state.pendingExploreControl?.playerId === player.id) {
     return handlePendingExploreControl(state, player);
-  }
-  if (state.pendingCombatConquest?.winnerPlayerId === player.id) {
-    return handlePendingCombatConquest(state, player);
-  }
-  if (state.pendingReputationDraw?.playerId === player.id) {
-    return handlePendingReputationDraw(player, state.pendingReputationDraw.drawnTiles);
   }
   if (state.pendingArtifactReward?.playerId === player.id) {
     return handlePendingArtifactReward(state, player, state.pendingArtifactReward.totalResources);
@@ -370,6 +370,9 @@ function buildSafeFallbackAction(state: GameState, player: PlayerState): GameAct
       isSecondActivation: state.pendingExplore.isSecondActivation,
     };
   }
+  if (state.pendingReputationDraw?.playerId === player.id) {
+    return { type: 'CLAIM_REPUTATION_TILE', playerId: player.id, selectedTileIndex: -1 };
+  }
   if (state.pendingCombatConquest?.winnerPlayerId === player.id) {
     return {
       type: 'COMBAT_CONQUEST',
@@ -377,9 +380,6 @@ function buildSafeFallbackAction(state: GameState, player: PlayerState): GameAct
       sectorId: state.pendingCombatConquest.sectorId,
       claimInfluence: false,
     };
-  }
-  if (state.pendingReputationDraw?.playerId === player.id) {
-    return { type: 'CLAIM_REPUTATION_TILE', playerId: player.id, selectedTileIndex: -1 };
   }
   if (state.phase === 'UPKEEP_PHASE') {
     return { type: 'READY_FOR_UPKEEP', playerId: player.id };
@@ -928,17 +928,19 @@ function handlePendingReputationDraw(player: PlayerState, drawnTiles: number[]):
     return { type: 'CLAIM_REPUTATION_TILE', playerId: player.id, selectedTileIndex: bestIdx };
   }
 
-  let worstExistingIdx = 0;
-  for (let i = 1; i < player.reputationTiles.length; i++) {
-    if (player.reputationTiles[i]! < player.reputationTiles[worstExistingIdx]!) worstExistingIdx = i;
-  }
-  if (bestVal > player.reputationTiles[worstExistingIdx]!) {
-    return {
-      type: 'CLAIM_REPUTATION_TILE',
-      playerId: player.id,
-      selectedTileIndex: bestIdx,
-      replaceTrackIndex: worstExistingIdx,
-    };
+  if (player.reputationTiles.length > 0 && maxRep > 0) {
+    let worstExistingIdx = 0;
+    for (let i = 1; i < player.reputationTiles.length; i++) {
+      if (player.reputationTiles[i]! < player.reputationTiles[worstExistingIdx]!) worstExistingIdx = i;
+    }
+    if (bestVal > player.reputationTiles[worstExistingIdx]!) {
+      return {
+        type: 'CLAIM_REPUTATION_TILE',
+        playerId: player.id,
+        selectedTileIndex: bestIdx,
+        replaceTrackIndex: worstExistingIdx,
+      };
+    }
   }
 
   return { type: 'CLAIM_REPUTATION_TILE', playerId: player.id, selectedTileIndex: -1 };
