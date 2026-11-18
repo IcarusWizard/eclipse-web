@@ -80,6 +80,8 @@ import {
   registerTableMember,
   adminReassignTableSeat,
   adminSendTableReminder,
+  adminGetTurnCheckpoints,
+  adminRevertTableTurn,
   isSeatTaken,
   canUserUseHotseat,
   deleteSavedTable,
@@ -672,7 +674,10 @@ const AppContent: React.FC = () => {
           const currentLocal = loadTable(tableParam);
           const remoteTime = Number(remote.savedAt) || 0;
           const localTime = Number(currentLocal?.savedAt) || 0;
-          if (localTime > remoteTime && currentLocal) {
+          const isAdminRestore =
+            Number((remote as any).adminRestoredAt || 0) >
+            Number((currentLocal as any)?.adminRestoredAt || 0);
+          if (!isAdminRestore && localTime > remoteTime && currentLocal) {
             isRemoteSyncRef.current = true;
             lastStateFingerprintRef.current = getStateFingerprint(currentLocal);
             setState(currentLocal);
@@ -758,7 +763,13 @@ const AppContent: React.FC = () => {
       }
 
       // Bug 87 & 93: Only protect if THIS seat has an active revertible unconfirmed action that this player is editing
+      // (unless an administrator issued a newer server turn restore).
+      const isAdminRestore =
+        Number((remoteState as any).adminRestoredAt || 0) >
+        Number((currentLocalState as any)?.adminRestoredAt || 0);
+
       const isMyPendingAction =
+        !isAdminRestore &&
         !!pendingActionRef.current &&
         pendingActionRef.current.canRevert !== false &&
         (currentSeat === 'all' ||
@@ -772,7 +783,7 @@ const AppContent: React.FC = () => {
 
       const remoteTime = Number((remoteState as any).savedAt) || 0;
       const localTime = Number((currentLocalState as any)?.savedAt) || 0;
-      if (localTime > remoteTime && !currentLocalState?.pendingActionConfirmation) {
+      if (!isAdminRestore && localTime > remoteTime && !currentLocalState?.pendingActionConfirmation) {
         if (mergedChat.length !== (currentLocalState?.chatMessages?.length || 0)) {
           setState((prev) => ({ ...prev, chatMessages: mergeChatMessages(prev.chatMessages, mergedChat) }));
         }
@@ -780,7 +791,7 @@ const AppContent: React.FC = () => {
       }
 
       const remoteFp = getStateFingerprint(remoteState);
-      if (remoteFp !== lastStateFingerprintRef.current) {
+      if (isAdminRestore || remoteFp !== lastStateFingerprintRef.current) {
         lastStateFingerprintRef.current = remoteFp;
         isRemoteSyncRef.current = true;
         setState(remoteState);
@@ -1127,6 +1138,37 @@ const AppContent: React.FC = () => {
         res.mock
           ? `Reminder logged (mock SMTP) for ${res.username || `Seat ${seatIndex + 1}`}`
           : `Turn reminder sent to ${res.username || `Seat ${seatIndex + 1}`}${res.email ? ` (${res.email})` : ''}!`
+      );
+    }
+    return res;
+  };
+
+  const handleAdminGetTurnCheckpoints = async () => {
+    if (currentUser.role !== 'admin') {
+      return { success: false, error: 'Administrator role required.' };
+    }
+    return adminGetTurnCheckpoints(state.id, currentUser, state.isLocalGame);
+  };
+
+  const handleAdminRevertTurn = async (target: 'current' | 'previous') => {
+    if (currentUser.role !== 'admin') {
+      return { success: false, error: 'Administrator role required to revert turns.' };
+    }
+    const res = await adminRevertTableTurn(state.id, target, currentUser, state.isLocalGame);
+    if (res.success && res.table) {
+      lastStateFingerprintRef.current = getStateFingerprint(res.table);
+      isRemoteSyncRef.current = true;
+      setState(res.table);
+      setIsExploreMode(false);
+      setIsBuildOpen(false);
+      setIsMoveOpen(false);
+      setIsInfluenceOpen(false);
+      setIsTechMarketOpen(false);
+      setIsBlueprintOpen(false);
+      showToast(
+        target === 'current'
+          ? 'Table restored to start of current player turn!'
+          : 'Table restored to start of previous player turn!'
       );
     }
     return res;
@@ -3905,6 +3947,8 @@ const AppContent: React.FC = () => {
           }}
           onReassignSeat={handleAdminReassignSeat}
           onSendReminder={handleAdminSendReminder}
+          onGetTurnCheckpoints={handleAdminGetTurnCheckpoints}
+          onRevertTurn={handleAdminRevertTurn}
         />
       )}
 

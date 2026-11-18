@@ -1,6 +1,8 @@
 import { GameState, ChatMessage } from '../types/state';
 import { TableMember, UserSession } from '../types/user';
 import { isReplayAvailable, compactReplaySteps } from './replay';
+import type { AdminTurnCheckpointInfo } from './turnCheckpoints';
+export type { AdminTurnCheckpointInfo };
 
 /**
  * Merges two chat message arrays by message id (falling back to sender/timestamp/text),
@@ -1075,14 +1077,21 @@ export function subscribeToGameSync(
     lastKnownSavedAt = initial.savedAt;
   }
 
-  const applyRemoteServerState = (remote: GameState | null) => {
+  const applyRemoteServerState = async (remote: GameState | null) => {
     if (!remote) return;
     const currentLocal = loadTable(targetIdStr);
     const remoteTime = Number(remote.savedAt) || 0;
     const localTime = Math.max(Number(currentLocal?.savedAt) || 0, Number(initial?.savedAt) || 0);
+    const remoteAdminRestoredAt = Number(remote.adminRestoredAt) || 0;
+    const localAdminRestoredAt = Math.max(
+      Number(currentLocal?.adminRestoredAt) || 0,
+      Number(initial?.adminRestoredAt) || 0
+    );
+    const isAdminForceRestore = remoteAdminRestoredAt > localAdminRestoredAt;
 
-    // Anti-Regression Protection: Never overwrite newer local confirmed state with older server state!
-    if (localTime > remoteTime) {
+    // Anti-Regression Protection: Never overwrite newer local confirmed state with older server state
+    // unless the server carried a newer admin turn restore epoch.
+    if (!isAdminForceRestore && localTime > remoteTime) {
       if (currentLocal) {
         const merged = mergeChatMessages(currentLocal.chatMessages, remote.chatMessages);
         if (merged.length !== (currentLocal.chatMessages?.length || 0)) {
@@ -1095,13 +1104,24 @@ export function subscribeToGameSync(
       return;
     }
 
+    if (isAdminForceRestore && (!remote.replaySteps || remote.replaySteps.length === 0)) {
+      const fullRemote = await fetchTableFromServer(targetIdStr, true);
+      if (fullRemote) {
+        remote = fullRemote;
+      }
+    }
+
     if (remote.savedAt) lastKnownSavedAt = remote.savedAt;
     remote.chatMessages = mergeChatMessages(currentLocal?.chatMessages, remote.chatMessages);
-    if ((!remote.replaySteps || remote.replaySteps.length === 0) && (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)) {
+    if (
+      !isAdminForceRestore &&
+      (!remote.replaySteps || remote.replaySteps.length === 0) &&
+      (currentLocal?.replaySteps?.length || initial?.replaySteps?.length)
+    ) {
       remote.replaySteps = currentLocal?.replaySteps || initial?.replaySteps || [];
     }
     const fp = getStateFingerprint(remote);
-    if (fp !== lastKnownFingerprint) {
+    if (fp !== lastKnownFingerprint || isAdminForceRestore) {
       lastKnownFingerprint = fp;
       saveGameState(remote, true);
       callback(remote);
@@ -1649,6 +1669,100 @@ export async function adminSendTableReminder(
   } catch (err: any) {
     console.error('Failed to send manual reminder:', err);
     return { success: false, error: err?.message || 'Failed to send reminder email.' };
+  }
+}
+
+/**
+ * Administrator fetches available start-of-turn rollback checkpoints for an online table.
+ */
+export async function adminGetTurnCheckpoints(
+  tableId: string,
+  adminUser: { id: string; role: string },
+  isLocal?: boolean
+): Promise<{
+  success: boolean;
+  currentTurn?: AdminTurnCheckpointInfo | null;
+  previousTurn?: AdminTurnCheckpointInfo | null;
+  error?: string;
+}> {
+  if (isLocal) {
+    return { success: false, error: 'Server turn rollback is only available for online multiplayer tables.' };
+  }
+  if (!adminUser?.id || adminUser.role !== 'admin') {
+    return { success: false, error: 'Only administrators can inspect turn checkpoints.' };
+  }
+  if (!canPerformServerFetch()) {
+    return { success: false, error: 'Server fetch unavailable in this environment.' };
+  }
+  try {
+    const res = await fetch(
+      resolveApiUrl(
+        `/api/tables/${encodeURIComponent(tableId)}/admin/turn-checkpoints?adminUserId=${encodeURIComponent(adminUser.id)}`
+      )
+    );
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success) {
+      return { success: false, error: data?.error || `Failed to load checkpoints (HTTP ${res.status}).` };
+    }
+    return {
+      success: true,
+      currentTurn: data.currentTurn || null,
+      previousTurn: data.previousTurn || null,
+    };
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Failed to load turn checkpoints.' };
+  }
+}
+
+/**
+ * Administrator restores an online table back to the start of the current player's turn
+ * or the previous player's turn, keeping live chat messages and table members intact.
+ */
+export async function adminRevertTableTurn(
+  tableId: string,
+  target: 'current' | 'previous',
+  adminUser: { id: string; role: string },
+  isLocal?: boolean
+): Promise<{
+  success: boolean;
+  table?: GameState;
+  currentTurn?: AdminTurnCheckpointInfo | null;
+  previousTurn?: AdminTurnCheckpointInfo | null;
+  error?: string;
+}> {
+  if (isLocal) {
+    return { success: false, error: 'Server turn rollback is only available for online multiplayer tables.' };
+  }
+  if (!adminUser?.id || adminUser.role !== 'admin') {
+    return { success: false, error: 'Only administrators can revert player turns.' };
+  }
+  if (!canPerformServerFetch()) {
+    return { success: false, error: 'Server fetch unavailable in this environment.' };
+  }
+  try {
+    const res = await fetch(resolveApiUrl(`/api/tables/${encodeURIComponent(tableId)}/admin/revert-turn`), {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        adminUserId: adminUser.id,
+        target,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.success || !data.table) {
+      return { success: false, error: data?.error || `Failed to revert turn (HTTP ${res.status}).` };
+    }
+    const sanitized = sanitizeLoadedGameState(data.table as GameState);
+    saveGameState(sanitized, false);
+    return {
+      success: true,
+      table: sanitized,
+      currentTurn: data.currentTurn || null,
+      previousTurn: data.previousTurn || null,
+    };
+  } catch (err: any) {
+    console.error('Failed to revert turn:', err);
+    return { success: false, error: err?.message || 'Failed to revert turn.' };
   }
 }
 

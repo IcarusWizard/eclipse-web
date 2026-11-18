@@ -7,6 +7,12 @@ import fs from 'fs';
 import { formatBugReportLine } from './src/engine/rules/bugReport.ts';
 import { generateSalt, hashPasswordSync } from './src/engine/rules/passwordUtils.ts';
 import { compactReplaySteps, isReplayAvailable } from './src/engine/rules/replay.ts';
+import {
+  updateTurnCheckpointsOnSave,
+  getTurnCheckpointsSummary,
+  revertToTurnCheckpoint,
+  TurnCheckpointEntry,
+} from './src/engine/rules/turnCheckpoints.ts';
 
 function bugReportPlugin(): Plugin {
   const handler = (req: any, res: any, next: any) => {
@@ -82,6 +88,7 @@ function bugReportPlugin(): Plugin {
 
 function tableStoragePlugin(): Plugin {
   const TABLES_DIR = path.resolve(process.cwd(), 'server_data', 'tables');
+  const TURN_BACKUPS_DIR = path.resolve(process.cwd(), 'server_data', 'turn_backups');
   const USERS_DIR = path.resolve(process.cwd(), 'server_data', 'users');
   const ADMIN_FILE = path.resolve(process.cwd(), 'server_data', 'admin.json');
 
@@ -295,16 +302,45 @@ function tableStoragePlugin(): Plugin {
     return Array.from(map.values()).sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
   }
 
-  function ensureDir() {
-    if (!fs.existsSync(TABLES_DIR)) {
-      fs.mkdirSync(TABLES_DIR, { recursive: true });
+  function ensureServerDir(dirPath: string) {
+    if (!fs.existsSync(dirPath)) {
+      fs.mkdirSync(dirPath, { recursive: true, mode: 0o755 });
     }
   }
 
-  function ensureUsersDir() {
-    if (!fs.existsSync(USERS_DIR)) {
-      fs.mkdirSync(USERS_DIR, { recursive: true });
+  function ensureDir() {
+    ensureServerDir(TABLES_DIR);
+  }
+
+  function ensureTurnBackupsDir() {
+    ensureServerDir(TURN_BACKUPS_DIR);
+  }
+
+  function getTurnCheckpointsFilePath(tableId: string): string {
+    const safeId = String(tableId || '').replace(/[^a-zA-Z0-9_-]/g, '_');
+    return path.join(TURN_BACKUPS_DIR, `${safeId}.json`);
+  }
+
+  function readTurnCheckpoints(tableId: string): TurnCheckpointEntry[] {
+    ensureTurnBackupsDir();
+    const fp = getTurnCheckpointsFilePath(tableId);
+    if (!fs.existsSync(fp)) return [];
+    try {
+      const raw = JSON.parse(fs.readFileSync(fp, 'utf-8'));
+      return Array.isArray(raw) ? raw : [];
+    } catch {
+      return [];
     }
+  }
+
+  function writeTurnCheckpoints(tableId: string, checkpoints: TurnCheckpointEntry[]) {
+    ensureTurnBackupsDir();
+    const fp = getTurnCheckpointsFilePath(tableId);
+    fs.writeFileSync(fp, JSON.stringify(checkpoints), { encoding: 'utf-8', mode: 0o644 });
+  }
+
+  function ensureUsersDir() {
+    ensureServerDir(USERS_DIR);
   }
 
   function isAdminUserId(adminUserId?: string): boolean {
@@ -386,7 +422,7 @@ function tableStoragePlugin(): Plugin {
     if (Array.isArray(tableData.members)) {
       tableData.members = tableData.members.filter((m: any) => m && m.seat !== 'spectator');
     }
-    fs.writeFileSync(filePath, JSON.stringify(tableData), 'utf-8');
+    fs.writeFileSync(filePath, JSON.stringify(tableData), { encoding: 'utf-8', mode: 0o644 });
   }
 
   function getAdminHash(): { salt: string; passwordHash: string } | null {
@@ -1152,6 +1188,102 @@ function tableStoragePlugin(): Plugin {
         return;
       }
 
+      // 0a-3. GET /api/tables/:id/admin/turn-checkpoints -> list available start-of-turn rollback points
+      if (req.method === 'GET' && targetParam && parts[3] === 'admin' && parts[4] === 'turn-checkpoints') {
+        try {
+          const qIndex = rawUrl.indexOf('?');
+          const queryParams = new URLSearchParams(qIndex >= 0 ? rawUrl.substring(qIndex) : '');
+          const adminUserId = queryParams.get('adminUserId') || undefined;
+          if (!isAdminUserId(adminUserId)) {
+            res.statusCode = 403;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: 'Only administrators can inspect turn checkpoints.' }));
+            return;
+          }
+          const foundTable = findTableByParam(targetParam);
+          if (!foundTable) {
+            res.statusCode = 404;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: 'Table not found.' }));
+            return;
+          }
+          const resolvedId = foundTable.tableData.id || targetParam;
+          const checkpoints = readTurnCheckpoints(resolvedId);
+          const summary = getTurnCheckpointsSummary(checkpoints);
+          res.statusCode = 200;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: true, ...summary }));
+        } catch (err: any) {
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'application/json');
+          res.end(JSON.stringify({ success: false, error: err?.message || 'Server error' }));
+        }
+        return;
+      }
+
+      // 0a-4. POST /api/tables/:id/admin/revert-turn -> administrator restores table to start of current or previous player's turn
+      if (req.method === 'POST' && targetParam && parts[3] === 'admin' && parts[4] === 'revert-turn') {
+        let body = '';
+        req.on('data', (chunk: any) => {
+          body += chunk;
+        });
+        req.on('end', () => {
+          try {
+            const { adminUserId, target } = JSON.parse(body || '{}');
+            if (target !== 'current' && target !== 'previous') {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Invalid revert target. Expected "current" or "previous".' }));
+              return;
+            }
+            if (!isAdminUserId(adminUserId)) {
+              res.statusCode = 403;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Only administrators can revert player turns.' }));
+              return;
+            }
+
+            const foundTable = findTableByParam(targetParam);
+            if (!foundTable) {
+              res.statusCode = 404;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: 'Table not found.' }));
+              return;
+            }
+            const resolvedId = foundTable.tableData.id || targetParam;
+            const checkpoints = readTurnCheckpoints(resolvedId);
+            const revertRes = revertToTurnCheckpoint(checkpoints, foundTable.tableData, target, Date.now());
+            if (!revertRes.success || !revertRes.restoredState) {
+              res.statusCode = 400;
+              res.setHeader('Content-Type', 'application/json');
+              res.end(JSON.stringify({ success: false, error: revertRes.error || 'No checkpoint available.' }));
+              return;
+            }
+
+            saveTableFile(foundTable.filePath, revertRes.restoredState);
+            if (revertRes.updatedCheckpoints) {
+              writeTurnCheckpoints(resolvedId, revertRes.updatedCheckpoints);
+            }
+
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(
+              JSON.stringify({
+                success: true,
+                table: revertRes.restoredState,
+                currentTurn: revertRes.summary?.currentTurn || null,
+                previousTurn: revertRes.summary?.previousTurn || null,
+              })
+            );
+          } catch (err: any) {
+            res.statusCode = 500;
+            res.setHeader('Content-Type', 'application/json');
+            res.end(JSON.stringify({ success: false, error: err?.message || 'Server error' }));
+          }
+        });
+        return;
+      }
+
       // 0. POST /api/tables/:id/join -> register user as table member
       if (req.method === 'POST' && targetParam && parts[3] === 'join') {
         let body = '';
@@ -1665,6 +1797,14 @@ function tableStoragePlugin(): Plugin {
               } catch {}
             }
             saveTableFile(filePath, data);
+            try {
+              const checkpointTableId = data.id || resolvedTableId;
+              const curCheckpoints = readTurnCheckpoints(checkpointTableId);
+              const updatedCheckpoints = updateTurnCheckpointsOnSave(curCheckpoints, existing, data, 3);
+              if (updatedCheckpoints !== curCheckpoints) {
+                writeTurnCheckpoints(checkpointTableId, updatedCheckpoints);
+              }
+            } catch {}
 
             // BGA-style Turn Reminder Trigger
             if (
@@ -1758,6 +1898,10 @@ function tableStoragePlugin(): Plugin {
           const directFile = path.join(TABLES_DIR, `${targetParam}.json`);
           if (fs.existsSync(directFile)) {
             fs.unlinkSync(directFile);
+          }
+          const backupFile = getTurnCheckpointsFilePath(targetParam);
+          if (fs.existsSync(backupFile)) {
+            fs.unlinkSync(backupFile);
           }
           res.statusCode = 200;
           res.setHeader('Content-Type', 'application/json');

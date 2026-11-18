@@ -278,6 +278,7 @@ export interface GameState {
   traitorPlayerId?: string;
   log: GameLogEntry[];
   chatMessages?: ChatMessage[];
+  adminRestoredAt?: number;
   winnerId?: string;
   replaySteps?: ReplayStep[];
   finalScores?: Record<string, {

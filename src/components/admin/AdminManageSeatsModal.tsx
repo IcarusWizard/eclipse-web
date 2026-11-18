@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { GameState } from '../../engine/types/state';
 import { UserSession, RegisteredUserProfile, TableMember } from '../../engine/types/user';
+import type { AdminTurnCheckpointInfo } from '../../engine/rules/persistence';
 import { adminListUsers } from '../../engine/rules/userSession';
 import { getPlayerDisplayName, isBlackFaction, getFactionDisplayColor } from '../../engine/rules/gameReducer';
 import {
@@ -17,6 +18,7 @@ import {
   ChevronDown,
   ChevronUp,
   Mail,
+  RotateCcw,
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateFactionName, translateGamePhase } from '../../i18n/catalogTranslations';
@@ -36,6 +38,18 @@ interface AdminManageSeatsModalProps {
     username?: string;
     error?: string;
   }>;
+  onGetTurnCheckpoints?: () => Promise<{
+    success: boolean;
+    currentTurn?: AdminTurnCheckpointInfo | null;
+    previousTurn?: AdminTurnCheckpointInfo | null;
+    error?: string;
+  }>;
+  onRevertTurn?: (target: 'current' | 'previous') => Promise<{
+    success: boolean;
+    currentTurn?: AdminTurnCheckpointInfo | null;
+    previousTurn?: AdminTurnCheckpointInfo | null;
+    error?: string;
+  }>;
 }
 
 export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
@@ -47,6 +61,8 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
   onTakeSeat,
   onReassignSeat,
   onSendReminder,
+  onGetTurnCheckpoints,
+  onRevertTurn,
 }) => {
   const { l, language } = useLanguage();
   const [registeredUsers, setRegisteredUsers] = useState<RegisteredUserProfile[]>([]);
@@ -56,10 +72,14 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
   const [searchQueryBySeat, setSearchQueryBySeat] = useState<Record<number, string>>({});
   const [isSubmittingSeat, setIsSubmittingSeat] = useState<number | null>(null);
   const [isSendingReminderSeat, setIsSendingReminderSeat] = useState<number | null>(null);
+  const [currentTurnCheckpoint, setCurrentTurnCheckpoint] = useState<AdminTurnCheckpointInfo | null>(null);
+  const [previousTurnCheckpoint, setPreviousTurnCheckpoint] = useState<AdminTurnCheckpointInfo | null>(null);
+  const [isLoadingCheckpoints, setIsLoadingCheckpoints] = useState<boolean>(false);
+  const [isRevertingTarget, setIsRevertingTarget] = useState<'current' | 'previous' | null>(null);
   const [successToast, setSuccessToast] = useState<string | null>(null);
   const [errorToast, setErrorToast] = useState<string | null>(null);
 
-  // Fetch registered users on modal open
+  // Fetch registered users and turn rollback checkpoints on modal open
   useEffect(() => {
     if (!isOpen) return;
     let isMounted = true;
@@ -72,6 +92,18 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
         }
       }
     });
+    if (onGetTurnCheckpoints) {
+      setIsLoadingCheckpoints(true);
+      onGetTurnCheckpoints().then((res) => {
+        if (isMounted) {
+          setIsLoadingCheckpoints(false);
+          if (res.success) {
+            setCurrentTurnCheckpoint(res.currentTurn || null);
+            setPreviousTurnCheckpoint(res.previousTurn || null);
+          }
+        }
+      });
+    }
     return () => {
       isMounted = false;
     };
@@ -144,6 +176,54 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
     }
   };
 
+  const formatCheckpointLabel = (cp: AdminTurnCheckpointInfo | null): string => {
+    if (!cp) return l('Unavailable', '暂无记录');
+    const factionLabel = cp.factionId
+      ? translateFactionName(cp.factionId, cp.factionName, language)
+      : cp.factionName;
+    return `R${cp.round} · ${translateGamePhase(cp.phase as any, language)} · ${factionLabel} (${cp.playerName})`;
+  };
+
+  const handleConfirmRevertTurn = async (target: 'current' | 'previous') => {
+    if (!onRevertTurn) return;
+    const cp = target === 'current' ? currentTurnCheckpoint : previousTurnCheckpoint;
+    if (!cp) return;
+    const desc = formatCheckpointLabel(cp);
+    const confirmMsg =
+      target === 'current'
+        ? l(
+            `Revert entire table back to the START of Current Player's turn (${desc})? Live chat messages will be preserved.`,
+            `确认将整张牌桌回退到【当前玩家回合开始前】(${desc})？聊天记录将被保留。`
+          )
+        : l(
+            `Revert entire table back to the START of Previous Player's turn (${desc})? This undoes the previous turn & any current mid-turn actions, while preserving live chat messages.`,
+            `确认将整张牌桌回退到【上一位玩家回合开始前】(${desc})？这将撤回上一位玩家的整个回合及当前回合内操作，聊天记录将被保留。`
+          );
+    if (typeof window !== 'undefined' && !window.confirm(confirmMsg)) {
+      return;
+    }
+
+    setIsRevertingTarget(target);
+    setErrorToast(null);
+    setSuccessToast(null);
+    const res = await onRevertTurn(target);
+    setIsRevertingTarget(null);
+
+    if (res.success) {
+      if (res.currentTurn !== undefined) setCurrentTurnCheckpoint(res.currentTurn);
+      if (res.previousTurn !== undefined) setPreviousTurnCheckpoint(res.previousTurn);
+      setSuccessToast(
+        l(
+          `Table restored to ${desc}! Connected browsers will sync cleanly.`,
+          `牌桌已成功回退至 ${desc}！在线玩家将自动同步。`
+        )
+      );
+      setTimeout(() => setSuccessToast(null), 5000);
+    } else {
+      setErrorToast(res.error || l('Failed to revert turn.', '回退回合失败。'));
+    }
+  };
+
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
       <div
@@ -207,6 +287,79 @@ export const AdminManageSeatsModal: React.FC<AdminManageSeatsModalProps> = ({
           <div className="p-2.5 rounded-xl bg-rose-950/80 border border-rose-500/70 text-rose-200 text-xs font-bold flex items-center gap-2 animate-in fade-in">
             <AlertCircle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>{errorToast}</span>
+          </div>
+        )}
+
+        {/* Admin Turn Rollback Section */}
+        {onRevertTurn && (
+          <div
+            data-testid="admin-turn-rollback-panel"
+            className="p-3.5 rounded-xl bg-slate-900/80 border border-amber-500/40 flex flex-col gap-2.5"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-400 shrink-0" />
+                <span className="text-xs font-bold uppercase tracking-wider text-amber-200">
+                  {l('Admin Turn Rollback (Preserves Chat)', '管理员回合回退（保留聊天记录）')}
+                </span>
+              </div>
+              {isLoadingCheckpoints && (
+                <span className="inline-flex items-center gap-1 text-[11px] text-amber-300">
+                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <span>{l('Loading checkpoints...', '加载存档点...')}</span>
+                </span>
+              )}
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <button
+                type="button"
+                data-testid="admin-revert-current-turn"
+                disabled={!currentTurnCheckpoint || isRevertingTarget !== null}
+                onClick={() => handleConfirmRevertTurn('current')}
+                className="flex flex-col items-start gap-0.5 px-3 py-2 rounded-lg bg-amber-950/60 hover:bg-amber-900/70 disabled:opacity-40 disabled:cursor-not-allowed border border-amber-600/60 text-left transition cursor-pointer"
+                title={l(
+                  "Revert table to the start of the current player's turn",
+                  '将牌桌回退至当前玩家回合开始前'
+                )}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold text-amber-200">
+                  {isRevertingTarget === 'current' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-400" />
+                  )}
+                  <span>{l('Revert Current Turn', '回退当前回合开始')}</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono truncate w-full">
+                  {formatCheckpointLabel(currentTurnCheckpoint)}
+                </span>
+              </button>
+
+              <button
+                type="button"
+                data-testid="admin-revert-previous-turn"
+                disabled={!previousTurnCheckpoint || isRevertingTarget !== null}
+                onClick={() => handleConfirmRevertTurn('previous')}
+                className="flex flex-col items-start gap-0.5 px-3 py-2 rounded-lg bg-rose-950/60 hover:bg-rose-900/70 disabled:opacity-40 disabled:cursor-not-allowed border border-rose-600/60 text-left transition cursor-pointer"
+                title={l(
+                  "Revert table to the start of the previous player's turn",
+                  '将牌桌回退至上一位玩家回合开始前'
+                )}
+              >
+                <div className="flex items-center gap-1.5 text-xs font-bold text-rose-200">
+                  {isRevertingTarget === 'previous' ? (
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-3.5 h-3.5 text-rose-400" />
+                  )}
+                  <span>{l('Revert Previous Turn', '回退上一位玩家回合开始')}</span>
+                </div>
+                <span className="text-[10px] text-slate-400 font-mono truncate w-full">
+                  {formatCheckpointLabel(previousTurnCheckpoint)}
+                </span>
+              </button>
+            </div>
           </div>
         )}
 

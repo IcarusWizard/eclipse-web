@@ -26685,6 +26685,137 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(html).toContain('Send Email');
     });
   });
+
+  describe('181. Admin Turn Rollback Checkpoints', () => {
+    it('263. captures start-of-turn checkpoints ignoring mid-turn START_EXPLORE/diplomacy and reverts current or previous turn while preserving chat', async () => {
+      const {
+        updateTurnCheckpointsOnSave,
+        getTurnCheckpointsSummary,
+        revertToTurnCheckpoint,
+      } = await import('../rules/turnCheckpoints');
+      const { adminGetTurnCheckpoints, adminRevertTableTurn } = await import('../rules/persistence');
+      const { AdminManageSeatsModal } = await import('../../components/admin/AdminManageSeatsModal');
+      const { renderToString } = await import('react-dom/server');
+      const React = await import('react');
+
+      // 1. Admin/online guards
+      const localGet = await adminGetTurnCheckpoints('local-1', { id: 'admin_root', role: 'admin' }, true);
+      expect(localGet.success).toBe(false);
+      const nonAdminRevert = await adminRevertTableTurn('galaxy-192', 'previous', { id: 'u1', role: 'user' }, false);
+      expect(nonAdminRevert.success).toBe(false);
+      expect(nonAdminRevert.error).toContain('Only administrators');
+
+      // 2. Simulate P0 turn -> P1 turn -> P1 START_EXPLORE (mid-turn)
+      const g0 = createInitialGame(2, ['planta', 'terran_federation']);
+      g0.phase = 'ACTION_PHASE';
+      g0.activePlayerIndex = 0;
+      const p0 = g0.players[0]!;
+      const p1 = g0.players[1]!;
+      const s0 = g0.sectors.find((s) => s.discOwner === p0.id)!;
+      const s1 = g0.sectors.find((s) => s.discOwner === p1.id)!;
+
+      let checkpoints = updateTurnCheckpointsOnSave([], null, g0, 3);
+      expect(checkpoints.length).toBe(1);
+
+      // P0 completes a PASS -> advances turn to P1
+      const p0Pass = executeAction(g0, {
+        type: 'PASS',
+        playerId: p0.id,
+        requireConfirmation: false,
+      });
+      expect(p0Pass.success).toBe(true);
+      expect(p0Pass.newState.activePlayerIndex).toBe(1);
+
+      checkpoints = updateTurnCheckpointsOnSave(checkpoints, g0, p0Pass.newState, 3);
+      expect(checkpoints.length).toBe(2);
+      const summaryBeforeExplore = getTurnCheckpointsSummary(checkpoints);
+      expect(summaryBeforeExplore.currentTurn?.activePlayerIndex).toBe(1);
+      expect(summaryBeforeExplore.previousTurn?.activePlayerIndex).toBe(0);
+
+      // P1 triggers mid-turn START_EXPLORE (draws top Ring 2 tile); must NOT overwrite P1's start-of-turn checkpoint!
+      const p1Target = getExplorableHexes(
+        p0Pass.newState.sectors,
+        p1.id,
+        false,
+        p0Pass.newState.sectorDecks
+      )[0]!;
+      const ring2LenBeforeP1Explore = p0Pass.newState.sectorDecks.ring2.length;
+      const p1StartExplore = executeAction(p0Pass.newState, {
+        type: 'START_EXPLORE',
+        playerId: p1.id,
+        fromCoord: p1Target.from,
+        targetCoord: p1Target.target,
+      });
+      expect(p1StartExplore.success).toBe(true);
+
+      // Simulate server save during START_EXPLORE + a fresh chat message sent after the action
+      const liveWithChat = {
+        ...p1StartExplore.newState,
+        savedAt: Date.now() + 500,
+        chatMessages: [
+          {
+            id: 'chat_preserve_1',
+            senderPlayerId: p0.id,
+            senderName: p0.name,
+            text: 'Hold on, please rollback!',
+            timestamp: Date.now(),
+          },
+        ],
+      };
+      checkpoints = updateTurnCheckpointsOnSave(checkpoints, p0Pass.newState, liveWithChat, 3);
+      expect(checkpoints.length).toBe(2); // Still P0 start and P1 start!
+
+      // 3. Revert to START OF CURRENT TURN -> undoes P1's START_EXPLORE, preserves chat, sets adminRestoredAt
+      const revertCurrent = revertToTurnCheckpoint(checkpoints, liveWithChat, 'current', Date.now() + 2000);
+      expect(revertCurrent.success).toBe(true);
+      expect(revertCurrent.restoredState.activePlayerIndex).toBe(1);
+      expect(revertCurrent.restoredState.pendingExplore).toBeNull();
+      expect(revertCurrent.restoredState.sectorDecks.ring2.length).toBe(ring2LenBeforeP1Explore);
+      expect(revertCurrent.restoredState.chatMessages.some((m: any) => m.id === 'chat_preserve_1')).toBe(true);
+      expect(revertCurrent.restoredState.adminRestoredAt).toBeGreaterThan(0);
+      expect(revertCurrent.restoredState.savedAt).toBeGreaterThan(liveWithChat.savedAt);
+
+      // 4. Revert to START OF PREVIOUS TURN -> restores P0's turn BEFORE PASS, preserves chat, pops P1 checkpoint
+      const revertPrev = revertToTurnCheckpoint(checkpoints, liveWithChat, 'previous', Date.now() + 3000);
+      expect(revertPrev.success).toBe(true);
+      expect(revertPrev.restoredState.activePlayerIndex).toBe(0);
+      expect(revertPrev.restoredState.players[0].hasPassed).toBe(false);
+      expect(revertPrev.restoredState.sectorDecks.ring2.length).toBe(g0.sectorDecks.ring2.length);
+      expect(revertPrev.restoredState.chatMessages.some((m: any) => m.id === 'chat_preserve_1')).toBe(true);
+      expect(revertPrev.updatedCheckpoints?.length).toBe(1);
+      expect(revertPrev.summary?.currentTurn?.activePlayerIndex).toBe(0);
+      expect(revertPrev.summary?.previousTurn).toBeNull();
+
+      // Calling revert previous when < 2 checkpoints remain returns an error
+      const noPrevLeft = revertToTurnCheckpoint(revertPrev.updatedCheckpoints!, revertPrev.restoredState, 'previous');
+      expect(noPrevLeft.success).toBe(false);
+
+      // 5. Verify UI renders Admin Turn Rollback section when onRevertTurn is wired
+      const modalHtml = renderToString(
+        React.createElement(AdminManageSeatsModal, {
+          isOpen: true,
+          onClose: () => {},
+          state: g0,
+          currentUser: { id: 'admin_root', username: 'Administrator', role: 'admin', isGuest: false },
+          currentSeat: 'spectator',
+          onTakeSeat: () => {},
+          onReassignSeat: async () => ({ success: true }),
+          onSendReminder: async () => ({ success: true }),
+          onGetTurnCheckpoints: async () => ({
+            success: true,
+            currentTurn: summaryBeforeExplore.currentTurn,
+            previousTurn: summaryBeforeExplore.previousTurn,
+          }),
+          onRevertTurn: async () => ({ success: true }),
+        })
+      );
+      expect(modalHtml).toContain('admin-turn-rollback-panel');
+      expect(modalHtml).toContain('admin-revert-current-turn');
+      expect(modalHtml).toContain('admin-revert-previous-turn');
+      expect(modalHtml).toContain('Revert Current Turn');
+      expect(modalHtml).toContain('Revert Previous Turn');
+    });
+  });
 });
 
 
