@@ -5360,7 +5360,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       );
 
       const pIdx = newState.players.findIndex((p) => p.id === action.playerId);
-      newState.players[pIdx] = builtPlayer;
+      const wasBot = newState.players[pIdx]?.isBot;
+      newState.players[pIdx] = wasBot ? { ...builtPlayer, isBot: true } : builtPlayer;
 
       const secIdx = newState.sectors.findIndex((s) => s.id === `draft_slot_${action.playerId}`);
       if (secIdx >= 0) {

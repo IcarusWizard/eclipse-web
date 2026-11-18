@@ -301,6 +301,14 @@ export const Header: React.FC<HeaderProps> = ({
                     style={{ backgroundColor: p.color }}
                   />
                   <span className="hidden sm:inline">{getPlayerDisplayName(p, { short: true })}</span>
+                  {p.isBot && (
+                    <span
+                      className="text-[9px] px-1 py-0.2 rounded bg-emerald-950/90 border border-emerald-600/70 text-emerald-300 font-bold leading-none shrink-0"
+                      title={l('Terran AI Bot', '人族 AI 托管')}
+                    >
+                      🤖 AI
+                    </span>
+                  )}
                   {isTraitor && (
                     <span
                       className="text-[10px] leading-none text-rose-300 shrink-0"

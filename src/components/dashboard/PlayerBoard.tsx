@@ -374,6 +374,14 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           <div className="min-w-0">
             <div className="font-bold text-xs sm:text-sm text-slate-100 flex items-center gap-1.5 font-display truncate">
               <span title={getPlayerDisplayName(player)}>{getPlayerDisplayName(player)}</span>
+              {player.isBot && (
+                <span
+                  className="text-[9px] bg-emerald-950 text-emerald-300 border border-emerald-600/70 px-1.5 py-0.2 rounded uppercase font-sans shrink-0"
+                  title={l('Controlled by Terran AI', '由人族 AI 自动控制')}
+                >
+                  {l('🤖 AI', '🤖 AI')}
+                </span>
+              )}
               {player.hasPassed && (
                 <span className="text-[9px] bg-slate-800 text-amber-400 px-1 py-0.2 rounded uppercase font-sans">
                   {l('Passed', '已过')}

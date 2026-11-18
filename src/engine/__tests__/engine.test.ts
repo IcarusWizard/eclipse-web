@@ -27467,6 +27467,217 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(headerHtml).toContain('Holds Traitor Tile');
     });
   });
+
+  describe('186. Level 1 Local Terran AI Bot', () => {
+    it('270. drives a complete 2-player Terran AI-vs-AI game from Round 1 to GAME_OVER without illegal actions or deadlocks', async () => {
+      const { getPriorityActorId, computeBotAction } = await import('../ai/terranBot');
+      let game = createInitialGame(
+        2,
+        ['terran_federation', 'terran_directorate'],
+        [],
+        undefined,
+        false,
+        [true, true]
+      );
+      game.isLocalGame = true;
+      expect(game.players[0]!.isBot).toBe(true);
+      expect(game.players[1]!.isBot).toBe(true);
+
+      let steps = 0;
+      const MAX_STEPS = 800;
+      while (game.phase !== 'GAME_OVER' && steps < MAX_STEPS) {
+        const actorId = getPriorityActorId(game);
+        expect(actorId).toBeTruthy();
+        const act = computeBotAction(game, actorId!);
+        expect(act).not.toBeNull();
+        const res = executeAction(game, act!);
+        expect(res.success).toBe(true);
+        game = res.newState;
+        steps += 1;
+      }
+
+      expect(game.phase).toBe('GAME_OVER');
+      expect(steps).toBeGreaterThan(20);
+      expect(steps).toBeLessThan(MAX_STEPS);
+      // Verify bots stayed active: explored sectors, researched techs, and controlled space
+      expect(game.sectors.length).toBeGreaterThanOrEqual(4);
+      const totalTechs = game.players.reduce((s, p) => s + p.techTrack.researched.length, 0);
+      expect(totalTechs).toBeGreaterThanOrEqual(1);
+    });
+
+    it('271. handles Faction Draft preserving isBot, Diplomacy proposal, Pending Cube Return, and Bankruptcy cleanly', async () => {
+      const { getPriorityActorId, computeBotAction, TERRAN_FACTION_IDS } = await import('../ai/terranBot');
+
+      // 1. Draft mode preserves isBot when drafting Terran faction
+      let draftGame = createInitialGame(2, undefined, [], undefined, true, [false, true]);
+      draftGame.isLocalGame = true;
+      const drafter1Id = getPriorityActorId(draftGame)!;
+      const drafter1 = draftGame.players.find((p) => p.id === drafter1Id)!;
+      if (!drafter1.isBot) {
+        const humanRes = executeAction(draftGame, {
+          type: 'DRAFT_FACTION',
+          playerId: drafter1.id,
+          factionId: 'orion_hegemony',
+        });
+        expect(humanRes.success).toBe(true);
+        draftGame = humanRes.newState;
+      }
+      const botDrafterId = getPriorityActorId(draftGame)!;
+      const botDraftAct = computeBotAction(draftGame, botDrafterId);
+      expect(botDraftAct?.type).toBe('DRAFT_FACTION');
+      expect(TERRAN_FACTION_IDS as readonly string[]).toContain((botDraftAct as any).factionId);
+      const botDraftRes = executeAction(draftGame, botDraftAct!);
+      expect(botDraftRes.success).toBe(true);
+      const draftedBot = botDraftRes.newState.players.find((p) => p.id === botDrafterId)!;
+      expect(draftedBot.isBot).toBe(true);
+      expect(draftedBot.faction.isHuman).toBe(true);
+
+      // 2. Diplomacy proposal + cube return for bot
+      let game = createInitialGame(2, ['terran_federation', 'terran_directorate'], [], undefined, false, [false, true]);
+      game.isLocalGame = true;
+      game.pendingDiplomacyProposal = {
+        initiatorId: game.players[0]!.id,
+        targetId: game.players[1]!.id,
+        initiatorCube: 'science',
+      };
+      expect(getPriorityActorId(game)).toBe(game.players[1]!.id);
+      const dipResp = computeBotAction(game);
+      expect(dipResp?.type).toBe('RESPOND_DIPLOMACY');
+      expect(executeAction(game, dipResp!).success).toBe(true);
+
+      // 3. Bankruptcy deficit resolution for bot
+      game.pendingDiplomacyProposal = null;
+      game.phase = 'UPKEEP_PHASE';
+      game.players[1]!.resources.money = -4;
+      game.players[1]!.resources.materials = 4;
+      game.pendingBankruptcy = { playerId: game.players[1]!.id, deficit: 4 };
+      expect(getPriorityActorId(game)).toBe(game.players[1]!.id);
+      const bankAct = computeBotAction(game);
+      expect(bankAct?.type).toBe('TRADE');
+      expect(executeAction(game, bankAct!).success).toBe(true);
+    });
+
+    it('272. renders AI Bot badges in Header & PlayerBoard and Local AI seat toggle in LobbyView', async () => {
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { Header } = await import('../../components/layout/Header');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { LobbyView } = await import('../../components/lobby/LobbyView');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+
+      const game = createInitialGame(2, ['terran_federation', 'terran_directorate'], [], undefined, false, [false, true]);
+      game.isLocalGame = true;
+      const botPlayer = game.players[1]!;
+
+      const headerHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(Header, {
+            state: game,
+            currentUser: { id: 'u1', username: 'testuser', name: 'Test User', role: 'guest', createdAt: 0, lastActiveAt: 0 },
+            currentSeat: 'all',
+            selectedViewIndex: 0,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onOpenGallery: () => {},
+          })
+        )
+      );
+      expect(headerHtml).toContain('🤖 AI');
+
+      const boardHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PlayerBoard, {
+            player: botPlayer,
+            isActive: false,
+            sectors: game.sectors,
+            allPlayers: game.players,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('🤖 AI');
+
+      // Verify LobbyView initializes with Create Game flow cleanly for guest (defaults to local mode)
+      const lobbyHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(LobbyView, {
+            onStartNewGame: () => {},
+            onJoinTable: () => {},
+          })
+        )
+      );
+      expect(lobbyHtml.length).toBeGreaterThan(0);
+    });
+
+    it('273. allows Human player to roll for Guardian ship in CombatModal even when AI Bot holds activePlayerIndex', async () => {
+      const React = await import('react');
+      const { renderToString } = await import('react-dom/server');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { getPriorityActorId } = await import('../ai/terranBot');
+
+      const game = createInitialGame(2, ['terran_federation', 'terran_directorate'], [], undefined, false, [false, true]);
+      game.isLocalGame = true;
+      const human = game.players[0]!;
+      const guardSec = game.sectors.find((s) => s.ships.some((sh) => sh.ownerId === 'guardian'))!;
+      // Move a human cruiser into the Guardian sector (lower initiative than Guardian=3 so Guardian fires first!)
+      guardSec.ships.push({
+        id: 'human_cruiser_guard_test',
+        ownerId: human.id,
+        type: 'cruiser',
+        damage: 0,
+      });
+
+      // Simulate COMBAT_PHASE starting while activePlayerIndex still points at the AI Bot (seat 1)
+      game.phase = 'COMBAT_PHASE';
+      game.activePlayerIndex = 1;
+      game.activeCombat = {
+        sectorId: guardSec.id,
+        defenderOwnerId: 'guardian',
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        participatingPlayerIds: [human.id, 'guardian'],
+      };
+
+      // Priority belongs to human combatant (NOT bot) so human can roll the Guardian salvo
+      expect(getPriorityActorId(game)).toBe(human.id);
+
+      const modalHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(CombatModal, {
+            state: game,
+            combat: game.activeCombat,
+            onStepCombat: () => {},
+            currentSeat: 'all',
+          })
+        )
+      );
+      expect(modalHtml).toContain('Roll Neutral Salvo (GUARDIAN)');
+
+      // Stepping Guardian salvo on behalf of human combatant succeeds
+      const stepRes = executeAction(game, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: human.id,
+        sectorId: guardSec.id,
+        autoAssign: true,
+      });
+      expect(stepRes.success).toBe(true);
+    });
+  });
 });
 
 

@@ -47,7 +47,8 @@ interface NewGameModalProps {
     selectedFactionIds?: string[],
     expansions?: string[],
     neutralShips?: NeutralShipSelectionConfig,
-    isDraftMode?: boolean
+    isDraftMode?: boolean,
+    botSeats?: boolean[]
   ) => void;
   onClose?: () => void;
 }
@@ -57,6 +58,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
   const [playerCount, setPlayerCount] = useState<number>(2);
   const [isDraftMode, setIsDraftMode] = useState<boolean>(false);
   const [draftedFactions, setDraftedFactions] = useState<string[]>([]);
+  const [botSeats, setBotSeats] = useState<boolean[]>([false, false, false, false, false, false]);
   const [currentDrafterIndex, setCurrentDrafterIndex] = useState<number>(0);
   const [filterCategory, setFilterCategory] = useState<'all' | 'alien' | 'human'>('all');
   const [selectedExpansions, setSelectedExpansions] = useState<string[]>([]);
@@ -169,14 +171,14 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
       gcds: !hasRemnants && neutralShipSelections.gcds === 'expert' ? 'default' : neutralShipSelections.gcds,
     };
     if (isDraftMode) {
-      onStartGame(playerCount, undefined, selectedExpansions, sanitizedNeutralShips, true);
+      onStartGame(playerCount, undefined, selectedExpansions, sanitizedNeutralShips, true, botSeats.slice(0, playerCount));
       return;
     }
     if (draftedFactions.length === playerCount) {
       if (draftedFactions.some((fid) => !availableFactions.some((f) => f.id === fid))) {
         return;
       }
-      onStartGame(playerCount, draftedFactions, selectedExpansions, sanitizedNeutralShips, false);
+      onStartGame(playerCount, draftedFactions, selectedExpansions, sanitizedNeutralShips, false, botSeats.slice(0, playerCount));
     }
   };
 
@@ -264,30 +266,66 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
                   const factionObj = ALL_FACTIONS.find((f) => f.id === draftedId);
 
                   return (
-                    <button
-                      key={pIdx}
-                      onClick={() => setCurrentDrafterIndex(pIdx)}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${
-                        isCurrent
-                          ? 'border-cyan-400 bg-cyan-950/70 text-cyan-200 ring-1 ring-cyan-400/50'
-                          : factionObj
-                          ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300'
-                          : 'border-slate-800 bg-slate-900 text-slate-500 hover:border-slate-700'
-                      }`}
-                    >
-                      <span className="font-mono text-[10px]">P{pIdx + 1}:</span>
-                      {factionObj ? (
-                        <span className="font-bold flex items-center gap-1 text-[11px]">
-                          <span
-                            className="w-2 h-2 rounded-full"
-                            style={{ backgroundColor: factionObj.defaultColor }}
-                          />
-                          {translateFactionName(factionObj.id, factionObj.name, language)}
-                        </span>
-                      ) : (
-                        <span className="italic text-slate-500 text-[10px]">{l('Unselected', '未选')}</span>
-                      )}
-                    </button>
+                    <div key={pIdx} className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => setCurrentDrafterIndex(pIdx)}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition ${
+                          isCurrent
+                            ? 'border-cyan-400 bg-cyan-950/70 text-cyan-200 ring-1 ring-cyan-400/50'
+                            : factionObj
+                            ? 'border-emerald-700/60 bg-emerald-950/30 text-emerald-300'
+                            : 'border-slate-800 bg-slate-900 text-slate-500 hover:border-slate-700'
+                        }`}
+                      >
+                        <span className="font-mono text-[10px]">P{pIdx + 1}:</span>
+                        {factionObj ? (
+                          <span className="font-bold flex items-center gap-1 text-[11px]">
+                            <span
+                              className="w-2 h-2 rounded-full"
+                              style={{ backgroundColor: factionObj.defaultColor }}
+                            />
+                            {translateFactionName(factionObj.id, factionObj.name, language)}
+                          </span>
+                        ) : (
+                          <span className="italic text-slate-500 text-[10px]">{l('Unselected', '未选')}</span>
+                        )}
+                      </button>
+                      <button
+                        type="button"
+                        data-testid={`newgame-seat-ai-toggle-${pIdx}`}
+                        onClick={() => {
+                          const nextIsBot = !botSeats[pIdx];
+                          setBotSeats((prev) => {
+                            const next = [...prev];
+                            next[pIdx] = nextIsBot;
+                            return next;
+                          });
+                          if (nextIsBot && (!factionObj || !factionObj.isHuman)) {
+                            const freeTerran = availableFactions.find(
+                              (f) =>
+                                f.isHuman &&
+                                !draftedFactions.some((id, idx) => idx !== pIdx && areFactionsConflictingColor(id, f.id))
+                            );
+                            if (freeTerran) {
+                              setDraftedFactions((prev) => {
+                                const next = [...prev];
+                                next[pIdx] = freeTerran.id;
+                                return next;
+                              });
+                            }
+                          }
+                        }}
+                        className={`px-1.5 py-1 rounded-lg border text-[10px] font-bold transition cursor-pointer ${
+                          botSeats[pIdx]
+                            ? 'bg-emerald-950 text-emerald-300 border-emerald-500/70'
+                            : 'bg-slate-900 text-slate-500 border-slate-800 hover:border-slate-600'
+                        }`}
+                        title={l('Toggle Terran AI Bot for this seat', '切换此席位为人族 AI')}
+                      >
+                        {botSeats[pIdx] ? '🤖' : '👤'}
+                      </button>
+                    </div>
                   );
                 })}
               </div>

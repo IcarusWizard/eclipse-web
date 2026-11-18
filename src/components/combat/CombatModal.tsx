@@ -308,7 +308,9 @@ export const CombatModal: React.FC<CombatModalProps> = ({
       : pendingSalvo?.attackerOwnerId ||
         (isPlayerShip && effectiveAttackerOwnerId
           ? effectiveAttackerOwnerId
-          : participatingHumanPlayers.find((p) => !autoResolvePlayerIds.includes(p.id))?.id ||
+          : participatingHumanPlayers.find((p) => !p.isBot && !autoResolvePlayerIds.includes(p.id))?.id ||
+            participatingHumanPlayers.find((p) => !p.isBot)?.id ||
+            participatingHumanPlayers.find((p) => !autoResolvePlayerIds.includes(p.id))?.id ||
             participatingHumanPlayers[0]?.id ||
             null);
   const isMyAutoResolveOn = Boolean(

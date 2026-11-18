@@ -936,7 +936,8 @@ export function createInitialGame(
   selectedFactions?: (string | FactionInfo)[],
   expansions: string[] = [],
   neutralShipSelections?: Partial<NeutralShipSelectionConfig>,
-  isDraftMode: boolean = false
+  isDraftMode: boolean = false,
+  botSeats?: boolean[]
 ): GameState {
   const count = Math.max(1, Math.min(6, playerCount));
   const startingCoords = expansions?.includes('warped_universe')
@@ -1133,6 +1134,13 @@ export function createInitialGame(
   // Fill unused starting positions in Ring 2 with authentic Guardian Sectors (Sectors 271 to 274)
   // Official rule: Guardian Sectors are not used with Warped Universe expansion
   const canonicalStartingCoords = STARTING_COORDS_BY_COUNT[6]!;
+  if (botSeats && botSeats.length > 0) {
+    players.forEach((p, idx) => {
+      if (botSeats[idx]) {
+        p.isBot = true;
+      }
+    });
+  }
   const usedCoords = startingCoords.slice(0, players.length);
   const unusedStartingCoords = expansions?.includes('warped_universe')
     ? []

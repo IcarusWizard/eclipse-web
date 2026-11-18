@@ -14,6 +14,7 @@ import {
   getFactionDisplayColor,
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
+import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './engine/rules/combatEngine';
@@ -619,6 +620,10 @@ const AppContent: React.FC = () => {
 
   const canActForPlayer = (targetPlayerId?: string): boolean => {
     if (isSpectator) return false;
+    const resolvedTargetId = targetPlayerId || (state.phase === 'ACTION_PHASE' ? activePlayer?.id : undefined);
+    if (resolvedTargetId && state.players.find((p) => p.id === resolvedTargetId)?.isBot) {
+      return false;
+    }
     if (currentSeat === 'all') return true;
     if (typeof currentSeat === 'number') {
       const myPlayer = state.players[currentSeat];
@@ -632,8 +637,38 @@ const AppContent: React.FC = () => {
     return false;
   };
 
+  const priorityActorId = inGame && state.isLocalGame ? getPriorityActorId(state) : null;
+  const botPriorityPlayer = priorityActorId
+    ? state.players.find((p) => p.id === priorityActorId && p.isBot && !p.isEliminated) || null
+    : null;
+  const isBotActing = Boolean(inGame && state.isLocalGame && botPriorityPlayer);
+
+  // Local Game AI Runner (Level 1 Terran Heuristic Bot)
+  useEffect(() => {
+    if (!inGame || !state.isLocalGame || state.phase === 'GAME_OVER') return;
+    const actorId = getPriorityActorId(state);
+    if (!actorId) return;
+    const actor = state.players.find((p) => p.id === actorId);
+    if (!actor?.isBot || actor.isEliminated) return;
+
+    const timer = window.setTimeout(() => {
+      const cur = latestStateRef.current;
+      if (!cur || !cur.isLocalGame || cur.phase === 'GAME_OVER') return;
+      if (getPriorityActorId(cur) !== actorId) return;
+      const botAction = computeBotAction(cur, actorId);
+      if (!botAction) return;
+      const res = executeAction(cur, botAction);
+      if (res.success) {
+        setState(res.newState);
+      }
+    }, 320);
+
+    return () => window.clearTimeout(timer);
+  }, [inGame, state]);
+
   const isTurnGated =
     isSpectator ||
+    isBotActing ||
     (currentSeat !== 'all' &&
       typeof currentSeat === 'number' &&
       state.phase !== 'UPKEEP_PHASE' &&
@@ -964,7 +999,8 @@ const AppContent: React.FC = () => {
     expansions?: string[],
     neutralShips?: NeutralShipSelectionConfig,
     isDraftMode?: boolean,
-    isLocalGame?: boolean
+    isLocalGame?: boolean,
+    botSeats?: boolean[]
   ) => {
     const user = getCurrentUser();
     if (!isLocalGame && user.role === 'guest') {
@@ -975,7 +1011,14 @@ const AppContent: React.FC = () => {
       return;
     }
     const effectiveSeat = isLocalGame ? 'all' : (typeof seat === 'number' ? seat : 0);
-    const newGame = createInitialGame(playerCount, factionIds, expansions, neutralShips, isDraftMode);
+    const newGame = createInitialGame(
+      playerCount,
+      factionIds,
+      expansions,
+      neutralShips,
+      isDraftMode,
+      isLocalGame ? botSeats : undefined
+    );
     const num = parseInt(tableId.replace(/\D/g, ''), 10) || 101;
     (newGame as any).tableNumber = num;
     newGame.id = tableId;
@@ -1500,10 +1543,11 @@ const AppContent: React.FC = () => {
     selectedFactionIds?: string[],
     expansions?: string[],
     neutralShips?: NeutralShipSelectionConfig,
-    isDraftMode?: boolean
+    isDraftMode?: boolean,
+    botSeats?: boolean[]
   ) => {
     const user = getCurrentUser();
-    const newGame = createInitialGame(playerCount, selectedFactionIds, expansions, neutralShips, isDraftMode);
+    const newGame = createInitialGame(playerCount, selectedFactionIds, expansions, neutralShips, isDraftMode, botSeats);
     newGame.isLocalGame = true;
     (newGame as any).isGameStarted = true;
     (newGame as any).creatorUserId = user.id;
@@ -2877,14 +2921,18 @@ const AppContent: React.FC = () => {
     } else if (!concludeCombat && state.activeCombat.stage !== 'resolved') {
       const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
       if (sec) {
+        const scopedSec =
+          sec.isNebula && state.activeCombat.subsector
+            ? { ...sec, ships: sec.ships.filter((s) => (s.subsector ?? 1) === state.activeCombat!.subsector) }
+            : sec;
         const units = buildCombatUnitsForSector(
-          sec,
+          scopedSec,
           state.players,
           state.activeCombat.participatingPlayerIds,
           state.neutralShipBlueprints,
           state.expansions
         );
-        const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
+        const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(scopedSec, state.players);
         const aliveUnits = sortUnitsByInitiative(
           units.filter((u) => u.currentDamage < u.maxHull),
           defenderId
@@ -2898,9 +2946,18 @@ const AppContent: React.FC = () => {
     }
 
     if (!commandingPlayerId) {
-      commandingPlayerId = typeof currentSeat === 'number' && state.players[currentSeat]
-        ? state.players[currentSeat].id
-        : activePlayer.id;
+      if (typeof currentSeat === 'number' && state.players[currentSeat]) {
+        commandingPlayerId = state.players[currentSeat].id;
+      } else if (!activePlayer.isBot) {
+        commandingPlayerId = activePlayer.id;
+      } else {
+        const humanCombatantId = (state.activeCombat.participatingPlayerIds || []).find((id) => {
+          const pl = state.players.find((p) => p.id === id);
+          return Boolean(pl && !pl.isBot);
+        });
+        commandingPlayerId =
+          humanCombatantId || state.players.find((p) => !p.isBot)?.id || activePlayer.id;
+      }
     }
 
     if (commandingPlayerId && !canActForPlayer(commandingPlayerId)) {
@@ -3008,9 +3065,17 @@ const AppContent: React.FC = () => {
           }
           if (!actorId) {
             const humanParticipants = (state.activeCombat.participatingPlayerIds || []).filter((id) =>
+              state.players.some((p) => p.id === id && !p.isBot)
+            );
+            const fallbackParticipants = (state.activeCombat.participatingPlayerIds || []).filter((id) =>
               state.players.some((p) => p.id === id)
             );
-            actorId = humanParticipants.find((id) => !autoIds.includes(id)) || humanParticipants[0] || activePlayer.id;
+            const pool = humanParticipants.length > 0 ? humanParticipants : fallbackParticipants;
+            actorId =
+              pool.find((id) => !autoIds.includes(id)) ||
+              pool[0] ||
+              (!activePlayer.isBot ? activePlayer.id : state.players.find((p) => !p.isBot)?.id) ||
+              activePlayer.id;
           }
         }
       }
@@ -4350,6 +4415,22 @@ const AppContent: React.FC = () => {
             />
           );
         })()}
+
+      {/* Local AI Turn Indicator Banner */}
+      {isBotActing && botPriorityPlayer && (
+        <div
+          data-testid="ai-thinking-banner"
+          className="fixed top-20 left-1/2 -translate-x-1/2 z-40 px-4 py-1.5 rounded-full bg-emerald-950/90 border border-emerald-500/70 text-emerald-200 shadow-lg text-xs font-bold flex items-center gap-2 pointer-events-none"
+        >
+          <span className="animate-pulse">🤖</span>
+          <span>
+            {l(
+              `${getPlayerDisplayName(botPriorityPlayer)} (AI) is thinking...`,
+              `${getPlayerDisplayName(botPriorityPlayer)}（AI 托管）正在决策...`
+            )}
+          </span>
+        </div>
+      )}
 
       {/* Hostile Invasion Alert for Active Reaction Turn */}
       {state.phase === 'ACTION_PHASE' &&

@@ -129,4 +129,5 @@ export interface PlayerState {
     material: number;
   };
   isEliminated?: boolean;
+  isBot?: boolean;
 }

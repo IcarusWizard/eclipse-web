@@ -98,7 +98,8 @@ interface LobbyViewProps {
     expansions?: string[],
     neutralShips?: NeutralShipSelectionConfig,
     isDraftMode?: boolean,
-    isLocalGame?: boolean
+    isLocalGame?: boolean,
+    botSeats?: boolean[]
   ) => void;
   onJoinTable: (tableId: string, seat: number | 'all' | 'spectator') => void;
   onOpenGallery?: () => void;
@@ -213,6 +214,7 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     'eridani_empire',    // Red
     'descendants_of_draco', // Yellow
   ]);
+  const [botSeats, setBotSeats] = useState<boolean[]>([false, false, false, false, false, false]);
   const [mySeat, setMySeat] = useState<number | 'all'>(() => (currentUser.role === 'guest' ? 'all' : 0));
 
   // Default MUST be no expansions as requested
@@ -317,6 +319,34 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
     });
   };
 
+  const toggleSeatBot = (playerIdx: number) => {
+    const nextIsBot = !botSeats[playerIdx];
+    setBotSeats((prev) => {
+      const next = [...prev];
+      next[playerIdx] = nextIsBot;
+      return next;
+    });
+    if (nextIsBot) {
+      // Auto-assign a non-conflicting Terran faction for Level 1 Terran AI
+      setSelectedFactions((prev) => {
+        const cur = prev[playerIdx];
+        const curObj = availableFactions.find((f) => f.id === cur);
+        if (curObj?.isHuman) return prev;
+        const replacement = availableFactions.find(
+          (cand) =>
+            cand.isHuman &&
+            !prev
+              .slice(0, playerCount)
+              .some((otherId, otherIdx) => otherIdx !== playerIdx && areFactionsConflictingColor(otherId, cand.id))
+        ) || availableFactions.find((cand) => cand.isHuman);
+        if (!replacement) return prev;
+        const next = [...prev];
+        next[playerIdx] = replacement.id;
+        return next;
+      });
+    }
+  };
+
   const handleLaunchGame = (e: React.FormEvent) => {
     e.preventDefault();
     const isLocal = gameMode === 'local';
@@ -372,7 +402,8 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
       selectedExpansions,
       sanitizedNeutralShips,
       isDraftMode,
-      isLocal
+      isLocal,
+      isLocal ? botSeats.slice(0, playerCount) : undefined
     );
   };
 
@@ -1113,11 +1144,11 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                   <div className="p-3.5 rounded-xl bg-purple-950/40 border border-purple-600/40 text-xs text-purple-200 flex items-center gap-3">
                     <Zap className="w-5 h-5 text-purple-400 shrink-0" />
                     <div>
-                      <div className="font-bold text-white text-xs">{l('Hotseat Mode (All Factions)', '热座模式（操控所有势力）')}</div>
+                      <div className="font-bold text-white text-xs">{l('Local Hotseat / Solo vs AI Mode', '本地热座 / 单人对战 AI 模式')}</div>
                       <p className="text-[11px] text-purple-300/80 mt-0.5">
                         {l(
-                          `In a Local Game, you command all ${playerCount} factions in turn-by-turn pass-and-play mode on this device.`,
-                          `在本地对局中，你可以在当前设备上轮流操作全部 ${playerCount} 个势力。`
+                          `In a Local Game, play pass-and-play or toggle any seat below to 🤖 AI (Terran) to play solo against heuristic bots.`,
+                          `在本地对局中，你可以进行热座同屏对战，或将下方任意席位切换为 🤖 AI (人族) 进行单人对战。`
                         )}
                       </p>
                     </div>
@@ -1170,31 +1201,50 @@ export const LobbyView: React.FC<LobbyViewProps> = ({
                         <div key={pIdx} className="bg-slate-950 p-2.5 rounded-xl border border-slate-800 flex flex-col gap-1.5">
                           <div className="flex items-center justify-between text-[11px] text-slate-400">
                             <span className="font-mono font-bold">{l(`Seat ${pIdx + 1}`, `席位 ${pIdx + 1}`)}</span>
-                            {mySeat === pIdx && (
-                              <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
-                                {l('Your Seat', '你的席位')}
-                              </span>
-                            )}
+                            <div className="flex items-center gap-1.5">
+                              {gameMode === 'local' && (
+                                <button
+                                  type="button"
+                                  data-testid={`lobby-seat-ai-toggle-${pIdx}`}
+                                  onClick={() => toggleSeatBot(pIdx)}
+                                  className={`px-1.5 py-0.5 rounded text-[9px] font-bold border transition cursor-pointer ${
+                                    botSeats[pIdx]
+                                      ? 'bg-emerald-950 text-emerald-300 border-emerald-500/70'
+                                      : 'bg-slate-900 text-slate-400 border-slate-700 hover:border-slate-500'
+                                  }`}
+                                  title={l('Toggle between Human player and Terran AI Bot (Local Game)', '切换玩家控制或人类人族 AI 托管（仅限本地对局）')}
+                                >
+                                  {botSeats[pIdx] ? l('🤖 AI (Terran)', '🤖 AI (人族)') : l('👤 Human', '👤 人类')}
+                                </button>
+                              )}
+                              {mySeat === pIdx && (
+                                <span className="px-1.5 py-0.2 rounded text-[9px] font-bold bg-cyan-950 text-cyan-300 border border-cyan-800">
+                                  {l('Your Seat', '你的席位')}
+                                </span>
+                              )}
+                            </div>
                           </div>
                           <select
                             value={selectedFactions[pIdx] || ''}
                             onChange={(e) => handleFactionChange(pIdx, e.target.value)}
                             className="w-full bg-slate-900 border border-slate-700 text-xs font-bold rounded-lg px-2.5 py-1.5 text-slate-200 focus:outline-none focus:border-cyan-400 cursor-pointer"
                           >
-                            {availableFactions.map((f) => {
-                              const isTakenByOther = selectedFactions
-                                .slice(0, playerCount)
-                                .some((otherId, otherIdx) => otherIdx !== pIdx && otherId === f.id);
-                              const hasConflict = selectedFactions
-                                .slice(0, playerCount)
-                                .some((otherId, otherIdx) => otherIdx !== pIdx && areFactionsConflictingColor(otherId, f.id));
-                              return (
-                                <option key={f.id} value={f.id} disabled={isTakenByOther || hasConflict}>
-                                  {translateFactionName(f.id, f.name, language)} ({f.defaultColor.toUpperCase()})
-                                  {isTakenByOther ? l(' - Picked', ' - 已选') : hasConflict ? l(' - Color Conflict', ' - 颜色冲突') : ''}
-                                </option>
-                              );
-                            })}
+                            {availableFactions
+                              .filter((f) => !(gameMode === 'local' && botSeats[pIdx]) || f.isHuman)
+                              .map((f) => {
+                                const isTakenByOther = selectedFactions
+                                  .slice(0, playerCount)
+                                  .some((otherId, otherIdx) => otherIdx !== pIdx && otherId === f.id);
+                                const hasConflict = selectedFactions
+                                  .slice(0, playerCount)
+                                  .some((otherId, otherIdx) => otherIdx !== pIdx && areFactionsConflictingColor(otherId, f.id));
+                                return (
+                                  <option key={f.id} value={f.id} disabled={isTakenByOther || hasConflict}>
+                                    {translateFactionName(f.id, f.name, language)} ({f.defaultColor.toUpperCase()})
+                                    {isTakenByOther ? l(' - Picked', ' - 已选') : hasConflict ? l(' - Color Conflict', ' - 颜色冲突') : ''}
+                                  </option>
+                                );
+                              })}
                           </select>
                         </div>
                       );
