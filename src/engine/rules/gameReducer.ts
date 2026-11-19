@@ -397,8 +397,9 @@ export function canExchangeAmbassadors(
     };
   }
 
-  const p1Sectors = state.sectors.filter((s) => s.discOwner === p1.id || s.ships.some((shp) => shp.ownerId === p1.id));
-  const p2Sectors = state.sectors.filter((s) => s.discOwner === p2.id || s.ships.some((shp) => shp.ownerId === p2.id));
+  // Official Eclipse Rulebook p. 15: Both players must control connected Sectors (via Influence Discs, not merely ships).
+  const p1Sectors = state.sectors.filter((s) => s.discOwner === p1.id);
+  const p2Sectors = state.sectors.filter((s) => s.discOwner === p2.id);
   const hasWormholeGen =
     playerHasWormholeGenerator(p1) ||
     playerHasWormholeGenerator(p2);
@@ -1342,6 +1343,41 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             : `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action. (Attempted ${modifiedCount})`,
         };
       }
+
+      // Simulate applying all modifications per touched ship type and verify resulting blueprints are legal
+      const simulatedBps: Record<string, ShipBlueprint> = {};
+      for (const up of action.upgrades) {
+        if (up.partId !== null && !SHIP_PARTS[up.partId]) {
+          return { valid: false, error: `Unknown ship part ${up.partId}.` };
+        }
+        const baseBp = simulatedBps[up.shipType] || player.blueprints[up.shipType]!;
+        const simBp: ShipBlueprint = {
+          ...baseBp,
+          slots: [...baseBp.slots],
+          externalParts: baseBp.externalParts ? [...baseBp.externalParts] : undefined,
+        };
+        const part = up.partId ? SHIP_PARTS[up.partId]! : null;
+        if (up.isExternal || up.slotIndex === -1) {
+          if (part && part.id !== 'muon_source') {
+            return { valid: false, error: `${part.name} cannot be placed outside the blueprint grid.` };
+          }
+          simBp.externalParts = part ? [part] : [];
+        } else {
+          simBp.slots[up.slotIndex] = part;
+        }
+        simulatedBps[up.shipType] = simBp;
+      }
+
+      for (const [shipType, simBp] of Object.entries(simulatedBps)) {
+        const stats = calculateBlueprintStats(simBp, state.expansions);
+        if (!stats.isValid) {
+          return {
+            valid: false,
+            error: `Illegal ${shipType.toUpperCase()} blueprint: ${stats.errors.join(' ')}`,
+          };
+        }
+      }
+
       return { valid: true };
     }
 
@@ -2103,11 +2139,11 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
               testBp = { ...bp, slots: [...bp.slots] };
               testBp.slots[action.equipSlotIndex!] = part;
             }
-            const stats = calculateBlueprintStats(testBp);
-            if (stats.totalPowerConsumed > stats.totalPowerProduced) {
+            const stats = calculateBlueprintStats(testBp, state.expansions);
+            if (!stats.isValid) {
               return {
                 valid: false,
-                error: `Cannot install ${part.name}: power consumed (${stats.totalPowerConsumed}) exceeds power produced (${stats.totalPowerProduced}).`,
+                error: `Cannot install ${part.name}: ${stats.errors[0] || 'resulting blueprint is invalid.'}`,
               };
             }
           }
@@ -2273,6 +2309,15 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         );
         if (otherShip) {
           return { valid: false, error: 'Cannot retreat ships belonging to another player.' };
+        }
+        if (action.retreatDestinationSectorId) {
+          const eligibleDests = getEligibleRetreatSectors(state, sector, action.playerId);
+          if (!eligibleDests.some((s) => s.id === action.retreatDestinationSectorId)) {
+            return {
+              valid: false,
+              error: 'Selected retreat destination is not a valid controlled sector without opponent ships.',
+            };
+          }
         }
       }
       return { valid: true };
@@ -4241,12 +4286,12 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             if (bp && part && action.equipSlotIndex >= 0 && action.equipSlotIndex < bp.maxSlots) {
               const testBp = { ...bp, slots: [...bp.slots] };
               testBp.slots[action.equipSlotIndex] = part;
-              const testStats = calculateBlueprintStats(testBp);
-              if (testStats.totalPowerConsumed > testStats.totalPowerProduced) {
+              const testStats = calculateBlueprintStats(testBp, newState.expansions);
+              if (!testStats.isValid) {
                 return {
                   success: false,
                   newState: state,
-                  error: `Cannot install ${part.name}: power consumed (${testStats.totalPowerConsumed}) exceeds power produced (${testStats.totalPowerProduced}).`,
+                  error: `Cannot install ${part.name}: ${testStats.errors[0] || 'resulting blueprint is invalid.'}`,
                 };
               }
               bp.slots[action.equipSlotIndex] = part;
@@ -7364,4 +7409,33 @@ export function findValidClaimSequence(
   }
 
   return sequence;
+}
+
+/**
+ * Returns connected, player-controlled adjacent sectors eligible for retreat.
+ * Descendants of Draco ignore Ancient ships (they are not opponents to Draco),
+ * though non-Ancient enemy ships and GCDS still block retreat.
+ */
+export function getEligibleRetreatSectors(
+  state: GameState,
+  combatSector: SectorTile,
+  playerId: string
+): SectorTile[] {
+  const player = state.players.find((p) => p.id === playerId);
+  if (!player) return [];
+  const isDraco = player.faction.id === 'descendants_of_draco';
+  const hasWormholeGen = playerHasWormholeGenerator(player);
+
+  return state.sectors.filter((s) => {
+    if (s.id === combatSector.id) return false;
+    if (s.discOwner !== playerId) return false;
+    if (s.hasGCDS || (!isDraco && (s.ancientsCount || 0) > 0)) return false;
+    const hasOpponentShips = s.ships.some(
+      (sh) =>
+        sh.ownerId !== playerId &&
+        (!isDraco || (sh.ownerId !== 'ancient' && sh.type !== 'ancient'))
+    );
+    if (hasOpponentShips) return false;
+    return areSectorsConnected(combatSector, s, hasWormholeGen, state.warpedUniverse?.conduits);
+  });
 }

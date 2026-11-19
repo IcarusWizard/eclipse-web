@@ -12,8 +12,7 @@ import {
   SHIP_SIZE_RANK,
   CombatUnit,
 } from '../../engine/rules/combatEngine';
-import { areSectorsConnected } from '../../engine/rules/hexMath';
-import { playerHasWormholeGenerator, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor } from '../../engine/rules/gameReducer';
+import { getEligibleRetreatSectors, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor } from '../../engine/rules/gameReducer';
 import { CombatDieFaceGraphic } from '../common/PhysicalTileIconography';
 import { getEffectiveShipPart } from '../../engine/rules/partData';
 import { getNeutralShipBlueprint, NeutralShipType } from '../../engine/rules/neutralShips';
@@ -316,7 +315,6 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const isMyAutoResolveOn = Boolean(
     actingAutoResolvePlayerId && autoResolvePlayerIds.includes(actingAutoResolvePlayerId)
   );
-  const hasWormholeGen = attackerOwner ? playerHasWormholeGenerator(attackerOwner) : false;
 
   const [autoAssignDamage, setAutoAssignDamage] = useState<boolean>(() => {
     try {
@@ -493,15 +491,18 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   };
 
   // Determine eligible retreat destination sectors:
-  // Must be adjacent, connected by wormhole (or wormhole generator), controlled by this player, with no enemy ships
-  const eligibleRetreatDestinations = !isResolved && !isMissileStage && isPlayerShip && activeGroup && activeGroup.type !== 'starbase' && attackerOwner
-    ? state.sectors.filter((s) => {
-        if (s.id === sector.id) return false;
-        if (s.discOwner !== attackerOwner.id) return false;
-        if (s.ships.some((sh) => sh.ownerId !== attackerOwner.id)) return false;
-        return areSectorsConnected(sector, s, hasWormholeGen, state.warpedUniverse?.conduits);
-      })
-    : [];
+  // Must be adjacent, connected by wormhole (or wormhole generator), controlled by this player, with no opponent ships
+  // (Descendants of Draco may retreat to controlled sectors containing only Ancients).
+  const eligibleRetreatDestinations =
+    !isResolved &&
+    !isMissileStage &&
+    isPlayerShip &&
+    activeGroup &&
+    activeGroup.type !== 'starbase' &&
+    activeGroup.type !== 'orbital' &&
+    attackerOwner
+      ? getEligibleRetreatSectors(state, sector, attackerOwner.id)
+      : [];
 
   const [selectedRetreatSectorId, setSelectedRetreatSectorId] = useState<string>(
     eligibleRetreatDestinations[0]?.id || ''

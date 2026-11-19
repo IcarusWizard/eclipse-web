@@ -66,7 +66,7 @@ export function calculateBlueprintStats(
     if (part.id === 'muon_source') {
       errors.push('Muon Source must be placed outside the blueprint grid, not in a standard slot.');
     }
-    if (blueprint.noDrives && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
+    if ((blueprint.noDrives || blueprint.type === 'starbase' || blueprint.type === 'orbital') && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       errors.push(`${blueprint.type.toUpperCase()} cannot equip Drive Ship Parts.`);
     }
     totalPowerProduced += part.powerProduced;
@@ -90,6 +90,9 @@ export function calculateBlueprintStats(
     for (const rawPart of blueprint.externalParts) {
       if (!rawPart) continue;
       const part = getEffectiveShipPart(rawPart, expansions);
+      if (part.id !== 'muon_source') {
+        errors.push(`${part.name} cannot be placed outside the blueprint grid.`);
+      }
       totalPowerProduced += part.powerProduced;
       totalPowerConsumed += part.powerConsumed;
       bonusHull += part.hullBonus;

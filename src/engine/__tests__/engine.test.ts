@@ -5289,7 +5289,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           playerId: p1.id,
           upgrades: [
             {
-              shipType: 'dreadnought',
+              shipType: 'cruiser',
               slotIndex: 0,
               partId: 'flux_shield',
             },
@@ -5298,7 +5298,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         expect(resUpgrade.success).toBe(true);
         const p1AfterUpgrade = resUpgrade.newState.players[0]!;
-        expect(p1AfterUpgrade.blueprints.dreadnought.slots[0]?.id).toBe('flux_shield');
+        expect(p1AfterUpgrade.blueprints.cruiser.slots[0]?.id).toBe('flux_shield');
         // Removed from unlockedAncientParts after installation
         expect(p1AfterUpgrade.unlockedAncientParts).not.toContain('flux_shield');
 
@@ -9447,11 +9447,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(curState.players[0]!.discoveryTilesUsedAsShipPartsCount || 0).toBe(0);
 
         curState.activePlayerIndex = 0;
-        curState.players[0]!.unlockedAncientParts = ['part_ion_disruptor'];
+        curState.players[0]!.unlockedAncientParts = ['ion_disruptor'];
         const upgRes = executeAction(curState, {
           type: 'UPGRADE',
           playerId: magellan.id,
-          upgrades: [{ shipType: 'interceptor', slotIndex: 1, partId: 'part_ion_disruptor' }],
+          upgrades: [{ shipType: 'interceptor', slotIndex: 3, partId: 'ion_disruptor' }],
         });
         expect(upgRes.success).toBe(true);
         expect(upgRes.newState.players[0]!.discoveryTilesUsedAsShipPartsCount).toBe(1);
@@ -20718,9 +20718,9 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           })
         );
 
-        // Orion Hegemony uses subtle light fill and silver/zinc stroke for high contrast
-        expect(controlledHtmlOrion).toContain('fill="rgba(255, 255, 255, 0.04)"');
-        expect(controlledHtmlOrion).toContain('stroke="#71717a"');
+        // Orion Hegemony uses smoky fill and a thick pure black border (#000000) directly for unmistakable contrast against White
+        expect(controlledHtmlOrion).toContain('fill="rgba(63, 63, 70, 0.38)"');
+        expect(controlledHtmlOrion).toContain('stroke="#000000" stroke-width="3.5"');
         expect(controlledHtmlOrion).toContain('r="8" fill="#18181b"');
       });
 
@@ -27974,6 +27974,328 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(waitingHtml).toContain('data-presence="online"');
       expect(waitingHtml).toContain('data-testid="waiting-presence-1"');
       expect(waitingHtml).toContain('data-presence="offline"');
+    });
+
+    it('279. requires Influence Disc sector control (not just ships) to connect for Diplomacy', () => {
+      const game = createInitialGame(4, ['descendants_of_draco', 'terran_federation', 'planta', 'orion_hegemony']);
+      game.phase = 'ACTION_PHASE';
+      const draco = game.players[0]!;
+      const planta = game.players[2]!;
+
+      // Isolate all existing controlled sectors so none connect directly
+      for (const s of game.sectors) {
+        if (s.discOwner === draco.id || s.discOwner === planta.id) {
+          s.wormholes = [false, false, false, false, false, false];
+        }
+      }
+
+      // Draco has only a ship (NO discOwner) in Sector 001 (which has all 6 wormholes)
+      const center = game.sectors.find((s) => s.sectorNumber === 1)!;
+      center.discOwner = undefined;
+      center.ships.push({ id: 'draco_ship_001', ownerId: draco.id, type: 'interceptor', damage: 0 });
+
+      // Planta controls an adjacent sector (0, -1) with wormhole connecting toward Sector 001 (0, 0)
+      const secAdj: SectorTile = {
+        id: 'sec_planta_adj',
+        sectorNumber: 102,
+        ring: 1,
+        coord: { q: 0, r: -1 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        discOwner: planta.id,
+        ships: [],
+      };
+      game.sectors.push(secAdj);
+
+      // Ship-only presence in Sector 001 MUST NOT count as controlling a connected sector for diplomacy
+      const shipOnlyCheck = canExchangeAmbassadors(game, planta.id, draco.id);
+      expect(shipOnlyCheck.canExchange).toBe(false);
+
+      const proposeBlocked = executeAction(game, {
+        type: 'PROPOSE_DIPLOMACY',
+        playerId: planta.id,
+        targetPlayerId: draco.id,
+        initiatorCube: 'science',
+      });
+      expect(proposeBlocked.success).toBe(false);
+
+      // Once Draco places an Influence Disc to control Sector 001 (with no conflicting ships), diplomacy IS allowed
+      center.ships = [];
+      center.discOwner = draco.id;
+      const controlledCheck = canExchangeAmbassadors(game, planta.id, draco.id);
+      expect(controlledCheck.canExchange).toBe(true);
+    });
+
+    it('280. enforces legal blueprints on UPGRADE, DISCOVERY_CHOICE, and AI bot ship modifications', async () => {
+      const { computeBotAction } = await import('../ai/terranBot');
+      const { TECH_CATALOG } = await import('../rules/techData');
+
+      // 1. Engine UPGRADE validation rejects illegal blueprints (power deficit, missing drive, drive on starbase, muon_source in standard slot)
+      const g = createInitialGame(2, ['terran_directorate', 'terran_federation']);
+      g.phase = 'ACTION_PHASE';
+      const p1 = g.players[0]!;
+
+      const powerDeficitCombo = executeAction(g, {
+        type: 'UPGRADE',
+        playerId: p1.id,
+        upgrades: [
+          { shipType: 'cruiser', slotIndex: 0, partId: 'plasma_cannon' }, // consumes 2 (total 3/3)
+          { shipType: 'cruiser', slotIndex: 5, partId: 'positron_computer' }, // consumes 1 more -> 4/3 illegal!
+        ],
+      });
+      expect(powerDeficitCombo.success).toBe(false);
+      expect(powerDeficitCombo.error).toContain('Illegal CRUISER blueprint');
+      expect(powerDeficitCombo.error).toContain('Insufficient power');
+
+      const missingDriveRes = executeAction(g, {
+        type: 'UPGRADE',
+        playerId: p1.id,
+        upgrades: [{ shipType: 'interceptor', slotIndex: 2, partId: 'hull' }],
+      });
+      expect(missingDriveRes.success).toBe(false);
+      expect(missingDriveRes.error).toContain('drive');
+
+      const driveOnStarbaseRes = executeAction(g, {
+        type: 'UPGRADE',
+        playerId: p1.id,
+        upgrades: [{ shipType: 'starbase', slotIndex: 4, partId: 'nuclear_drive' }],
+      });
+      expect(driveOnStarbaseRes.success).toBe(false);
+      expect(driveOnStarbaseRes.error).toContain('cannot equip Drive');
+
+      const muonInStandardSlotRes = executeAction(g, {
+        type: 'UPGRADE',
+        playerId: p1.id,
+        upgrades: [{ shipType: 'interceptor', slotIndex: 3, partId: 'muon_source' }],
+      });
+      expect(muonInStandardSlotRes.success).toBe(false);
+      expect(muonInStandardSlotRes.error).toContain('outside the blueprint grid');
+
+      // 2. Engine DISCOVERY_CHOICE rejects equipping a part that leaves a mobile ship without a drive
+      const discGame = createInitialGame(2);
+      const dp1 = discGame.players[0]!;
+      discGame.pendingDiscovery = {
+        discovery: {
+          id: 'ion_turret_disc',
+          type: 'ship_part',
+          shipPartId: 'ion_turret',
+          description: 'Ion Turret',
+        },
+        sectorId: discGame.sectors[0]!.id,
+        playerId: dp1.id,
+      };
+      const removeDriveDisc = validateAction(discGame, {
+        type: 'DISCOVERY_CHOICE',
+        playerId: dp1.id,
+        keepForVictoryPoints: false,
+        equipShipType: 'interceptor',
+        equipSlotIndex: 2, // Nuclear Drive slot
+      });
+      expect(removeDriveDisc.valid).toBe(false);
+      expect(removeDriveDisc.error).toContain('drive');
+
+      // 3. AI Bot never combines individually-valid swaps into an illegal power-deficit UPGRADE
+      const aiGame = createInitialGame(2, ['terran_directorate', 'terran_federation']);
+      aiGame.isLocalGame = true;
+      aiGame.phase = 'ACTION_PHASE';
+      aiGame.activePlayerIndex = 0;
+      const bot = aiGame.players[0]!;
+      bot.isBot = true;
+      bot.influenceTrack.discsOnTrack = 8;
+      // Grant Plasma Cannon (-2 power) and Positron Computer (-1 power):
+      // Cruiser only has +1 surplus power (3 produced, 2 consumed), so BOTH on Cruiser would consume 4 > 3 (ILLEGAL)
+      const plasmaTech = TECH_CATALOG.find((t) => t.id === 'plasma_cannon')!;
+      const positronTech = TECH_CATALOG.find((t) => t.id === 'positron_computer')!;
+      bot.techTrack.researched.push(plasmaTech, positronTech);
+
+      const botAct = computeBotAction(aiGame, bot.id);
+      expect(botAct).not.toBeNull();
+      expect(botAct!.type).toBe('UPGRADE');
+      const botExec = executeAction(aiGame, botAct!);
+      expect(botExec.success).toBe(true);
+      const updatedBot = botExec.newState.players[0]!;
+      for (const bp of Object.values(updatedBot.blueprints)) {
+        if (bp) {
+          expect(isShipBlueprintValid(bp, botExec.newState.expansions)).toBe(true);
+        }
+      }
+
+      // 4. AI Bot equips Muon Source from unlockedAncientParts into external slot (not inside standard grid)
+      const muonGame = createInitialGame(2, ['terran_directorate', 'terran_federation']);
+      muonGame.isLocalGame = true;
+      muonGame.phase = 'ACTION_PHASE';
+      muonGame.activePlayerIndex = 0;
+      const mBot = muonGame.players[0]!;
+      mBot.isBot = true;
+      mBot.influenceTrack.discsOnTrack = 8;
+      mBot.unlockedAncientParts = ['muon_source'];
+
+      const muonAct = computeBotAction(muonGame, mBot.id);
+      if (muonAct && muonAct.type === 'UPGRADE') {
+        const execMuon = executeAction(muonGame, muonAct);
+        expect(execMuon.success).toBe(true);
+        for (const bp of Object.values(execMuon.newState.players[0]!.blueprints)) {
+          if (bp) {
+            expect(bp.slots.some((s) => s?.id === 'muon_source')).toBe(false);
+            expect(isShipBlueprintValid(bp, execMuon.newState.expansions)).toBe(true);
+          }
+        }
+      }
+    });
+
+    it('281. renders distinct Orion control contrast and visually distinct White vs Black ship icons on HexGalaxyMap', async () => {
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+
+      const game = createInitialGame(2, ['orion_hegemony', 'mechanema']);
+      const orion = game.players[0]!; // black #18181b
+      const mech = game.players[1]!;  // white #f8fafc
+      const sec = game.sectors[0]!;
+      sec.hasGCDS = false;
+      sec.discOwner = orion.id;
+      sec.ships = [
+        { id: 'orion_cruiser', ownerId: orion.id, type: 'cruiser', damage: 0 },
+        { id: 'mech_cruiser', ownerId: mech.id, type: 'cruiser', damage: 0 },
+      ];
+
+      const html = renderToString(
+        React.createElement(HexGalaxyMap, {
+          state: game,
+          selectedSector: null,
+          onSelectSector: () => {},
+        })
+      );
+
+      // Black (Orion) fleet uses slate pill (#475569) with solid black ship icon (#09090b) and silver edge (#cbd5e1)
+      expect(html).toContain('fill="#475569" stroke="#cbd5e1"');
+      expect(html).toContain('fill="#09090b" fill-opacity="0.98" stroke="#cbd5e1"');
+
+      // White (Mechanema) fleet uses dark pill (rgba(10, 15, 30, 0.94)) with bright solid white ship icon (#ffffff)
+      expect(html).toContain('fill="rgba(10, 15, 30, 0.94)" stroke="#f8fafc"');
+      expect(html).toContain('fill="#ffffff" fill-opacity="0.85" stroke="#ffffff"');
+    });
+
+    it('282. allows Descendants of Draco to retreat into a controlled sector containing only Ancient ships', async () => {
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { getEligibleRetreatSectors } = await import('../rules/gameReducer');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+
+      const game = createInitialGame(2, ['descendants_of_draco', 'terran_federation']);
+      const draco = game.players[0]!;
+      const terran = game.players[1]!;
+
+      const combatSec: SectorTile = {
+        id: 'sec_draco_combat',
+        sectorNumber: 883,
+        ring: 1,
+        coord: { q: 0, r: -1 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        discOwner: undefined,
+        ships: [
+          { id: 'draco_cruiser', ownerId: draco.id, type: 'cruiser', damage: 0 },
+          { id: 'terran_cruiser', ownerId: terran.id, type: 'cruiser', damage: 0 },
+        ],
+      };
+
+      const ancientControlledDest: SectorTile = {
+        id: 'sec_draco_ancient_home',
+        sectorNumber: 105,
+        ring: 1,
+        coord: { q: 0, r: -2 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 2,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 1,
+        discOwner: draco.id,
+        ships: [{ id: 'anc_guard_1', ownerId: 'ancient', type: 'ancient', damage: 0 }],
+      };
+
+      const mixedEnemyDest: SectorTile = {
+        id: 'sec_draco_mixed_enemy',
+        sectorNumber: 106,
+        ring: 1,
+        coord: { q: 1, r: -2 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 1,
+        discOwner: draco.id,
+        ships: [
+          { id: 'anc_guard_2', ownerId: 'ancient', type: 'ancient', damage: 0 },
+          { id: 'terran_spy', ownerId: terran.id, type: 'interceptor', damage: 0 },
+        ],
+      };
+
+      game.sectors.push(combatSec, ancientControlledDest, mixedEnemyDest);
+      game.phase = 'COMBAT_PHASE';
+      game.activeCombat = {
+        sectorId: combatSec.id,
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        participatingPlayerIds: [draco.id, terran.id],
+      };
+
+      // 1. Engine helper allows ancient-only controlled sector for Draco, excludes sector with opponent ship
+      const eligible = getEligibleRetreatSectors(game, combatSec, draco.id);
+      expect(eligible.map((s) => s.id)).toContain(ancientControlledDest.id);
+      expect(eligible.map((s) => s.id)).not.toContain(mixedEnemyDest.id);
+
+      // Non-Draco player cannot retreat to an ancient-occupied sector even if discOwner matches
+      ancientControlledDest.discOwner = terran.id;
+      expect(getEligibleRetreatSectors(game, combatSec, terran.id).map((s) => s.id)).not.toContain(ancientControlledDest.id);
+      ancientControlledDest.discOwner = draco.id;
+
+      // 2. CombatModal UI shows Sector 105 as retreat option
+      const modalHtml = renderToString(
+        React.createElement(CombatModal, {
+          state: game,
+          combat: game.activeCombat!,
+          onStepCombat: () => {},
+        })
+      );
+      expect(modalHtml).toContain(`value="${ancientControlledDest.id}"`);
+      expect(modalHtml).not.toContain(`value="${mixedEnemyDest.id}"`);
+
+      // 3. Engine executeAction accepts Draco retreating to the ancient-occupied controlled sector, rejects mixedEnemyDest
+      const badRetreat = executeAction(game, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: draco.id,
+        retreatShipIds: ['draco_cruiser'],
+        retreatDestinationSectorId: mixedEnemyDest.id,
+      });
+      expect(badRetreat.success).toBe(false);
+
+      const goodRetreat = executeAction(game, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: draco.id,
+        retreatShipIds: ['draco_cruiser'],
+        retreatDestinationSectorId: ancientControlledDest.id,
+      });
+      expect(goodRetreat.success).toBe(true);
+      expect(goodRetreat.newState.activeCombat?.retreatDeclared['draco_cruiser']).toBe(ancientControlledDest.id);
     });
   });
 });

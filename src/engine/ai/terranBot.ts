@@ -663,6 +663,7 @@ function handlePendingExplore(state: GameState, player: PlayerState): GameAction
 }
 
 function findLegalEquipSlotForPart(
+  state: GameState,
   player: PlayerState,
   part: ShipPart
 ): { shipType: ShipType; slotIndex: number } | null {
@@ -671,7 +672,16 @@ function findLegalEquipSlotForPart(
     const bp = player.blueprints[st];
     if (!bp) continue;
     if (part.id === 'muon_source') {
-      return { shipType: st, slotIndex: -1 };
+      if (bp.externalParts?.some((p) => p.id === 'muon_source')) continue;
+      const testBp: ShipBlueprint = {
+        ...bp,
+        slots: [...bp.slots],
+        externalParts: [...(bp.externalParts || []), part],
+      };
+      if (calculateBlueprintStats(testBp, state.expansions).isValid) {
+        return { shipType: st, slotIndex: -1 };
+      }
+      continue;
     }
     // Try empty slot first, then replacing weakest redundant hull/nuclear_source/ion_cannon slot
     const candidateIndices: number[] = [];
@@ -687,11 +697,8 @@ function findLegalEquipSlotForPart(
     for (const idx of candidateIndices) {
       const testBp: ShipBlueprint = { ...bp, slots: [...bp.slots] };
       testBp.slots[idx] = part;
-      const stats = calculateBlueprintStats(testBp);
-      if (
-        stats.totalPowerConsumed <= stats.totalPowerProduced &&
-        (st === 'starbase' || stats.totalDriveSpeed > 0)
-      ) {
+      const stats = calculateBlueprintStats(testBp, state.expansions);
+      if (stats.isValid) {
         return { shipType: st, slotIndex: idx };
       }
     }
@@ -773,7 +780,7 @@ function handlePendingDiscovery(state: GameState, player: PlayerState): GameActi
     const part = SHIP_PARTS[disc.shipPartId];
     const partRank = ANCIENT_PART_RANKING[disc.shipPartId] ?? 50;
     if (part && partRank >= 70) {
-      const equipSlot = findLegalEquipSlotForPart(player, part);
+      const equipSlot = findLegalEquipSlotForPart(state, player, part);
       return {
         type: 'DISCOVERY_CHOICE',
         playerId: player.id,
@@ -1285,6 +1292,37 @@ function scoreBlueprintCombatPower(bp: ShipBlueprint, shipType: ShipType): numbe
   );
 }
 
+type CandidateBlueprintUpgrade = {
+  shipType: ShipType;
+  slotIndex: number;
+  partId: string | null;
+  isExternal?: boolean;
+};
+
+function applyBlueprintUpgrade(
+  bp: ShipBlueprint,
+  up: Pick<CandidateBlueprintUpgrade, 'slotIndex' | 'partId' | 'isExternal'>
+): ShipBlueprint | null {
+  const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
+  if (up.partId !== null && !part) return null;
+  if (up.isExternal || up.slotIndex === -1) {
+    if (part && part.id !== 'muon_source') return null;
+    return {
+      ...bp,
+      slots: [...bp.slots],
+      externalParts: part ? [part] : [],
+    };
+  }
+  if (up.slotIndex < 0 || up.slotIndex >= bp.maxSlots) return null;
+  const nextSlots = [...bp.slots];
+  nextSlots[up.slotIndex] = part;
+  return {
+    ...bp,
+    slots: nextSlots,
+    externalParts: bp.externalParts ? [...bp.externalParts] : undefined,
+  };
+}
+
 function findBestUpgradeAction(
   state: GameState,
   player: PlayerState,
@@ -1301,12 +1339,7 @@ function findBestUpgradeAction(
 
   // Target Cruiser and Interceptor (or Dreadnought if deployed / affordable)
   const shipTypes: ShipType[] = ['cruiser', 'interceptor', 'dreadnought'];
-  const bestSingleSwaps: Array<{
-    shipType: ShipType;
-    slotIndex: number;
-    partId: string;
-    gain: number;
-  }> = [];
+  const bestSingleSwaps: Array<CandidateBlueprintUpgrade & { gain: number; weightByFleet: number }> = [];
 
   for (const st of shipTypes) {
     const bp = player.blueprints[st];
@@ -1314,33 +1347,45 @@ function findBestUpgradeAction(
     const weightByFleet = (deployed[st] || 0) > 0 ? 1 + (deployed[st] || 0) * 0.25 : st === 'cruiser' ? 0.9 : 0.6;
     const baseScore = scoreBlueprintCombatPower(bp, st);
 
+    // Muon Source must be placed outside the blueprint grid (external slot)
+    const muonPart = unlockedParts.find((p) => p.id === 'muon_source');
+    if (muonPart && !bp.externalParts?.some((p) => p.id === 'muon_source')) {
+      const testBp = applyBlueprintUpgrade(bp, { slotIndex: -1, partId: 'muon_source', isExternal: true });
+      if (testBp && calculateBlueprintStats(testBp, state.expansions).isValid) {
+        const gain = (scoreBlueprintCombatPower(testBp, st) - baseScore) * weightByFleet;
+        if (gain > 2.5) {
+          bestSingleSwaps.push({ shipType: st, slotIndex: -1, partId: 'muon_source', isExternal: true, gain, weightByFleet });
+        }
+      }
+    }
+
     for (let slotIdx = 0; slotIdx < bp.maxSlots; slotIdx++) {
       const existing = bp.slots[slotIdx];
       for (const part of unlockedParts) {
+        if (part.id === 'muon_source') continue;
         if (existing?.id === part.id) continue;
         // Skip duplicate non-stackable drives when one already exists unless replacing the existing drive
         if (part.category === 'drive' && existing?.category !== 'drive' && bp.slots.some((sl) => sl?.category === 'drive')) {
           continue;
         }
-        const testBp: ShipBlueprint = { ...bp, slots: [...bp.slots] };
-        testBp.slots[slotIdx] = part;
-        const stats = calculateBlueprintStats(testBp);
-        if (stats.totalPowerConsumed > stats.totalPowerProduced) continue;
-        if (st !== 'starbase' && stats.totalDriveSpeed <= 0) continue;
+        const testBp = applyBlueprintUpgrade(bp, { slotIndex: slotIdx, partId: part.id });
+        if (!testBp) continue;
+        const stats = calculateBlueprintStats(testBp, state.expansions);
+        if (!stats.isValid) continue;
 
         const gain = (scoreBlueprintCombatPower(testBp, st) - baseScore) * weightByFleet;
         if (gain > 2.5) {
-          bestSingleSwaps.push({ shipType: st, slotIndex: slotIdx, partId: part.id, gain });
+          bestSingleSwaps.push({ shipType: st, slotIndex: slotIdx, partId: part.id, gain, weightByFleet });
         }
       }
     }
   }
 
   // Also test 2-part combo on the SAME ship (e.g., Reactor upgrade + Weapon/Hull upgrade!)
-  let bestCombo: { upgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[]; gain: number } | null = null;
+  let bestCombo: { upgrades: CandidateBlueprintUpgrade[]; gain: number } | null = null;
   if (maxUpgrades >= 2) {
-    const reactors = unlockedParts.filter((p) => p.powerProduced > 3);
-    const heavyConsumers = unlockedParts.filter((p) => p.powerConsumed > 0 || p.hullBonus >= 2 || p.computerBonus >= 2);
+    const reactors = unlockedParts.filter((p) => p.powerProduced > 3 && p.id !== 'muon_source');
+    const heavyConsumers = unlockedParts.filter((p) => p.id !== 'muon_source' && (p.powerConsumed > 0 || p.hullBonus >= 2 || p.computerBonus >= 2));
     for (const st of ['cruiser', 'interceptor', 'dreadnought'] as ShipType[]) {
       const bp = player.blueprints[st];
       if (!bp) continue;
@@ -1354,12 +1399,11 @@ function findBestUpgradeAction(
             if (pIdx === rIdx) continue;
             for (const part of heavyConsumers) {
               if (part.id === reactor.id || bp.slots[pIdx]?.id === part.id) continue;
-              const testBp: ShipBlueprint = { ...bp, slots: [...bp.slots] };
+              const testBp: ShipBlueprint = { ...bp, slots: [...bp.slots], externalParts: bp.externalParts ? [...bp.externalParts] : undefined };
               testBp.slots[rIdx] = reactor;
               testBp.slots[pIdx] = part;
-              const stats = calculateBlueprintStats(testBp);
-              if (stats.totalPowerConsumed > stats.totalPowerProduced) continue;
-              if (stats.totalDriveSpeed <= 0) continue;
+              const stats = calculateBlueprintStats(testBp, state.expansions);
+              if (!stats.isValid) continue;
               const gain = (scoreBlueprintCombatPower(testBp, st) - baseScore) * weightByFleet;
               if (gain > 4 && (!bestCombo || gain > bestCombo.gain)) {
                 bestCombo = {
@@ -1379,18 +1423,37 @@ function findBestUpgradeAction(
 
   bestSingleSwaps.sort((a, b) => b.gain - a.gain);
 
-  // Pick up to `maxUpgrades` non-overlapping single swaps (avoid duplicate unlocked ancient part unless different)
-  const chosenUpgrades: { shipType: ShipType; slotIndex: number; partId: string | null }[] = [];
+  // Pick up to `maxUpgrades` non-overlapping swaps, re-validating combined legality on each ship blueprint after every swap
+  const chosenUpgrades: CandidateBlueprintUpgrade[] = [];
   let chosenGain = 0;
   const usedAncientOnce = new Set<string>();
+  const workingBlueprints: Partial<Record<ShipType, ShipBlueprint>> = {};
 
   for (const sw of bestSingleSwaps) {
     if (chosenUpgrades.length >= maxUpgrades) break;
-    if (chosenUpgrades.some((u) => u.shipType === sw.shipType && u.slotIndex === sw.slotIndex)) continue;
-    if (player.unlockedAncientParts?.includes(sw.partId) && usedAncientOnce.has(sw.partId)) continue;
-    chosenUpgrades.push({ shipType: sw.shipType, slotIndex: sw.slotIndex, partId: sw.partId });
-    if (player.unlockedAncientParts?.includes(sw.partId)) usedAncientOnce.add(sw.partId);
-    chosenGain += sw.gain;
+    if (chosenUpgrades.some((u) => u.shipType === sw.shipType && u.slotIndex === sw.slotIndex && Boolean(u.isExternal) === Boolean(sw.isExternal))) {
+      continue;
+    }
+    if (sw.partId && player.unlockedAncientParts?.includes(sw.partId) && usedAncientOnce.has(sw.partId)) continue;
+
+    const currentBp = workingBlueprints[sw.shipType] || player.blueprints[sw.shipType];
+    if (!currentBp) continue;
+    const nextBp = applyBlueprintUpgrade(currentBp, sw);
+    if (!nextBp) continue;
+    if (!calculateBlueprintStats(nextBp, state.expansions).isValid) continue;
+
+    const stepGain = (scoreBlueprintCombatPower(nextBp, sw.shipType) - scoreBlueprintCombatPower(currentBp, sw.shipType)) * sw.weightByFleet;
+    if (stepGain <= 0.5) continue;
+
+    workingBlueprints[sw.shipType] = nextBp;
+    chosenUpgrades.push({
+      shipType: sw.shipType,
+      slotIndex: sw.slotIndex,
+      partId: sw.partId,
+      ...(sw.isExternal ? { isExternal: true } : {}),
+    });
+    if (sw.partId && player.unlockedAncientParts?.includes(sw.partId)) usedAncientOnce.add(sw.partId);
+    chosenGain += stepGain;
   }
 
   if (bestCombo && bestCombo.gain > chosenGain) {

@@ -1032,6 +1032,9 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
             // Staged for abandonment in bankruptcy plan (Bug 111)
             const isStagedAbandon = stagedAbandonedSectorIds?.includes(sector.id);
 
+            const isBlackOwner = Boolean(owner && (owner.color === '#18181b' || owner.color === '#000000'));
+            const isWhiteOwner = Boolean(owner && (owner.color === '#f8fafc' || owner.color === '#ffffff'));
+
             let hexFill = isCombatSector
               ? isConquestSector
                 ? 'rgba(245, 158, 11, 0.22)'
@@ -1053,7 +1056,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               : isStagedAbandon
               ? 'rgba(244, 63, 94, 0.22)'
               : owner
-              ? (owner.color === '#18181b' || owner.color === '#000000' ? 'rgba(255, 255, 255, 0.04)' : `${owner.color}15`)
+              ? (isBlackOwner ? 'rgba(63, 63, 70, 0.38)' : `${owner.color}15`)
               : isCenter
               ? 'rgba(15, 23, 42, 0.98)'
               : 'rgba(15, 23, 42, 0.95)';
@@ -1081,7 +1084,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               : isStagedAbandon
               ? '#f43f5e'
               : owner
-              ? (owner.color === '#18181b' || owner.color === '#000000' ? '#71717a' : owner.color)
+              ? (isBlackOwner ? '#000000' : owner.color)
               : isCenter
               ? '#cbd5e1'
               : '#334155';
@@ -1097,7 +1100,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
               : isStagedAbandon
               ? '3'
               : owner
-              ? '2.5'
+              ? (isBlackOwner ? '3.5' : '2.5')
               : isCenter
               ? '2.2'
               : '1.5';
@@ -2083,7 +2086,17 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     <g transform={`translate(${x}, ${y + (isCenter ? 38 : 34)})`}>
                       {fleetGroups.map((group, gIdx) => {
                         const offsetY = (gIdx - (fleetGroups.length - 1) / 2) * 17;
-                        const shipTint = group.ownerColor === '#18181b' || group.ownerColor === '#000000' ? '#e2e8f0' : group.ownerColor;
+                        const isBlackFleet = group.ownerColor === '#18181b' || group.ownerColor === '#000000';
+                        const isWhiteFleet = group.ownerColor === '#f8fafc' || group.ownerColor === '#ffffff';
+                        const pillFill = isBlackFleet ? '#475569' : 'rgba(10, 15, 30, 0.94)';
+                        const pillStroke = isBlackFleet ? '#cbd5e1' : group.ownerColor;
+                        const dotFill = isBlackFleet ? '#09090b' : group.ownerColor;
+                        const dotStroke = isWhiteFleet ? '#475569' : '#e2e8f0';
+                        const shipFill = isBlackFleet ? '#09090b' : isWhiteFleet ? '#ffffff' : group.ownerColor;
+                        const shipStroke = isBlackFleet ? '#cbd5e1' : isWhiteFleet ? '#ffffff' : group.ownerColor;
+                        const shipFillOpacity = isBlackFleet ? 0.98 : isWhiteFleet ? 0.85 : 0.35;
+                        const shipStrokeWidth = isBlackFleet ? 1.3 : 1.6;
+                        const shipTextFill = isBlackFleet ? '#0f172a' : shipFill;
                         const unitScale = 9 / 25;
                         const segmentGap = 5;
                         let cursorX = 0;
@@ -2118,8 +2131,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                               width={badgeWidth}
                               height="16"
                               rx="4"
-                              fill="rgba(10, 15, 30, 0.94)"
-                              stroke={group.ownerColor === '#18181b' || group.ownerColor === '#000000' ? '#71717a' : group.ownerColor}
+                              fill={pillFill}
+                              stroke={pillStroke}
                               strokeWidth={isContested ? "1.6" : "1.2"}
                               className={isContested ? "animate-pulse" : ""}
                             />
@@ -2129,9 +2142,9 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                               cx={-badgeWidth / 2 + 7}
                               cy="0"
                               r="3.5"
-                              fill={group.ownerColor}
-                              stroke="#ffffff"
-                              strokeWidth="0.8"
+                              fill={dotFill}
+                              stroke={dotStroke}
+                              strokeWidth="0.9"
                             />
 
                             {/* Ship Type Breakdown: count + blueprint-shaped box icon */}
@@ -2154,17 +2167,20 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                                     x={seg.iconX - seg.segStart}
                                     y={-seg.iconH / 2}
                                     height={seg.iconH}
-                                    fill={shipTint}
-                                    stroke={shipTint}
-                                    fillOpacity={0.35}
-                                    strokeWidth={1.6}
+                                    fill={shipFill}
+                                    stroke={shipStroke}
+                                    fillOpacity={shipFillOpacity}
+                                    strokeWidth={shipStrokeWidth}
                                   />
                                 ) : (
                                   <text
                                     x={seg.iconX - seg.segStart}
                                     y="3"
                                     textAnchor="start"
-                                    fill={shipTint}
+                                    fill={shipTextFill}
+                                    stroke={isBlackFleet ? '#e2e8f0' : 'none'}
+                                    strokeWidth={isBlackFleet ? '0.6' : undefined}
+                                    paintOrder="stroke"
                                     fontSize="8"
                                     fontWeight="bold"
                                     fontFamily="monospace"
@@ -2200,8 +2216,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     cy={y + HEX_RADIUS - 18}
                     r="8"
                     fill={owner.color}
-                    stroke={owner.color === '#f8fafc' || owner.color === '#ffffff' ? '#475569' : '#ffffff'}
-                    strokeWidth="1.5"
+                    stroke={isWhiteOwner ? '#475569' : '#ffffff'}
+                    strokeWidth={isBlackOwner ? '2' : '1.5'}
                     className="shadow-lg"
                   />
                 )}

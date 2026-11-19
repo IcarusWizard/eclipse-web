@@ -242,7 +242,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     }
     if (readOnly) return;
     if (selectedSlotIndex === null) return;
-    if (baseBp.noDrives && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
+    if ((baseBp.noDrives || baseBp.type === 'starbase' || baseBp.type === 'orbital') && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       return;
     }
     const isSlotCurrentlyModified = modifiedSlots.some(
