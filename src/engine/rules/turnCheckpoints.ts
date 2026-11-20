@@ -1,3 +1,11 @@
+import {
+  buildCombatUnitsForSector,
+  getSectorDefenderOwnerId,
+  sortUnitsByInitiative,
+  getCombatShipTypeGroups,
+  getActiveCombatGroup,
+} from './combatEngine';
+
 export interface AdminTurnCheckpointInfo {
   key: string;
   round: number;
@@ -207,4 +215,159 @@ export function revertToTurnCheckpoint(
     updatedCheckpoints,
     summary: getTurnCheckpointsSummary(updatedCheckpoints),
   };
+}
+
+/**
+ * Resolves the seat index (0-based in `stateObj.players`) of the player who must currently
+ * make a decision or act next — accounting for pending prompts, draft order, `activeCombat`
+ * initiative/participants during COMBAT_PHASE, upkeep, and action-phase turns.
+ */
+export function getEffectiveDecisionSeat(stateObj: any): number {
+  if (!stateObj || !Array.isArray(stateObj.players) || stateObj.players.length === 0) return -1;
+
+  const seatOfPlayerId = (playerId?: string | null): number => {
+    if (!playerId) return -1;
+    return stateObj.players.findIndex((p: any) => p && p.id === playerId);
+  };
+
+  // 1. Immediate blocking pending prompts
+  if (Array.isArray(stateObj.pendingAmbassadorCubeReturns) && stateObj.pendingAmbassadorCubeReturns.length > 0) {
+    const idx = seatOfPlayerId(stateObj.pendingAmbassadorCubeReturns[0]?.playerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingDiplomacyProposal?.targetId) {
+    const idx = seatOfPlayerId(stateObj.pendingDiplomacyProposal.targetId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingActionConfirmation?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingActionConfirmation.playerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingExplore?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingExplore.playerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingReputationDraw?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingReputationDraw.playerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingCombatConquest?.winnerPlayerId) {
+    const idx = seatOfPlayerId(stateObj.pendingCombatConquest.winnerPlayerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingDiscovery?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingDiscovery.playerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingExploreControl?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingExploreControl.playerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingArtifactReward?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingArtifactReward.playerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingBankruptcy?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingBankruptcy.playerId);
+    if (idx >= 0) return idx;
+  }
+  if (stateObj.pendingExilesOrbitalSetup?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingExilesOrbitalSetup.playerId);
+    if (idx >= 0) return idx;
+  }
+
+  // 2. Draft Phase
+  if (stateObj.phase === 'DRAFT_PHASE' && stateObj.factionDraft) {
+    const draftOrder = stateObj.factionDraft.draftOrder;
+    const draftIdx = stateObj.factionDraft.currentDraftIndex;
+    if (Array.isArray(draftOrder) && typeof draftIdx === 'number') {
+      const idx = seatOfPlayerId(draftOrder[draftIdx]);
+      if (idx >= 0) return idx;
+    }
+  }
+
+  // 3. Combat Phase (inspect `activeCombat`, NOT Action Phase `activePlayerIndex`)
+  if (stateObj.phase === 'COMBAT_PHASE' && stateObj.activeCombat) {
+    const combat = stateObj.activeCombat;
+
+    const explicitIdx = seatOfPlayerId(combat.activePlayerId || stateObj.combat?.activePlayerId);
+    if (explicitIdx >= 0) return explicitIdx;
+
+    if (combat.pendingDamageAssignment?.attackerOwnerId) {
+      const idx = seatOfPlayerId(combat.pendingDamageAssignment.attackerOwnerId);
+      if (idx >= 0) return idx;
+    }
+
+    if (combat.stage === 'resolved') {
+      const winnerIdx = seatOfPlayerId(combat.winnerOwnerId);
+      if (winnerIdx >= 0) return winnerIdx;
+    } else if (Array.isArray(stateObj.sectors)) {
+      const sec = stateObj.sectors.find((s: any) => s && s.id === combat.sectorId);
+      if (sec) {
+        try {
+          const scopedSec =
+            sec.isNebula && combat.subsector
+              ? { ...sec, ships: (sec.ships || []).filter((s: any) => (s.subsector ?? 1) === combat.subsector) }
+              : sec;
+          const units = buildCombatUnitsForSector(
+            scopedSec,
+            stateObj.players,
+            combat.participatingPlayerIds,
+            stateObj.neutralShipBlueprints,
+            stateObj.expansions
+          );
+          const defenderId = combat.defenderOwnerId || getSectorDefenderOwnerId(scopedSec, stateObj.players);
+          const aliveUnits = sortUnitsByInitiative(
+            units.filter((u) => u.currentDamage < u.maxHull),
+            defenderId
+          );
+          const groups = getCombatShipTypeGroups(aliveUnits, defenderId);
+          const activeGroup = getActiveCombatGroup(combat, groups);
+          if (activeGroup) {
+            const groupOwnerIdx = seatOfPlayerId(activeGroup.ownerId);
+            if (groupOwnerIdx >= 0) return groupOwnerIdx;
+          }
+        } catch {
+          // Fall through to participant resolution below
+        }
+      }
+    }
+
+    // Active group is an NPC (ancient/guardian/gcds) or combat resolved without an explicit player winner:
+    // resolve to a combat participant (preferring non-bot attackerOwnerId, then participatingPlayerIds).
+    const fallbackIds: string[] = [];
+    if (combat.attackerOwnerId) fallbackIds.push(combat.attackerOwnerId);
+    if (Array.isArray(combat.participatingPlayerIds)) {
+      for (const pid of combat.participatingPlayerIds) {
+        if (!fallbackIds.includes(pid)) fallbackIds.push(pid);
+      }
+    }
+    if (combat.defenderOwnerId && !fallbackIds.includes(combat.defenderOwnerId)) {
+      fallbackIds.push(combat.defenderOwnerId);
+    }
+
+    for (const pid of fallbackIds) {
+      const idx = seatOfPlayerId(pid);
+      if (idx >= 0 && !stateObj.players[idx]?.isBot) return idx;
+    }
+    for (const pid of fallbackIds) {
+      const idx = seatOfPlayerId(pid);
+      if (idx >= 0) return idx;
+    }
+  }
+
+  // 4. Upkeep Phase: first non-eliminated player who has not completed upkeep
+  if (stateObj.phase === 'UPKEEP_PHASE') {
+    const num = stateObj.players.length;
+    const startIdx = Math.max(0, typeof stateObj.activePlayerIndex === 'number' ? stateObj.activePlayerIndex : 0);
+    for (let offset = 0; offset < num; offset++) {
+      const idx = (startIdx + offset) % num;
+      const p = stateObj.players[idx];
+      if (p && !p.isEliminated && !stateObj.upkeepReadyPlayers?.[p.id]) {
+        return idx;
+      }
+    }
+  }
+
+  return typeof stateObj.activePlayerIndex === 'number' ? stateObj.activePlayerIndex : -1;
 }

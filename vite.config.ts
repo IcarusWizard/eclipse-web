@@ -13,6 +13,7 @@ import {
   updateTurnCheckpointsOnSave,
   getTurnCheckpointsSummary,
   revertToTurnCheckpoint,
+  getEffectiveDecisionSeat,
   TurnCheckpointEntry,
 } from './src/engine/rules/turnCheckpoints.ts';
 
@@ -342,19 +343,6 @@ function tableStoragePlugin(): Plugin {
       console.error(`[Turn Reminder] ❌ Error sending email to ${toEmail}:`, err?.message || err);
       return { success: false, error: err?.message || 'Email delivery failed' };
     }
-  }
-
-  function getEffectiveDecisionSeat(stateObj: any): number {
-    if (!stateObj || !Array.isArray(stateObj.players)) return -1;
-    if (stateObj.pendingDiplomacyProposal?.targetId) {
-      const dIdx = stateObj.players.findIndex((p: any) => p.id === stateObj.pendingDiplomacyProposal.targetId);
-      if (dIdx >= 0) return dIdx;
-    }
-    if (stateObj.phase === 'COMBAT_PHASE' && stateObj.combat?.activePlayerId) {
-      const cIdx = stateObj.players.findIndex((p: any) => p.id === stateObj.combat.activePlayerId);
-      if (cIdx >= 0) return cIdx;
-    }
-    return typeof stateObj.activePlayerIndex === 'number' ? stateObj.activePlayerIndex : -1;
   }
 
   function mergeChatMessageLists(existingMsgs: any[], incomingMsgs: any[]): any[] {
@@ -1627,8 +1615,8 @@ function tableStoragePlugin(): Plugin {
               const data = JSON.parse(content);
               if (data.isLocalGame) continue;
               if (isGuestTableServer(data)) continue;
-              const activePlayer = data.players?.[data.activePlayerIndex];
               const effectiveActiveSeat = Math.max(0, getEffectiveDecisionSeat(data));
+              const activePlayer = data.players?.[effectiveActiveSeat] || data.players?.[data.activePlayerIndex];
               const isGameStarted =
                 typeof data.isGameStarted === 'boolean'
                   ? data.isGameStarted
@@ -1911,7 +1899,8 @@ function tableStoragePlugin(): Plugin {
                   existing.pendingDiplomacyProposal?.targetId !== data.pendingDiplomacyProposal.targetId);
               const isTurnTransition =
                 oldSeat !== targetSeat ||
-                (existing.phase !== data.phase && data.phase === 'ACTION_PHASE') ||
+                (existing.phase !== data.phase && (data.phase === 'ACTION_PHASE' || data.phase === 'COMBAT_PHASE')) ||
+                (Boolean(data.activeCombat?.sectorId) && existing.activeCombat?.sectorId !== data.activeCombat?.sectorId) ||
                 isNewProposalForSameOrOther;
               if (isTurnTransition && targetSeat >= 0 && targetSeat < data.players.length) {
                 const targetPlayer = data.players[targetSeat];
@@ -1933,7 +1922,11 @@ function tableStoragePlugin(): Plugin {
                       : existing.pendingDiplomacyProposal?.targetId
                       ? 'diplo_resolved'
                       : 'turn';
-                    const reminderKey = `${tableId}:${targetSeat}:${data.round}:${data.phase}:${diploTag}`;
+                    const combatTag =
+                      data.phase === 'COMBAT_PHASE' && data.activeCombat?.sectorId
+                        ? `:${data.activeCombat.sectorId}`
+                        : '';
+                    const reminderKey = `${tableId}:${targetSeat}:${data.round}:${data.phase}:${diploTag}${combatTag}`;
                     const now = Date.now();
                     const lastSent = lastTurnReminderSent.get(reminderKey) || 0;
                     // Deduplicate within 5 minutes for the exact same turn

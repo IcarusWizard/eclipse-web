@@ -207,6 +207,27 @@ export function translateActionDescription(description: string, language: AppLan
 }
 
 /**
+ * Masks exact Reputation Tile VP values in Chronicle log messages so opponents
+ * and spectators cannot deduce another player's secret reputation VP before GAME_OVER.
+ */
+export function maskHiddenReputationVpInChronicle(message: string): string {
+  if (!message) return message;
+  let masked = message.replace(
+    /^(.+?) placed a \d+ VP Reputation Tile on their track \(replaced \d+ VP\)\.$/,
+    '$1 placed a secret Reputation Tile on their track (replaced a previous tile).'
+  );
+  masked = masked.replace(
+    /^(.+?) placed a \d+ VP Reputation Tile on their track\.$/,
+    '$1 placed a secret Reputation Tile on their track.'
+  );
+  masked = masked.replace(
+    /^(.+?) returned the drawn \d+ VP Reputation Tile to the bag \(track is full\)\.$/,
+    '$1 returned the drawn Reputation Tile to the bag (track is full).'
+  );
+  return masked;
+}
+
+/**
  * Translates Chronicle (GameLogEntry.message) strings emitted by the rules engine into Simplified Chinese.
  * Engine state logs remain canonical English so multiplayer clients and replays stay language-independent.
  */
@@ -644,11 +665,20 @@ export function translateChronicleMessage(message: string, language: AppLanguage
   m = message.match(/^(.+?) placed a (\d+) VP Reputation Tile on their track \(replaced (\d+) VP\)\.$/);
   if (m) return `${m[1]} 将 1 枚 ${m[2]} VP 的声望板块放入了声望轨（替换了原有的 ${m[3]} VP 板块）。`;
 
+  m = message.match(/^(.+?) placed a secret Reputation Tile on their track \(replaced a previous tile\)\.$/);
+  if (m) return `${m[1]} 将 1 枚保密声望板块放入了声望轨（替换了原有板块）。`;
+
   m = message.match(/^(.+?) placed a (\d+) VP Reputation Tile on their track\.$/);
   if (m) return `${m[1]} 将 1 枚 ${m[2]} VP 的声望板块放入了声望轨。`;
 
+  m = message.match(/^(.+?) placed a secret Reputation Tile on their track\.$/);
+  if (m) return `${m[1]} 将 1 枚保密声望板块放入了声望轨。`;
+
   m = message.match(/^(.+?) returned the drawn (\d+) VP Reputation Tile to the bag \(track is full\)\.$/);
   if (m) return `${m[1]} 将抽到的 ${m[2]} VP 声望板块放回袋中（声望轨已满）。`;
+
+  m = message.match(/^(.+?) returned the drawn Reputation Tile to the bag \(track is full\)\.$/);
+  if (m) return `${m[1]} 将抽到的声望板块放回袋中（声望轨已满）。`;
 
   m = message.match(/^(.+?) declined to keep a Reputation Tile\.$/);
   if (m) return `${m[1]} 放弃保留本次抽取的声望板块。`;

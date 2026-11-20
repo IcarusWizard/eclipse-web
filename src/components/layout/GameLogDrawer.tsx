@@ -2,13 +2,15 @@ import React, { useState, useMemo } from 'react';
 import { GameLogEntry } from '../../engine/types/state';
 import { ScrollText, ChevronDown, ChevronUp, Maximize2, Minimize2, Swords, Coins, Sparkles, Activity } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
-import { translateChronicleMessage } from '../../i18n/chronicleTranslator';
+import { translateChronicleMessage, maskHiddenReputationVpInChronicle } from '../../i18n/chronicleTranslator';
 
 interface GameLogDrawerProps {
   logs: GameLogEntry[];
   initialOpen?: boolean;
   initialLastCheckedCount?: number;
   viewerPlayerId?: string;
+  gamePhase?: string;
+  hiddenReputationPlayerIds?: string[];
   embedded?: boolean;
 }
 
@@ -19,6 +21,8 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
   initialOpen = false,
   initialLastCheckedCount,
   viewerPlayerId,
+  gamePhase,
+  hiddenReputationPlayerIds,
   embedded = false,
 }) => {
   const { language, l } = useLanguage();
@@ -256,7 +260,19 @@ export const GameLogDrawer: React.FC<GameLogDrawerProps> = ({
                           : log.type}
                       </span>
                     </div>
-                    <div className="break-words">{translateChronicleMessage(log.message, language)}</div>
+                    <div className="break-words">
+                      {(() => {
+                        const shouldHideRepVp =
+                          gamePhase !== 'GAME_OVER' &&
+                          (!viewerPlayerId ||
+                            log.playerId !== viewerPlayerId ||
+                            Boolean(log.playerId && hiddenReputationPlayerIds?.includes(log.playerId)));
+                        const rawMsg = shouldHideRepVp
+                          ? maskHiddenReputationVpInChronicle(log.message)
+                          : log.message;
+                        return translateChronicleMessage(rawMsg, language);
+                      })()}
+                    </div>
                   </div>
                 );
               })

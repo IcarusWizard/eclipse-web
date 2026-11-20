@@ -28297,6 +28297,205 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(goodRetreat.success).toBe(true);
       expect(goodRetreat.newState.activeCombat?.retreatDeclared['draco_cruiser']).toBe(ancientControlledDest.id);
     });
+
+    it('283. resolves COMBAT_PHASE active participant seat via getEffectiveDecisionSeat instead of Action Phase activePlayerIndex', async () => {
+      const { getEffectiveDecisionSeat } = await import('../rules/turnCheckpoints');
+
+      // Reproduce Table 192 scenario: activePlayerIndex points to Planta (seat 2),
+      // while COMBAT_PHASE activeCombat is Orion Hegemony (seat 3) vs Ancients
+      const game = createInitialGame(4, [
+        'descendants_of_draco',
+        'enlightened_of_lyra',
+        'planta',
+        'orion_hegemony',
+      ]);
+      const draco = game.players[0]!;
+      const planta = game.players[2]!;
+      const orion = game.players[3]!;
+
+      const battleSec = game.sectors.find((s) => s.ring > 0)!;
+      battleSec.discOwner = undefined;
+      battleSec.ancientsCount = 1;
+      battleSec.ships = [
+        { id: 'ancient_1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+        { id: 'orion_1', ownerId: orion.id, type: 'cruiser', damage: 0 },
+      ];
+
+      game.phase = 'COMBAT_PHASE';
+      game.activePlayerIndex = 2; // Planta passed last in Action Phase
+      game.activeCombat = {
+        sectorId: battleSec.id,
+        attackerOwnerId: orion.id,
+        defenderOwnerId: 'ancient',
+        participatingPlayerIds: [orion.id, 'ancient'],
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        roundActedGroupKeys: [],
+      };
+
+      // Must point to Orion (seat 3), NOT Planta (seat 2)
+      expect(getEffectiveDecisionSeat(game)).toBe(3);
+
+      // Even if Ancient wins initiative tie and fires or waits, still points to Orion (seat 3)
+      game.activeCombat.roundActedGroupKeys = [`${orion.id}_cruiser`];
+      expect(getEffectiveDecisionSeat(game)).toBe(3);
+
+      // PvP initiative handoff: Planta Starbase (Init 4) acts before Draco Cruiser (Init 1)
+      const pvpSec = game.sectors.find((s) => s.id !== battleSec.id && s.ring > 0)!;
+      pvpSec.discOwner = planta.id;
+      pvpSec.ancientsCount = 0;
+      pvpSec.ships = [
+        { id: 'planta_sb', ownerId: planta.id, type: 'starbase', damage: 0 },
+        { id: 'draco_cru', ownerId: draco.id, type: 'cruiser', damage: 0 },
+      ];
+      game.activeCombat = {
+        sectorId: pvpSec.id,
+        attackerOwnerId: draco.id,
+        defenderOwnerId: planta.id,
+        participatingPlayerIds: [draco.id, planta.id],
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        roundActedGroupKeys: [],
+      };
+      expect(getEffectiveDecisionSeat(game)).toBe(2); // Planta Starbase acts first
+      game.activeCombat.roundActedGroupKeys = [`${planta.id}_starbase`];
+      expect(getEffectiveDecisionSeat(game)).toBe(0); // Then Draco Cruiser acts
+
+      // Pending reputation draw / damage assignment overrides initiative order
+      game.activeCombat.pendingDamageAssignment = {
+        attackerOwnerId: draco.id,
+        defenderOwnerId: planta.id,
+        rolls: [],
+        isMissile: false,
+      };
+      expect(getEffectiveDecisionSeat(game)).toBe(0);
+
+      game.activeCombat = null;
+      game.pendingReputationDraw = {
+        playerId: orion.id,
+        drawnTiles: [2],
+        sectorId: battleSec.id,
+      };
+      expect(getEffectiveDecisionSeat(game)).toBe(3);
+    });
+
+    it('284. masks Reputation Tile VP in Chronicle for other players and spectators until GAME_OVER', async () => {
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { GameLogDrawer } = await import('../../components/layout/GameLogDrawer');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+
+      const game = createInitialGame(2);
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+
+      // P1 places a 4 VP tile via actual engine execution
+      game.pendingReputationDraw = {
+        playerId: p1.id,
+        drawnTiles: [4],
+        sectorId: 'home_sector_player_1',
+      };
+      const res1 = executeAction(game, {
+        type: 'CLAIM_REPUTATION_TILE',
+        playerId: p1.id,
+        selectedTileIndex: 0,
+      });
+      expect(res1.success).toBe(true);
+
+      // P1 replaces a 2 VP tile with a 3 VP tile via actual engine execution
+      const stateAfterPlace = res1.newState;
+      stateAfterPlace.players[0]!.reputationTiles = [2, 1, 1, 1, 1];
+      stateAfterPlace.pendingReputationDraw = {
+        playerId: p1.id,
+        drawnTiles: [3],
+        sectorId: 'home_sector_player_1',
+      };
+      const res2 = executeAction(stateAfterPlace, {
+        type: 'CLAIM_REPUTATION_TILE',
+        playerId: p1.id,
+        selectedTileIndex: 0,
+        replaceTrackIndex: 0,
+      });
+      expect(res2.success).toBe(true);
+      const logs = res2.newState.log;
+
+      // Other player (P2) does NOT see 4 VP, 3 VP, or replaced 2 VP in Chronicle
+      const p2Html = renderToString(
+        React.createElement(GameLogDrawer, {
+          logs,
+          initialOpen: true,
+          viewerPlayerId: p2.id,
+          gamePhase: 'COMBAT_PHASE',
+        })
+      );
+      expect(p2Html).toContain('placed a secret Reputation Tile on their track.');
+      expect(p2Html).toContain('placed a secret Reputation Tile on their track (replaced a previous tile).');
+      expect(p2Html).not.toContain('4 VP Reputation Tile');
+      expect(p2Html).not.toContain('3 VP Reputation Tile');
+      expect(p2Html).not.toContain('replaced 2 VP');
+
+      // Other player in Chinese mode sees masked Simplified Chinese copy
+      const p2ZhHtml = renderToString(
+        React.createElement(
+          LanguageProvider,
+          { initialLanguage: 'zh' },
+          React.createElement(GameLogDrawer, {
+            logs,
+            initialOpen: true,
+            viewerPlayerId: p2.id,
+            gamePhase: 'COMBAT_PHASE',
+          })
+        )
+      );
+      expect(p2ZhHtml).toContain('将 1 枚保密声望板块放入了声望轨。');
+      expect(p2ZhHtml).toContain('（替换了原有板块）');
+      expect(p2ZhHtml).not.toContain('4 VP');
+      expect(p2ZhHtml).not.toContain('3 VP');
+
+      // Spectator (viewerPlayerId undefined) also sees masked logs
+      const specHtml = renderToString(
+        React.createElement(GameLogDrawer, {
+          logs,
+          initialOpen: true,
+          viewerPlayerId: undefined,
+          gamePhase: 'COMBAT_PHASE',
+        })
+      );
+      expect(specHtml).toContain('placed a secret Reputation Tile');
+      expect(specHtml).not.toContain('4 VP Reputation Tile');
+
+      // Owning player (P1) sees their own exact VP values
+      const p1Html = renderToString(
+        React.createElement(GameLogDrawer, {
+          logs,
+          initialOpen: true,
+          viewerPlayerId: p1.id,
+          gamePhase: 'COMBAT_PHASE',
+        })
+      );
+      expect(p1Html).toContain('placed a 4 VP Reputation Tile on their track.');
+      expect(p1Html).toContain('placed a 3 VP Reputation Tile on their track (replaced 2 VP).');
+
+      // At GAME_OVER, all players see exact Reputation Tile VP
+      const gameOverHtml = renderToString(
+        React.createElement(GameLogDrawer, {
+          logs,
+          initialOpen: true,
+          viewerPlayerId: p2.id,
+          gamePhase: 'GAME_OVER',
+        })
+      );
+      expect(gameOverHtml).toContain('placed a 4 VP Reputation Tile on their track.');
+      expect(gameOverHtml).toContain('replaced 2 VP');
+    });
   });
 });
 

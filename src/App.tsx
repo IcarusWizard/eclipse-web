@@ -3896,6 +3896,8 @@ const AppContent: React.FC = () => {
           <GameLogDrawer
             logs={state.log}
             viewerPlayerId={currentSeat === 'spectator' ? undefined : myPlayerId}
+            gamePhase={state.phase}
+            hiddenReputationPlayerIds={state.players.filter((p) => p.isBot).map((p) => p.id)}
             embedded
           />
         </div>
