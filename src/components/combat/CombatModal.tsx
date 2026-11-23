@@ -420,13 +420,15 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
   useEffect(() => {
     if (!pendingSalvo) {
-      prevSalvoKeyRef.current = null;
-      setSelectedTargets({});
-      setSelectedSplits({});
+      if (prevSalvoKeyRef.current !== null) {
+        prevSalvoKeyRef.current = null;
+        setSelectedTargets({});
+        setSelectedSplits({});
+      }
       return;
     }
 
-    const salvoKey = `${pendingSalvo.attackerOwnerId}_${pendingSalvo.rolls.map((r) => `${r.dieColor}:${r.roll}:${r.damage}`).join(',')}`;
+    const salvoKey = `${pendingSalvo.attackerOwnerId}_${pendingSalvo.rolls.map((r) => `${r.dieColor}:${r.roll}:${r.damage}:${r.selfDamage || 0}`).join(',')}`;
     if (prevSalvoKeyRef.current === salvoKey) {
       return;
     }
@@ -1379,42 +1381,6 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                           l('MISS', '未中')
                         )}
                       </span>
-
-                      {(() => {
-                        const rollPlayer = state.players.find((p) => p.id === roll.shipOwner);
-                        const isLyra = rollPlayer?.faction.id === 'enlightened_of_lyra';
-                        const hasReadyColonyShip = (rollPlayer?.colonyShips.ready || 0) > 0;
-                        const canReroll =
-                          !isSpectator &&
-                          isLyra &&
-                          hasReadyColonyShip &&
-                          !isResolved &&
-                          (currentSeat === 'all' || (myPlayer && myPlayer.id === roll.shipOwner));
-
-                        if (!canReroll) return null;
-
-                        return (
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              if (onRerollDie) {
-                                onRerollDie(idx);
-                              } else {
-                                onStepCombat(undefined, undefined, undefined, idx);
-                              }
-                            }}
-                            title={l(
-                              `Lyra Combat Ability: Flip 1 Colony Ship (${rollPlayer.colonyShips.ready} ready) to reroll this die`,
-                              `天琴座战斗能力：横置 1 艘殖民船（可用 ${rollPlayer.colonyShips.ready}）重掷此骰`
-                            )}
-                            className="ml-1.5 px-2 py-0.5 rounded bg-orange-600/30 hover:bg-orange-500/50 border border-orange-500 text-orange-200 text-[10px] font-bold transition flex items-center gap-1 cursor-pointer shadow"
-                          >
-                            <RotateCcw className="w-2.5 h-2.5 text-orange-300" />
-                            <span>{l('Reroll (1 Ship)', '重掷 (1 殖民船)')}</span>
-                          </button>
-                        );
-                      })()}
                     </div>
                   );
                 })}
@@ -1563,6 +1529,27 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                       />
                       <span className="text-[11px] font-medium text-slate-300">{l('Auto-assign', '自动分配伤害')}</span>
                     </label>
+                    {!isSpectator &&
+                      autoAssignDamage &&
+                      participatingHumanPlayers.some(
+                        (p) =>
+                          p.faction.id === 'enlightened_of_lyra' &&
+                          (p.colonyShips?.ready || 0) > 0 &&
+                          (currentSeat === 'all' || (myPlayer && myPlayer.id === p.id))
+                      ) && (
+                        <span
+                          data-testid="lyra-auto-assign-reroll-reminder"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-orange-950/70 border border-orange-500/50 text-orange-200 text-[10px] font-semibold"
+                        >
+                          <RotateCcw className="w-3 h-3 text-orange-300 shrink-0" />
+                          <span>
+                            {l(
+                              'Lyra: Turn off Auto-assign before firing if you want to reroll dice with Colony Ships.',
+                              '天琴座：如需使用殖民船重掷骰子，请在开火前取消勾选「自动分配伤害」。'
+                            )}
+                          </span>
+                        </span>
+                      )}
 
                     {/* Auto-Resolve Option (per-player opt-in) */}
                     {onAutoResolve && !isSpectator && actingAutoResolvePlayerId && (!isAlreadyRetreating || isMyAutoResolveOn) && (

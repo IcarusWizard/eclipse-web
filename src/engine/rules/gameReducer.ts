@@ -36,7 +36,7 @@ import { mergeChatMessages } from './persistence';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
 import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
-import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack } from './economyEngine';
+import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet } from './economyEngine';
 import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } from '../types/galaxy';
 import { PlayerState } from '../types/player';
@@ -887,6 +887,10 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'CONVERT_COLONY_SHIP' &&
       action.type !== 'REROLL_COMBAT_DIE' &&
+      action.type !== 'REROLL_BOMBARDMENT_DIE' &&
+      action.type !== 'CONFIRM_BOMBARDMENT' &&
+      action.type !== 'SELECT_BOMBARDMENT_TARGETS' &&
+      action.type !== 'CHOOSE_POPULATION_RETURN_TRACK' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
@@ -923,6 +927,10 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'RESPOND_DIPLOMACY' &&
       action.type !== 'CONVERT_COLONY_SHIP' &&
       action.type !== 'REROLL_COMBAT_DIE' &&
+      action.type !== 'REROLL_BOMBARDMENT_DIE' &&
+      action.type !== 'CONFIRM_BOMBARDMENT' &&
+      action.type !== 'SELECT_BOMBARDMENT_TARGETS' &&
+      action.type !== 'CHOOSE_POPULATION_RETURN_TRACK' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
@@ -2273,6 +2281,17 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!sector) {
         return { valid: false, error: 'Combat sector not found.' };
       }
+      if (action.rerollRollIndex !== undefined) {
+        if (player.faction.id !== 'enlightened_of_lyra') {
+          return { valid: false, error: 'Only Enlightened of Lyra can reroll combat dice using Colony Ships.' };
+        }
+        if (!state.activeCombat.pendingDamageAssignment) {
+          return {
+            valid: false,
+            error: 'Turn off Auto-assign before firing to reroll combat dice before damage is resolved.',
+          };
+        }
+      }
       if (state.activeCombat.stage === 'resolved' || (action as any).concludeCombat || (action as any).autoAssign) {
         return { valid: true };
       }
@@ -2457,16 +2476,123 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!state.activeCombat || state.phase !== 'COMBAT_PHASE') {
         return { valid: false, error: 'No active combat to reroll dice in.' };
       }
+      if (!state.activeCombat.pendingDamageAssignment) {
+        return {
+          valid: false,
+          error: 'Turn off Auto-assign before firing to reroll combat dice before damage is resolved.',
+        };
+      }
       if (player.colonyShips.ready < 1) {
         return { valid: false, error: 'No ready Colony Ships available to flip for reroll.' };
       }
-      const lastRolls = state.activeCombat.lastRolls;
-      if (!lastRolls || action.rollIndex < 0 || action.rollIndex >= lastRolls.length) {
+      const pendingRolls = state.activeCombat.pendingDamageAssignment.rolls;
+      if (!pendingRolls || action.rollIndex < 0 || action.rollIndex >= pendingRolls.length) {
         return { valid: false, error: 'Invalid combat roll index to reroll.' };
       }
-      const targetRoll = lastRolls[action.rollIndex]!;
+      const targetRoll = pendingRolls[action.rollIndex]!;
       if (targetRoll.shipOwner !== player.id) {
         return { valid: false, error: 'You can only reroll your own dice.' };
+      }
+      return { valid: true };
+    }
+
+    case 'REROLL_BOMBARDMENT_DIE': {
+      if (player.faction.id !== 'enlightened_of_lyra') {
+        return { valid: false, error: 'Only Enlightened of Lyra can reroll bombardment dice using Colony Ships.' };
+      }
+      if (!state.pendingCombatConquest || state.pendingCombatConquest.winnerPlayerId !== action.playerId) {
+        return { valid: false, error: 'No pending bombardment for this player.' };
+      }
+      if (state.pendingCombatConquest.sectorId !== action.sectorId) {
+        return { valid: false, error: 'Sector mismatch for bombardment reroll.' };
+      }
+      const summary = state.pendingCombatConquest.bombardmentSummary;
+      if (!summary?.isPendingConfirm) {
+        return { valid: false, error: 'Bombardment has already been resolved.' };
+      }
+      if (player.colonyShips.ready < 1) {
+        return { valid: false, error: 'No ready Colony Ships available to flip for reroll.' };
+      }
+      if (action.rollIndex < 0 || action.rollIndex >= summary.rolls.length) {
+        return { valid: false, error: 'Invalid bombardment roll index to reroll.' };
+      }
+      return { valid: true };
+    }
+
+    case 'CONFIRM_BOMBARDMENT': {
+      if (!state.pendingCombatConquest || state.pendingCombatConquest.winnerPlayerId !== action.playerId) {
+        return { valid: false, error: 'No pending bombardment for this player.' };
+      }
+      if (state.pendingCombatConquest.sectorId !== action.sectorId) {
+        return { valid: false, error: 'Sector mismatch for confirming bombardment.' };
+      }
+      if (!state.pendingCombatConquest.bombardmentSummary?.isPendingConfirm) {
+        return { valid: false, error: 'No unconfirmed bombardment rolls pending.' };
+      }
+      return { valid: true };
+    }
+
+    case 'SELECT_BOMBARDMENT_TARGETS': {
+      if (!state.pendingCombatConquest || state.pendingCombatConquest.winnerPlayerId !== action.playerId) {
+        return { valid: false, error: 'Only the attacker can select bombardment targets.' };
+      }
+      if (state.pendingCombatConquest.sectorId !== action.sectorId) {
+        return { valid: false, error: 'Sector mismatch for bombardment target selection.' };
+      }
+      const summary = state.pendingCombatConquest.bombardmentSummary;
+      if (!summary?.isPendingTargetSelection) {
+        return { valid: false, error: 'Bombardment target selection is not pending.' };
+      }
+      const sector = state.sectors.find((s) => s.id === action.sectorId);
+      if (!sector) return { valid: false, error: 'Sector not found.' };
+
+      const nonPlantaIndices = sector.planets
+        .map((p, idx) => ({ p, idx }))
+        .filter(({ p }) => {
+          if (!p.colonizedBy || p.colonizedBy === action.playerId) return false;
+          const owner = state.players.find((pl) => pl.id === p.colonizedBy);
+          return owner?.faction.id !== 'planta';
+        })
+        .map(({ idx }) => idx);
+      const requiredCount = Math.min(summary.totalDamage, nonPlantaIndices.length);
+      const uniqueTargets = Array.from(new Set(action.targetPlanetIndices || []));
+      if (uniqueTargets.length !== (action.targetPlanetIndices || []).length) {
+        return { valid: false, error: 'Duplicate planet targets cannot be selected.' };
+      }
+      if (uniqueTargets.length !== requiredCount) {
+        return {
+          valid: false,
+          error: `Must select exactly ${requiredCount} population cube(s) to destroy.`,
+        };
+      }
+      if (!uniqueTargets.every((idx) => nonPlantaIndices.includes(idx))) {
+        return { valid: false, error: 'One or more selected planets do not hold eligible opponent population.' };
+      }
+      return { valid: true };
+    }
+
+    case 'CHOOSE_POPULATION_RETURN_TRACK': {
+      const pending = state.pendingPopulationReturnChoices?.find(
+        (c) =>
+          c.playerId === action.playerId &&
+          c.sectorId === action.sectorId &&
+          c.planetIndex === action.planetIndex
+      );
+      if (!pending) {
+        return { valid: false, error: 'No pending destroyed population track choice for this player.' };
+      }
+      if (!pending.allowedTracks.includes(action.resource)) {
+        return {
+          valid: false,
+          error: `${pending.isOrbital ? 'Orbital' : 'Wild'} population cube cannot return to the ${action.resource} track.`,
+        };
+      }
+      const { selectableTracks } = getAllowedReturnTracksForPlanet(player, pending.allowedTracks);
+      if (!selectableTracks.includes(action.resource)) {
+        return {
+          valid: false,
+          error: `Your ${action.resource.toUpperCase()} track is already full (11 cubes). Choose another eligible track.`,
+        };
       }
       return { valid: true };
     }
@@ -2817,17 +2943,17 @@ export function checkMagellanFourthTechDiscovery(state: GameState, player: Playe
 }
 
 export function applyCombatDieReroll(state: GameState, player: PlayerState, rollIndex: number): void {
-  if (!state.activeCombat) return;
+  if (!state.activeCombat?.pendingDamageAssignment) return;
   const sector = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
   if (!sector) return;
-  const lastRolls = state.activeCombat.lastRolls;
-  if (!lastRolls || rollIndex < 0 || rollIndex >= lastRolls.length) return;
-  const targetRoll = lastRolls[rollIndex]!;
+
+  const pendingSalvo = state.activeCombat.pendingDamageAssignment;
+  if (rollIndex < 0 || rollIndex >= pendingSalvo.rolls.length) return;
+  const targetRoll = { ...pendingSalvo.rolls[rollIndex]! };
   if (targetRoll.shipOwner !== player.id) return;
 
   player.colonyShips.ready = Math.max(0, player.colonyShips.ready - 1);
 
-  const oldDmg = targetRoll.isHit ? targetRoll.damage : 0;
   let newRollVal = 0;
   let newIsHit = false;
   let newDmg = 0;
@@ -2845,66 +2971,50 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
     targetRoll.symbol = purpleRes.symbol;
   } else {
     newRollVal = rollD6();
-    const computerBonus = targetRoll.modifiedRoll - targetRoll.roll;
+    const computerBonus = pendingSalvo.computerBonus ?? (targetRoll.modifiedRoll - targetRoll.roll);
     const modified = newRollVal + computerBonus;
+    const scopedSector =
+      sector.isNebula && state.activeCombat.subsector
+        ? { ...sector, ships: sector.ships.filter((s) => (s.subsector ?? 1) === state.activeCombat!.subsector) }
+        : sector;
+    const enemyTargets = buildCombatUnitsForSector(
+      scopedSector,
+      state.players,
+      state.activeCombat.participatingPlayerIds,
+      state.neutralShipBlueprints,
+      state.expansions
+    ).filter((u) => u.ownerId !== player.id && u.currentDamage < u.maxHull);
+    const canHitAny =
+      enemyTargets.length === 0 ||
+      enemyTargets.some((t) => modified - t.shieldBonus >= 6);
     if (newRollVal === 6) {
       newIsHit = true;
     } else if (newRollVal === 1) {
       newIsHit = false;
     } else {
-      newIsHit = modified >= 6;
+      newIsHit = canHitAny;
     }
-    const singleDieDmg = oldDmg > 0 ? oldDmg : (targetRoll.damage > 0 ? targetRoll.damage : targetRoll.dieColor === 'red' ? 4 : targetRoll.dieColor === 'blue' ? 3 : targetRoll.dieColor === 'orange' ? 2 : 1);
+    const singleDieDmg =
+      targetRoll.damage > 0
+        ? targetRoll.damage
+        : targetRoll.dieColor === 'red'
+        ? 4
+        : targetRoll.dieColor === 'blue'
+        ? 3
+        : targetRoll.dieColor === 'orange'
+        ? 2
+        : 1;
     newDmg = newIsHit ? singleDieDmg : 0;
     targetRoll.roll = newRollVal;
     targetRoll.modifiedRoll = modified;
     targetRoll.isHit = newIsHit;
-    targetRoll.damage = newDmg;
+    targetRoll.damage = singleDieDmg;
   }
   delete targetRoll.splitAssignments;
 
-  if (state.activeCombat.pendingDamageAssignment) {
-    if (state.activeCombat.pendingDamageAssignment.rolls[rollIndex]) {
-      state.activeCombat.pendingDamageAssignment.rolls[rollIndex] = { ...targetRoll };
-    }
-  }
-
-  const dmgDiff = newDmg - oldDmg;
-  if (dmgDiff !== 0 && !state.activeCombat.pendingDamageAssignment) {
-    const enemyUnits = sector.ships.filter((s) => s.ownerId !== player.id);
-    if (dmgDiff > 0 && enemyUnits.length > 0) {
-      const targetShip = enemyUnits[0]!;
-      targetShip.damage += dmgDiff;
-      const bp = state.players.find((p) => p.id === targetShip.ownerId)?.blueprints[targetShip.type];
-      const maxHull = bp ? calculateBlueprintStats(bp).hull : 1;
-      if (targetShip.damage >= maxHull) {
-        state.activeCombat.destroyedShips = state.activeCombat.destroyedShips || [];
-        if (!state.activeCombat.destroyedShips.some((d) => d.shipId === targetShip.id)) {
-          state.activeCombat.destroyedShips.push({
-            shipId: targetShip.id,
-            type: targetShip.type,
-            ownerId: targetShip.ownerId,
-            killerId: player.id,
-          });
-        }
-        if (targetShip.type === 'orbital') {
-          const victimOwner = state.players.find((p) => p.id === targetShip.ownerId);
-          if (victimOwner && victimOwner.faction.id === 'the_exiles') {
-            const orbitalPlanet = sector.planets.find((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
-            if (orbitalPlanet) {
-              const res = resolveCubeReturnTrack(victimOwner, orbitalPlanet);
-              if (!victimOwner.graveyardCubes) {
-                victimOwner.graveyardCubes = { money: 0, science: 0, material: 0 };
-              }
-              victimOwner.graveyardCubes[res] = (victimOwner.graveyardCubes[res] || 0) + 1;
-              orbitalPlanet.colonizedBy = undefined;
-              orbitalPlanet.colonizedResource = undefined;
-            }
-          }
-        }
-        sector.ships = sector.ships.filter((s) => s.id !== targetShip.id);
-      }
-    }
+  pendingSalvo.rolls[rollIndex] = targetRoll;
+  if (state.activeCombat.lastRolls && state.activeCombat.lastRolls[rollIndex]) {
+    state.activeCombat.lastRolls[rollIndex] = { ...targetRoll };
   }
 
   state.log.unshift({
@@ -3002,6 +3112,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     action.type !== 'RESPOND_DIPLOMACY' &&
     action.type !== 'CONVERT_COLONY_SHIP' &&
     action.type !== 'REROLL_COMBAT_DIE' &&
+    action.type !== 'REROLL_BOMBARDMENT_DIE' &&
+    action.type !== 'CONFIRM_BOMBARDMENT' &&
+    action.type !== 'SELECT_BOMBARDMENT_TARGETS' &&
+    action.type !== 'CHOOSE_POPULATION_RETURN_TRACK' &&
     action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
     action.type !== 'CLAIM_MINOR_SPECIES' &&
     action.type !== 'BETRAY_ALLIANCE' &&
@@ -4412,10 +4526,26 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         return { success: false, newState: state, error: 'Sector not found.' };
       }
 
-      const conquestInfo = newState.pendingCombatConquest;
+      if (newState.pendingCombatConquest.bombardmentSummary?.isPendingConfirm) {
+        finalizePendingBombardmentConquest(newState, sector, player);
+      }
+      if (newState.pendingCombatConquest.bombardmentSummary?.isPendingTargetSelection) {
+        applySelectedBombardmentDestruction(
+          newState,
+          sector,
+          player,
+          newState.pendingCombatConquest.bombardmentSummary.rolls,
+          Boolean(newState.pendingCombatConquest.bombardmentSummary.neutronAbsorberActive),
+          undefined,
+          Boolean(newState.pendingCombatConquest.bombardmentSummary.attackerFleetWipedOut)
+        );
+      }
+
+      const conquestInfo = newState.pendingCombatConquest!;
+      const canClaim = conquestInfo.canClaimInfluence !== false;
 
       // 1. Influence Disc placement decision
-      if (action.claimInfluence && !sector.isNebula && !sector.isBlackHole && !sector.isSupernovaExploded) {
+      if (canClaim && action.claimInfluence && !sector.isNebula && !sector.isBlackHole && !sector.isSupernovaExploded) {
         if (sector.discOwner !== player.id && player.influenceTrack.discsOnTrack > 0) {
           player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
           sector.discOwner = player.id;
@@ -4587,11 +4717,6 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             }
 
             // All combats in this subsector (or sector) are complete!
-            // 1. Repair damage on surviving ships in this scope
-            for (const ship of relevantShips) {
-              ship.damage = 0;
-            }
-
             addLog(`Combat in Sector ${sector.sectorNumber}${activeSub ? ` (Subsector ${activeSub})` : ''} has concluded! Winner: ${winnerId || 'None'}.`, 'combat');
 
             if (!newState.resolvedCombatSectorIds) {
@@ -4623,9 +4748,15 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
               }
             }
 
-            // 2. Resolve attacking population & influence conquest (only for non-nebula)
+            // 1. Resolve attacking population & influence conquest (only for non-nebula).
+            // Ships carry combat damage into Attacking Population (for Rift Cannon self-damage checks)
+            // and surviving ships repair immediately once Attacking Population completes (or here for Nebula).
             if (!sector.isNebula) {
               resolveAttackingPopulationAndConquest(newState, sector, winnerId);
+            } else {
+              for (const ship of relevantShips) {
+                ship.damage = 0;
+              }
             }
 
             newState.activeCombat = null;
@@ -4847,23 +4978,17 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
               'combat'
             );
             if (des.type === 'orbital' && victimOwner && victimOwner.faction.id === 'the_exiles') {
-              const orbitalPlanet = sector.planets.find((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
+              const oIdx = sector.planets.findIndex((p) => p.isOrbital && p.colonizedBy === victimOwner.id);
+              const orbitalPlanet = oIdx >= 0 ? sector.planets[oIdx] : undefined;
               if (orbitalPlanet) {
-                const res = resolveCubeReturnTrack(victimOwner, orbitalPlanet);
-                if (!victimOwner.graveyardCubes) {
-                  victimOwner.graveyardCubes = { money: 0, science: 0, material: 0 };
-                }
-                victimOwner.graveyardCubes[res] = (victimOwner.graveyardCubes[res] || 0) + 1;
-                orbitalPlanet.colonizedBy = undefined;
-                orbitalPlanet.colonizedResource = undefined;
+                const chosenRes = queueOrReturnDestroyedCube(newState, victimOwner, sector, orbitalPlanet, oIdx);
                 addLog(
-                  `🏛️ The Exiles Population Cube on the destroyed Orbital in Sector ${sector.sectorNumber} was returned to the ${res.toUpperCase()} graveyard!`,
+                  chosenRes
+                    ? `🏛️ The Exiles Population Cube on the destroyed Orbital in Sector ${sector.sectorNumber} was returned to the ${chosenRes.toUpperCase()} graveyard!`
+                    : `🏛️ The Exiles Population Cube on the destroyed Orbital in Sector ${sector.sectorNumber} awaits track selection (Money or Science).`,
                   'combat'
                 );
-                const oIdx = sector.planets.findIndex((p) => p.isOrbital);
-                if (oIdx >= 0) {
-                  sector.planets.splice(oIdx, 1);
-                }
+                sector.planets.splice(oIdx, 1);
                 if (!sector.planets.some((p) => p.isOrbital)) {
                   if (sector.structures) sector.structures.orbital = false;
                 }
@@ -5223,6 +5348,123 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
     case 'REROLL_COMBAT_DIE': {
       applyCombatDieReroll(newState, player, action.rollIndex);
+      return { success: true, newState };
+    }
+
+    case 'REROLL_BOMBARDMENT_DIE': {
+      const summary = newState.pendingCombatConquest!.bombardmentSummary!;
+      const roll = { ...summary.rolls[action.rollIndex]! };
+      player.colonyShips.ready = Math.max(0, player.colonyShips.ready - 1);
+
+      let newRollVal = 0;
+      let resultDesc = 'MISS';
+      if (roll.diceColor === 'purple') {
+        const pRes = rollPurpleDie();
+        newRollVal = pRes.rawRoll;
+        roll.roll = pRes.rawRoll;
+        roll.symbol = pRes.symbol;
+        roll.selfDamage = pRes.selfDamage;
+        roll.isHit = pRes.isHit;
+        roll.damage = pRes.targetDamage;
+        if (pRes.isHit && pRes.selfDamage > 0) {
+          resultDesc = `HIT! [${pRes.targetDamage} dmg + ${pRes.selfDamage} self]`;
+        } else if (pRes.isHit) {
+          resultDesc = `HIT! [${pRes.targetDamage} dmg]`;
+        } else if (pRes.selfDamage > 0) {
+          resultDesc = `BACKFIRE [${pRes.selfDamage} self]`;
+        }
+      } else {
+        const baseDmg =
+          roll.damage > 0
+            ? roll.damage
+            : roll.diceColor === 'red'
+            ? 4
+            : roll.diceColor === 'blue'
+            ? 3
+            : roll.diceColor === 'orange'
+            ? 2
+            : 1;
+        const raw = rollD6();
+        newRollVal = raw;
+        const compBonus = roll.computerBonus ?? 0;
+        const modified = raw + compBonus;
+        const isHit = raw === 6 || (raw > 1 && modified >= 6);
+        roll.roll = raw;
+        roll.isHit = isHit;
+        roll.damage = isHit ? baseDmg : 0;
+        if (isHit) {
+          resultDesc = `HIT! [${roll.damage} dmg]`;
+        }
+      }
+
+      summary.rolls[action.rollIndex] = roll;
+      summary.totalDamage = summary.rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0);
+      addLog(
+        `🎲 ${player.name} flipped 1 Colony Ship to reroll bombardment die #${action.rollIndex + 1}: rolled ${newRollVal} (${resultDesc})!`,
+        'combat'
+      );
+      return { success: true, newState };
+    }
+
+    case 'CONFIRM_BOMBARDMENT': {
+      const sector = newState.sectors.find((s) => s.id === action.sectorId);
+      if (!sector) {
+        return { success: false, newState: state, error: 'Sector not found.' };
+      }
+      finalizePendingBombardmentConquest(newState, sector, player);
+      return { success: true, newState };
+    }
+
+    case 'SELECT_BOMBARDMENT_TARGETS': {
+      const sector = newState.sectors.find((s) => s.id === action.sectorId);
+      if (!sector) {
+        return { success: false, newState: state, error: 'Sector not found.' };
+      }
+      const summary = newState.pendingCombatConquest!.bombardmentSummary!;
+      applySelectedBombardmentDestruction(
+        newState,
+        sector,
+        player,
+        summary.rolls,
+        Boolean(summary.neutronAbsorberActive),
+        action.targetPlanetIndices,
+        Boolean(summary.attackerFleetWipedOut)
+      );
+      return { success: true, newState };
+    }
+
+    case 'CHOOSE_POPULATION_RETURN_TRACK': {
+      const list = newState.pendingPopulationReturnChoices || [];
+      const idx = list.findIndex(
+        (c) =>
+          c.playerId === action.playerId &&
+          c.sectorId === action.sectorId &&
+          c.planetIndex === action.planetIndex
+      );
+      if (idx === -1) {
+        return { success: false, newState: state, error: 'Pending population return choice not found.' };
+      }
+      const entry = list[idx]!;
+      if (!player.graveyardCubes) {
+        player.graveyardCubes = { money: 0, science: 0, material: 0 };
+      }
+      player.graveyardCubes[action.resource] = (player.graveyardCubes[action.resource] || 0) + 1;
+      const remaining = list.filter((_, i) => i !== idx);
+      newState.pendingPopulationReturnChoices = remaining.length > 0 ? remaining : null;
+      addLog(
+        `📦 ${player.name} placed destroyed ${entry.isOrbital ? 'Orbital' : 'Wild'} population cube from Sector ${entry.sectorNumber} in the ${action.resource.toUpperCase()} Casualty Slot (returns during Cleanup).`,
+        'economy'
+      );
+      if (
+        newState.phase === 'COMBAT_PHASE' &&
+        !newState.activeCombat &&
+        !newState.pendingCombatConquest &&
+        !newState.pendingDiscovery &&
+        !newState.pendingReputationDraw &&
+        (!newState.pendingPopulationReturnChoices || newState.pendingPopulationReturnChoices.length === 0)
+      ) {
+        checkAndTriggerCombat(newState);
+      }
       return { success: true, newState };
     }
 
@@ -5927,6 +6169,348 @@ export function executeAction(
   return result;
 }
 
+function queueOrReturnDestroyedCube(
+  state: GameState,
+  defPlayer: PlayerState,
+  sector: SectorTile,
+  planet: PlanetSlot,
+  planetIndex: number
+): 'money' | 'science' | 'material' | null {
+  const isFlexible = Boolean(planet.isOrbital) || planet.resource === 'any';
+  const prevRes = planet.colonizedResource;
+  planet.colonizedBy = undefined;
+  planet.colonizedResource = undefined;
+
+  if (isFlexible && !defPlayer.isBot && !defPlayer.isEliminated) {
+    const allowedTracks: ('money' | 'science' | 'material')[] = planet.isOrbital
+      ? ['money', 'science']
+      : ['money', 'science', 'material'];
+    state.pendingPopulationReturnChoices = [
+      ...(state.pendingPopulationReturnChoices || []),
+      {
+        playerId: defPlayer.id,
+        sectorId: sector.id,
+        sectorNumber: sector.sectorNumber,
+        planetId: planet.id,
+        planetIndex,
+        isOrbital: Boolean(planet.isOrbital),
+        previousResource: prevRes,
+        allowedTracks,
+      },
+    ];
+    return null;
+  }
+
+  const res = resolveCubeReturnTrack(defPlayer, { ...planet, colonizedResource: prevRes });
+  if (res === 'money' || res === 'science' || res === 'material') {
+    if (!defPlayer.graveyardCubes) {
+      defPlayer.graveyardCubes = { money: 0, science: 0, material: 0 };
+    }
+    defPlayer.graveyardCubes[res] = (defPlayer.graveyardCubes[res] || 0) + 1;
+  }
+  return res;
+}
+
+function flushPendingPopulationReturnChoices(state: GameState): void {
+  if (!state.pendingPopulationReturnChoices || state.pendingPopulationReturnChoices.length === 0) {
+    return;
+  }
+  for (const entry of state.pendingPopulationReturnChoices) {
+    const pl = state.players.find((p) => p.id === entry.playerId);
+    if (!pl) continue;
+    const { selectableTracks } = getAllowedReturnTracksForPlanet(pl, entry.allowedTracks);
+    const chosen =
+      (entry.previousResource && selectableTracks.includes(entry.previousResource)
+        ? entry.previousResource
+        : selectableTracks[0]) || 'money';
+    if (!pl.graveyardCubes) {
+      pl.graveyardCubes = { money: 0, science: 0, material: 0 };
+    }
+    pl.graveyardCubes[chosen] = (pl.graveyardCubes[chosen] || 0) + 1;
+  }
+  state.pendingPopulationReturnChoices = null;
+}
+
+function applySelectedBombardmentDestruction(
+  state: GameState,
+  sector: SectorTile,
+  attackerPlayer: PlayerState,
+  rolls: import('../types/state').BombardmentRoll[],
+  neutronAbsorberActive: boolean,
+  selectedTargetPlanetIndices: number[] | undefined,
+  attackerWiped: boolean
+): void {
+  const actualWinnerId = attackerPlayer.id;
+  const targetPlanetsWithIndices = sector.planets
+    .map((p, idx) => ({ p, idx }))
+    .filter(({ p }) => p.colonizedBy && p.colonizedBy !== actualWinnerId);
+  const firstDefPlayer = state.players.find(
+    (pl) => pl.id === targetPlanetsWithIndices[0]?.p.colonizedBy
+  );
+  const cannonDamage = rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0);
+  const cubesDestroyed: { resource: string; planetIndex: number }[] = [];
+
+  const sortedNonPlanta = targetPlanetsWithIndices
+    .filter(({ p }) => state.players.find((pl) => pl.id === p.colonizedBy)?.faction.id !== 'planta')
+    .sort((a, b) => {
+      const resA = a.p.colonizedResource || a.p.resource;
+      const resB = b.p.colonizedResource || b.p.resource;
+      const order = { money: 1, material: 2, science: 3, any: 4 };
+      return ((order as any)[resA] || 5) - ((order as any)[resB] || 5);
+    });
+
+  const chosenNonPlantaIndices =
+    selectedTargetPlanetIndices !== undefined
+      ? selectedTargetPlanetIndices
+      : sortedNonPlanta.slice(0, Math.max(0, cannonDamage)).map(({ idx }) => idx);
+  const chosenSet = new Set(chosenNonPlantaIndices);
+
+  let cannonCubesDestroyed = 0;
+  for (const { p, idx } of targetPlanetsWithIndices) {
+    const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
+    const isPlanta = defPlayer?.faction.id === 'planta';
+    if (isPlanta) {
+      if (cannonDamage <= 0) continue;
+    } else if (!chosenSet.has(idx)) {
+      continue;
+    }
+
+    const resName = p.colonizedResource || p.resource;
+    if (defPlayer) {
+      queueOrReturnDestroyedCube(state, defPlayer, sector, p, idx);
+    } else {
+      p.colonizedBy = undefined;
+      p.colonizedResource = undefined;
+    }
+    cubesDestroyed.push({ resource: resName, planetIndex: idx });
+    cannonCubesDestroyed++;
+  }
+
+  const remainingOpponentCubes = sector.planets.filter(
+    (p) => p.colonizedBy && p.colonizedBy !== actualWinnerId
+  );
+
+  state.log.unshift({
+    id: `log_${Date.now()}_${Math.random()}`,
+    timestamp: Date.now(),
+    round: state.round,
+    phase: state.phase,
+    message: `${attackerPlayer.name} bombarded Sector ${sector.sectorNumber} population with cannons: rolled ${cannonDamage} damage, destroying ${cannonCubesDestroyed} cube(s) (${remainingOpponentCubes.length} remaining). Destroyed cubes placed in Casualty Slot until Cleanup.`,
+    type: 'combat',
+  });
+
+  const hasAttackerShips = sector.ships.some((s) => s.ownerId === actualWinnerId);
+  const bombardmentSummary: import('../types/state').BombardmentSummary = {
+    attackerName: attackerPlayer.name,
+    defenderName: firstDefPlayer?.name || 'Defender',
+    totalDamage: cannonDamage,
+    rolls,
+    cubesDestroyed,
+    cubesRemaining: remainingOpponentCubes.length,
+    hasNeutronBombs: false,
+    neutronAbsorberActive,
+    isPendingConfirm: false,
+    isPendingTargetSelection: false,
+    attackerFleetWipedOut: attackerWiped,
+  };
+
+  if (remainingOpponentCubes.length === 0) {
+    if (sector.discOwner && sector.discOwner !== actualWinnerId) {
+      const loserPlayer = state.players.find((p) => p.id === sector.discOwner);
+      if (loserPlayer) {
+        loserPlayer.influenceTrack.discsOnTrack = Math.min(
+          loserPlayer.influenceTrack.totalDiscs,
+          loserPlayer.influenceTrack.discsOnTrack + 1
+        );
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          message: `${loserPlayer.name}'s Influence Disc in Sector ${sector.sectorNumber} was overthrown!`,
+          type: 'combat',
+        });
+      }
+      sector.discOwner = undefined;
+    }
+
+    if (hasAttackerShips && sector.discOwner !== actualWinnerId) {
+      let discoveryToClaim = sector.discoveryTile && !sector.discoveryClaimed ? sector.discoveryTile : undefined;
+      if (!discoveryToClaim && sector.hasDiscovery && !sector.discoveryClaimed && state.discoveryBag && state.discoveryBag.length > 0) {
+        sector.discoveryTile = state.discoveryBag.pop();
+        discoveryToClaim = sector.discoveryTile;
+      }
+      state.pendingCombatConquest = {
+        sectorId: sector.id,
+        winnerPlayerId: actualWinnerId,
+        discoveryToClaim,
+        bombardmentSummary,
+        canClaimInfluence: true,
+      };
+    } else if (attackerWiped && rolls.length > 0) {
+      state.pendingCombatConquest = {
+        sectorId: sector.id,
+        winnerPlayerId: actualWinnerId,
+        discoveryToClaim: undefined,
+        bombardmentSummary,
+        canClaimInfluence: false,
+      };
+    } else {
+      state.pendingCombatConquest = null;
+    }
+  } else {
+    state.log.unshift({
+      id: `log_${Date.now()}_${Math.random()}`,
+      timestamp: Date.now(),
+      round: state.round,
+      phase: state.phase,
+      message: `Defender retains control of Sector ${sector.sectorNumber} because ${remainingOpponentCubes.length} population cube(s) survived bombardment.`,
+      type: 'combat',
+    });
+
+    if (hasAttackerShips || attackerWiped) {
+      state.pendingCombatConquest = {
+        sectorId: sector.id,
+        winnerPlayerId: actualWinnerId,
+        discoveryToClaim: undefined,
+        bombardmentSummary,
+        canClaimInfluence: false,
+      };
+    } else {
+      state.pendingCombatConquest = null;
+    }
+  }
+}
+
+function finalizeBombardmentAndOverthrow(
+  state: GameState,
+  sector: SectorTile,
+  attackerPlayer: PlayerState,
+  rolls: import('../types/state').BombardmentRoll[],
+  neutronAbsorberActive: boolean,
+  attackerDiedByRift?: boolean
+): void {
+  const actualWinnerId = attackerPlayer.id;
+  const opponentCubes = sector.planets.filter(
+    (p) => p.colonizedBy && p.colonizedBy !== actualWinnerId
+  );
+  const firstDefPlayer = state.players.find((pl) => pl.id === opponentCubes[0]?.colonizedBy);
+
+  // 1. Apply any purple Rift Cannon self-damage to surviving attacker ships before repairing post-combat damage
+  const riftSelfRolls = rolls.filter((r) => r.diceColor === 'purple' && (r.selfDamage || 0) > 0);
+  if (riftSelfRolls.length > 0) {
+    const units = buildCombatUnitsForSector(
+      sector,
+      state.players,
+      undefined,
+      state.neutralShipBlueprints,
+      state.expansions
+    );
+    const dummyCombat: any = { destroyedShips: [] };
+    for (const r of riftSelfRolls) {
+      applyRiftSelfDamage(units, actualWinnerId, r.selfDamage || 0, dummyCombat);
+    }
+    const destroyedIds = new Set((dummyCombat.destroyedShips || []).map((ds: any) => ds.shipId));
+    if (destroyedIds.size > 0) {
+      sector.ships = sector.ships.filter((sh) => !destroyedIds.has(sh.id));
+    }
+    for (const sh of sector.ships) {
+      const u = units.find((unit) => unit.id === sh.id);
+      if (u) sh.damage = u.currentDamage;
+    }
+    if (dummyCombat.destroyedShips.length > 0) {
+      state.log.unshift({
+        id: `log_${Date.now()}_${Math.random()}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: state.phase,
+        message: `💥 Rift Cannon backfire during bombardment destroyed ${dummyCombat.destroyedShips.length} ship(s) of ${attackerPlayer.name}!`,
+        type: 'combat',
+      });
+    }
+  }
+
+  // Repair surviving ships in this sector once Attacking Population dice settle (Rulebook Step 4)
+  for (const sh of sector.ships) {
+    sh.damage = 0;
+  }
+
+  const cannonDamage = rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0);
+  const hasAttackerShips = sector.ships.some((s) => s.ownerId === actualWinnerId);
+  const attackerWiped = attackerDiedByRift ?? !hasAttackerShips;
+
+  const nonPlantaTargets = sector.planets.filter(
+    (p) =>
+      p.colonizedBy &&
+      p.colonizedBy !== actualWinnerId &&
+      state.players.find((pl) => pl.id === p.colonizedBy)?.faction.id !== 'planta'
+  );
+
+  // When partial damage cannot wipe all non-Planta defender population cubes,
+  // the attacker must choose which cube(s) to destroy.
+  if (
+    cannonDamage > 0 &&
+    nonPlantaTargets.length > 0 &&
+    cannonDamage < nonPlantaTargets.length &&
+    !attackerPlayer.isBot
+  ) {
+    state.pendingCombatConquest = {
+      sectorId: sector.id,
+      winnerPlayerId: actualWinnerId,
+      discoveryToClaim: undefined,
+      bombardmentSummary: {
+        attackerName: attackerPlayer.name,
+        defenderName: firstDefPlayer?.name || 'Defender',
+        totalDamage: cannonDamage,
+        rolls,
+        cubesDestroyed: [],
+        cubesRemaining: opponentCubes.length,
+        hasNeutronBombs: false,
+        neutronAbsorberActive,
+        isPendingConfirm: false,
+        isPendingTargetSelection: true,
+        attackerFleetWipedOut: attackerWiped,
+      },
+      canClaimInfluence: false,
+    };
+    state.log.unshift({
+      id: `log_${Date.now()}_${Math.random()}`,
+      timestamp: Date.now(),
+      round: state.round,
+      phase: state.phase,
+      message: `🎯 ${attackerPlayer.name} dealt ${cannonDamage} bombardment damage against ${nonPlantaTargets.length} population cubes in Sector ${sector.sectorNumber} — awaiting attacker's selection of cubes to destroy.`,
+      type: 'combat',
+    });
+    return;
+  }
+
+  applySelectedBombardmentDestruction(
+    state,
+    sector,
+    attackerPlayer,
+    rolls,
+    neutronAbsorberActive,
+    undefined,
+    attackerWiped
+  );
+}
+
+export function finalizePendingBombardmentConquest(
+  state: GameState,
+  sector: SectorTile,
+  attackerPlayer: PlayerState
+): void {
+  const pending = state.pendingCombatConquest;
+  if (!pending?.bombardmentSummary?.isPendingConfirm) return;
+  finalizeBombardmentAndOverthrow(
+    state,
+    sector,
+    attackerPlayer,
+    pending.bombardmentSummary.rolls,
+    Boolean(pending.bombardmentSummary.neutronAbsorberActive)
+  );
+}
+
 export function resolveAttackingPopulationAndConquest(
   state: GameState,
   sector: SectorTile,
@@ -5967,19 +6551,14 @@ export function resolveAttackingPopulationAndConquest(
             neutronAbsorberActive = true;
             return;
           }
-          if (defPlayer) {
-            const res = resolveCubeReturnTrack(defPlayer, p);
-            if (res === 'money' || res === 'science' || res === 'material') {
-              if (!defPlayer.graveyardCubes) {
-                defPlayer.graveyardCubes = { money: 0, science: 0, material: 0 };
-              }
-              defPlayer.graveyardCubes[res] = (defPlayer.graveyardCubes[res] || 0) + 1;
-            }
-          }
           const resName = p.colonizedResource || p.resource;
+          if (defPlayer) {
+            queueOrReturnDestroyedCube(state, defPlayer, sector, p, pIdx);
+          } else {
+            p.colonizedBy = undefined;
+            p.colonizedResource = undefined;
+          }
           cubesDestroyed.push({ resource: resName, planetIndex: pIdx });
-          p.colonizedBy = undefined;
-          p.colonizedResource = undefined;
           destroyedCount++;
         }
       });
@@ -6015,7 +6594,6 @@ export function resolveAttackingPopulationAndConquest(
 
     // If opponent cubes remain (either no neutron bombs, or defender has neutron_absorber - Bug 59), resolve standard cannon bombardment
     if (remainingOppCubesBeforeCannons.length > 0) {
-      let cannonDamage = 0;
       const survivingAttackerShips = sector.ships.filter((s) => s.ownerId === actualWinnerId);
 
       for (const s of survivingAttackerShips) {
@@ -6023,8 +6601,9 @@ export function resolveAttackingPopulationAndConquest(
         if (!bp) continue;
         const stats = calculateBlueprintStats(bp);
         const compBonus = stats.computerBonus;
+        const allParts = [...(bp.slots || []), ...(bp.externalParts || [])];
 
-        for (const slot of bp.slots) {
+        for (const slot of allParts) {
           if (slot?.dice) {
             for (const d of slot.dice) {
               if (d.isMissile) continue; // Missiles cannot bombard population
@@ -6033,6 +6612,7 @@ export function resolveAttackingPopulationAndConquest(
                   const pRes = rollPurpleDie();
                   const dmg = pRes.targetDamage;
                   rolls.push({
+                    shipId: s.id,
                     shipType: s.type,
                     diceColor: 'purple',
                     roll: pRes.rawRoll,
@@ -6041,44 +6621,20 @@ export function resolveAttackingPopulationAndConquest(
                     isHit: pRes.isHit,
                     damage: dmg,
                   });
-                  if (pRes.isHit) {
-                    cannonDamage += dmg;
-                  }
-                  if (pRes.selfDamage > 0) {
-                    const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints, state.expansions);
-                    const dummyCombat: any = { destroyedShips: [] };
-                    applyRiftSelfDamage(units, actualWinnerId, pRes.selfDamage, dummyCombat);
-                    sector.ships = sector.ships.filter((sh) => !dummyCombat.destroyedShips.some((ds: any) => ds.shipId === sh.id));
-                    for (const sh of sector.ships) {
-                      const u = units.find((unit) => unit.id === sh.id);
-                      if (u) sh.damage = u.currentDamage;
-                    }
-                    if (dummyCombat.destroyedShips.length > 0) {
-                      state.log.unshift({
-                        id: `log_${Date.now()}_${Math.random()}`,
-                        timestamp: Date.now(),
-                        round: state.round,
-                        phase: state.phase,
-                        message: `💥 Rift Cannon backfire during bombardment destroyed ${dummyCombat.destroyedShips.length} ship(s) of ${attackerPlayer.name}!`,
-                        type: 'combat',
-                      });
-                    }
-                  }
                 } else {
                   const roll = rollD6();
                   const modified = roll + compBonus;
                   const isHit = roll === 6 || (roll > 1 && modified >= 6);
                   const dmg = isHit ? d.damagePerHit : 0;
                   rolls.push({
+                    shipId: s.id,
                     shipType: s.type,
                     diceColor: d.color,
                     roll,
+                    computerBonus: compBonus,
                     isHit,
                     damage: dmg,
                   });
-                  if (isHit) {
-                    cannonDamage += d.damagePerHit;
-                  }
                 }
               }
             }
@@ -6086,53 +6642,45 @@ export function resolveAttackingPopulationAndConquest(
         }
       }
 
-      let damageRemaining = cannonDamage;
-      const targetPlanetsWithIndices = sector.planets
-        .map((p, idx) => ({ p, idx }))
-        .filter(({ p }) => p.colonizedBy && p.colonizedBy !== actualWinnerId)
-        .sort((a, b) => {
-          const resA = a.p.colonizedResource || a.p.resource;
-          const resB = b.p.colonizedResource || b.p.resource;
-          const order = { money: 1, material: 2, science: 3, any: 4 };
-          return ((order as any)[resA] || 5) - ((order as any)[resB] || 5);
+      // If Enlightened of Lyra has ready Colony Ships and rolled bombardment dice,
+      // pause before applying damage / Rift backfire so Lyra can reroll using Colony Ships.
+      if (
+        attackerPlayer.faction.id === 'enlightened_of_lyra' &&
+        !attackerPlayer.isBot &&
+        attackerPlayer.colonyShips.ready > 0 &&
+        rolls.length > 0
+      ) {
+        const pendingDamage = rolls.reduce((sum, r) => sum + (r.isHit ? r.damage : 0), 0);
+        state.pendingCombatConquest = {
+          sectorId: sector.id,
+          winnerPlayerId: actualWinnerId,
+          discoveryToClaim: undefined,
+          bombardmentSummary: {
+            attackerName: attackerPlayer.name,
+            defenderName: firstDefPlayer?.name || 'Defender',
+            totalDamage: pendingDamage,
+            rolls,
+            cubesDestroyed: [],
+            cubesRemaining: remainingOppCubesBeforeCannons.length,
+            hasNeutronBombs: false,
+            neutronAbsorberActive,
+            isPendingConfirm: true,
+          },
+          canClaimInfluence: false,
+        };
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random()}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          message: `⏳ ${attackerPlayer.name} rolled planetary bombardment in Sector ${sector.sectorNumber} (${rolls.length} dice, ${pendingDamage} potential dmg) — may flip Colony Ships to reroll before confirming.`,
+          type: 'combat',
         });
-
-      let cannonCubesDestroyed = 0;
-      for (const { p, idx } of targetPlanetsWithIndices) {
-        const defPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
-        const isPlanta = defPlayer?.faction.id === 'planta';
-        if (!isPlanta && damageRemaining <= 0) break;
-
-        if (defPlayer) {
-          const res = resolveCubeReturnTrack(defPlayer, p);
-          if (res === 'money' || res === 'science' || res === 'material') {
-            if (!defPlayer.graveyardCubes) {
-              defPlayer.graveyardCubes = { money: 0, science: 0, material: 0 };
-            }
-            defPlayer.graveyardCubes[res] = (defPlayer.graveyardCubes[res] || 0) + 1;
-          }
-        }
-        cubesDestroyed.push({ resource: p.colonizedResource || p.resource, planetIndex: idx });
-        p.colonizedBy = undefined;
-        p.colonizedResource = undefined;
-        cannonCubesDestroyed++;
-        if (!isPlanta) {
-          damageRemaining -= 1;
-        }
+        return;
       }
 
-      const remainingOppCubes = sector.planets.filter(
-        (p) => p.colonizedBy && p.colonizedBy !== actualWinnerId
-      ).length;
-
-      state.log.unshift({
-        id: `log_${Date.now()}_${Math.random()}`,
-        timestamp: Date.now(),
-        round: state.round,
-        phase: state.phase,
-        message: `${attackerPlayer.name} bombarded Sector ${sector.sectorNumber} population with cannons: rolled ${cannonDamage} damage, destroying ${cannonCubesDestroyed} cube(s) (${remainingOppCubes} remaining). Destroyed cubes placed in Casualty Slot until Cleanup.`,
-        type: 'combat',
-      });
+      finalizeBombardmentAndOverthrow(state, sector, attackerPlayer, rolls, neutronAbsorberActive);
+      return;
     }
 
     const finalRemainingOppCubes = sector.planets.filter(
@@ -6151,6 +6699,11 @@ export function resolveAttackingPopulationAndConquest(
       hasNeutronBombs: bombsEffective,
       neutronAbsorberActive,
     };
+  }
+
+  // Repair surviving ships when conquest concludes without cannon bombardment (Neutron Bombs or no enemy cubes)
+  for (const sh of sector.ships) {
+    sh.damage = 0;
   }
 
   // --- INFLUENCE SECTOR OVERTHROW / CONQUEST ---
@@ -6346,8 +6899,15 @@ export function computePinningState(
 }
 
 export function checkAndTriggerCombat(state: GameState): void {
-  // If a player still has a pending conquest, discovery, sector control, or reputation tile decision, wait for resolution
-  if (state.pendingCombatConquest || state.pendingDiscovery || state.pendingExploreControl || state.pendingReputationDraw || state.activeCombat) {
+  // If a player still has a pending conquest, discovery, sector control, reputation draw, or destroyed population track choice, wait for resolution
+  if (
+    state.pendingCombatConquest ||
+    state.pendingDiscovery ||
+    state.pendingExploreControl ||
+    state.pendingReputationDraw ||
+    (state.pendingPopulationReturnChoices && state.pendingPopulationReturnChoices.length > 0) ||
+    state.activeCombat
+  ) {
     return;
   }
 
@@ -7034,6 +7594,8 @@ export function transitionToCleanup(state: GameState): void {
     message: `🚀 ROUND ${state.round} has begun! Action Phase is now active. Influence discs refreshed.`,
     type: 'system',
   });
+
+  flushPendingPopulationReturnChoices(state);
 
   // Reset players action discs and passing status
   for (const player of state.players) {

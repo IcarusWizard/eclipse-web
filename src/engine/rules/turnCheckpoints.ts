@@ -259,6 +259,10 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
     const idx = seatOfPlayerId(stateObj.pendingDiscovery.playerId);
     if (idx >= 0) return idx;
   }
+  if (Array.isArray(stateObj.pendingPopulationReturnChoices) && stateObj.pendingPopulationReturnChoices.length > 0) {
+    const idx = seatOfPlayerId(stateObj.pendingPopulationReturnChoices[0]?.playerId);
+    if (idx >= 0) return idx;
+  }
   if (stateObj.pendingExploreControl?.playerId) {
     const idx = seatOfPlayerId(stateObj.pendingExploreControl.playerId);
     if (idx >= 0) return idx;

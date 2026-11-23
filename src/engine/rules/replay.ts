@@ -229,7 +229,8 @@ export function commitReplayStep(
   }
 
   const actor = actorPlayerId ? state.players?.find((p) => p.id === actorPlayerId) : undefined;
-  const stepIndex = state.replaySteps.length;
+  const priorCount = Number((state as any).replayStepsCount) || 0;
+  const stepIndex = Math.max(state.replaySteps.length, priorCount);
   const isKeyframe = isStepKeyframe(state, previousState, stepIndex, actionType);
 
   const step: ReplayStep = {
@@ -267,6 +268,7 @@ export function commitReplayStep(
   }
 
   state.replaySteps.push(step);
+  (state as any).replayStepsCount = Math.max(stepIndex + 1, state.replaySteps.length);
 }
 
 /**
@@ -279,6 +281,10 @@ export function commitReplayStep(
  */
 export function compactReplaySteps(steps: ReplayStep[]): ReplayStep[] {
   if (!Array.isArray(steps) || steps.length === 0) return [];
+  if (!steps[0]?.snapshot || (steps[0].stepIndex ?? 0) > 0) {
+    // Tail-only slice after lightweight sync (no Step-0 root present): preserve steps as-is
+    return steps;
+  }
   const compacted: ReplayStep[] = [];
 
   let currentState: GameState;

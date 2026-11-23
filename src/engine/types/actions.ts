@@ -34,6 +34,10 @@ export type ActionType =
   | 'CONVERT_COLONY_SHIP'
   | 'PLACE_SHRINE'
   | 'REROLL_COMBAT_DIE'
+  | 'REROLL_BOMBARDMENT_DIE'
+  | 'CONFIRM_BOMBARDMENT'
+  | 'SELECT_BOMBARDMENT_TARGETS'
+  | 'CHOOSE_POPULATION_RETURN_TRACK'
   | 'ACTIVATE_PULSAR'
   | 'RETURN_BLACK_HOLE_SHIP'
   | 'DRAFT_FACTION'
@@ -271,6 +275,30 @@ export interface RerollCombatDieAction extends BaseAction {
   rollIndex: number;
 }
 
+export interface RerollBombardmentDieAction extends BaseAction {
+  type: 'REROLL_BOMBARDMENT_DIE';
+  sectorId: string;
+  rollIndex: number;
+}
+
+export interface ConfirmBombardmentAction extends BaseAction {
+  type: 'CONFIRM_BOMBARDMENT';
+  sectorId: string;
+}
+
+export interface SelectBombardmentTargetsAction extends BaseAction {
+  type: 'SELECT_BOMBARDMENT_TARGETS';
+  sectorId: string;
+  targetPlanetIndices: number[];
+}
+
+export interface ChoosePopulationReturnTrackAction extends BaseAction {
+  type: 'CHOOSE_POPULATION_RETURN_TRACK';
+  sectorId: string;
+  planetIndex: number;
+  resource: 'money' | 'science' | 'material';
+}
+
 export interface ChooseExilesOrbitalCubeAction extends BaseAction {
   type: 'CHOOSE_EXILES_ORBITAL_CUBE';
   resource: 'money' | 'science';
@@ -361,6 +389,10 @@ export type GameAction =
   | ConvertColonyShipAction
   | PlaceShrineAction
   | RerollCombatDieAction
+  | RerollBombardmentDieAction
+  | ConfirmBombardmentAction
+  | SelectBombardmentTargetsAction
+  | ChoosePopulationReturnTrackAction
   | ChooseExilesOrbitalCubeAction
   | ClaimMinorSpeciesAction
   | ActivatePulsarAction

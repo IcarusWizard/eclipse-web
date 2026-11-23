@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { GameState, PendingCombatConquest } from '../../engine/types/state';
 import { canColonizePlanetSlot } from '../../engine/rules/gameReducer';
 import {
@@ -16,9 +16,11 @@ import {
   Crosshair,
   Flame,
   Sparkles,
+  RotateCcw,
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateResourceType, translateShipType } from '../../i18n/catalogTranslations';
+import { CombatDieFaceGraphic } from '../common/PhysicalTileIconography';
 
 interface CombatConquestModalProps {
   state: GameState;
@@ -29,6 +31,9 @@ interface CombatConquestModalProps {
     colonizePlanetIndices: number[],
     planetResourceChoices?: Record<number, 'money' | 'science' | 'material'>
   ) => void;
+  onRerollBombardmentDie?: (rollIndex: number) => void;
+  onConfirmBombardment?: () => void;
+  onSelectBombardmentTargets?: (targetPlanetIndices: number[]) => void;
 }
 
 export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
@@ -36,6 +41,9 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   conquest,
   currentSeat = 'all',
   onConfirm,
+  onRerollBombardmentDie,
+  onConfirmBombardment,
+  onSelectBombardmentTargets,
 }) => {
   const { l, language } = useLanguage();
   const sector = state.sectors.find((s) => s.id === conquest.sectorId);
@@ -75,10 +83,58 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
     canClaim && (alreadyControls || hasDiscsAvailable)
   );
 
+  useEffect(() => {
+    setClaimInfluence(canClaim && (alreadyControls || hasDiscsAvailable));
+  }, [conquest.sectorId, canClaim, alreadyControls, hasDiscsAvailable]);
+
   const [selectedPlanetIndices, setSelectedPlanetIndices] = useState<number[]>([]);
   const [planetResourceChoices, setPlanetResourceChoices] = useState<
     Record<number, 'money' | 'science' | 'material'>
   >({});
+
+  const isPendingTargets = Boolean(conquest.bombardmentSummary?.isPendingTargetSelection);
+  const nonPlantaOppPlanets = React.useMemo(() => {
+    return sector.planets
+      .map((p, idx) => ({ p, idx }))
+      .filter(({ p }) => {
+        if (!p.colonizedBy || p.colonizedBy === winner.id) return false;
+        const owner = state.players.find((pl) => pl.id === p.colonizedBy);
+        return owner?.faction.id !== 'planta';
+      });
+  }, [sector.planets, winner.id, state.players]);
+  const requiredBombardTargets = isPendingTargets
+    ? Math.min(conquest.bombardmentSummary?.totalDamage || 0, nonPlantaOppPlanets.length)
+    : 0;
+
+  const computeDefaultBombardmentTargets = () => {
+    if (!isPendingTargets || requiredBombardTargets <= 0) return [];
+    const order: Record<string, number> = { money: 1, material: 2, science: 3, any: 4 };
+    return [...nonPlantaOppPlanets]
+      .sort((a, b) => {
+        const resA = a.p.colonizedResource || a.p.resource;
+        const resB = b.p.colonizedResource || b.p.resource;
+        return (order[resA] || 5) - (order[resB] || 5);
+      })
+      .slice(0, requiredBombardTargets)
+      .map(({ idx }) => idx);
+  };
+
+  const [selectedBombardTargets, setSelectedBombardTargets] = useState<number[]>(
+    computeDefaultBombardmentTargets
+  );
+
+  useEffect(() => {
+    setSelectedBombardTargets(computeDefaultBombardmentTargets());
+  }, [conquest.sectorId, isPendingTargets, requiredBombardTargets]);
+
+  const handleToggleBombardTarget = (idx: number) => {
+    if (!canControl) return;
+    if (selectedBombardTargets.includes(idx)) {
+      setSelectedBombardTargets(selectedBombardTargets.filter((i) => i !== idx));
+    } else if (selectedBombardTargets.length < requiredBombardTargets) {
+      setSelectedBombardTargets([...selectedBombardTargets, idx]);
+    }
+  };
 
   const hasAdvancedEconomy = winner.techTrack.researched.some(
     (t) => t.id === 'advanced_economy' || t.id === 'metasynthesis'
@@ -121,21 +177,6 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   };
 
   const willControl = canClaim && (alreadyControls || claimInfluence);
-
-  const getDiceColorBadge = (color: string) => {
-    switch (color) {
-      case 'yellow':
-        return 'bg-yellow-500/20 border-yellow-500/60 text-yellow-300';
-      case 'orange':
-        return 'bg-orange-500/20 border-orange-500/60 text-orange-300';
-      case 'blue':
-        return 'bg-blue-500/20 border-blue-500/60 text-blue-300';
-      case 'red':
-        return 'bg-red-500/20 border-red-500/60 text-red-300';
-      default:
-        return 'bg-slate-800 border-slate-700 text-slate-300';
-    }
-  };
 
   return (
     <div className="fixed top-18 right-4 z-40 w-full max-w-lg pointer-events-auto shadow-2xl animate-in slide-in-from-right duration-200">
@@ -272,10 +313,10 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                           className="bg-slate-900 border border-slate-800/80 rounded-lg p-2 flex items-center justify-between"
                         >
                           <div className="flex items-center gap-2">
-                            <div
-                              className={`min-w-5 h-5 px-1 rounded flex items-center justify-center font-mono font-bold text-xs border ${getDiceColorBadge(
-                                r.diceColor
-                              )}`}
+                            <CombatDieFaceGraphic
+                              color={r.diceColor}
+                              roll={r.roll}
+                              size="sm"
                               title={
                                 r.diceColor === 'purple'
                                   ? l(
@@ -304,24 +345,12 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     )
                                   : l(`Cannon Die Roll: ${r.roll}`, `火炮掷骰：${r.roll}`)
                               }
-                            >
-                              {r.diceColor === 'purple'
-                                ? r.roll === 1 || r.roll === 2 || r.symbol === 'miss'
-                                  ? '—'
-                                  : r.roll === 3 || r.symbol === '1'
-                                  ? '★'
-                                  : r.roll === 4 || r.symbol === '2'
-                                  ? '★★'
-                                  : r.roll === 5 || r.symbol === '3+💥'
-                                  ? '★💥'
-                                  : '💥'
-                                : r.roll}
-                            </div>
+                            />
                             <span className="text-[11px] capitalize text-slate-300 font-medium">
                               {translateShipType(r.shipType, language)}
                             </span>
                           </div>
-                          <div>
+                          <div className="flex items-center gap-1.5">
                             {r.diceColor === 'purple' && (r.selfDamage || 0) > 0 && !r.isHit ? (
                               <span className="text-[10px] font-mono font-bold px-1.5 py-0.5 rounded bg-purple-950/80 border border-purple-700/60 text-purple-300">
                                 {l('BACKFIRE (💥)', '反噬 (💥)')}
@@ -336,6 +365,25 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                 {l('MISS', '未命中')}
                               </span>
                             )}
+                            {conquest.bombardmentSummary?.isPendingConfirm &&
+                              winner.faction.id === 'enlightened_of_lyra' &&
+                              winner.colonyShips.ready > 0 &&
+                              canControl &&
+                              onRerollBombardmentDie && (
+                                <button
+                                  type="button"
+                                  data-testid={`bombardment-reroll-btn-${i}`}
+                                  onClick={() => onRerollBombardmentDie(i)}
+                                  title={l(
+                                    `Lyra Ability: Flip 1 Colony Ship (${winner.colonyShips.ready} ready) to reroll this die`,
+                                    `天琴座能力：横置 1 艘殖民船（可用 ${winner.colonyShips.ready}）重掷此骰`
+                                  )}
+                                  className="px-1.5 py-0.5 rounded bg-orange-600/30 hover:bg-orange-500/50 border border-orange-500 text-orange-200 text-[9px] font-bold transition flex items-center gap-1 cursor-pointer"
+                                >
+                                  <RotateCcw className="w-2.5 h-2.5 text-orange-300" />
+                                  <span>{l('Reroll', '重掷')}</span>
+                                </button>
+                              )}
                           </div>
                         </div>
                       ))}
@@ -378,7 +426,92 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
               )}
 
               {/* Status Outcome */}
-              {conquest.bombardmentSummary.cubesRemaining > 0 ? (
+              {conquest.bombardmentSummary.isPendingConfirm ? (
+                <div className="p-3 rounded-lg bg-orange-950/40 border border-orange-500/60 text-xs flex items-center gap-2.5 text-orange-200">
+                  <RotateCcw className="w-4 h-4 text-orange-300 shrink-0" />
+                  <span>
+                    {l(
+                      `Lyra Colony Ship Reroll Available (${winner.colonyShips.ready} ready): You may flip Colony Ships to reroll any bombardment die (including Rift Cannons) before damage and Rift backfire are applied.`,
+                      `天琴座殖民船重掷（可用 ${winner.colonyShips.ready} 艘）：可在伤害与裂隙炮反噬生效前，横置殖民船重掷任意轰炸骰子。`
+                    )}
+                  </span>
+                </div>
+              ) : isPendingTargets ? (
+                <div
+                  data-testid="bombardment-target-selection-panel"
+                  className="p-3 rounded-lg bg-rose-950/35 border border-rose-500/60 space-y-2.5"
+                >
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-rose-200 uppercase tracking-wider">
+                      {l(
+                        `Choose Population Cubes to Destroy (${selectedBombardTargets.length} / ${requiredBombardTargets})`,
+                        `选择要摧毁的敌方人口方块（已选 ${selectedBombardTargets.length} / ${requiredBombardTargets}）`
+                      )}
+                    </span>
+                  </div>
+                  <p className="text-[11px] text-slate-300">
+                    {l(
+                      `Your cannons dealt ${requiredBombardTargets} damage against ${nonPlantaOppPlanets.length} population cubes. Select exactly ${requiredBombardTargets} cube(s) to destroy:`,
+                      `你的火炮造成了 ${requiredBombardTargets} 点伤害（敌方共有 ${nonPlantaOppPlanets.length} 枚人口方块）。请选择要摧毁的 ${requiredBombardTargets} 枚人口方块：`
+                    )}
+                  </p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {nonPlantaOppPlanets.map(({ p, idx }) => {
+                      const isSel = selectedBombardTargets.includes(idx);
+                      const isOrb = Boolean(p.isOrbital);
+                      const isWild = p.resource === 'any';
+                      const label = isOrb
+                        ? l('Orbital', '轨道站')
+                        : isWild
+                        ? l('Wild Planet', '万能行星')
+                        : translateResourceType(p.resource, language);
+                      const prodLabel = p.colonizedResource
+                        ? translateResourceType(p.colonizedResource, language)
+                        : '';
+                      const ownerPlayer = state.players.find((pl) => pl.id === p.colonizedBy);
+                      return (
+                        <button
+                          key={p.id || idx}
+                          type="button"
+                          data-testid={`bombard-target-planet-${idx}`}
+                          onClick={() => handleToggleBombardTarget(idx)}
+                          className={`flex items-center justify-between px-3 py-2 rounded-lg border text-left transition cursor-pointer ${
+                            isSel
+                              ? 'bg-rose-950/80 border-rose-400 text-white ring-1 ring-rose-400/60'
+                              : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:border-slate-500'
+                          }`}
+                        >
+                          <div className="text-xs">
+                            <div className="font-bold flex items-center gap-1.5">
+                              <span>{label}</span>
+                              {p.isAdvanced && (
+                                <span className="text-[9px] px-1 py-0.2 rounded bg-purple-950 border border-purple-500/60 text-purple-300">
+                                  {l('Adv', '高阶')}
+                                </span>
+                              )}
+                            </div>
+                            <div className="text-[10px] text-slate-400">
+                              {ownerPlayer?.name || conquest.bombardmentSummary?.defenderName}
+                              {(isOrb || isWild) && prodLabel ? ` • ${prodLabel}` : ''}
+                            </div>
+                          </div>
+                          {isSel && <CheckCircle2 className="w-4 h-4 text-rose-400 shrink-0" />}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              ) : conquest.bombardmentSummary.attackerFleetWipedOut ? (
+                <div className="p-3 rounded-lg bg-rose-950/50 border border-rose-600/60 text-xs flex items-center gap-2.5 text-rose-200">
+                  <ShieldAlert className="w-4 h-4 text-rose-400 shrink-0" />
+                  <span>
+                    {l(
+                      `All attacking ships were destroyed by Rift Cannon backfire during bombardment! Sector ${sector.sectorNumber} cannot be claimed.`,
+                      `所有进攻舰船都在轰炸期间因裂隙炮反噬被摧毁！无法占领星区 ${sector.sectorNumber}。`
+                    )}
+                  </span>
+                </div>
+              ) : conquest.bombardmentSummary.cubesRemaining > 0 ? (
                 <div className="p-3 rounded-lg bg-amber-950/40 border border-amber-600/50 text-xs flex items-center gap-2.5 text-amber-300">
                   <ShieldAlert className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>
@@ -685,10 +818,58 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
         <div className="flex items-center justify-between p-4 border-t border-slate-800/80 bg-slate-950">
           {currentStep === 'bombardment' ? (
             <div className="flex items-center justify-between w-full">
-              {!canClaim ? (
+              {conquest.bombardmentSummary?.isPendingConfirm ? (
+                <>
+                  <div className="text-xs text-orange-300">
+                    {l(
+                      'Review or reroll bombardment dice, then apply damage.',
+                      '查看或重掷轰炸骰子，然后确认生效。'
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="confirm-bombardment-btn"
+                    onClick={() => onConfirmBombardment?.()}
+                    disabled={!canControl}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-cyan-500 to-cyan-600 hover:from-cyan-400 hover:to-cyan-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-cyan-950 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>{l('Confirm Bombardment & Apply Damage', '确认轰炸并结算伤害')}</span>
+                  </button>
+                </>
+              ) : isPendingTargets ? (
+                <>
+                  <div className="text-xs text-rose-300">
+                    {l(
+                      `Select ${requiredBombardTargets} population cube(s) to destroy.`,
+                      `请选择 ${requiredBombardTargets} 枚要摧毁的人口方块。`
+                    )}
+                  </div>
+                  <button
+                    type="button"
+                    data-testid="confirm-bombard-targets-btn"
+                    onClick={() => onSelectBombardmentTargets?.(selectedBombardTargets)}
+                    disabled={!canControl || selectedBombardTargets.length !== requiredBombardTargets}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-rose-500 to-rose-600 hover:from-rose-400 hover:to-rose-500 text-white font-bold text-xs tracking-wide shadow-lg shadow-rose-950 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Crosshair className="w-3.5 h-3.5" />
+                    <span>
+                      {l(
+                        `Destroy Selected (${selectedBombardTargets.length}/${requiredBombardTargets})`,
+                        `确认摧毁 (${selectedBombardTargets.length}/${requiredBombardTargets})`
+                      )}
+                    </span>
+                  </button>
+                </>
+              ) : !canClaim ? (
                 <>
                   <div className="text-xs text-amber-400">
-                    {l(`Defender retained control of Sector ${sector.sectorNumber}.`, `防守方保留了星区 ${sector.sectorNumber} 的控制权。`)}
+                    {conquest.bombardmentSummary?.attackerFleetWipedOut
+                      ? l(
+                          `Attacking fleet destroyed during bombardment in Sector ${sector.sectorNumber}.`,
+                          `进攻舰队在星区 ${sector.sectorNumber} 轰炸中全灭。`
+                        )
+                      : l(`Defender retained control of Sector ${sector.sectorNumber}.`, `防守方保留了星区 ${sector.sectorNumber} 的控制权。`)}
                   </div>
                   <button
                     onClick={handleDeclineAll}

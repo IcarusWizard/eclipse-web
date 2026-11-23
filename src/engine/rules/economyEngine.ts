@@ -54,6 +54,25 @@ export function resolveCubeReturnTrack(
   return preferredTrack || planet.colonizedResource || allowed[0] || 'money';
 }
 
+export function getAllowedReturnTracksForPlanet(
+  player: PlayerState,
+  allowedTracks: ('money' | 'science' | 'material')[]
+): {
+  selectableTracks: ('money' | 'science' | 'material')[];
+  usedByTrack: Record<'money' | 'science' | 'material', number>;
+} {
+  const usedByTrack: Record<'money' | 'science' | 'material', number> = {
+    money: (player.population.money?.cubesOnBoard ?? 0) + (player.graveyardCubes?.money ?? 0),
+    science: (player.population.science?.cubesOnBoard ?? 0) + (player.graveyardCubes?.science ?? 0),
+    material: (player.population.material?.cubesOnBoard ?? 0) + (player.graveyardCubes?.material ?? 0),
+  };
+  const openTracks = allowedTracks.filter((t) => usedByTrack[t] < 11);
+  return {
+    selectableTracks: openTracks.length > 0 ? openTracks : [...allowedTracks],
+    usedByTrack,
+  };
+}
+
 export const INCOME_TABLE = [
   28, // 0 cubes on board (11 colonized)
   24, // 1

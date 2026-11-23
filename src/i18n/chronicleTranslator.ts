@@ -629,6 +629,29 @@ export function translateChronicleMessage(message: string, language: AppLanguage
     return `🎲 ${m[1]} 横置 1 艘殖民船重掷第 ${m[2]} 颗骰子：掷出 ${m[3]}（${resStr}）！`;
   }
 
+  m = message.match(/^🎲 (.+?) flipped 1 Colony Ship to reroll bombardment die #(\d+): rolled (\d+) \((.+)\)!$/);
+  if (m) {
+    const resStr =
+      m[4] === 'MISS'
+        ? '未命中'
+        : m[4]
+            .replace(/^HIT! \[(\d+) dmg \+ (\d+) self\]$/, '命中！[$1 伤害 + $2 自伤]')
+            .replace(/^HIT! \[(\d+) dmg\]$/, '命中！[$1 伤害]')
+            .replace(/^BACKFIRE \[(\d+) self\]$/, '反噬 [$1 自伤]');
+    return `🎲 ${m[1]} 横置 1 艘殖民船重掷第 ${m[2]} 颗轰炸骰：掷出 ${m[3]}（${resStr}）！`;
+  }
+
+  m = message.match(/^📦 (.+?) placed destroyed (Orbital|Wild) population cube from Sector (\d+) in the (\S+) Casualty Slot \(returns during Cleanup\)\.$/);
+  if (m) {
+    const kind = m[2] === 'Orbital' ? '轨道站' : '万能行星';
+    return `📦 ${m[1]} 将星区 ${m[3]} 被摧毁的${kind}人口方块放入 ${trResource(m[4])} 伤亡槽（将于清理阶段返回轨道）。`;
+  }
+
+  m = message.match(/^🎯 (.+?) dealt (\d+) bombardment damage against (\d+) population cubes in Sector (\d+) — awaiting attacker's selection of cubes to destroy\.$/);
+  if (m) {
+    return `🎯 ${m[1]} 在星区 ${m[4]} 对 ${m[3]} 枚人口方块造成了 ${m[2]} 点轰炸伤害——等待进攻方选择要摧毁的人口方块。`;
+  }
+
   m = message.match(/^⚔️ Sector (\d+): (.+?) salvo \[([^\]]*)\] ➔ (\d+) hit\(s\), (\d+) dmg\.$/);
   if (m) return `⚔️ 星区 ${m[1]}：${trActorLabel(m[2])} 齐射 [${m[3]}] ➔ ${m[4]} 次命中，共 ${m[5]} 点伤害。`;
 

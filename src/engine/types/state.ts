@@ -119,9 +119,11 @@ export interface PendingExploreControl {
 }
 
 export interface BombardmentRoll {
+  shipId?: string;
   shipType: string;
   diceColor: string;
   roll: number;
+  computerBonus?: number;
   symbol?: string;
   selfDamage?: number;
   isHit: boolean;
@@ -137,6 +139,20 @@ export interface BombardmentSummary {
   cubesRemaining: number;
   hasNeutronBombs?: boolean;
   neutronAbsorberActive?: boolean;
+  isPendingConfirm?: boolean;
+  isPendingTargetSelection?: boolean;
+  attackerFleetWipedOut?: boolean;
+}
+
+export interface PendingPopulationReturnChoice {
+  playerId: string;
+  sectorId: string;
+  sectorNumber: number;
+  planetId?: string;
+  planetIndex: number;
+  isOrbital: boolean;
+  previousResource?: 'money' | 'science' | 'material';
+  allowedTracks: ('money' | 'science' | 'material')[];
 }
 
 export interface PendingCombatConquest {
@@ -276,6 +292,7 @@ export interface GameState {
   pendingReputationDrawQueue?: PendingReputationDraw[];
   pendingDiplomacyProposal?: DiplomacyProposal | null;
   pendingAmbassadorCubeReturns?: PendingAmbassadorCubeReturn[] | null;
+  pendingPopulationReturnChoices?: PendingPopulationReturnChoice[] | null;
   pendingExilesOrbitalSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];

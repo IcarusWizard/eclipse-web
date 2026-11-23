@@ -238,6 +238,19 @@ export function resolveApiUrl(path: string): string {
   return path;
 }
 
+function syncReplayStepsMetadata(state: GameState, minCount: number = 0): void {
+  const existingCount = Math.max(Number((state as any).replayStepsCount) || 0, minCount);
+  if (Array.isArray(state.replaySteps) && state.replaySteps.length > 0) {
+    if (state.replaySteps[0]?.snapshot) {
+      state.replaySteps = compactReplaySteps(state.replaySteps);
+    }
+    (state as any).hasReplay = isReplayAvailable(state);
+    (state as any).replayStepsCount = Math.max(existingCount, state.replaySteps.length);
+  } else if (existingCount > 0) {
+    (state as any).replayStepsCount = existingCount;
+  }
+}
+
 /**
  * Persists table state to the server storage API with keepalive: true so browser refreshes do not cancel it.
  */
@@ -246,11 +259,7 @@ export async function persistTableToServer(state: GameState): Promise<boolean> {
   if (isGuestCreatedOnlineTable(state as any)) return false;
   if (!canPerformServerFetch()) return false;
   try {
-    if (Array.isArray(state.replaySteps) && state.replaySteps.length > 0) {
-      state.replaySteps = compactReplaySteps(state.replaySteps);
-      (state as any).hasReplay = isReplayAvailable(state);
-      (state as any).replayStepsCount = state.replaySteps.length;
-    }
+    syncReplayStepsMetadata(state);
     const body = JSON.stringify(state);
     const useKeepalive = body.length <= 64000;
     const res = await fetch(resolveApiUrl(`/api/tables/${state.id}`), {
@@ -387,11 +396,7 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
       } catch {}
     }
 
-    if (Array.isArray(state.replaySteps) && state.replaySteps.length > 0) {
-      state.replaySteps = compactReplaySteps(state.replaySteps);
-      (state as any).hasReplay = isReplayAvailable(state);
-      (state as any).replayStepsCount = state.replaySteps.length;
-    }
+    syncReplayStepsMetadata(state, Number(existingTable?.replayStepsCount) || 0);
 
     const fullServerPayloadJson = JSON.stringify(state);
 

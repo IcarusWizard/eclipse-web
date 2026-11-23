@@ -21,6 +21,7 @@ import {
   calculatePlayerRoundSummary,
   getIncomeForTrack,
   getUpkeepForDiscs,
+  getAllowedReturnTracksForPlanet,
 } from '../rules/economyEngine';
 import {
   countPlayerShips,
@@ -161,6 +162,9 @@ export function getPriorityActorId(state: GameState): string | null {
   }
   if (state.pendingDiscovery) {
     return state.pendingDiscovery.playerId;
+  }
+  if (state.pendingPopulationReturnChoices && state.pendingPopulationReturnChoices.length > 0) {
+    return state.pendingPopulationReturnChoices[0]!.playerId;
   }
   if (state.pendingExploreControl) {
     return state.pendingExploreControl.playerId;
@@ -306,6 +310,21 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
   }
   if (state.pendingDiscovery?.playerId === player.id) {
     return handlePendingDiscovery(state, player);
+  }
+  if (state.pendingPopulationReturnChoices?.[0]?.playerId === player.id) {
+    const entry = state.pendingPopulationReturnChoices[0]!;
+    const { selectableTracks } = getAllowedReturnTracksForPlanet(player, entry.allowedTracks);
+    const chosen =
+      (entry.previousResource && selectableTracks.includes(entry.previousResource)
+        ? entry.previousResource
+        : selectableTracks[0]) || 'money';
+    return {
+      type: 'CHOOSE_POPULATION_RETURN_TRACK',
+      playerId: player.id,
+      sectorId: entry.sectorId,
+      planetIndex: entry.planetIndex,
+      resource: chosen,
+    };
   }
   if (state.pendingExploreControl?.playerId === player.id) {
     return handlePendingExploreControl(state, player);
@@ -862,6 +881,27 @@ function handlePendingExploreControl(state: GameState, player: PlayerState): Gam
 
 function handlePendingCombatConquest(state: GameState, player: PlayerState): GameAction {
   const pcq = state.pendingCombatConquest!;
+  if (pcq.bombardmentSummary?.isPendingConfirm) {
+    return {
+      type: 'CONFIRM_BOMBARDMENT',
+      playerId: player.id,
+      sectorId: pcq.sectorId,
+    };
+  }
+  if (pcq.bombardmentSummary?.isPendingTargetSelection) {
+    const secTargets = state.sectors.find((s) => s.id === pcq.sectorId);
+    const nonPlanta = (secTargets?.planets || [])
+      .map((p, idx) => ({ p, idx }))
+      .filter(({ p }) => p.colonizedBy && p.colonizedBy !== player.id)
+      .slice(0, pcq.bombardmentSummary.totalDamage)
+      .map(({ idx }) => idx);
+    return {
+      type: 'SELECT_BOMBARDMENT_TARGETS',
+      playerId: player.id,
+      sectorId: pcq.sectorId,
+      targetPlanetIndices: nonPlanta,
+    };
+  }
   const sec = state.sectors.find((s) => s.id === pcq.sectorId);
   if (!sec) {
     return {

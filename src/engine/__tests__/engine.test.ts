@@ -9682,18 +9682,34 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           combatLog: [],
           lastRolls: [
             {
-              dieIndex: 0,
-              color: 'yellow',
-              naturalRoll: 2,
+              shipId: 'ship_1',
+              shipOwner: lyra.id,
+              dieColor: 'yellow',
+              roll: 2,
               modifiedRoll: 2,
               isHit: false,
-              isMiss: false,
-              damageValue: 1,
-              shipId: 'ship_1',
-              shipType: 'interceptor',
-              shipOwner: lyra.id,
+              damage: 1,
             },
           ],
+          pendingDamageAssignment: {
+            attackerOwnerId: lyra.id,
+            attackerShipType: 'interceptor',
+            attackerShipIds: ['ship_1'],
+            computerBonus: 0,
+            isMissile: false,
+            hasAntimatterSplitter: false,
+            rolls: [
+              {
+                shipId: 'ship_1',
+                shipOwner: lyra.id,
+                dieColor: 'yellow',
+                roll: 2,
+                modifiedRoll: 2,
+                isHit: false,
+                damage: 1,
+              },
+            ],
+          },
         };
         const prevReadyShips = curState.players[0]!.colonyShips.ready;
 
@@ -13133,7 +13149,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
             onConfirm: () => {},
           })
         );
-        expect(conquestModalHtml).toContain('★');
+        expect(conquestModalHtml).toContain('bg-purple-600');
+        expect(conquestModalHtml).toContain('💥');
         expect(conquestModalHtml).toContain('BACKFIRE');
 
         // --- Bug 156: Nebula entry direction & subsector indicators ---
@@ -28657,6 +28674,513 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       } finally {
         globalThis.fetch = prevFetch;
       }
+
+      deleteSavedTable(serverState.id);
+    });
+
+    it('288. disallows Lyra combat rerolls after auto-assign resolution and reminds Lyra players to turn off Auto-assign before firing', async () => {
+      const game = createInitialGame(2, ['enlightened_of_lyra', 'terran_federation'], ['seekers']);
+      const lyra = game.players.find((p) => p.faction.id === 'enlightened_of_lyra')!;
+      const terran = game.players.find((p) => p.faction.id === 'terran_federation')!;
+      lyra.colonyShips.ready = 3;
+
+      const combatSector = game.sectors.find((s) => s.sectorNumber === 104) || game.sectors[1]!;
+      combatSector.ships = [
+        { id: 'lyra_cruiser_1', ownerId: lyra.id, type: 'interceptor', damage: 0 },
+        { id: 'terran_cruiser_1', ownerId: terran.id, type: 'cruiser', damage: 0 },
+      ];
+      game.phase = 'COMBAT_PHASE';
+      game.passedPlayerIds = [lyra.id, terran.id];
+      game.activeCombat = {
+        sectorId: combatSector.id,
+        attackerOwnerId: lyra.id,
+        defenderOwnerId: terran.id,
+        participatingPlayerIds: [lyra.id, terran.id],
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        missileFiredShipIds: [],
+        roundActedGroupKeys: [],
+        destroyedShips: [],
+      };
+
+      // 1. Auto-assign ON (pendingDamageAssignment absent after salvo resolves): reroll must be rejected cleanly
+      const autoRes = executeAction(game, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: lyra.id,
+        sectorId: combatSector.id,
+        autoAssign: true,
+      });
+      expect(autoRes.success).toBe(true);
+      expect(autoRes.newState.activeCombat!.pendingDamageAssignment).toBeFalsy();
+      const enemyDmgAfterAuto =
+        autoRes.newState.sectors.find((s) => s.id === combatSector.id)!.ships.find((s) => s.id === 'terran_cruiser_1')
+          ?.damage ?? 0;
+
+      const blockedReroll = executeAction(autoRes.newState, {
+        type: 'REROLL_COMBAT_DIE',
+        playerId: lyra.id,
+        rollIndex: 0,
+      });
+      expect(blockedReroll.success).toBe(false);
+      expect(blockedReroll.error).toContain('Auto-assign');
+
+      const blockedStepReroll = executeAction(autoRes.newState, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: lyra.id,
+        sectorId: combatSector.id,
+        rerollRollIndex: 0,
+      });
+      expect(blockedStepReroll.success).toBe(false);
+      expect(blockedStepReroll.error).toContain('Auto-assign');
+      expect(autoRes.newState.players.find((p) => p.id === lyra.id)!.colonyShips.ready).toBe(3);
+      expect(
+        autoRes.newState.sectors.find((s) => s.id === combatSector.id)!.ships.find((s) => s.id === 'terran_cruiser_1')
+          ?.damage ?? 0
+      ).toBe(enemyDmgAfterAuto);
+
+      // 2. Auto-assign OFF (pendingDamageAssignment present): rerolling multiple times updates pending rolls without premature ship damage
+      const manualRollRes = executeAction(game, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: lyra.id,
+        sectorId: combatSector.id,
+        autoAssign: false,
+      });
+      expect(manualRollRes.success).toBe(true);
+      expect(manualRollRes.newState.activeCombat!.pendingDamageAssignment).toBeTruthy();
+
+      const reroll1 = executeAction(manualRollRes.newState, {
+        type: 'REROLL_COMBAT_DIE',
+        playerId: lyra.id,
+        rollIndex: 0,
+      });
+      expect(reroll1.success).toBe(true);
+      expect(reroll1.newState.players.find((p) => p.id === lyra.id)!.colonyShips.ready).toBe(2);
+      expect(reroll1.newState.activeCombat!.pendingDamageAssignment).toBeTruthy();
+      expect(
+        reroll1.newState.sectors.find((s) => s.id === combatSector.id)!.ships.find((s) => s.id === 'terran_cruiser_1')!
+          .damage
+      ).toBe(0);
+
+      // 3. CombatModal hides Reroll on resolved lastRolls and displays the Auto-assign reminder for Lyra (when Auto-assign defaults ON)
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+
+      const lyraSeatState: GameState = {
+        ...game,
+        activeCombat: {
+          ...game.activeCombat!,
+          lastRolls: [
+            {
+              shipId: 'lyra_cruiser_1',
+              shipOwner: lyra.id,
+              dieColor: 'yellow',
+              roll: 2,
+              modifiedRoll: 2,
+              isHit: false,
+              damage: 1,
+            },
+          ],
+        },
+      };
+      const lyraSeatIndex = lyraSeatState.players.findIndex((p) => p.id === lyra.id);
+      const modalHtml = renderToString(
+        React.createElement(CombatModal, {
+          state: lyraSeatState,
+          combat: lyraSeatState.activeCombat!,
+          onStepCombat: () => {},
+          currentSeat: lyraSeatIndex,
+        })
+      );
+      expect(modalHtml).not.toContain('Reroll (1 Ship)');
+      expect(modalHtml).toContain('data-testid="lyra-auto-assign-reroll-reminder"');
+    });
+
+    it('289. resolves Attacking Population with Rift Cannon accurately and allows Lyra to reroll bombardment dice using Colony Ships', async () => {
+      const { SHIP_PARTS } = await import('../rules/partData');
+      const { finalizePendingBombardmentConquest } = await import('../rules/gameReducer');
+
+      // 1. Lyra with Rift Cannon & ready Colony Ships pauses bombardment for reroll before cubes/ships take damage
+      const game = createInitialGame(2, ['enlightened_of_lyra', 'terran_federation'], ['seekers', 'rift_cannon']);
+      const lyra = game.players.find((p) => p.faction.id === 'enlightened_of_lyra')!;
+      const terran = game.players.find((p) => p.faction.id === 'terran_federation')!;
+      lyra.colonyShips.ready = 3;
+      lyra.blueprints.cruiser.slots = [
+        SHIP_PARTS.rift_cannon,
+        SHIP_PARTS.improved_hull,
+        SHIP_PARTS.nuclear_source,
+        SHIP_PARTS.nuclear_drive,
+        null,
+        null,
+      ];
+
+      const sec = game.sectors.find((s) => s.sectorNumber === 104) || game.sectors[1]!;
+      sec.discOwner = terran.id;
+      sec.planets = [
+        { id: 'p1', resource: 'money', isAdvanced: false, colonizedBy: terran.id, colonizedResource: 'money' },
+        { id: 'p2', resource: 'science', isAdvanced: false, colonizedBy: terran.id, colonizedResource: 'science' },
+      ];
+      sec.ships = [{ id: 'lyra_rift_cruiser', ownerId: lyra.id, type: 'cruiser', damage: 2 }];
+      game.phase = 'COMBAT_PHASE';
+
+      resolveAttackingPopulationAndConquest(game, sec, lyra.id);
+
+      expect(game.pendingCombatConquest).toBeTruthy();
+      expect(game.pendingCombatConquest!.bombardmentSummary?.isPendingConfirm).toBe(true);
+      expect(game.pendingCombatConquest!.bombardmentSummary?.rolls.length).toBe(1);
+      expect(game.pendingCombatConquest!.bombardmentSummary?.rolls[0]!.diceColor).toBe('purple');
+      // Cubes and ship damage must NOT be applied yet while pending reroll confirmation
+      expect(sec.planets.filter((p) => p.colonizedBy === terran.id).length).toBe(2);
+      expect(sec.discOwner).toBe(terran.id);
+      expect(sec.ships[0]!.damage).toBe(2);
+
+      // Reroll bombardment die (costs 1 Colony Ship)
+      const rerollRes = executeAction(game, {
+        type: 'REROLL_BOMBARDMENT_DIE',
+        playerId: lyra.id,
+        sectorId: sec.id,
+        rollIndex: 0,
+      });
+      expect(rerollRes.success).toBe(true);
+      expect(rerollRes.newState.players.find((p) => p.id === lyra.id)!.colonyShips.ready).toBe(2);
+      expect(rerollRes.newState.pendingCombatConquest!.bombardmentSummary!.isPendingConfirm).toBe(true);
+      expect(
+        rerollRes.newState.log.some((l) => l.message.includes('flipped 1 Colony Ship to reroll bombardment die #1'))
+      ).toBe(true);
+
+      // UI renders Reroll button, ★★★💥 for roll 5, and Confirm Bombardment button
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+      const uiState = JSON.parse(JSON.stringify(rerollRes.newState)) as GameState;
+      uiState.pendingCombatConquest!.bombardmentSummary!.rolls = [
+        {
+          shipId: 'lyra_rift_cruiser',
+          shipType: 'cruiser',
+          diceColor: 'purple',
+          roll: 5,
+          symbol: '3+💥',
+          selfDamage: 1,
+          isHit: true,
+          damage: 3,
+        },
+      ];
+      uiState.pendingCombatConquest!.bombardmentSummary!.totalDamage = 3;
+      const lyraIdx = uiState.players.findIndex((p) => p.id === lyra.id);
+      const htmlPending = renderToString(
+        React.createElement(CombatConquestModal, {
+          state: uiState,
+          conquest: uiState.pendingCombatConquest!,
+          currentSeat: lyraIdx,
+          onConfirm: () => {},
+          onRerollBombardmentDie: () => {},
+          onConfirmBombardment: () => {},
+        })
+      );
+      expect(htmlPending).toContain('data-testid="bombardment-reroll-btn-0"');
+      expect(htmlPending).toContain('data-testid="confirm-bombardment-btn"');
+      expect(htmlPending).toContain('bg-purple-600');
+      expect(htmlPending).toContain('HIT (+3)');
+
+      // Confirm bombardment with roll 5 (3 target dmg + 1 self dmg): wipes 2 cubes, overthrows Terran disc, repairs non-lethal damage (2+1=3 < 3 hull? Wait: base 1 + improved_hull 2 = 3 hull -> destroys cruiser!)
+      // Give cruiser 2x improved_hull (5 hull) first to verify non-lethal survival + repair:
+      uiState.players[lyraIdx]!.blueprints.cruiser.slots[4] = SHIP_PARTS.improved_hull;
+      const confirmRes = executeAction(uiState, {
+        type: 'CONFIRM_BOMBARDMENT',
+        playerId: lyra.id,
+        sectorId: sec.id,
+      });
+      expect(confirmRes.success).toBe(true);
+      const confirmedSec = confirmRes.newState.sectors.find((s) => s.id === sec.id)!;
+      expect(confirmedSec.planets.filter((p) => p.colonizedBy === terran.id).length).toBe(0);
+      expect(confirmedSec.discOwner).toBeUndefined();
+      expect(confirmedSec.ships.length).toBe(1);
+      expect(confirmedSec.ships[0]!.damage).toBe(0); // repaired after bombardment
+      expect(confirmRes.newState.pendingCombatConquest!.canClaimInfluence).toBe(true);
+      expect(confirmRes.newState.pendingCombatConquest!.bombardmentSummary!.isPendingConfirm).toBe(false);
+
+      // 2. Lethal Rift Cannon backfire on damaged ship (1 HP remaining) destroys ship and prevents sector claim
+      const lethalState = JSON.parse(JSON.stringify(rerollRes.newState)) as GameState;
+      const lethalSec = lethalState.sectors.find((s) => s.id === sec.id)!;
+      const lethalLyra = lethalState.players.find((p) => p.id === lyra.id)!;
+      lethalSec.ships = [{ id: 'lyra_rift_cruiser', ownerId: lyra.id, type: 'cruiser', damage: 2 }]; // base 1 + improved_hull 2 = 3 HP (1 left)
+      lethalState.pendingCombatConquest!.bombardmentSummary!.rolls = [
+        {
+          shipId: 'lyra_rift_cruiser',
+          shipType: 'cruiser',
+          diceColor: 'purple',
+          roll: 6,
+          symbol: '💥',
+          selfDamage: 1,
+          isHit: false,
+          damage: 0,
+        },
+      ];
+      finalizePendingBombardmentConquest(lethalState, lethalSec, lethalLyra);
+      expect(lethalSec.ships.length).toBe(0);
+      expect(lethalState.pendingCombatConquest!.bombardmentSummary!.attackerFleetWipedOut).toBe(true);
+      expect(lethalState.pendingCombatConquest!.canClaimInfluence).toBe(false);
+    });
+
+    it('290. lets attacker choose which cubes to destroy on partial bombardment and prompts defender to choose return tracks for Orbital/Wild cubes', async () => {
+      const { SHIP_PARTS } = await import('../rules/partData');
+      const { getEffectiveDecisionSeat } = await import('../rules/turnCheckpoints');
+
+      const game = createInitialGame(2, ['terran_federation', 'eridani_empire']);
+      const attacker = game.players[0]!;
+      const defender = game.players[1]!;
+      attacker.blueprints.cruiser.slots = [
+        SHIP_PARTS.plasma_cannon,
+        SHIP_PARTS.nuclear_source,
+        SHIP_PARTS.nuclear_drive,
+        null,
+        null,
+        null,
+      ];
+      // Guarantee all plasma cannon dice hit (`roll = 6` when mocked, or call finalize with known 2-dmg rolls)
+      const sec = game.sectors[1]!;
+      sec.discOwner = defender.id;
+      sec.planets = [
+        { id: 'p_sci', resource: 'science', isAdvanced: false, colonizedBy: defender.id, colonizedResource: 'science' },
+        { id: 'p_orb', resource: 'money', isAdvanced: false, isOrbital: true, colonizedBy: defender.id, colonizedResource: 'money' },
+        { id: 'p_wild', resource: 'any', isAdvanced: false, colonizedBy: defender.id, colonizedResource: 'material' },
+      ];
+      sec.ships = [{ id: 'att_cruiser', ownerId: attacker.id, type: 'cruiser', damage: 0 }];
+      game.phase = 'COMBAT_PHASE';
+
+      const origRandom = Math.random;
+      try {
+        Math.random = () => 0.95; // rolls 6 on d6 -> plasma cannon hits for 2 dmg against 3 cubes!
+        resolveAttackingPopulationAndConquest(game, sec, attacker.id);
+      } finally {
+        Math.random = origRandom;
+      }
+
+      // 1. Partial damage (2 dmg vs 3 cubes) pauses for attacker target selection
+      expect(game.pendingCombatConquest).toBeTruthy();
+      expect(game.pendingCombatConquest!.bombardmentSummary?.totalDamage).toBe(2);
+      expect(game.pendingCombatConquest!.bombardmentSummary?.isPendingTargetSelection).toBe(true);
+      expect(sec.planets.filter((p) => p.colonizedBy === defender.id).length).toBe(3);
+
+      // CombatConquestModal renders target selection UI
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+      const { ReturnDestroyedPopulationModal } = await import('../../components/combat/ReturnDestroyedPopulationModal');
+
+      const attIdx = game.players.findIndex((p) => p.id === attacker.id);
+      const modalTargetHtml = renderToString(
+        React.createElement(CombatConquestModal, {
+          state: game,
+          conquest: game.pendingCombatConquest!,
+          currentSeat: attIdx,
+          onConfirm: () => {},
+          onSelectBombardmentTargets: () => {},
+        })
+      );
+      expect(modalTargetHtml).toContain('data-testid="bombardment-target-selection-panel"');
+      expect(modalTargetHtml).toContain('data-testid="confirm-bombard-targets-btn"');
+
+      // Wrong target count is rejected
+      const badCountRes = executeAction(game, {
+        type: 'SELECT_BOMBARDMENT_TARGETS',
+        playerId: attacker.id,
+        sectorId: sec.id,
+        targetPlanetIndices: [0],
+      });
+      expect(badCountRes.success).toBe(false);
+
+      // Select Orbital (idx 1) and Wild (idx 2), sparing Science (idx 0)
+      const selectRes = executeAction(game, {
+        type: 'SELECT_BOMBARDMENT_TARGETS',
+        playerId: attacker.id,
+        sectorId: sec.id,
+        targetPlanetIndices: [1, 2],
+      });
+      expect(selectRes.success).toBe(true);
+      const postSelState = selectRes.newState;
+      const postSelSec = postSelState.sectors.find((s) => s.id === sec.id)!;
+      expect(postSelSec.planets[0]!.colonizedBy).toBe(defender.id); // Science spared
+      expect(postSelSec.planets[1]!.colonizedBy).toBeUndefined(); // Orbital destroyed
+      expect(postSelSec.planets[2]!.colonizedBy).toBeUndefined(); // Wild destroyed
+      expect(postSelState.pendingCombatConquest!.canClaimInfluence).toBe(false);
+      expect(postSelState.pendingCombatConquest!.bombardmentSummary!.cubesDestroyed.map((c) => c.planetIndex)).toEqual([1, 2]);
+      expect(postSelState.pendingPopulationReturnChoices?.length).toBe(2);
+
+      // Attacker acknowledges conquest retention
+      const ackRes = executeAction(postSelState, {
+        type: 'COMBAT_CONQUEST',
+        playerId: attacker.id,
+        sectorId: sec.id,
+        claimInfluence: false,
+      });
+      expect(ackRes.success).toBe(true);
+      const afterAck = ackRes.newState;
+      expect(afterAck.pendingCombatConquest).toBeNull();
+      expect(afterAck.pendingPopulationReturnChoices?.length).toBe(2);
+
+      // Defender holds decision seat for track selection and phase has NOT exited COMBAT_PHASE prematurely
+      const defSeat = afterAck.players.findIndex((p) => p.id === defender.id);
+      expect(getEffectiveDecisionSeat(afterAck)).toBe(defSeat);
+
+      // Fill Defender's Money track to 11 so return rule forces Science for the Orbital cube
+      const defRef = afterAck.players[defSeat]!;
+      defRef.population.money.cubesOnBoard = 11;
+      defRef.population.science.cubesOnBoard = 9;
+      defRef.population.material.cubesOnBoard = 9;
+
+      // ReturnDestroyedPopulationModal disables full Money track and omits Material for Orbital
+      const returnModalHtml = renderToString(
+        React.createElement(ReturnDestroyedPopulationModal, {
+          player: defRef,
+          pending: afterAck.pendingPopulationReturnChoices![0]!,
+          remainingCount: 2,
+          onConfirm: () => {},
+        })
+      );
+      expect(returnModalHtml).toContain('data-testid="return-destroyed-population-modal"');
+      expect(returnModalHtml).toContain('data-testid="return-pop-track-money"');
+      expect(returnModalHtml).toContain('data-testid="return-pop-track-science"');
+      expect(returnModalHtml).not.toContain('data-testid="return-pop-track-material"');
+
+      // Rejects Material (not allowed for Orbital) and rejects full Money track
+      const invalidOrbMat = executeAction(afterAck, {
+        type: 'CHOOSE_POPULATION_RETURN_TRACK',
+        playerId: defender.id,
+        sectorId: sec.id,
+        planetIndex: 1,
+        resource: 'material',
+      });
+      expect(invalidOrbMat.success).toBe(false);
+
+      const fullOrbMoney = executeAction(afterAck, {
+        type: 'CHOOSE_POPULATION_RETURN_TRACK',
+        playerId: defender.id,
+        sectorId: sec.id,
+        planetIndex: 1,
+        resource: 'money',
+      });
+      expect(fullOrbMoney.success).toBe(false);
+
+      // Choose Science for Orbital cube
+      const okOrbSci = executeAction(afterAck, {
+        type: 'CHOOSE_POPULATION_RETURN_TRACK',
+        playerId: defender.id,
+        sectorId: sec.id,
+        planetIndex: 1,
+        resource: 'science',
+      });
+      expect(okOrbSci.success).toBe(true);
+      expect(okOrbSci.newState.players[defSeat]!.graveyardCubes?.science).toBe(1);
+      expect(okOrbSci.newState.pendingPopulationReturnChoices?.length).toBe(1);
+
+      // Next is Wild cube (planetIndex 2, allows money/science/material; money still full at 11 -> rejects money, accepts material)
+      const fullWildMoney = executeAction(okOrbSci.newState, {
+        type: 'CHOOSE_POPULATION_RETURN_TRACK',
+        playerId: defender.id,
+        sectorId: sec.id,
+        planetIndex: 2,
+        resource: 'money',
+      });
+      expect(fullWildMoney.success).toBe(false);
+
+      const okWildMat = executeAction(okOrbSci.newState, {
+        type: 'CHOOSE_POPULATION_RETURN_TRACK',
+        playerId: defender.id,
+        sectorId: sec.id,
+        planetIndex: 2,
+        resource: 'material',
+      });
+      expect(okWildMat.success).toBe(true);
+      expect(okWildMat.newState.players[defSeat]!.graveyardCubes?.material).toBe(1);
+      expect(okWildMat.newState.pendingPopulationReturnChoices).toBeNull();
+    });
+
+    it('291. monotonically advances replayStepsCount from stripped server payloads so combat progression is not rejected with 409 on save/refresh', async () => {
+      const { saveGameState, deleteSavedTable } = await import('../rules/persistence');
+      const { isIncomingStateStale } = await import('../rules/turnCheckpoints');
+      const { compactReplaySteps } = await import('../rules/replay');
+
+      const serverState = createInitialGame(2, ['enlightened_of_lyra', 'terran_federation']);
+      serverState.id = 'test-stripped-replay-sync';
+      serverState.round = 4;
+      serverState.phase = 'COMBAT_PHASE';
+      (serverState as any).replayStepsCount = 123;
+      const lyra = serverState.players[0]!;
+      const terran = serverState.players[1]!;
+      const sec = serverState.sectors[1]!;
+      sec.ships = [
+        { id: 'lyra_c', ownerId: lyra.id, type: 'cruiser', damage: 0 },
+        { id: 'terran_c', ownerId: terran.id, type: 'cruiser', damage: 0 },
+      ];
+      serverState.activeCombat = {
+        sectorId: sec.id,
+        attackerOwnerId: lyra.id,
+        defenderOwnerId: terran.id,
+        participatingPlayerIds: [lyra.id, terran.id],
+        roundNumber: 2,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 3,
+        lastRolls: [],
+        retreatDeclared: {},
+        missileFiredShipIds: [],
+        roundActedGroupKeys: ['terran_cruiser'],
+        destroyedShips: [],
+        pendingDamageAssignment: {
+          attackerOwnerId: lyra.id,
+          attackerShipType: 'cruiser',
+          attackerShipIds: ['lyra_c'],
+          computerBonus: 0,
+          isMissile: false,
+          hasAntimatterSplitter: false,
+          rolls: [
+            {
+              shipId: 'lyra_c',
+              shipOwner: lyra.id,
+              dieColor: 'yellow',
+              roll: 6,
+              modifiedRoll: 6,
+              isHit: true,
+              damage: 1,
+            },
+          ],
+        },
+      };
+
+      // Client received stripped server payload (replaySteps undefined, replayStepsCount = 123)
+      const clientLoaded = JSON.parse(JSON.stringify(serverState));
+      delete clientLoaded.replaySteps;
+      saveGameState(clientLoaded, true);
+
+      // Player confirms pending damage locally
+      const stepRes = executeAction(clientLoaded, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: lyra.id,
+        sectorId: sec.id,
+        damageAssignments: [{ rollIndex: 0, targetShipId: 'terran_c' }],
+      });
+      expect(stepRes.success).toBe(true);
+      expect(stepRes.newState.replaySteps?.length).toBe(1);
+      expect(stepRes.newState.replaySteps![0]!.stepIndex).toBe(123);
+      expect((stepRes.newState as any).replayStepsCount).toBe(124);
+
+      // compactReplaySteps on tail-only delta slice preserves delta cleanly instead of wiping to {}
+      const compactedTail = compactReplaySteps(stepRes.newState.replaySteps!);
+      expect(compactedTail.length).toBe(1);
+      expect(compactedTail[0]!.stepIndex).toBe(123);
+      expect(compactedTail[0]!.delta).toBeDefined();
+
+      // saveGameState must keep replayStepsCount = 124 (never overwrite back to 1)
+      saveGameState(stepRes.newState, true);
+      expect((stepRes.newState as any).replayStepsCount).toBe(124);
+
+      // Server stale check sees 124 > 123 and accepts the save instead of returning 409!
+      expect(isIncomingStateStale(serverState, stepRes.newState)).toBe(false);
 
       deleteSavedTable(serverState.id);
     });

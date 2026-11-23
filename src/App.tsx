@@ -38,6 +38,7 @@ import { InfluenceModal } from './components/actions/InfluenceModal';
 import { TradeModal } from './components/actions/TradeModal';
 import { CombatModal } from './components/combat/CombatModal';
 import { CombatConquestModal } from './components/combat/CombatConquestModal';
+import { ReturnDestroyedPopulationModal } from './components/combat/ReturnDestroyedPopulationModal';
 import { ReputationTileModal } from './components/combat/ReputationTileModal';
 import { GameOverModal } from './components/gameover/GameOverModal';
 import { NewGameModal } from './components/setup/NewGameModal';
@@ -804,12 +805,21 @@ const AppContent: React.FC = () => {
       }
 
       if (combatDecisionPlayerId && (currentSeat === 'all' || myId === combatDecisionPlayerId)) {
-        offTurnDecisionKey = `combat:${state.activeCombat.sectorId}:${state.activeCombat.round}:${state.activeCombat.stage}:${state.activeCombat.currentTurnIndex}:${state.activeCombat.pendingDamageAssignment ? 'dmg' : 'turn'}`;
+        offTurnDecisionKey = `combat:${state.activeCombat.sectorId}:${state.activeCombat.roundNumber}:${state.activeCombat.stage}:${state.activeCombat.currentTurnIndex}:${state.activeCombat.pendingDamageAssignment ? 'dmg' : 'turn'}`;
       }
     } else if (state.pendingDiplomacyProposal && (currentSeat === 'all' || state.pendingDiplomacyProposal.targetId === myId)) {
       offTurnDecisionKey = `diplomacy:${state.pendingDiplomacyProposal.initiatorId}:${state.pendingDiplomacyProposal.targetId}`;
-    } else if (state.pendingCombatConquest && (currentSeat === 'all' || state.pendingCombatConquest.playerId === myId)) {
-      offTurnDecisionKey = `conquest:${state.pendingCombatConquest.sectorId}`;
+    } else if (state.pendingCombatConquest && (currentSeat === 'all' || state.pendingCombatConquest.winnerPlayerId === myId)) {
+      offTurnDecisionKey = `conquest:${state.pendingCombatConquest.sectorId}:${state.pendingCombatConquest.bombardmentSummary?.isPendingConfirm ? 'confirm' : state.pendingCombatConquest.bombardmentSummary?.isPendingTargetSelection ? 'targets' : 'decide'}`;
+    } else if (
+      !state.pendingCombatConquest &&
+      !state.pendingDiscovery &&
+      !state.pendingReputationDraw &&
+      state.pendingPopulationReturnChoices?.[0] &&
+      (currentSeat === 'all' || state.pendingPopulationReturnChoices[0].playerId === myId)
+    ) {
+      const popRet = state.pendingPopulationReturnChoices[0];
+      offTurnDecisionKey = `pop_return:${popRet.sectorId}:${popRet.planetIndex}`;
     } else if (
       (state.pendingReputationDraw && (currentSeat === 'all' || state.pendingReputationDraw.playerId === myId)) ||
       (state.pendingReputationDrawQueue?.[0] && (currentSeat === 'all' || state.pendingReputationDrawQueue[0].playerId === myId))
@@ -850,6 +860,8 @@ const AppContent: React.FC = () => {
     state.activeCombat,
     state.pendingDiplomacyProposal,
     state.pendingCombatConquest,
+    state.pendingDiscovery,
+    state.pendingPopulationReturnChoices,
     state.pendingReputationDraw,
     state.pendingReputationDrawQueue,
     state.pendingBankruptcy,
@@ -1866,7 +1878,9 @@ const AppContent: React.FC = () => {
   // Lyra Combat Die Reroll
   const handleRerollCombatDie = (rollIndex: number) => {
     if (!state.activeCombat) return;
-    const targetRoll = state.activeCombat.lastRolls?.[rollIndex];
+    const targetRoll =
+      state.activeCombat.pendingDamageAssignment?.rolls?.[rollIndex] ??
+      state.activeCombat.lastRolls?.[rollIndex];
     if (!targetRoll) return;
     if (!canActForPlayer(targetRoll.shipOwner)) {
       showToast('Spectators cannot reroll combat dice.');
@@ -3167,6 +3181,90 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleRerollBombardmentDie = (rollIndex: number) => {
+    if (!state.pendingCombatConquest) return;
+    if (!canActForPlayer(state.pendingCombatConquest.winnerPlayerId)) {
+      showToast('Spectators cannot reroll bombardment dice.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'REROLL_BOMBARDMENT_DIE',
+      playerId: state.pendingCombatConquest.winnerPlayerId,
+      sectorId: state.pendingCombatConquest.sectorId,
+      rollIndex,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to reroll bombardment die.');
+    }
+  };
+
+  const handleConfirmBombardment = () => {
+    if (!state.pendingCombatConquest) return;
+    if (!canActForPlayer(state.pendingCombatConquest.winnerPlayerId)) {
+      showToast('It is not your turn to resolve bombardment!');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'CONFIRM_BOMBARDMENT',
+      playerId: state.pendingCombatConquest.winnerPlayerId,
+      sectorId: state.pendingCombatConquest.sectorId,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to confirm bombardment.');
+    }
+  };
+
+  const handleSelectBombardmentTargets = (targetPlanetIndices: number[]) => {
+    if (!state.pendingCombatConquest) return;
+    if (!canActForPlayer(state.pendingCombatConquest.winnerPlayerId)) {
+      showToast('Only the attacker can select bombardment targets!');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'SELECT_BOMBARDMENT_TARGETS',
+      playerId: state.pendingCombatConquest.winnerPlayerId,
+      sectorId: state.pendingCombatConquest.sectorId,
+      targetPlanetIndices,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to destroy selected population targets.');
+    }
+  };
+
+  const handleChoosePopulationReturnTrack = (
+    sectorId: string,
+    planetIndex: number,
+    resource: 'money' | 'science' | 'material'
+  ) => {
+    const entry = state.pendingPopulationReturnChoices?.find(
+      (c) => c.sectorId === sectorId && c.planetIndex === planetIndex
+    );
+    if (!entry) return;
+    if (!canActForPlayer(entry.playerId)) {
+      showToast('Only the defending player can choose where to return this population cube.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'CHOOSE_POPULATION_RETURN_TRACK',
+      playerId: entry.playerId,
+      sectorId,
+      planetIndex,
+      resource,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(`Destroyed cube placed in ${resource.toUpperCase()} Casualty Slot.`);
+    } else {
+      showToast(res.error || 'Failed to choose population return track.');
+    }
+  };
+
   // Combat Conquest Flow (Sector Control & Colonization)
   const handleCombatConquest = (
     claimInfluence: boolean,
@@ -4141,6 +4239,9 @@ const AppContent: React.FC = () => {
             conquest={state.pendingCombatConquest}
             currentSeat={currentSeat}
             onConfirm={handleCombatConquest}
+            onRerollBombardmentDie={handleRerollBombardmentDie}
+            onConfirmBombardment={handleConfirmBombardment}
+            onSelectBombardmentTargets={handleSelectBombardmentTargets}
           />
         ) : (
           <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
@@ -4155,6 +4256,32 @@ const AppContent: React.FC = () => {
           </div>
         )
       )}
+
+      {!state.pendingReputationDraw &&
+        !state.pendingCombatConquest &&
+        !state.pendingDiscovery &&
+        state.pendingPopulationReturnChoices &&
+        state.pendingPopulationReturnChoices.length > 0 && (() => {
+          const pendingPop = state.pendingPopulationReturnChoices![0]!;
+          const targetPlayer = state.players.find((p) => p.id === pendingPop.playerId);
+          if (!targetPlayer) return null;
+          return canActForPlayer(pendingPop.playerId) ? (
+            <ReturnDestroyedPopulationModal
+              player={targetPlayer}
+              pending={pendingPop}
+              remainingCount={state.pendingPopulationReturnChoices!.length}
+              onConfirm={handleChoosePopulationReturnTrack}
+            />
+          ) : (
+            <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-purple-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
+              <Sparkles className="w-5 h-5 text-purple-400 shrink-0" />
+              <span>
+                Waiting for <strong className="text-purple-300">{targetPlayer.name}</strong> to choose which Population Track receives their destroyed{' '}
+                {pendingPop.isOrbital ? 'Orbital' : 'Wild'} cube from Sector {pendingPop.sectorNumber}...
+              </span>
+            </div>
+          );
+        })()}
 
       {!state.pendingReputationDraw && !state.pendingCombatConquest && state.pendingDiscovery && (
         canActForPlayer(state.pendingDiscovery.playerId) ? (
