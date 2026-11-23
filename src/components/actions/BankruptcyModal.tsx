@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile } from '../../engine/types/galaxy';
-import { UPKEEP_TABLE, abandonSectorForUpkeep } from '../../engine/rules/economyEngine';
+import { UPKEEP_TABLE, abandonSectorForUpkeep, getAllowedReturnTracksForPlanet } from '../../engine/rules/economyEngine';
 import {
   AlertTriangle,
   Disc,
@@ -18,6 +18,7 @@ import {
   Check,
   Undo2,
   FlaskConical,
+  Hammer,
 } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 
@@ -539,7 +540,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                     </button>
                   </div>
 
-                  {/* Bug 195: Choose return track (Money or Science) for returning population on Orbitals / Wild planets */}
+                  {/* Bug 195: Choose return track for returning population on Orbitals (Money/Science) or Wild planets (Money/Science/Material) */}
                   {isMarkedToAbandon &&
                     sector.planets.filter(
                       (p) => p.colonizedBy === player.id && (p.isOrbital || p.resource === 'any')
@@ -550,18 +551,33 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                             (p) => p.colonizedBy === player.id && (p.isOrbital || p.resource === 'any')
                           )
                           .map((p, idx) => {
+                            const isOrb = Boolean(p.isOrbital);
+                            const allowedTracks: ('money' | 'science' | 'material')[] = isOrb
+                              ? ['money', 'science']
+                              : ['money', 'science', 'material'];
+                            const { selectableTracks, usedByTrack } = getAllowedReturnTracksForPlanet(
+                              player,
+                              allowedTracks
+                            );
+                            const fallbackTrack =
+                              (p.colonizedResource &&
+                              selectableTracks.includes(p.colonizedResource)
+                                ? p.colonizedResource
+                                : selectableTracks[0]) || (isOrb ? 'science' : 'money');
+                            const rawChosen = abandonReturnTrack[p.id];
                             const chosen =
-                              abandonReturnTrack[p.id] ||
-                              (p.colonizedResource as 'money' | 'science' | 'material') ||
-                              (p.isOrbital ? 'science' : 'money');
+                              rawChosen && selectableTracks.includes(rawChosen)
+                                ? rawChosen
+                                : fallbackTrack;
+
                             return (
                               <div
                                 key={p.id || idx}
                                 data-testid={`bankruptcy-orbital-track-choice-${sector.sectorNumber}`}
-                                className="flex items-center justify-between bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800 text-[11px]"
+                                className="flex flex-wrap items-center justify-between gap-2 bg-slate-900/80 px-2.5 py-1.5 rounded-lg border border-slate-800 text-[11px]"
                               >
                                 <span className="text-slate-300 font-medium">
-                                  {p.isOrbital
+                                  {isOrb
                                     ? l('🛰️ Orbital Pop Return Track:', '🛰️ 轨道站人口返回轨道：')
                                     : l('🌌 Wild Planet Pop Return Track:', '🌌 荒野星球人口返回轨道：')}
                                 </span>
@@ -569,38 +585,71 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
                                   <button
                                     type="button"
                                     data-testid={`bankruptcy-return-money-${p.id}`}
+                                    disabled={!selectableTracks.includes('money')}
                                     onClick={() =>
                                       setAbandonReturnTrack((prev) => ({
                                         ...prev,
                                         [p.id]: 'money',
                                       }))
                                     }
-                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                                      chosen === 'money'
-                                        ? 'bg-yellow-400 text-slate-950 font-black shadow ring-1 ring-yellow-300'
-                                        : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1 ${
+                                      !selectableTracks.includes('money')
+                                        ? 'bg-slate-900 text-slate-600 opacity-50 cursor-not-allowed'
+                                        : chosen === 'money'
+                                        ? 'bg-yellow-400 text-slate-950 font-black shadow ring-1 ring-yellow-300 cursor-pointer'
+                                        : 'bg-slate-800 text-slate-400 hover:text-slate-200 cursor-pointer'
                                     }`}
                                   >
-                                    💰 {l('Money', '信用点')}
+                                    <Coins className={`w-3 h-3 ${chosen === 'money' ? 'text-slate-950' : 'text-amber-400'}`} />
+                                    <span>{l('Money', '信用点')}</span>
+                                    {usedByTrack.money >= 11 ? <span>(11/11)</span> : null}
                                   </button>
                                   <button
                                     type="button"
                                     data-testid={`bankruptcy-return-science-${p.id}`}
+                                    disabled={!selectableTracks.includes('science')}
                                     onClick={() =>
                                       setAbandonReturnTrack((prev) => ({
                                         ...prev,
                                         [p.id]: 'science',
                                       }))
                                     }
-                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition cursor-pointer ${
-                                      chosen === 'science'
-                                        ? 'bg-pink-500 text-white font-black shadow ring-1 ring-pink-300'
-                                        : 'bg-slate-800 text-slate-400 hover:text-slate-200'
+                                    className={`px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1 ${
+                                      !selectableTracks.includes('science')
+                                        ? 'bg-slate-900 text-slate-600 opacity-50 cursor-not-allowed'
+                                        : chosen === 'science'
+                                        ? 'bg-pink-500 text-white font-black shadow ring-1 ring-pink-300 cursor-pointer'
+                                        : 'bg-slate-800 text-slate-400 hover:text-slate-200 cursor-pointer'
                                     }`}
                                   >
-                                    <FlaskConical className="w-3 h-3 text-pink-400 inline mr-1" />
-                                    {l('Science', '科研')}
+                                    <FlaskConical className={`w-3 h-3 ${chosen === 'science' ? 'text-white' : 'text-pink-400'}`} />
+                                    <span>{l('Science', '科研')}</span>
+                                    {usedByTrack.science >= 11 ? <span>(11/11)</span> : null}
                                   </button>
+                                  {!isOrb && (
+                                    <button
+                                      type="button"
+                                      data-testid={`bankruptcy-return-material-${p.id}`}
+                                      disabled={!selectableTracks.includes('material')}
+                                      onClick={() =>
+                                        setAbandonReturnTrack((prev) => ({
+                                          ...prev,
+                                          [p.id]: 'material',
+                                        }))
+                                      }
+                                      className={`px-2 py-0.5 rounded text-[10px] font-bold transition flex items-center gap-1 ${
+                                        !selectableTracks.includes('material')
+                                          ? 'bg-slate-900 text-slate-600 opacity-50 cursor-not-allowed'
+                                          : chosen === 'material'
+                                          ? 'bg-orange-500 text-slate-950 font-black shadow ring-1 ring-orange-300 cursor-pointer'
+                                          : 'bg-slate-800 text-slate-400 hover:text-slate-200 cursor-pointer'
+                                      }`}
+                                    >
+                                      <Hammer className={`w-3 h-3 ${chosen === 'material' ? 'text-slate-950' : 'text-orange-400'}`} />
+                                      <span>{l('Material', '材料')}</span>
+                                      {usedByTrack.material >= 11 ? <span>(11/11)</span> : null}
+                                    </button>
+                                  )}
                                 </div>
                               </div>
                             );

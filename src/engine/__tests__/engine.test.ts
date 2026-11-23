@@ -29184,6 +29184,64 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
       deleteSavedTable(serverState.id);
     });
+
+    it('292. allows returning Wild planet population cube to Money, Science, or Material in BankruptcyModal while keeping Orbital restricted to Money/Science', async () => {
+      const game = createInitialGame(2, ['enlightened_of_lyra', 'terran_federation'], ['seekers']);
+      const lyra = game.players[0]!;
+      lyra.resources.money = 0;
+      lyra.population.money.cubesOnBoard = 7;
+      lyra.population.science.cubesOnBoard = 9;
+      lyra.population.material.cubesOnBoard = 8;
+
+      const sec318 = game.sectors.find((s) => s.sectorNumber !== lyra.faction.startingSectorNumber)!;
+      sec318.discOwner = lyra.id;
+      sec318.planets = [
+        { id: 'p_318_1', resource: 'material', isAdvanced: true },
+        { id: 'p_318_2', resource: 'any', isAdvanced: false, colonizedBy: lyra.id, colonizedResource: 'money' },
+        { id: 'p_318_orb', resource: 'money', isAdvanced: false, isOrbital: true, colonizedBy: lyra.id, colonizedResource: 'science' },
+      ];
+      game.phase = 'UPKEEP_PHASE';
+      game.pendingBankruptcy = { playerId: lyra.id, deficit: 3 };
+
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { BankruptcyModal } = await import('../../components/actions/BankruptcyModal');
+
+      const html = renderToString(
+        React.createElement(BankruptcyModal, {
+          player: lyra,
+          deficit: 3,
+          sectors: game.sectors,
+          stagedAbandonedSectorIds: [sec318.id],
+          onAbandonSector: () => {},
+        })
+      );
+
+      // Wild planet gets Money, Science, AND Material buttons
+      expect(html).toContain('data-testid="bankruptcy-return-money-p_318_2"');
+      expect(html).toContain('data-testid="bankruptcy-return-science-p_318_2"');
+      expect(html).toContain('data-testid="bankruptcy-return-material-p_318_2"');
+      // Orbital gets Money and Science only (no Material button)
+      expect(html).toContain('data-testid="bankruptcy-return-money-p_318_orb"');
+      expect(html).toContain('data-testid="bankruptcy-return-science-p_318_orb"');
+      expect(html).not.toContain('data-testid="bankruptcy-return-material-p_318_orb"');
+
+      // Backend ABANDON_SECTOR_BANKRUPTCY returns Wild cube to chosen Material track
+      const res = executeAction(game, {
+        type: 'ABANDON_SECTOR_BANKRUPTCY',
+        playerId: lyra.id,
+        sectorIds: [sec318.id],
+        abandonReturnTrack: {
+          p_318_2: 'material',
+          p_318_orb: 'science',
+        },
+      });
+      expect(res.success).toBe(true);
+      const updatedLyra = res.newState.players.find((p) => p.id === lyra.id)!;
+      expect(updatedLyra.population.material.cubesOnBoard).toBe(9);
+      expect(updatedLyra.population.science.cubesOnBoard).toBe(10);
+      expect(updatedLyra.population.money.cubesOnBoard).toBe(7);
+    });
   });
 });
 
