@@ -371,3 +371,68 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
 
   return typeof stateObj.activePlayerIndex === 'number' ? stateObj.activePlayerIndex : -1;
 }
+
+const PHASE_PROGRESS_RANK: Record<string, number> = {
+  DRAFT_PHASE: 0,
+  ACTION_PHASE: 1,
+  COMBAT_PHASE: 2,
+  UPKEEP_PHASE: 3,
+  CLEANUP_PHASE: 4,
+  GAME_OVER: 5,
+};
+
+function getReplayStepsProgressCount(s: any): number {
+  const arrLen = Array.isArray(s?.replaySteps) ? s.replaySteps.length : 0;
+  const countNum = Number(s?.replayStepsCount) || 0;
+  return Math.max(arrLen, countNum);
+}
+
+/**
+ * Compares monotonic game progress between two states (positive if `a` is ahead of `b`,
+ * negative if `a` is strictly behind `b`, 0 if equivalent).
+ */
+export function compareGameStateProgress(a: any, b: any): number {
+  const rA = Number(a?.round) || 1;
+  const rB = Number(b?.round) || 1;
+  if (rA !== rB) return rA - rB;
+
+  const pA = PHASE_PROGRESS_RANK[String(a?.phase || 'ACTION_PHASE')] ?? 1;
+  const pB = PHASE_PROGRESS_RANK[String(b?.phase || 'ACTION_PHASE')] ?? 1;
+  if (pA !== pB) return pA - pB;
+
+  const sA = getReplayStepsProgressCount(a);
+  const sB = getReplayStepsProgressCount(b);
+  if (sA > 0 && sB > 0 && sA !== sB) return sA - sB;
+
+  if (String(a?.phase) === 'ACTION_PHASE') {
+    const passA = Array.isArray(a?.passedPlayerIds) ? a.passedPlayerIds.length : 0;
+    const passB = Array.isArray(b?.passedPlayerIds) ? b.passedPlayerIds.length : 0;
+    if (passA !== passB) return passA - passB;
+
+    const actA = Array.isArray(a?.players)
+      ? a.players.reduce((sum: number, p: any) => sum + (Number(p?.actionsTakenThisRound) || 0), 0)
+      : 0;
+    const actB = Array.isArray(b?.players)
+      ? b.players.reduce((sum: number, p: any) => sum + (Number(p?.actionsTakenThisRound) || 0), 0)
+      : 0;
+    if (actA !== actB) return actA - actB;
+  }
+
+  const tsA = Number(a?.lastConfirmedAction?.timestamp || 0);
+  const tsB = Number(b?.lastConfirmedAction?.timestamp || 0);
+  if (tsA > 0 && tsB > 0 && tsA !== tsB) return tsA - tsB;
+
+  return 0;
+}
+
+/**
+ * Returns true if `incoming` represents an older/stale snapshot compared to `existing`
+ * without a newer `adminRestoredAt` epoch — preventing sleeping phones/tabs from reverting live tables.
+ */
+export function isIncomingStateStale(existing: any, incoming: any): boolean {
+  if (!existing || !incoming || incoming.chatOnly) return false;
+  const incomingAdmin = Number(incoming.adminRestoredAt || 0);
+  const existingAdmin = Number(existing.adminRestoredAt || 0);
+  if (incomingAdmin > existingAdmin) return false;
+  return compareGameStateProgress(incoming, existing) < 0;
+}

@@ -1,6 +1,7 @@
 import { GameState, ChatMessage } from '../types/state';
 import { TableMember, UserSession } from '../types/user';
 import { isReplayAvailable, compactReplaySteps } from './replay';
+import { compareGameStateProgress, isIncomingStateStale } from './turnCheckpoints';
 import type { AdminTurnCheckpointInfo } from './turnCheckpoints';
 export type { AdminTurnCheckpointInfo };
 import type { AppVersionInfo } from './appVersion';
@@ -258,6 +259,16 @@ export async function persistTableToServer(state: GameState): Promise<boolean> {
       body,
       ...(useKeepalive ? { keepalive: true } : {}),
     });
+    if (res.status === 409) {
+      try {
+        const errPayload = await res.json();
+        if (errPayload?.stale && errPayload?.table) {
+          saveGameState(errPayload.table, true);
+          broadcastGameState(errPayload.table);
+        }
+      } catch {}
+      return false;
+    }
     return res.ok;
   } catch (err) {
     return false;
@@ -317,7 +328,11 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
   (state as any).tableNumber = tableNumber;
 
   const now = Date.now();
-  state.savedAt = now;
+  // Preserve authoritative server timestamp when caching a remotely synced state locally
+  // so an idle tab never treats older synced game progress as newer than the server.
+  if (!skipBroadcast || !state.savedAt) {
+    state.savedAt = now;
+  }
 
   // 1. Safe localStorage persistence (prunes replay snapshots to prevent 5MB QuotaExceededError)
   try {
@@ -446,9 +461,21 @@ export function saveGameState(state: GameState, skipBroadcast: boolean = false):
         headers: { 'Content-Type': 'application/json' },
         body: serverPayload,
         ...(useKeepalive ? { keepalive: true } : {}),
-      }).catch((err) => {
-        console.warn('Failed to persist table to server:', err);
-      });
+      })
+        .then(async (res) => {
+          if (res.status === 409) {
+            try {
+              const errPayload = await res.json();
+              if (errPayload?.stale && errPayload?.table) {
+                saveGameState(errPayload.table, true);
+                broadcastGameState(errPayload.table);
+              }
+            } catch {}
+          }
+        })
+        .catch((err) => {
+          console.warn('Failed to persist table to server:', err);
+        });
     } catch (err) {
       console.warn('Failed to initiate server save:', err);
     }
@@ -1092,8 +1119,11 @@ export function subscribeToGameSync(
     const isAdminForceRestore = remoteAdminRestoredAt > localAdminRestoredAt;
 
     // Anti-Regression Protection: Never overwrite newer local confirmed state with older server state
-    // unless the server carried a newer admin turn restore epoch.
-    if (!isAdminForceRestore && localTime > remoteTime) {
+    // unless the server carried a newer admin turn restore epoch or local state is strictly behind.
+    if (!isAdminForceRestore && isIncomingStateStale(remote, currentLocal)) {
+      // Local state is strictly behind the remote server state (e.g., stale sleeping tab):
+      // never push stale local state back to the server; adopt the newer remote state below.
+    } else if (!isAdminForceRestore && localTime > remoteTime && compareGameStateProgress(currentLocal, remote) >= 0) {
       if (currentLocal) {
         const merged = mergeChatMessages(currentLocal.chatMessages, remote.chatMessages);
         if (merged.length !== (currentLocal.chatMessages?.length || 0)) {
@@ -1101,7 +1131,9 @@ export function subscribeToGameSync(
           saveGameState(currentLocal, true);
           callback(currentLocal);
         }
-        persistTableToServer(currentLocal).catch(() => {});
+        if (compareGameStateProgress(currentLocal, remote) > 0) {
+          persistTableToServer(currentLocal).catch(() => {});
+        }
       }
       return;
     }

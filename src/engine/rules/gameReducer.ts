@@ -667,7 +667,7 @@ export function isPlayerInvaded(state: GameState, playerId: string): boolean {
  * Advances the active player index, automatically executing reaction passes for players who have
  * enabled autoPassReactions and are NOT invaded by another player.
  */
-export function advanceTurnOrAutoPass(state: GameState): void {
+export function advanceTurnOrAutoPass(state: GameState, checkCurrentPlayerFirst: boolean = false): void {
   const activePlayers = state.players.filter((p) => !p.isEliminated);
   const allPassedConsecutively = (state.consecutivePasses || 0) >= activePlayers.length;
   if (allPassedConsecutively) {
@@ -698,7 +698,9 @@ export function advanceTurnOrAutoPass(state: GameState): void {
     }
   }
 
-  state.activePlayerIndex = getNextActivePlayerIndex(state);
+  if (!checkCurrentPlayerFirst) {
+    state.activePlayerIndex = getNextActivePlayerIndex(state);
+  }
 
   let loopCount = 0;
   while (loopCount < activePlayers.length) {
@@ -728,7 +730,11 @@ export function advanceTurnOrAutoPass(state: GameState): void {
       if (!state.passedPlayerIds.includes(activeP.id)) {
         state.passedPlayerIds.push(activeP.id);
       }
-      if (!state.firstPlayerPassedThisRound) {
+      const alreadyHasFirstPasser =
+        Boolean(state.firstPlayerPassedThisRound) ||
+        state.passedPlayerIds.length > 1 ||
+        state.players.some((p) => p.isFirstPasser);
+      if (!alreadyHasFirstPasser) {
         state.firstPlayerPassedThisRound = activeP.id;
         activeP.isFirstPasser = true;
         activeP.resources.money += 2;
@@ -4064,6 +4070,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         const tileNum = newState.passedPlayerIds.length;
         if (newState.expansions?.includes('turn_order')) {
           if (tileNum === 1) {
+            newState.firstPlayerPassedThisRound = player.id;
             player.isFirstPasser = true;
             player.resources.money += 2; // First to pass gets +2 Credits bonus!
             addLog(
@@ -4078,6 +4085,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           }
         } else {
           if (tileNum === 1) {
+            newState.firstPlayerPassedThisRound = player.id;
             player.isFirstPasser = true;
             player.resources.money += 2; // First to pass gets +2 Credits bonus!
             addLog(`${player.name} was FIRST to PASS and received 2 Credits bonus!`, 'system');
@@ -5483,7 +5491,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         if (isPlayerInvaded(newState, player.id)) {
           player.autoPassReactions = false;
         } else {
-          advanceTurnOrAutoPass(newState);
+          advanceTurnOrAutoPass(newState, true);
         }
       }
       return { success: true, newState };
@@ -5502,7 +5510,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         !newState.pendingActionConfirmation &&
         !newState.pendingExplore
       ) {
-        advanceTurnOrAutoPass(newState);
+        advanceTurnOrAutoPass(newState, true);
       }
       return { success: true, newState };
     }
@@ -7015,6 +7023,7 @@ export function transitionToCleanup(state: GameState): void {
   state.round += 1;
   state.phase = 'ACTION_PHASE';
   state.passedPlayerIds = [];
+  state.firstPlayerPassedThisRound = undefined;
   state.consecutivePasses = 0;
   state.resolvedCombatSectorIds = [];
   state.log.unshift({

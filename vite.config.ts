@@ -14,6 +14,7 @@ import {
   getTurnCheckpointsSummary,
   revertToTurnCheckpoint,
   getEffectiveDecisionSeat,
+  isIncomingStateStale,
   TurnCheckpointEntry,
 } from './src/engine/rules/turnCheckpoints.ts';
 
@@ -1817,6 +1818,25 @@ function tableStoragePlugin(): Plugin {
                   res.statusCode = 200;
                   res.setHeader('Content-Type', 'application/json');
                   res.end(JSON.stringify({ success: true, tableId: existing.id || resolvedTableId, tableNumber: existing.tableNumber }));
+                  return;
+                }
+
+                // Server-side Anti-Regression Guard: never allow a stale client/sleeping tab to overwrite
+                // newer game progress (round, phase, replay steps, confirmed actions) unless admin-reverted.
+                if (isIncomingStateStale(existing, data)) {
+                  console.warn(
+                    `[Table Guard] Rejected stale overwrite for ${resolvedTableId} (incoming R${data.round} ${data.phase} vs existing R${existing.round} ${existing.phase})`
+                  );
+                  res.statusCode = 409;
+                  res.setHeader('Content-Type', 'application/json');
+                  res.end(
+                    JSON.stringify({
+                      success: false,
+                      stale: true,
+                      error: 'Incoming client state is older than the authoritative server state.',
+                      table: existing,
+                    })
+                  );
                   return;
                 }
 

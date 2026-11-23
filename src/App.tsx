@@ -72,6 +72,7 @@ import { TurnOrderTrackModal } from './components/turnOrder/TurnOrderTrackModal'
 import { MinorSpeciesModal } from './components/minorSpecies/MinorSpeciesModal';
 import { MinorSpeciesId } from './engine/rules/minorSpecies';
 import { AdminManageSeatsModal } from './components/admin/AdminManageSeatsModal';
+import { compareGameStateProgress } from './engine/rules/turnCheckpoints';
 import {
   loadActiveGameState,
   saveGameState,
@@ -876,7 +877,12 @@ const AppContent: React.FC = () => {
           const isAdminRestore =
             Number((remote as any).adminRestoredAt || 0) >
             Number((currentLocal as any)?.adminRestoredAt || 0);
-          if (!isAdminRestore && localTime > remoteTime && currentLocal) {
+          if (
+            !isAdminRestore &&
+            localTime > remoteTime &&
+            compareGameStateProgress(currentLocal, remote) >= 0 &&
+            currentLocal
+          ) {
             isRemoteSyncRef.current = true;
             lastStateFingerprintRef.current = getStateFingerprint(currentLocal);
             setState(currentLocal);
@@ -994,7 +1000,12 @@ const AppContent: React.FC = () => {
 
       const remoteTime = Number((remoteState as any).savedAt) || 0;
       const localTime = Number((currentLocalState as any)?.savedAt) || 0;
-      if (!isAdminRestore && localTime > remoteTime && !currentLocalState?.pendingActionConfirmation) {
+      if (
+        !isAdminRestore &&
+        localTime > remoteTime &&
+        compareGameStateProgress(currentLocalState, remoteState) >= 0 &&
+        !currentLocalState?.pendingActionConfirmation
+      ) {
         if (mergedChat.length !== (currentLocalState?.chatMessages?.length || 0)) {
           setState((prev) => ({ ...prev, chatMessages: mergeChatMessages(prev.chatMessages, mergedChat) }));
         }
@@ -1119,10 +1130,14 @@ const AppContent: React.FC = () => {
     if (remote) {
       const localSavedAt = Number(loaded?.savedAt) || 0;
       const remoteSavedAt = Number(remote.savedAt) || 0;
+      const remoteAdminTs = Number((remote as any).adminRestoredAt || 0);
+      const localAdminTs = Number((loaded as any)?.adminRestoredAt || 0);
+      const progressCmp = loaded ? compareGameStateProgress(remote, loaded) : 1;
       if (
         !loaded ||
-        remoteSavedAt >= localSavedAt ||
-        (remote.round || 1) > (loaded.round || 1) ||
+        remoteAdminTs > localAdminTs ||
+        progressCmp > 0 ||
+        (progressCmp === 0 && remoteSavedAt >= localSavedAt) ||
         ((remote as any).isGameStarted && !(loaded as any).isGameStarted)
       ) {
         loaded = remote;

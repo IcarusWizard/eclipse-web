@@ -705,7 +705,20 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
       )}
 
       {/* Ambassadors & Diplomatic Relations (including Minor Species) */}
-      {((allPlayers && allPlayers.length > 1) || hasMinorSpeciesExpansion) && (
+      {((allPlayers && allPlayers.length > 1) || hasMinorSpeciesExpansion) && (() => {
+        const renderResourceCubeIcon = (cubeType?: 'money' | 'science' | 'material', testIdPrefix?: string) => {
+          if (cubeType === 'money') {
+            return <Coins className="w-3 h-3 text-yellow-400 shrink-0" data-testid={testIdPrefix ? `${testIdPrefix}-money` : undefined} />;
+          }
+          if (cubeType === 'science') {
+            return <FlaskConical className="w-3 h-3 text-pink-400 shrink-0" data-testid={testIdPrefix ? `${testIdPrefix}-science` : undefined} />;
+          }
+          if (cubeType === 'material') {
+            return <Hammer className="w-3 h-3 text-amber-500 shrink-0" data-testid={testIdPrefix ? `${testIdPrefix}-material` : undefined} />;
+          }
+          return null;
+        };
+        return (
         <div className="bg-slate-950/60 rounded-lg border border-slate-800/80 p-2 mb-2">
           <div className="flex items-center justify-between text-[10px] font-semibold text-slate-400 mb-1.5">
             <span className="flex items-center gap-1 text-indigo-400">
@@ -725,6 +738,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                   const ms = ALL_MINOR_SPECIES_TILES.find((t) => t.id === id);
                   if (!ms) return null;
                   const msName = translateMinorSpeciesName(ms.id, ms.name, language);
+                  const msCubeIconEl = renderResourceCubeIcon(player.ambassadorCubes?.[ms.id], `ambassador-cube-${ms.id}`);
                   return (
                     <div
                       key={ms.id}
@@ -739,8 +753,9 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                         <span className="font-bold text-emerald-200 truncate">{msName}</span>
                         <span className="text-[9px] text-emerald-400/80 truncate">({ms.vpDescription})</span>
                       </div>
-                      <span className="font-mono text-[9.5px] text-emerald-300 font-bold shrink-0">
-                        {l(`Allied (+${ms.vp}★)`, `已结盟 (+${ms.vp}★)`)}
+                      <span className="font-mono text-[9.5px] text-emerald-300 font-bold flex items-center gap-1 shrink-0">
+                        {msCubeIconEl}
+                        <span>{l(`Allied (+${ms.vp}★)`, `已结盟 (+${ms.vp}★)`)}</span>
                       </span>
                     </div>
                   );
@@ -758,9 +773,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                     other.id
                   );
                   const isEligible = check.canExchange && isActive && gamePhase === 'ACTION_PHASE';
-                  const cubeType = player.ambassadorCubes?.[other.id];
-                  const cubeIcon =
-                    cubeType === 'money' ? '💰' : cubeType === 'science' ? '🔬' : cubeType === 'material' ? '🔨' : '★';
+                  const cubeIconEl = renderResourceCubeIcon(player.ambassadorCubes?.[other.id], `ambassador-cube-${other.id}`) || <span>★</span>;
                   const otherFactionName = translateFactionName(other.faction.id, other.faction.name, language);
 
                   if (isAllied) {
@@ -789,7 +802,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                               '已建立外交同盟（+1 VP）。只有当你在其飞船或控制圆片所在星区结束移动时才会打破同盟。'
                             )}
                           >
-                            <Handshake className="w-3 h-3 text-slate-600" /> {l('Allied', '已结盟')} {cubeIcon} (+1★)
+                            <Handshake className="w-3 h-3 text-slate-600" /> {l('Allied', '已结盟')} {cubeIconEl} (+1★)
                           </span>
                         </div>
                       </div>
@@ -881,7 +894,8 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             )}
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Action Upkeep Forecast Strip */}
       <div

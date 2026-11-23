@@ -28496,6 +28496,170 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(gameOverHtml).toContain('placed a 4 VP Reputation Tile on their track.');
       expect(gameOverHtml).toContain('replaced 2 VP');
     });
+
+    it('285. renders matching Lucide resource icons (Coins/FlaskConical/Hammer) for exchanged ambassador cubes in PlayerBoard', async () => {
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+
+      const game = createInitialGame(4, [
+        'terran_federation',
+        'eridani_empire',
+        'planta',
+        'hydran_progress',
+      ]);
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+      const p3 = game.players[2]!;
+      const p4 = game.players[3]!;
+      p1.ambassadorTiles = [p2.id, p3.id, p4.id];
+      p1.ambassadorCubes = {
+        [p2.id]: 'money',
+        [p3.id]: 'science',
+        [p4.id]: 'material',
+      };
+
+      const html = renderToString(
+        React.createElement(PlayerBoard, {
+          player: p1,
+          isActive: true,
+          sectors: game.sectors,
+          onOpenBlueprints: () => {},
+          onOpenTechMarket: () => {},
+          onOpenTrade: () => {},
+          allPlayers: game.players,
+          gamePhase: game.phase,
+        })
+      );
+
+      // Uses matching Coins (yellow), FlaskConical (pink), and Hammer (amber) Lucide icons instead of emojis
+      expect(html).toContain(`data-testid="ambassador-cube-${p2.id}-money"`);
+      expect(html).toContain(`data-testid="ambassador-cube-${p3.id}-science"`);
+      expect(html).toContain(`data-testid="ambassador-cube-${p4.id}-material"`);
+      expect(html).not.toContain('💰');
+      expect(html).not.toContain('🔨');
+    });
+
+    it('286. PASS sets firstPlayerPassedThisRound so Pass in Advance never awards a duplicate First Passer or +2 Credits', () => {
+      const game = createInitialGame(4, [
+        'descendants_of_draco',
+        'enlightened_of_lyra',
+        'planta',
+        'orion_hegemony',
+      ]);
+      const p1 = game.players[0]!; // Draco
+      const p2 = game.players[1]!; // Lyra
+      const p1StartMoney = p1.resources.money;
+      const p2StartMoney = p2.resources.money;
+
+      // 1. P1 passes FIRST via regular PASS -> sets firstPlayerPassedThisRound and isFirstPasser
+      const p1PassRes = executeAction(game, { type: 'PASS', playerId: p1.id });
+      expect(p1PassRes.success).toBe(true);
+      expect(p1PassRes.newState.firstPlayerPassedThisRound).toBe(p1.id);
+      expect(p1PassRes.newState.players[0]!.isFirstPasser).toBe(true);
+      expect(p1PassRes.newState.players[0]!.resources.money).toBe(p1StartMoney + 2);
+
+      // 2. Next active player enables Pass in Advance on their own turn (and should pass cleanly WITHOUT becoming First Passer)
+      const nextIdx = p1PassRes.newState.activePlayerIndex;
+      const pNext = p1PassRes.newState.players[nextIdx]!;
+      const pNextStartMoney = pNext.resources.money;
+      const advRes = executeAction(p1PassRes.newState, {
+        type: 'SET_PASS_IN_ADVANCE',
+        playerId: pNext.id,
+        enabled: true,
+      });
+      expect(advRes.success).toBe(true);
+      const postAdv = advRes.newState;
+      const updatedPNext = postAdv.players[nextIdx]!;
+      expect(updatedPNext.hasPassed).toBe(true);
+      // MUST NOT overwrite firstPlayerPassedThisRound or award +2 Money to pNext!
+      expect(postAdv.firstPlayerPassedThisRound).toBe(p1.id);
+      expect(postAdv.players[0]!.isFirstPasser).toBe(true);
+      expect(updatedPNext.isFirstPasser).toBeFalsy();
+      expect(updatedPNext.resources.money).toBe(pNextStartMoney);
+
+      // Also verify non-active player (P2) setting Pass in Advance in advance never steals First Passer when turn reaches them
+      const curState = postAdv;
+      const lyraMoneyBefore = curState.players[1]!.resources.money;
+      if (!curState.players[1]!.hasPassed) {
+        const setLyraAdv = executeAction(curState, {
+          type: 'SET_PASS_IN_ADVANCE',
+          playerId: p2.id,
+          enabled: true,
+        });
+        expect(setLyraAdv.success).toBe(true);
+        let loopState = setLyraAdv.newState;
+        for (let guard = 0; guard < 6 && !loopState.players[1]!.hasPassed && loopState.phase === 'ACTION_PHASE'; guard++) {
+          const actP = loopState.players[loopState.activePlayerIndex]!;
+          const passStep = executeAction(loopState, { type: 'PASS', playerId: actP.id });
+          expect(passStep.success).toBe(true);
+          loopState = passStep.newState;
+        }
+        expect(loopState.players[1]!.hasPassed).toBe(true);
+        expect(loopState.firstPlayerPassedThisRound).toBe(p1.id);
+        expect(loopState.players[1]!.isFirstPasser).toBeFalsy();
+        expect(loopState.players[1]!.resources.money).toBe(lyraMoneyBefore);
+      }
+
+      // 3. Cleanup resets firstPlayerPassedThisRound for the next round
+      transitionToCleanup(postAdv);
+      expect(postAdv.round).toBe(2);
+      expect(postAdv.firstPlayerPassedThisRound).toBeUndefined();
+    });
+
+    it('287. prevents stale cached client state from overwriting newer server COMBAT_PHASE progress', async () => {
+      const { isIncomingStateStale, compareGameStateProgress } = await import('../rules/turnCheckpoints');
+      const { saveGameState, loadTable, deleteSavedTable } = await import('../rules/persistence');
+
+      const serverState = createInitialGame(4);
+      serverState.id = 'test-stale-guard-192';
+      serverState.round = 4;
+      serverState.phase = 'COMBAT_PHASE';
+      serverState.replayStepsCount = 123;
+      serverState.passedPlayerIds = serverState.players.map((p) => p.id);
+      serverState.savedAt = 1795391059122; // 23:44:19Z
+
+      // Simulate an old sleeping phone tab from 09:28Z in ACTION_PHASE that later gets stamped with 23:46:53Z savedAt
+      const stalePhoneState = JSON.parse(JSON.stringify(serverState));
+      stalePhoneState.phase = 'ACTION_PHASE';
+      stalePhoneState.activePlayerIndex = 1;
+      stalePhoneState.replayStepsCount = 110;
+      stalePhoneState.passedPlayerIds = ['player_1', 'player_4'];
+      stalePhoneState.savedAt = 1795391213628; // newer wall-clock timestamp, older game progress!
+
+      expect(compareGameStateProgress(stalePhoneState, serverState)).toBeLessThan(0);
+      expect(isIncomingStateStale(serverState, stalePhoneState)).toBe(true);
+
+      // Newer admin revert (adminRestoredAt bumped) IS allowed
+      const adminRevertState = JSON.parse(JSON.stringify(stalePhoneState));
+      adminRevertState.adminRestoredAt = 1795392000000;
+      expect(isIncomingStateStale(serverState, adminRevertState)).toBe(false);
+
+      // saveGameState with skipBroadcast=true preserves server savedAt instead of stamping Date.now()
+      saveGameState(serverState, true);
+      const cached = loadTable(serverState.id);
+      expect(cached?.savedAt).toBe(1795391059122);
+
+      // persistTableToServer handles 409 stale rejection and self-heals localStorage with authoritative server table
+      const { persistTableToServer } = await import('../rules/persistence');
+      const prevFetch = globalThis.fetch;
+      try {
+        globalThis.fetch = (async () => ({
+          ok: false,
+          status: 409,
+          json: async () => ({ stale: true, table: serverState }),
+        })) as any;
+        const ok = await persistTableToServer(stalePhoneState);
+        expect(ok).toBe(false);
+        const healed = loadTable(serverState.id);
+        expect(healed?.phase).toBe('COMBAT_PHASE');
+        expect(healed?.savedAt).toBe(1795391059122);
+      } finally {
+        globalThis.fetch = prevFetch;
+      }
+
+      deleteSavedTable(serverState.id);
+    });
   });
 });
 
