@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
-import { getMaxMoveActivations, playerHasWormholeGenerator } from '../../engine/rules/gameReducer';
+import { getMaxMoveActivations, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { areSectorsConnected, getEdgeBetween } from '../../engine/rules/hexMath';
 import { getNebulaSubsectorForOuterEdge } from '../../engine/rules/galacticEvents';
@@ -49,6 +49,7 @@ export interface MoveModalProps {
   playerShips: { ship: SectorShip; initialSector: SectorTile }[];
   simulatedShipSector: Map<string, SectorTile>;
   connectedDestinations: SectorTile[];
+  reachableDestinations?: ReachableMoveOption[];
   plannedMoves: PlannedMove[];
   activeActivationIndex: number;
   currentShipDriveSpeed: number;
@@ -72,6 +73,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   playerShips,
   simulatedShipSector,
   connectedDestinations,
+  reachableDestinations,
   plannedMoves,
   activeActivationIndex,
   currentShipDriveSpeed,
@@ -112,6 +114,28 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     : currentShipHasJumpDrive
     ? translatePartName('jump_drive', 'Jump Drive', language)
     : l('No Engine', '无引擎');
+
+  const effectiveMaxSteps = currentShipDriveSpeed + (currentShipHasJumpDrive ? 1 : 0);
+  const reachableBySectorId = useMemo(() => {
+    const map = new Map<string, ReachableMoveOption>();
+    if (!reachableDestinations || !currentSimSector) return map;
+    for (const opt of reachableDestinations) {
+      if (opt.sectorId === currentSimSector.id) continue;
+      const existing = map.get(opt.sectorId);
+      if (
+        !existing ||
+        opt.totalSteps < existing.totalSteps ||
+        (opt.totalSteps === existing.totalSteps && !opt.usesJumpDrive && existing.usesJumpDrive)
+      ) {
+        map.set(opt.sectorId, opt);
+      }
+    }
+    return map;
+  }, [reachableDestinations, currentSimSector]);
+  const quickStepDestinations = useMemo(() => {
+    if (!reachableDestinations) return connectedDestinations;
+    return connectedDestinations.filter((sec) => reachableBySectorId.get(sec.id)?.totalSteps === 1);
+  }, [connectedDestinations, reachableDestinations, reachableBySectorId]);
 
   // Group planned moves by activation index
   const activationGroups = useMemo(() => {
@@ -371,14 +395,14 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                     </span>
                     {movePointsUsedInCurrentActivation > 0 && (
                       <span className="px-2 py-0.5 rounded bg-amber-950/70 border border-amber-700/70 text-amber-300 font-bold text-[11px] font-mono">
-                        {movePointsUsedInCurrentActivation} / {currentShipDriveSpeed} {l('MP Used', '移动力已用')}
+                        {movePointsUsedInCurrentActivation} / {effectiveMaxSteps} {l('MP Used', '移动力已用')}
                       </span>
                     )}
                   </div>
 
                   {/* Early Activation Finish Button */}
                   {movePointsUsedInCurrentActivation > 0 &&
-                    movePointsUsedInCurrentActivation < currentShipDriveSpeed && (
+                    movePointsUsedInCurrentActivation < effectiveMaxSteps && (
                       <button
                         type="button"
                         onClick={onFinishActivation}
@@ -386,7 +410,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                         title={l("End this ship's movement and proceed to next activation", '结束当前飞船移动并进入下一次激活')}
                       >
                         <FastForward className="w-3.5 h-3.5 text-emerald-400" />
-                        <span>{l(`Finish Activation (${currentShipDriveSpeed - movePointsUsedInCurrentActivation} MP Left)`, `结束本次激活（余 ${currentShipDriveSpeed - movePointsUsedInCurrentActivation} 步）`)}</span>
+                        <span>{l(`Finish Activation (${effectiveMaxSteps - movePointsUsedInCurrentActivation} MP Left)`, `结束本次激活（余 ${effectiveMaxSteps - movePointsUsedInCurrentActivation} 步）`)}</span>
                       </button>
                     )}
                 </div>
@@ -447,7 +471,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                   </div>
                 )}
 
-                {/* Connected Destinations Quick Bar */}
+                {/* Connected Destinations Quick Bar (1-step only; multi-step destinations are selected on the map) */}
                 <div className="flex items-center gap-2 flex-wrap pt-1 border-t border-slate-900/80">
                   <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider shrink-0">
                     {l('Step Destination:', '下一步目的地：')}
@@ -462,11 +486,18 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                       <CircleAlert className="w-3.5 h-3.5" />
                       <span>{l('This unit has Drive Speed 0 and cannot move.', '该单位航速为 0，无法移动。')}</span>
                     </div>
-                  ) : connectedDestinations.length > 0 ? (
+                  ) : quickStepDestinations.length > 0 ? (
                     <div className="flex items-center gap-1.5 flex-wrap">
-                      {connectedDestinations.map((sec) => {
-                        const hasWormhole = currentSimSector ? areSectorsConnected(currentSimSector, sec, hasWormholeGen, warpConduits) : true;
-                        const nebulaTargetSub = sec.isNebula && currentSimSector
+                      {quickStepDestinations.map((sec) => {
+                        const reachOpt = reachableBySectorId.get(sec.id);
+                        const usesJump = reachOpt
+                          ? reachOpt.usesJumpDrive
+                          : currentSimSector
+                          ? !areSectorsConnected(currentSimSector, sec, hasWormholeGen, warpConduits)
+                          : false;
+                        const nebulaTargetSub = reachOpt
+                          ? reachOpt.targetSubsector
+                          : sec.isNebula && currentSimSector
                           ? (() => {
                               const edge = getEdgeBetween(currentSimSector.coord, sec.coord);
                               if (edge === null) return undefined;
@@ -503,7 +534,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                                 {l('⚔️ Breaks Alliance', '⚔️ 破盟')}
                               </span>
                             )}
-                            {!hasWormhole && (
+                            {usesJump && (
                               <span className="text-[9px] px-1 py-0.5 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 font-mono">
                                 {l('Jump ⚡', '跳跃 ⚡')}
                               </span>

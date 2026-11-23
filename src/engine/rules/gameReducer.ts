@@ -6778,26 +6778,38 @@ export interface PinningState {
   isShipPinned: (shipId: string) => boolean;
 }
 
-export function computePinningState(
+export interface ReachableMoveStep {
+  fromSectorId: string;
+  toSectorId: string;
+  targetSubsector?: 1 | 2 | 3;
+  usedJumpDrive: boolean;
+}
+
+export interface ReachableMoveOption {
+  sectorId: string;
+  targetSubsector?: 1 | 2 | 3;
+  steps: ReachableMoveStep[];
+  totalSteps: number;
+  usesJumpDrive: boolean;
+}
+
+interface SimSectorShipEntry {
+  id: string;
+  ownerId: string;
+  type: string;
+  subsector?: 1 | 2 | 3;
+}
+
+function createHostilesCounter(
   state: GameState,
   playerId: string,
-  plannedMoves: { shipId: string; fromSectorId: string; toSectorId: string }[] = []
-): PinningState {
-  const player = state.players.find((p) => p.id === playerId);
-  const isDraco = player?.faction.id === 'descendants_of_draco';
-  const pinnedShipIds = new Set<string>();
-
-  // Track simulated ships in sectors
-  const simSectorShips = new Map<string, { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[]>();
-  for (const s of state.sectors) {
-    simSectorShips.set(s.id, s.ships.map((sh) => ({ id: sh.id, ownerId: sh.ownerId, type: sh.type, subsector: sh.subsector })));
-  }
-
-  const getHostilesInSec = (
+  isDraco: boolean
+) {
+  return (
     sec: SectorTile,
-    shipsList: { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[],
+    shipsList: SimSectorShipEntry[],
     subsector?: 1 | 2 | 3
-  ) => {
+  ): number => {
     const targetSub = subsector ?? 1;
     const filteredList = sec.isNebula ? shipsList.filter((s) => (s.subsector ?? 1) === targetSub) : shipsList;
     let ancients = sec.isNebula
@@ -6815,19 +6827,38 @@ export function computePinningState(
     ).length;
     return ancients + gcdsCount + guardianShips + otherPlayerShips;
   };
+}
+
+function replayPlannedMovesForSimulation(
+  state: GameState,
+  playerId: string,
+  plannedMoves: { shipId: string; fromSectorId: string; toSectorId: string; targetSubsector?: 1 | 2 | 3 }[]
+) {
+  const player = state.players.find((p) => p.id === playerId);
+  const isDraco = player?.faction.id === 'descendants_of_draco';
+  const hasCloaking = Boolean(player?.techTrack.researched.some((t) => t.id === 'cloaking_device'));
+  const pinnedShipIds = new Set<string>();
+  const sectorById = new Map<string, SectorTile>(state.sectors.map((s) => [s.id, s]));
+
+  const simSectorShips = new Map<string, SimSectorShipEntry[]>();
+  for (const s of state.sectors) {
+    simSectorShips.set(s.id, s.ships.map((sh) => ({ id: sh.id, ownerId: sh.ownerId, type: sh.type, subsector: sh.subsector })));
+  }
+
+  const getHostilesInSec = createHostilesCounter(state, playerId, Boolean(isDraco));
 
   // Replay planned moves step by step
   for (const m of plannedMoves) {
     const fromList = simSectorShips.get(m.fromSectorId) || [];
     const shipIdx = fromList.findIndex((s) => s.id === m.shipId);
-    let movedShip: { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 } | undefined;
+    let movedShip: SimSectorShipEntry | undefined;
     if (shipIdx >= 0) {
       [movedShip] = fromList.splice(shipIdx, 1);
     }
     const toList = simSectorShips.get(m.toSectorId) || [];
-    const toSec = state.sectors.find((s) => s.id === m.toSectorId);
-    const fromSec = state.sectors.find((s) => s.id === m.fromSectorId);
-    let resolvedSub = (m as any).targetSubsector;
+    const toSec = sectorById.get(m.toSectorId);
+    const fromSec = sectorById.get(m.fromSectorId);
+    let resolvedSub = m.targetSubsector;
     if (toSec?.isNebula && fromSec && fromSec.id !== toSec.id) {
       const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
       const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
@@ -6850,8 +6881,7 @@ export function computePinningState(
         ? toList.filter((s) => s.ownerId === playerId && (s.subsector ?? 1) === targetSub).length
         : toList.filter((s) => s.ownerId === playerId).length;
       const hostilesInTo = getHostilesInSec(toSec, toList, targetSub);
-      const hasCloakingInTo = player?.techTrack.researched.some((t) => t.id === 'cloaking_device');
-      const pinningThresholdInTo = hasCloakingInTo ? friendlyInTo * 2 : friendlyInTo;
+      const pinningThresholdInTo = hasCloaking ? friendlyInTo * 2 : friendlyInTo;
       if (hasLiveGcdsInTo || (hostilesInTo > 0 && hostilesInTo >= pinningThresholdInTo)) {
         pinnedShipIds.add(m.shipId);
       }
@@ -6872,7 +6902,6 @@ export function computePinningState(
       for (const subIdx of [1, 2, 3] as const) {
         const friendlyInSub = friendlyShips.filter((sh) => (sh.subsector ?? 1) === subIdx);
         const hostilesInSub = getHostilesInSec(s, shipsInSec, subIdx);
-        const hasCloaking = player?.techTrack.researched.some((t) => t.id === 'cloaking_device');
         const pinningThreshold = hasCloaking ? friendlyInSub.length * 2 : friendlyInSub.length;
         if (hostilesInSub > 0 && hostilesInSub >= pinningThreshold) {
           for (const sh of friendlyInSub) {
@@ -6882,7 +6911,6 @@ export function computePinningState(
       }
     } else {
       const hostiles = getHostilesInSec(s, shipsInSec);
-      const hasCloaking = player?.techTrack.researched.some((t) => t.id === 'cloaking_device');
       const pinningThreshold = hasCloaking ? friendlyShips.length * 2 : friendlyShips.length;
       if (hostiles > 0 && hostiles >= pinningThreshold) {
         for (const sh of friendlyShips) {
@@ -6893,9 +6921,287 @@ export function computePinningState(
   }
 
   return {
+    player,
+    hasCloaking,
+    sectorById,
+    simSectorShips,
+    getHostilesInSec,
+    pinnedShipIds,
+  };
+}
+
+export function computePinningState(
+  state: GameState,
+  playerId: string,
+  plannedMoves: { shipId: string; fromSectorId: string; toSectorId: string; targetSubsector?: 1 | 2 | 3 }[] = []
+): PinningState {
+  const { pinnedShipIds } = replayPlannedMovesForSimulation(state, playerId, plannedMoves);
+
+  return {
     pinnedShipIds,
     isShipPinned: (shipId: string) => pinnedShipIds.has(shipId),
   };
+}
+
+/**
+ * Computes all reachable single- and multi-step destinations for a ship during the current Move activation,
+ * respecting dynamic pinning from `plannedMoves`, Cloaking Device, Draco ancient immunity, GCDS,
+ * Jump Drive (1 non-wormhole hop per activation), Nebula subsectors, and Black Hole termination.
+ */
+export function computeReachableMoveDestinations(
+  state: GameState,
+  playerId: string,
+  shipId: string,
+  plannedMoves: {
+    shipId: string;
+    fromSectorId: string;
+    toSectorId: string;
+    activationIndex?: number;
+    targetSubsector?: 1 | 2 | 3;
+  }[] = [],
+  activeActivationIndex: number = 0
+): ReachableMoveOption[] {
+  const {
+    player,
+    hasCloaking,
+    sectorById,
+    simSectorShips,
+    getHostilesInSec,
+    pinnedShipIds,
+  } = replayPlannedMovesForSimulation(state, playerId, plannedMoves);
+
+  if (!player) return [];
+
+  let startSectorId: string | null = null;
+  let simShip: SimSectorShipEntry | null = null;
+  for (const [secId, shipsList] of simSectorShips.entries()) {
+    const found = shipsList.find((s) => s.id === shipId && s.ownerId === playerId);
+    if (found) {
+      startSectorId = secId;
+      simShip = found;
+      break;
+    }
+  }
+  if (!startSectorId || !simShip) return [];
+
+  const startSec = sectorById.get(startSectorId);
+  if (!startSec) return [];
+
+  const bp = player.blueprints[simShip.type as ShipType];
+  const stats = bp ? calculateBlueprintStats(bp) : null;
+  const driveSpeed = stats ? stats.totalDriveSpeed : 1;
+  const hasJumpDrive = Boolean(
+    stats?.hasJumpDrive || bp?.slots.some((sl) => sl?.id === 'jump_drive' || sl?.isJumpDrive)
+  );
+  const maxSteps = driveSpeed + (hasJumpDrive ? 1 : 0);
+  if (maxSteps <= 0) return [];
+
+  if (pinnedShipIds.has(shipId)) return [];
+
+  const currentActMoves = plannedMoves.filter(
+    (m) => (m.activationIndex ?? 0) === activeActivationIndex
+  );
+  if (currentActMoves.length > 0 && currentActMoves[0]!.shipId !== shipId) {
+    return [];
+  }
+
+  const remainingSteps = maxSteps - currentActMoves.length;
+  if (remainingSteps <= 0) return [];
+
+  if (currentActMoves.length > 0) {
+    const lastMove = currentActMoves[currentActMoves.length - 1]!;
+    const lastDestSec = sectorById.get(lastMove.toSectorId);
+    if (lastDestSec?.isBlackHole && lastDestSec.id !== lastMove.fromSectorId) {
+      return [];
+    }
+  }
+
+  const hasWormholeGen = playerHasWormholeGenerator(player);
+  const warpConduits = state.warpedUniverse?.conduits;
+
+  let initialJumpUsed = false;
+  for (const m of currentActMoves) {
+    const fromSec = sectorById.get(m.fromSectorId);
+    const toSec = sectorById.get(m.toSectorId);
+    if (fromSec && toSec && !(fromSec.id === toSec.id && fromSec.isNebula)) {
+      if (!areSectorsConnected(fromSec, toSec, hasWormholeGen, warpConduits)) {
+        initialJumpUsed = true;
+        break;
+      }
+    }
+  }
+
+  const startSub: 1 | 2 | 3 | undefined = startSec.isNebula
+    ? ((simShip.subsector ?? 1) as 1 | 2 | 3)
+    : undefined;
+
+  const isPinnedOnArrival = (toSec: SectorTile, targetSub?: 1 | 2 | 3): boolean => {
+    const shipsInTo = simSectorShips.get(toSec.id) || [];
+    const effectiveSub = toSec.isNebula ? (targetSub ?? 1) : undefined;
+    const hasLiveGcdsInTo =
+      !toSec.isNebula &&
+      (toSec.hasGCDS || shipsInTo.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
+    if (hasLiveGcdsInTo) return true;
+
+    const alreadyAtDest =
+      toSec.id === startSectorId && (!toSec.isNebula || effectiveSub === startSub);
+    const baseFriendly =
+      toSec.isNebula && effectiveSub
+        ? shipsInTo.filter((s) => s.ownerId === playerId && (s.subsector ?? 1) === effectiveSub).length
+        : shipsInTo.filter((s) => s.ownerId === playerId).length;
+    const friendlyInTo = baseFriendly + (alreadyAtDest ? 0 : 1);
+    const hostilesInTo = getHostilesInSec(toSec, shipsInTo, effectiveSub);
+    const pinningThreshold = hasCloaking ? friendlyInTo * 2 : friendlyInTo;
+    return hostilesInTo > 0 && hostilesInTo >= pinningThreshold;
+  };
+
+  interface SearchNode {
+    sectorId: string;
+    subsector?: 1 | 2 | 3;
+    usedJump: boolean;
+    steps: ReachableMoveStep[];
+  }
+
+  const stateKey = (sectorId: string, subsector: 1 | 2 | 3 | undefined, usedJump: boolean) =>
+    `${sectorId}:${subsector ?? 0}:${usedJump ? 1 : 0}`;
+  const destKey = (sectorId: string, subsector: 1 | 2 | 3 | undefined) =>
+    `${sectorId}:${subsector ?? 0}`;
+
+  const visitedState = new Set<string>([stateKey(startSectorId, startSub, initialJumpUsed)]);
+  if (!initialJumpUsed) {
+    // Also mark root with usedJump=true so BFS never loops back to the exact origin
+    visitedState.add(stateKey(startSectorId, startSub, true));
+  }
+
+  const bestByDest = new Map<string, ReachableMoveOption>();
+
+  const recordOption = (node: SearchNode) => {
+    const dKey = destKey(node.sectorId, node.subsector);
+    const existing = bestByDest.get(dKey);
+    const candidateSteps = node.steps.length;
+    const candidateJumpPenalty = node.usedJump && !initialJumpUsed ? 1 : 0;
+    const existingJumpPenalty = existing && existing.usesJumpDrive && !initialJumpUsed ? 1 : 0;
+
+    if (
+      !existing ||
+      candidateSteps < existing.totalSteps ||
+      (candidateSteps === existing.totalSteps && candidateJumpPenalty < existingJumpPenalty)
+    ) {
+      bestByDest.set(dKey, {
+        sectorId: node.sectorId,
+        targetSubsector: node.subsector,
+        steps: node.steps,
+        totalSteps: candidateSteps,
+        usesJumpDrive: node.steps.some((st) => st.usedJumpDrive),
+      });
+    }
+  };
+
+  let frontier: SearchNode[] = [
+    {
+      sectorId: startSectorId,
+      subsector: startSub,
+      usedJump: initialJumpUsed,
+      steps: [],
+    },
+  ];
+
+  for (let depth = 0; depth < remainingSteps && frontier.length > 0; depth++) {
+    // Expand non-jump states before jump states at the same depth so jump-conserving paths win ties
+    frontier.sort((a, b) => Number(a.usedJump) - Number(b.usedJump));
+    const nextFrontier: SearchNode[] = [];
+
+    for (const node of frontier) {
+      const fromSec = sectorById.get(node.sectorId);
+      if (!fromSec) continue;
+
+      const tryPushNeighbor = (
+        toSec: SectorTile,
+        targetSub: 1 | 2 | 3 | undefined,
+        stepUsesJump: boolean
+      ) => {
+        const nextUsedJump = node.usedJump || stepUsesJump;
+        const sKey = stateKey(toSec.id, targetSub, nextUsedJump);
+        if (visitedState.has(sKey)) return;
+        visitedState.add(sKey);
+
+        const nextStep: ReachableMoveStep = {
+          fromSectorId: fromSec.id,
+          toSectorId: toSec.id,
+          targetSubsector: targetSub,
+          usedJumpDrive: stepUsesJump,
+        };
+        const nextNode: SearchNode = {
+          sectorId: toSec.id,
+          subsector: targetSub,
+          usedJump: nextUsedJump,
+          steps: [...node.steps, nextStep],
+        };
+
+        recordOption(nextNode);
+
+        // Entering a Black Hole or a pinning sector terminates movement for this activation
+        const hitsBlackHole = Boolean(toSec.isBlackHole && toSec.id !== fromSec.id);
+        if (hitsBlackHole || isPinnedOnArrival(toSec, targetSub)) {
+          return;
+        }
+
+        if (depth + 1 < remainingSteps) {
+          nextFrontier.push(nextNode);
+        }
+      };
+
+      // 1. Internal Nebula subsector shifts (1 MP)
+      if (fromSec.isNebula) {
+        const curSub = (node.subsector ?? 1) as 1 | 2 | 3;
+        for (const nextSub of [1, 2, 3] as const) {
+          if (nextSub === curSub) continue;
+          tryPushNeighbor(fromSec, nextSub, false);
+        }
+      }
+
+      // 2. External wormhole / conduit / Jump Drive moves
+      for (const toSec of state.sectors) {
+        if (toSec.id === fromSec.id) continue;
+
+        if (fromSec.isNebula) {
+          const exitEdge = getEdgeBetween(fromSec.coord, toSec.coord);
+          if (exitEdge !== null) {
+            const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge, fromSec.rotation || 0);
+            if (allowedSub !== (node.subsector ?? 1)) continue;
+          }
+        }
+
+        const isWormholeConnected = areSectorsConnected(fromSec, toSec, hasWormholeGen, warpConduits);
+        let stepUsesJump = false;
+        if (!isWormholeConnected) {
+          const areAdjacent = getEdgeBetween(fromSec.coord, toSec.coord) !== null;
+          if (hasJumpDrive && !node.usedJump && areAdjacent) {
+            stepUsesJump = true;
+          } else {
+            continue;
+          }
+        }
+
+        let targetSub: 1 | 2 | 3 | undefined;
+        if (toSec.isNebula) {
+          const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
+          const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
+          targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSec.rotation || 0);
+        }
+
+        tryPushNeighbor(toSec, targetSub, stepUsesJump);
+      }
+    }
+
+    frontier = nextFrontier;
+  }
+
+  return Array.from(bestByDest.values()).sort((a, b) => {
+    if (a.totalSteps !== b.totalSteps) return a.totalSteps - b.totalSteps;
+    if (a.usesJumpDrive !== b.usesJumpDrive) return Number(a.usesJumpDrive) - Number(b.usesJumpDrive);
+    return a.sectorId.localeCompare(b.sectorId);
+  });
 }
 
 export function checkAndTriggerCombat(state: GameState): void {

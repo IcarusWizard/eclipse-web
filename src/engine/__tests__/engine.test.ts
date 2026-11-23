@@ -56,6 +56,7 @@ import {
   transitionToCleanup,
   resolveAttackingPopulationAndConquest,
   computePinningState,
+  computeReachableMoveDestinations,
   canExchangeAmbassadors,
   getMaxUpgradeActivations,
   getInfluenceColonyShipRefreshes,
@@ -29241,6 +29242,391 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(updatedLyra.population.material.cubesOnBoard).toBe(9);
       expect(updatedLyra.population.science.cubesOnBoard).toBe(10);
       expect(updatedLyra.population.money.cubesOnBoard).toBe(7);
+    });
+
+    it('293. computeReachableMoveDestinations enforces dynamic pinning, Cloaking Device, and Black Hole termination along multi-step paths', () => {
+      const game = createInitialGame(2, ['terran_federation', 'planta']);
+      game.phase = 'ACTION_PHASE';
+      game.activePlayerIndex = 0;
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+
+      // Configure Cruiser with Drive Speed 3 (Nuclear Drive x1 + Fusion Drive)
+      p1.blueprints.cruiser.slots = [
+        SHIP_PARTS.fusion_source,
+        SHIP_PARTS.fusion_source,
+        SHIP_PARTS.fusion_drive,
+        SHIP_PARTS.nuclear_drive,
+        SHIP_PARTS.hull,
+        SHIP_PARTS.ion_cannon,
+      ];
+      expect(calculateBlueprintStats(p1.blueprints.cruiser).totalDriveSpeed).toBe(3);
+
+      const makeSec = (id: string, num: number, q: number, r: number, ships: any[] = []): any => ({
+        id,
+        sectorNumber: num,
+        name: `Sec${num}`,
+        ring: 1,
+        coord: { q, r },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships,
+      });
+
+      const s0 = makeSec('ms_s0', 201, 0, 0, [
+        { id: 'c_main', ownerId: p1.id, type: 'cruiser', damage: 0 },
+        { id: 'c_escort', ownerId: p1.id, type: 'cruiser', damage: 0 },
+      ]);
+      const s1 = makeSec('ms_s1', 202, 1, 0, [{ id: 'enemy_1', ownerId: p2.id, type: 'interceptor', damage: 0 }]);
+      const s2 = makeSec('ms_s2', 203, 2, 0);
+      const s3 = makeSec('ms_s3', 204, 3, 0);
+      game.sectors = [s0, s1, s2, s3];
+
+      // 1. S1 has 1 enemy -> c_main alone can enter S1 (1 step, gets pinned) but CANNOT pass through to S2 or S3
+      const blockedReach = computeReachableMoveDestinations(game, p1.id, 'c_main', [], 0);
+      expect(blockedReach.map((o) => o.sectorId)).toEqual(['ms_s1']);
+
+      // 2. Dynamic unpinning: Activation 0 moves c_escort into S1; now Activation 1 sees S1 unpinned for c_main!
+      const plannedEscort = [
+        { shipId: 'c_escort', fromSectorId: 'ms_s0', toSectorId: 'ms_s1', activationIndex: 0 },
+      ];
+      const unpinnedReach = computeReachableMoveDestinations(game, p1.id, 'c_main', plannedEscort, 1);
+      const optS3 = unpinnedReach.find((o) => o.sectorId === 'ms_s3');
+      expect(optS3).toBeDefined();
+      expect(optS3!.totalSteps).toBe(3);
+      expect(optS3!.steps.map((st) => st.toSectorId)).toEqual(['ms_s1', 'ms_s2', 'ms_s3']);
+
+      // Engine executes the planned escort + multi-step S3 path cleanly
+      const execRes = executeAction(game, {
+        type: 'MOVE',
+        playerId: p1.id,
+        moves: [
+          ...plannedEscort,
+          ...optS3!.steps.map((st) => ({
+            shipId: 'c_main',
+            fromSectorId: st.fromSectorId,
+            toSectorId: st.toSectorId,
+            activationIndex: 1,
+          })),
+        ],
+      });
+      expect(execRes.success).toBe(true);
+      expect(execRes.newState.sectors.find((s) => s.id === 'ms_s3')?.ships.some((sh) => sh.id === 'c_main')).toBe(true);
+
+      // 3. Cloaking Device allows c_main alone to pass 1 enemy in S1, until S1 gets a 2nd enemy
+      p1.techTrack.researched.push({
+        id: 'cloaking_device',
+        name: 'Cloaking Device',
+        category: 'Rare',
+        cost: 7,
+        minCost: 6,
+      } as any);
+      const cloakReach = computeReachableMoveDestinations(game, p1.id, 'c_main', [], 0);
+      expect(cloakReach.some((o) => o.sectorId === 'ms_s3')).toBe(true);
+
+      s1.ships.push({ id: 'enemy_2', ownerId: p2.id, type: 'interceptor', damage: 0 });
+      const cloakPinnedReach = computeReachableMoveDestinations(game, p1.id, 'c_main', [], 0);
+      expect(cloakPinnedReach.map((o) => o.sectorId)).toEqual(['ms_s1']);
+
+      // 4. Black Hole at S1 terminates movement on entry (S2/S3 unreachable even without hostiles)
+      s1.ships = [];
+      s1.isBlackHole = true;
+      const bhReach = computeReachableMoveDestinations(game, p1.id, 'c_main', [], 0);
+      expect(bhReach.map((o) => o.sectorId)).toEqual(['ms_s1']);
+    });
+
+    it('294. supports direct multi-step selection with Jump Drive conservation and split moving (speed 3: move 2 then move 1)', async () => {
+      const game = createInitialGame(2, ['terran_federation', 'planta']);
+      game.phase = 'ACTION_PHASE';
+      game.activePlayerIndex = 0;
+      const p1 = game.players[0]!;
+
+      // Ship 1 (speed 3 cruiser) for split move test; Ship 2 (speed 2 + Jump Drive interceptor => 3 max steps) for Jump tests
+      p1.blueprints.cruiser.slots = [
+        SHIP_PARTS.fusion_source,
+        SHIP_PARTS.fusion_source,
+        SHIP_PARTS.fusion_drive,
+        SHIP_PARTS.nuclear_drive,
+        SHIP_PARTS.hull,
+        SHIP_PARTS.ion_cannon,
+      ];
+      p1.blueprints.interceptor.slots = [
+        SHIP_PARTS.fusion_source,
+        SHIP_PARTS.fusion_drive,
+        SHIP_PARTS.jump_drive,
+        SHIP_PARTS.ion_cannon,
+      ];
+      expect(calculateBlueprintStats(p1.blueprints.cruiser).totalDriveSpeed).toBe(3);
+      const intStats = calculateBlueprintStats(p1.blueprints.interceptor);
+      expect(intStats.totalDriveSpeed).toBe(2);
+      expect(intStats.hasJumpDrive).toBe(true);
+
+      // Wormhole chain: S0(0,0) == S1(1,0) == S2(2,0) == S3(3,0)
+      // Non-wormhole Jump hops:
+      //   S0(0,0) -jump-> S1_alt(0,1) ==wormhole== S2(1,0? Wait: check adjacency! (0,1) is adjacent to (1,0) and not (2,0); let's use (1,-1)?)
+      // Axial directions: q+1=(1,0), q+1,r-1=(1,-1), r+1=(0,1). From (1,0): neighbors are (0,0), (2,0), (2,-1), (1,-1), (0,1), (1,1).
+      // Let's use S0(0,0), S1(1,0), S2(2,0), S3(3,0);
+      //   S1_alt at (1,-1) is adjacent to S0(0,0) (dir 5 -> no wormhole) AND adjacent to S2(2,0) (from (1,-1) to (2,0) is dir 0? Wait: dq=1, dr=1 is NOT adjacent in axial!).
+      // In flat/pointy axial: neighbor offsets are (+1,0), (0,+1), (-1,+1), (-1,0), (0,-1), (+1,-1).
+      // From S0(0,0) to S1_alt(1,-1): diff=(+1,-1) valid neighbor!
+      // From S1_alt(1,-1) to S1(1,0): diff=(0,+1) valid neighbor!
+      // So S0(0,0) -jump-> S1_alt(1,-1) ==wormhole==> S1(1,0) ==wormhole==> S2(2,0) gives same step count? Let's test S0 == S1 == S2 vs S0 -jump-> S1_alt:
+      // Actually put S1_alt(0,1) adjacent to S0(0,0) and S1(1,0) via wormhole only to S1; OR better:
+      // Make S1_alt(1,-1) adjacent to S0(0,0) (no wormhole), and make S2(1,0) and S3(2,0)!
+      // Check edges:
+      //   S0(0,0): edge 0 -> (1,0) [S1]; edge 5 -> (1,-1) [S1_alt]
+      //   S1(1,0): edge 3 -> (0,0) [S0]; edge 0 -> (2,0) [S2]; edge 4 -> (1,-1) [S1_alt]
+      //   S2(2,0): edge 3 -> (1,0) [S1]; edge 0 -> (3,0) [S3]; edge 1 -> (2,1) [S4 no wormhole];
+      //   S4(2,1): wormholes all false; edge 1 -> (2,2) [S5 no wormhole].
+      const s0: any = {
+        id: 'jd_s0',
+        sectorNumber: 210,
+        name: 'S0',
+        ring: 1,
+        coord: { q: 0, r: 0 },
+        rotation: 0,
+        wormholes: [true, false, false, false, false, false], // edge 0 -> (1,0) S1
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [
+          { id: 'cruiser_spd3', ownerId: p1.id, type: 'cruiser', damage: 0 },
+          { id: 'int_jump', ownerId: p1.id, type: 'interceptor', damage: 0 },
+        ],
+      };
+      const s1: any = {
+        id: 'jd_s1',
+        sectorNumber: 211,
+        name: 'S1',
+        ring: 1,
+        coord: { q: 1, r: 0 },
+        rotation: 0,
+        wormholes: [true, false, false, true, true, false], // edge 3 -> S0, edge 0 -> S2, edge 4 -> S1_alt
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      const s1Alt: any = {
+        id: 'jd_s1alt',
+        sectorNumber: 212,
+        name: 'S1Alt',
+        ring: 1,
+        coord: { q: 1, r: -1 },
+        rotation: 0,
+        wormholes: [false, true, false, false, false, false], // edge 1 -> (1,0) S1; NO wormhole to S0 (edge 2)
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      const s2: any = {
+        id: 'jd_s2',
+        sectorNumber: 213,
+        name: 'S2',
+        ring: 2,
+        coord: { q: 2, r: 0 },
+        rotation: 0,
+        wormholes: [true, false, false, true, false, false], // edge 3 -> S1, edge 0 -> S3; NO edge 1 to S4
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      const s3: any = {
+        id: 'jd_s3',
+        sectorNumber: 214,
+        name: 'S3',
+        ring: 3,
+        coord: { q: 3, r: 0 },
+        rotation: 0,
+        wormholes: [false, false, false, true, false, false], // edge 3 -> S2
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      const s4: any = {
+        id: 'jd_s4',
+        sectorNumber: 215,
+        name: 'S4',
+        ring: 2,
+        coord: { q: 2, r: 1 },
+        rotation: 0,
+        wormholes: [false, false, false, false, false, false], // Adjacent to S2 (edge 1 of S2), no wormhole!
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      const s5: any = {
+        id: 'jd_s5',
+        sectorNumber: 216,
+        name: 'S5',
+        ring: 3,
+        coord: { q: 2, r: 2 },
+        rotation: 0,
+        wormholes: [false, false, false, false, false, false], // Adjacent to S4, no wormhole! (would need 2nd jump)
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      game.sectors = [s0, s1, s1Alt, s2, s3, s4, s5];
+
+      // A. Split move with Speed 3 cruiser: move 2 (to S2), then move 1 (to S3)
+      const fullSpd3Reach = computeReachableMoveDestinations(game, p1.id, 'cruiser_spd3', [], 0);
+      expect(fullSpd3Reach.map((o) => o.sectorId).sort()).toEqual(['jd_s1', 'jd_s1alt', 'jd_s2', 'jd_s3']);
+      // Without Jump Drive, jd_s1alt takes 2 steps via S1 wormhole (cannot jump edge from S0)
+      expect(fullSpd3Reach.find((o) => o.sectorId === 'jd_s1alt')?.totalSteps).toBe(2);
+      const step2Opt = fullSpd3Reach.find((o) => o.sectorId === 'jd_s2')!;
+      expect(step2Opt.totalSteps).toBe(2);
+      expect(step2Opt.steps.map((st) => st.toSectorId)).toEqual(['jd_s1', 'jd_s2']);
+
+      // After committing those 2 steps into plannedMoves of activation 0, remaining MP is 1:
+      const splitFirstTwo = step2Opt.steps.map((st) => ({
+        shipId: 'cruiser_spd3',
+        fromSectorId: st.fromSectorId,
+        toSectorId: st.toSectorId,
+        activationIndex: 0,
+      }));
+      const splitRem1 = computeReachableMoveDestinations(game, p1.id, 'cruiser_spd3', splitFirstTwo, 0);
+      expect(splitRem1.map((o) => o.sectorId).sort()).toEqual(['jd_s1', 'jd_s3']);
+      const step3FromS2 = splitRem1.find((o) => o.sectorId === 'jd_s3')!;
+      expect(step3FromS2.totalSteps).toBe(1);
+
+      const splitExecRes = executeAction(game, {
+        type: 'MOVE',
+        playerId: p1.id,
+        moves: [
+          ...splitFirstTwo,
+          ...step3FromS2.steps.map((st) => ({
+            shipId: 'cruiser_spd3',
+            fromSectorId: st.fromSectorId,
+            toSectorId: st.toSectorId,
+            activationIndex: 0,
+          })),
+        ],
+      });
+      expect(splitExecRes.success).toBe(true);
+      expect(splitExecRes.newState.sectors.find((s) => s.id === 'jd_s3')?.ships.some((sh) => sh.id === 'cruiser_spd3')).toBe(true);
+
+      // B. Jump Drive multi-step & conservation + split moving:
+      const jumpReach = computeReachableMoveDestinations(game, p1.id, 'int_jump', [], 0);
+      // S2 via wormholes (2 steps, NO jump) must beat any jump path of 2+ steps!
+      const jS2 = jumpReach.find((o) => o.sectorId === 'jd_s2')!;
+      expect(jS2.totalSteps).toBe(2);
+      expect(jS2.usesJumpDrive).toBe(false);
+      // S1Alt (1 step jump), S3 (3 steps wormhole), S4 (2 wormholes + 1 jump) are reachable; S5 (needs 2nd jump) is NOT!
+      expect(jumpReach.find((o) => o.sectorId === 'jd_s1alt')?.usesJumpDrive).toBe(true);
+      const jS3 = jumpReach.find((o) => o.sectorId === 'jd_s3')!;
+      expect(jS3.totalSteps).toBe(3);
+      expect(jS3.usesJumpDrive).toBe(false);
+      const jS4 = jumpReach.find((o) => o.sectorId === 'jd_s4')!;
+      expect(jS4.totalSteps).toBe(3);
+      expect(jS4.usesJumpDrive).toBe(true);
+      expect(jumpReach.find((o) => o.sectorId === 'jd_s5')).toBeUndefined();
+
+      // Split move with Jump Drive (2 wormhole steps then 1 Jump step to S4):
+      const jumpSplitWormholeTwo = [
+        { shipId: 'int_jump', fromSectorId: 'jd_s0', toSectorId: 'jd_s1', activationIndex: 0 },
+        { shipId: 'int_jump', fromSectorId: 'jd_s1', toSectorId: 'jd_s2', activationIndex: 0 },
+      ];
+      const remAfterWormholes = computeReachableMoveDestinations(game, p1.id, 'int_jump', jumpSplitWormholeTwo, 0);
+      // S4 (adjacent no-wormhole) is STILL reachable via remaining 1 MP + unused Jump Drive!
+      const remToS4 = remAfterWormholes.find((o) => o.sectorId === 'jd_s4')!;
+      expect(remToS4).toBeDefined();
+      expect(remToS4.usesJumpDrive).toBe(true);
+      const jumpSplitExec = executeAction(game, {
+        type: 'MOVE',
+        playerId: p1.id,
+        moves: [
+          ...jumpSplitWormholeTwo,
+          { shipId: 'int_jump', fromSectorId: 'jd_s2', toSectorId: 'jd_s4', activationIndex: 0 },
+        ],
+      });
+      expect(jumpSplitExec.success).toBe(true);
+      expect(jumpSplitExec.newState.sectors.find((s) => s.id === 'jd_s4')?.ships.some((sh) => sh.id === 'int_jump')).toBe(true);
+
+      // Split move where Jump Drive was ALREADY spent (S0 -> S1_alt [Jump] -> S1 [Wormhole]):
+      // Remaining 1 MP can only traverse wormholes (S2 / S0), NOT non-wormhole adjacent sectors!
+      const jumpSpentTwo = [
+        { shipId: 'int_jump', fromSectorId: 'jd_s0', toSectorId: 'jd_s1alt', activationIndex: 0 },
+        { shipId: 'int_jump', fromSectorId: 'jd_s1alt', toSectorId: 'jd_s1', activationIndex: 0 },
+      ];
+      // Add an unconnected neighbor S6 adjacent to S1 (no wormhole) to confirm second Jump is blocked
+      const s6: any = {
+        id: 'jd_s6',
+        sectorNumber: 217,
+        name: 'S6',
+        ring: 1,
+        coord: { q: 1, r: 1 },
+        rotation: 0,
+        wormholes: [false, false, false, false, false, false],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      game.sectors.push(s6);
+      const remAfterJumpSpent = computeReachableMoveDestinations(game, p1.id, 'int_jump', jumpSpentTwo, 0);
+      expect(remAfterJumpSpent.some((o) => o.sectorId === 'jd_s2')).toBe(true);
+      expect(remAfterJumpSpent.some((o) => o.sectorId === 'jd_s6')).toBe(false);
+
+      // C. MoveModal quick bar only renders 1-step destinations (e.g. Sector 211 / 212),
+      // hiding multi-step destinations (Sector 214 / 215) which are selected directly on the map.
+      const React = (await import('react')).default;
+      const { renderToString } = await import('react-dom/server');
+      const { MoveModal } = await import('../../components/actions/MoveModal');
+      const modalHtml = renderToString(
+        React.createElement(MoveModal, {
+          player: p1,
+          sectors: game.sectors,
+          playerShips: [{ ship: s0.ships[1]!, initialSector: s0 }],
+          simulatedShipSector: new Map([['int_jump', s0]]),
+          connectedDestinations: [s1, s1Alt, s3, s4],
+          reachableDestinations: jumpReach,
+          plannedMoves: [],
+          activeActivationIndex: 0,
+          currentShipDriveSpeed: 2,
+          movePointsUsedInCurrentActivation: 0,
+          isShipPinned: () => false,
+          onAddMove: () => {},
+          onRemoveMove: () => {},
+          onClearMoves: () => {},
+          selectedShipId: 'int_jump',
+          onSelectShipId: () => {},
+          onFinishActivation: () => {},
+          onMove: () => {},
+          onClose: () => {},
+        })
+      );
+      expect(modalHtml).toContain('Sector 211');
+      expect(modalHtml).toContain('Sector 212');
+      expect(modalHtml).toContain('Jump ⚡');
+      expect(modalHtml).not.toContain('Sector 214');
+      expect(modalHtml).not.toContain('Sector 215');
     });
   });
 });

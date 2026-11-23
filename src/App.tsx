@@ -1,12 +1,14 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { GameState, CombatDamageAssignment } from './engine/types/state';
-import { SectorTile, HexCoord, ShipType, SectorShip, HexEdge } from './engine/types/galaxy';
+import { SectorTile, HexCoord, ShipType, SectorShip } from './engine/types/galaxy';
 import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
 import {
   executeAction,
   getMaxMoveActivations,
   computePinningState,
+  computeReachableMoveDestinations,
+  ReachableMoveOption,
   playerHasWormholeGenerator,
   isPlayerInvaded,
   getPlayerHumanName,
@@ -16,9 +18,8 @@ import {
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
-import { getRingFromCoord, areSectorsConnected, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual, getEdgeBetween } from './engine/rules/hexMath';
+import { getRingFromCoord, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
 import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './engine/rules/combatEngine';
-import { getNebulaSubsectorForOuterEdge } from './engine/rules/galacticEvents';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X, Sparkles, Coins, Rocket, CheckCircle2, Check } from 'lucide-react';
 
@@ -2105,7 +2106,6 @@ const AppContent: React.FC = () => {
   };
 
   const maxMoves = getMaxMoveActivations(activePlayer);
-  const hasWormholeGen = activePlayer ? playerHasWormholeGenerator(activePlayer) : false;
 
   const currentMoveShip = playerShips.find((p) => p.ship.id === selectedMoveShipId)?.ship;
   const currentSimSector = simulatedShipSector.get(selectedMoveShipId);
@@ -2124,18 +2124,6 @@ const AppContent: React.FC = () => {
   );
   const movePointsUsedInCurrentActivation = currentActivationMoves.length;
 
-  const jumpUsedInCurrentActivation = useMemo(() => {
-    if (!currentShipHasJumpDrive) return false;
-    for (const m of currentActivationMoves) {
-      const fromSec = state.sectors.find((s) => s.id === m.fromSectorId);
-      const toSec = state.sectors.find((s) => s.id === m.toSectorId);
-      if (fromSec && toSec && !areSectorsConnected(fromSec, toSec, hasWormholeGen, state.warpedUniverse?.conduits)) {
-        return true;
-      }
-    }
-    return false;
-  }, [currentShipHasJumpDrive, currentActivationMoves, state.sectors, hasWormholeGen, state.warpedUniverse?.conduits]);
-
   const currentSimSubsector = useMemo(() => {
     if (!currentMoveShip || !currentSimSector || !currentSimSector.isNebula) return undefined;
     const movesForShip = plannedMoves.filter((m) => m.shipId === currentMoveShip.id);
@@ -2147,57 +2135,42 @@ const AppContent: React.FC = () => {
     return (currentMoveShip.subsector ?? 1) as 1 | 2 | 3;
   }, [currentMoveShip, currentSimSector, plannedMoves]);
 
-  // Destinations connected to the ship's current simulated sector via wormholes or Jump Drive
-  const connectedDestinations = useMemo(() => {
+  // All reachable single- and multi-step move options for the active ship in the current activation
+  const reachableDestinations = useMemo<ReachableMoveOption[]>(() => {
     if (!currentMoveShip || !currentSimSector) return [];
     if (activeActivationIndex >= maxMoves) return [];
-    if (currentShipMaxSteps <= 0) return [];
-    if (pinningState.isShipPinned(currentMoveShip.id)) return [];
+    return computeReachableMoveDestinations(
+      state,
+      activePlayer.id,
+      currentMoveShip.id,
+      plannedMoves,
+      activeActivationIndex
+    );
+  }, [state, activePlayer.id, currentMoveShip, currentSimSector, activeActivationIndex, maxMoves, plannedMoves]);
 
-    // If this activation already started with another ship:
-    if (currentActivationMoves.length > 0 && currentActivationMoves[0].shipId !== currentMoveShip.id) {
-      return [];
-    }
-
-    // If current activation has already used all allowed steps:
-    if (currentActivationMoves.length >= currentShipMaxSteps) {
-      return [];
-    }
-
-    return state.sectors.filter((s) => {
-      if (s.id === currentSimSector.id) return false;
-      if (currentSimSector.isNebula && currentSimSubsector) {
-        const exitEdge = getEdgeBetween(currentSimSector.coord, s.coord);
-        if (exitEdge !== null) {
-          const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge, currentSimSector.rotation || 0);
-          if (allowedSub !== currentSimSubsector) {
-            return false;
-          }
-        }
+  const reachableExternalBySectorId = useMemo(() => {
+    const map = new Map<string, ReachableMoveOption>();
+    if (!currentSimSector) return map;
+    for (const opt of reachableDestinations) {
+      if (opt.sectorId === currentSimSector.id) continue;
+      const existing = map.get(opt.sectorId);
+      if (
+        !existing ||
+        opt.totalSteps < existing.totalSteps ||
+        (opt.totalSteps === existing.totalSteps && !opt.usesJumpDrive && existing.usesJumpDrive)
+      ) {
+        map.set(opt.sectorId, opt);
       }
-      const isConnected = areSectorsConnected(currentSimSector, s, hasWormholeGen, state.warpedUniverse?.conduits);
-      if (isConnected) return true;
-      if (currentShipHasJumpDrive && !jumpUsedInCurrentActivation) {
-        return getEdgeBetween(currentSimSector.coord, s.coord) !== null;
-      }
-      return false;
-    });
-  }, [
-    currentMoveShip,
-    currentSimSector,
-    currentSimSubsector,
-    activeActivationIndex,
-    maxMoves,
-    currentShipMaxSteps,
-    currentShipHasJumpDrive,
-    jumpUsedInCurrentActivation,
-    currentActivationMoves,
-    plannedMoves,
-    pinningState,
-    state.sectors,
-    hasWormholeGen,
-    state.warpedUniverse?.conduits,
-  ]);
+    }
+    return map;
+  }, [reachableDestinations, currentSimSector]);
+
+  // Destinations reachable from the ship's current simulated sector via 1 or more steps
+  const connectedDestinations = useMemo(() => {
+    return Array.from(reachableExternalBySectorId.keys())
+      .map((id) => state.sectors.find((s) => s.id === id))
+      .filter((s): s is SectorTile => Boolean(s));
+  }, [reachableExternalBySectorId, state.sectors]);
 
   const handleAddMoveDestination = (destSectorId: string, targetSubsector?: 1 | 2 | 3) => {
     if (!currentMoveShip || !currentSimSector) return;
@@ -2207,43 +2180,53 @@ const AppContent: React.FC = () => {
     if (currentActivationMoves.length > 0 && currentActivationMoves[0].shipId !== currentMoveShip.id) return;
     if (currentActivationMoves.length >= currentShipMaxSteps) return;
 
-    const destSec = state.sectors.find((s) => s.id === destSectorId);
-    if (!destSec) return;
+    const chosenOption =
+      targetSubsector !== undefined
+        ? reachableDestinations.find(
+            (opt) => opt.sectorId === destSectorId && opt.targetSubsector === targetSubsector
+          )
+        : reachableExternalBySectorId.get(destSectorId);
 
-    let finalTargetSubsector = targetSubsector;
-    if (destSec.isNebula && currentSimSector.id !== destSec.id) {
-      const edgeFromTo = getEdgeBetween(currentSimSector.coord, destSec.coord);
-      if (edgeFromTo !== null) {
-        const entryEdge = (edgeFromTo + 3) % 6;
-        finalTargetSubsector = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, destSec.rotation || 0);
-      }
-    }
+    if (!chosenOption || chosenOption.steps.length === 0) return;
 
-    const stepNumber = currentActivationMoves.length + 1;
-    const newMove: PlannedMove = {
-      id: `move_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-      shipId: currentMoveShip.id,
-      shipType: currentMoveShip.type,
-      fromSectorId: currentSimSector.id,
-      fromSectorNumber: currentSimSector.sectorNumber,
-      fromSubsector: currentSimSector.isNebula ? currentSimSubsector : undefined,
-      toSectorId: destSec.id,
-      toSectorNumber: destSec.sectorNumber,
-      activationIndex: activeActivationIndex,
-      stepInActivation: stepNumber,
-      driveSpeed: currentShipMaxSteps,
-      targetSubsector: finalTargetSubsector,
-    };
+    const baseStepNumber = currentActivationMoves.length;
+    const timestamp = Date.now();
+    const newMoves: PlannedMove[] = chosenOption.steps.map((step, idx) => {
+      const fromSec = state.sectors.find((s) => s.id === step.fromSectorId);
+      const toSec = state.sectors.find((s) => s.id === step.toSectorId);
+      const prevSub =
+        idx === 0
+          ? (currentSimSector.isNebula ? currentSimSubsector : undefined)
+          : (fromSec?.isNebula ? chosenOption.steps[idx - 1]!.targetSubsector : undefined);
 
-    setPlannedMoves((prev) => [...prev, newMove]);
+      return {
+        id: `move_${timestamp}_${idx}_${Math.random().toString(36).substr(2, 4)}`,
+        shipId: currentMoveShip.id,
+        shipType: currentMoveShip.type,
+        fromSectorId: step.fromSectorId,
+        fromSectorNumber: fromSec?.sectorNumber ?? 0,
+        fromSubsector: fromSec?.isNebula ? prevSub : undefined,
+        toSectorId: step.toSectorId,
+        toSectorNumber: toSec?.sectorNumber ?? 0,
+        activationIndex: activeActivationIndex,
+        stepInActivation: baseStepNumber + idx + 1,
+        driveSpeed: currentShipMaxSteps,
+        targetSubsector: step.targetSubsector,
+      };
+    });
 
-    // Pinning or speed limit check
-    const nextPlannedMoves = [...plannedMoves, newMove];
+    const nextPlannedMoves = [...plannedMoves, ...newMoves];
+    setPlannedMoves(nextPlannedMoves);
+
+    // Pinning, Black Hole, or speed limit check at final destination
     const nextPinningState = computePinningState(state, activePlayer.id, nextPlannedMoves);
     const isPinnedInDest = nextPinningState.isShipPinned(currentMoveShip.id);
-    const isBlackHoleTerminated = Boolean(destSec.isBlackHole && destSec.id !== currentSimSector.id);
+    const finalStep = newMoves[newMoves.length - 1]!;
+    const finalDestSec = state.sectors.find((s) => s.id === finalStep.toSectorId);
+    const isBlackHoleTerminated = Boolean(finalDestSec?.isBlackHole && finalDestSec.id !== finalStep.fromSectorId);
+    const totalStepsUsed = baseStepNumber + newMoves.length;
 
-    if (isPinnedInDest || isBlackHoleTerminated || stepNumber >= currentShipMaxSteps) {
+    if (isPinnedInDest || isBlackHoleTerminated || totalStepsUsed >= currentShipMaxSteps) {
       setActiveActivationIndex((prev) => prev + 1);
       // Auto-select next unpinned movable ship if available for next activation
       const nextMovable = playerShips.find((ps) => {
@@ -4115,6 +4098,7 @@ const AppContent: React.FC = () => {
           playerShips={playerShips}
           simulatedShipSector={simulatedShipSector}
           connectedDestinations={connectedDestinations}
+          reachableDestinations={reachableDestinations}
           plannedMoves={plannedMoves}
           activeActivationIndex={activeActivationIndex}
           currentShipDriveSpeed={currentShipDriveSpeed}
