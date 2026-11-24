@@ -39,9 +39,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   teal: '#0d9488', // The Exiles
   amber: '#d97706', // Rho Indi Syndicate
   cyan: '#06b6d4', // Atlantians
+  indigo: '#6366f1', // Mega War Inc.
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -70,6 +71,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   rho_indi_syndicate: 'amber',
   // Community Factions
   atlantians: 'cyan',
+  mega_war_inc: 'indigo',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -90,6 +92,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   the_exiles: ECLIPSE_COLOR_PALETTE.teal,
   rho_indi_syndicate: ECLIPSE_COLOR_PALETTE.amber,
   atlantians: ECLIPSE_COLOR_PALETTE.cyan,
+  mega_war_inc: ECLIPSE_COLOR_PALETTE.indigo,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -517,6 +520,28 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 4,
     reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
+  {
+    id: 'mega_war_inc',
+    name: 'Mega War Inc.',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.indigo,
+    startingSectorNumber: 221,
+    startingResources: { money: 2, science: 3, materials: 3 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: [],
+    traitDescription: 'Terran corporate militarists: unused Terran homeworld, 1 Upgrade (modular linked chassis across Interceptor/Cruiser/Dreadnought/Starbase), Build field-upgrade Interceptor→Cruiser / Cruiser→Dreadnought (3 Mats anywhere), Military (-1..6 VP) & 6-slot Nano (4 VP) tracks, no Monoliths, no immediate Ancient equips.',
+    tradeRatio: 2,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 1,
+    buildActivations: 2,
+    moveActivations: 3,
+    influenceActivations: 2,
+    reputationSlots: 5,
+    ambassadorSlots: 5,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -529,7 +554,7 @@ export const ALL_FACTIONS: FactionInfo[] = [
  * Base game factions (6 Human, 6 Alien) are always available.
  * Seekers factions (Wardens of Magellan, Enlightened of Lyra) require 'seekers'.
  * Outcasts factions (The Exiles, Rho Indi Syndicate) require 'outcasts'.
- * Community factions (Atlantians) require 'community_factions'.
+ * Community factions (Atlantians, Mega War Inc.) require 'community_factions'.
  */
 export function isFactionAvailable(factionId: string, expansions: string[] = []): boolean {
   if (factionId === 'wardens_of_magellan' || factionId === 'enlightened_of_lyra') {
@@ -538,7 +563,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -555,7 +580,7 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   if (faction.reputationSlotTypes && faction.reputationSlotTypes.length > 0) {
     return faction.reputationSlotTypes;
   }
-  if (faction.isHuman || faction.id?.startsWith('terran_')) {
+  if (faction.isHuman || faction.id?.startsWith('terran_') || faction.id === 'mega_war_inc') {
     return ['amb_only', 'both', 'both', 'both', 'both'];
   }
   if (faction.id === 'hydran_progress' || faction.id === 'planta') {
@@ -766,8 +791,10 @@ export function buildPlayerAndHomeSector(
     ALL_HOME_SECTORS[faction.id] ||
     HUMAN_HOME_SECTORS[faction.id] || {
       sectorNumber: 221,
+      name: faction.id === 'mega_war_inc' ? 'Mega War Annex (Terran Homeworld)' : faction.name,
       ring: 2,
       victoryPoints: 3,
+      hasArtifact: true,
       wormholes: [true, false, true, true, false, true],
       planets: [
         { id: `p_1`, resource: 'money', isAdvanced: false },
@@ -1082,6 +1109,42 @@ export function triggerPendingAtlantiansStartingLabsDiscovery(state: GameState):
   });
 }
 
+/**
+ * Assigns an unused Terran homeworld sector number (221..226) to Mega War Inc.
+ * ("pick any unused Terran homeworld system — Mega War Inc. confiscated this human system").
+ */
+export function assignUnusedTerranHomeworldForMegaWar(
+  players: PlayerState[],
+  sectors: SectorTile[],
+  megaWarPlayer: PlayerState,
+  megaWarHomeSector: SectorTile
+): void {
+  if (megaWarPlayer.faction.id !== 'mega_war_inc') return;
+  const terranSectorNumbers = [221, 222, 223, 224, 225, 226];
+  const usedNumbers = new Set<number>();
+  for (const s of sectors) {
+    if (s.id !== megaWarHomeSector.id && s.id.startsWith('home_sector_') && s.sectorNumber) {
+      usedNumbers.add(s.sectorNumber);
+    }
+  }
+  for (const p of players) {
+    if (p.id !== megaWarPlayer.id && (p.faction.id as string) !== 'drafting' && p.faction.startingSectorNumber) {
+      usedNumbers.add(p.faction.startingSectorNumber);
+    }
+  }
+  const chosen = terranSectorNumbers.find((n) => !usedNumbers.has(n)) ?? 221;
+  Object.assign(megaWarHomeSector, {
+    sectorNumber: chosen,
+    name: `Sector ${chosen} (Mega War Annex)`,
+  });
+  Object.assign(megaWarPlayer, {
+    faction: {
+      ...megaWarPlayer.faction,
+      startingSectorNumber: chosen,
+    },
+  });
+}
+
 export function createInitialGame(
   playerCount: number = 2,
   selectedFactions?: (string | FactionInfo)[],
@@ -1276,6 +1339,14 @@ export function createInitialGame(
 
       sectors.push(homeSector);
       players.push(player);
+    }
+    for (const p of players) {
+      if (p.faction.id === 'mega_war_inc') {
+        const homeSec = sectors.find((s) => s.id === `home_sector_${p.id}`);
+        if (homeSec) {
+          assignUnusedTerranHomeworldForMegaWar(players, sectors, p, homeSec);
+        }
+      }
     }
     turnOrder = players.map((p) => p.id);
   }

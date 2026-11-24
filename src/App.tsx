@@ -2305,7 +2305,7 @@ const AppContent: React.FC = () => {
 
   // Build flow
   const handleBuild = (
-    items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith' }[],
+    items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string }[],
     pulsarSectorId?: string
   ) => {
     if (!canActForPlayer(activePlayer.id)) {

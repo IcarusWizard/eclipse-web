@@ -1,5 +1,11 @@
 import React from 'react';
-import { ShipType, ShipPart } from '../../engine/types/blueprints';
+import { ShipPart } from '../../engine/types/blueprints';
+import { ShipType } from '../../engine/types/galaxy';
+import {
+  getMegaWarModularGroupInfo,
+  MEGA_WAR_EXTERNAL_GROUPS,
+  MegaWarModularGroupId,
+} from '../../engine/rules/shipValidation';
 import {
   ShipPartSlotGraphic,
   LightningPip,
@@ -214,6 +220,7 @@ export interface ShipBlueprintSlotsLayoutProps {
   preprintedShield?: number;
   preprintedHull?: number;
   externalParts?: ShipPart[];
+  externalModularGroup?: MegaWarModularGroupId | null;
   // Interactive options
   interactive?: boolean;
   selectedSlotIndex?: number | null;
@@ -237,6 +244,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
   preprintedShield,
   preprintedHull,
   externalParts = [],
+  externalModularGroup = null,
   interactive = false,
   selectedSlotIndex = null,
   onSelectSlot,
@@ -326,14 +334,20 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
         const isSelected = selectedSlotIndex === idx;
         const isModified = modifiedSlotIndices.includes(idx);
         const baseCategoryBg = getPartSlotCategoryClasses(part);
+        const modularInfo = factionId === 'mega_war_inc' ? getMegaWarModularGroupInfo(shipType, idx) : null;
 
         const stateClasses = isSelected
           ? 'border-2 border-cyan-400 bg-cyan-950/50 shadow-lg shadow-cyan-950 ring-2 ring-cyan-400/60'
           : isModified
           ? 'border-2 border-indigo-500 bg-indigo-950/40 shadow ring-1 ring-indigo-500/40'
+          : modularInfo
+          ? `${part ? 'bg-slate-900/60' : 'bg-slate-900/35'} ${modularInfo.slotAccentClass}`
           : `border ${baseCategoryBg}`;
 
         const cursorClasses = interactive && canModify ? 'cursor-pointer hover:border-slate-400' : '';
+        const modularTooltipSuffix = modularInfo
+          ? `\n[${modularInfo.code} Modular • Shared: ${modularInfo.shortLabel}${modularInfo.allowsDrives ? '' : ' • No Drives'}]`
+          : '';
 
         return (
           <div
@@ -344,9 +358,9 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
               }
             }}
             title={
-              part
+              (part
                 ? `${part.name}${part.computerBonus > 0 ? ` (+${part.computerBonus} COMP)` : ''}\n${getPartTooltip(part)}`
-                : 'Empty Component Slot'
+                : 'Empty Component Slot') + modularTooltipSuffix
             }
             className={`absolute rounded-lg flex flex-col items-center justify-center transition-all overflow-hidden aspect-square ${stateClasses} ${cursorClasses}`}
             style={{
@@ -402,6 +416,15 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
             ) : (
               <div className="flex items-center justify-center text-slate-600">
                 <Plus className="w-4 h-4 opacity-40" />
+              </div>
+            )}
+
+            {/* Mega War Inc. Color-Coded Module Sharing Tag (Bottom-Left) */}
+            {modularInfo && (
+              <div
+                className={`absolute bottom-0.5 left-0.5 px-1 py-0.2 rounded border text-[7px] font-mono font-black leading-none z-20 pointer-events-none ${modularInfo.badgeClass}`}
+              >
+                {modularInfo.code}
               </div>
             )}
           </div>
@@ -479,12 +502,21 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
         const top =
           coord.row * (cubeSize + gap) +
           (coord.offsetY / 100) * cubeSize;
+        const modExtMeta =
+          factionId === 'mega_war_inc' && externalModularGroup
+            ? MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === externalModularGroup) || null
+            : null;
+        const extCardStyle = modExtMeta
+          ? modExtMeta.extCardClass
+          : 'border-2 border-amber-500/80 bg-amber-950/40 text-amber-200 ring-1 ring-amber-500/30';
 
         return (
           <div
             key={`external_${shipType}_${extIdx}`}
-            title={`External Module: ${extPart.name}\n${getPartTooltip(extPart)}`}
-            className="absolute rounded-lg border-2 border-amber-500/80 bg-amber-950/40 text-amber-200 ring-1 ring-amber-500/30 shadow-md select-none flex flex-col items-center justify-center overflow-hidden aspect-square"
+            title={`External Module: ${extPart.name}${
+              modExtMeta ? ` (${modExtMeta.colorName}: Shared across ${modExtMeta.shortLabel})` : ''
+            }\n${getPartTooltip(extPart)}`}
+            className={`absolute rounded-lg ${extCardStyle} shadow-md select-none flex flex-col items-center justify-center overflow-hidden aspect-square`}
             style={{
               left,
               top,
@@ -505,6 +537,13 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
               <div className="absolute top-0.5 right-0.5 flex items-center gap-0.5 text-amber-400 bg-slate-950/80 px-1 py-0.2 rounded-full border border-amber-500/50 z-20">
                 <span className="text-[6.5px] font-mono font-bold leading-none uppercase">EXT</span>
               </div>
+              {modExtMeta && (
+                <div
+                  className={`absolute bottom-0.5 left-0.5 px-1 py-0.2 rounded border text-[6.5px] font-mono font-black leading-none z-20 pointer-events-none ${modExtMeta.badgeClass}`}
+                >
+                  {modExtMeta.colorName.toUpperCase()}
+                </div>
+              )}
 
               {/* Bottom-Right: Interactive Trash button to detach external module */}
               {interactive && canModify && onClearExternalPart && (

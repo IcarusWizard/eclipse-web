@@ -4,7 +4,11 @@
 
 import { PlayerState } from '../types/player';
 import { SectorTile, PlanetSlot } from '../types/galaxy';
-import { TECH_TRACK_DISCOUNT_TABLE } from './techData';
+import {
+  getTechDiscountForTrack,
+  getTechTrackMaxSlots,
+  getTechTrackVPForPlayer,
+} from './techData';
 
 /**
  * Determine which population track a returning cube should go back to (Bug 120).
@@ -471,17 +475,18 @@ export function getPlayerTechRows(player: PlayerState): PlayerTechRows {
     }
   }
 
-  const getRowStats = (techs: import('../types/tech').Technology[]) => {
+  const getRowStats = (track: 'military' | 'grid' | 'nano', techs: import('../types/tech').Technology[]) => {
     const count = techs.length;
-    const nextDiscount = TECH_TRACK_DISCOUNT_TABLE[Math.min(7, count)] ?? 0;
-    const victoryPoints = TECH_ROW_VP_TABLE[Math.min(7, count)] || (count >= 7 ? 5 : 0);
+    const maxSlots = getTechTrackMaxSlots(track, player.faction.id);
+    const nextDiscount = getTechDiscountForTrack(Math.min(maxSlots - 1, count), track, player.faction.id);
+    const victoryPoints = getTechTrackVPForPlayer(track, count, player.faction.id);
     return { techs, count, nextDiscount, victoryPoints };
   };
 
   return {
-    military: getRowStats(militaryTechs),
-    grid: getRowStats(gridTechs),
-    nano: getRowStats(nanoTechs),
+    military: getRowStats('military', militaryTechs),
+    grid: getRowStats('grid', gridTechs),
+    nano: getRowStats('nano', nanoTechs),
     rare: rareTechs,
   };
 }

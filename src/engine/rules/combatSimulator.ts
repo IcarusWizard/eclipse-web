@@ -127,7 +127,7 @@ export function validateSimulatorSide(
       const stats = calculateBlueprintStats(bp, exps);
       if (!stats.isValid) {
         shipErrors[shipType] = stats.errors;
-        if (!checkOnlyParticipatingShips || count > 0) {
+        if (!checkOnlyParticipatingShips || count > 0 || sideConfig.factionId === 'mega_war_inc') {
           for (const err of stats.errors) {
             errors.push(`${sideConfig.name || 'Fleet'} ${shipType.toUpperCase()}: ${err}`);
           }

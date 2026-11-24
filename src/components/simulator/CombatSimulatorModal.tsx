@@ -11,9 +11,20 @@ import {
 } from '../../engine/rules/combatSimulator';
 import { GameState } from '../../engine/types/state';
 import { ShipBlueprint, ShipPart } from '../../engine/types/blueprints';
+import { ShipType } from '../../engine/types/galaxy';
 import { SHIP_PARTS } from '../../engine/rules/partData';
-import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
+import {
+  calculateBlueprintStats,
+  applyModularSlotChange,
+  applyModularExternalChange,
+  inferModularExternalGroup,
+  getDefaultModularGroupForShip,
+  getMegaWarModularGroupInfo,
+  MEGA_WAR_EXTERNAL_GROUPS,
+  MegaWarModularGroupId,
+} from '../../engine/rules/shipValidation';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
+import { MegaWarModularStrip } from '../blueprints/MegaWarModularStrip';
 import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
 import { ShipTypeIcon } from '../common/ShipTypeIcon';
 import { useLanguage, AppLanguage } from '../../i18n/LanguageContext';
@@ -774,7 +785,7 @@ interface SideConfigCardProps {
   activeExpansions?: string[];
 }
 
-const SideConfigCard: React.FC<SideConfigCardProps> = ({
+export const SideConfigCard: React.FC<SideConfigCardProps> = ({
   role,
   sideConfig,
   sideValidation,
@@ -846,14 +857,33 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
     }));
   };
 
-  // Handle slot edit for ship blueprint
+  // Handle slot edit for ship blueprint (with Mega War Inc. linked modular sync)
   const handleSlotChange = (shipType: string, slotIdx: number, partId: string | null) => {
     onChangeSideConfig((prev) => {
       const bp = prev.blueprints[shipType];
       if (!bp) return prev;
+      const partObj = partId ? SHIP_PARTS[partId] || null : null;
+
+      if (prev.factionId === 'mega_war_inc') {
+        const clonedBps: Record<string, ShipBlueprint> = {};
+        for (const [k, v] of Object.entries(prev.blueprints)) {
+          if (v) {
+            clonedBps[k] = {
+              ...v,
+              slots: [...v.slots],
+              externalParts: v.externalParts ? [...v.externalParts] : [],
+            };
+          }
+        }
+        applyModularSlotChange(clonedBps, shipType as ShipType, slotIdx, partObj);
+        return {
+          ...prev,
+          blueprints: clonedBps,
+        };
+      }
 
       const newSlots = [...bp.slots];
-      newSlots[slotIdx] = partId ? SHIP_PARTS[partId] || null : null;
+      newSlots[slotIdx] = partObj;
 
       return {
         ...prev,
@@ -868,11 +898,38 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
     });
   };
 
-  // Handle Muon Source toggle (placed outside blueprint slots)
-  const handleToggleMuonSource = (shipType: string, install: boolean) => {
+  // Handle Muon Source toggle / modular group change (placed outside blueprint slots)
+  const handleToggleMuonSource = (
+    shipType: string,
+    install: boolean,
+    modularGroupId?: MegaWarModularGroupId
+  ) => {
     onChangeSideConfig((prev) => {
       const bp = prev.blueprints[shipType];
       if (!bp) return prev;
+
+      if (prev.factionId === 'mega_war_inc') {
+        const clonedBps: Record<string, ShipBlueprint> = {};
+        for (const [k, v] of Object.entries(prev.blueprints)) {
+          if (v) {
+            clonedBps[k] = {
+              ...v,
+              slots: [...v.slots],
+              externalParts: v.externalParts ? [...v.externalParts] : [],
+            };
+          }
+        }
+        applyModularExternalChange(
+          clonedBps,
+          shipType as ShipType,
+          install ? SHIP_PARTS.muon_source : null,
+          modularGroupId
+        );
+        return {
+          ...prev,
+          blueprints: clonedBps,
+        };
+      }
 
       let newExternal = bp.externalParts ? [...bp.externalParts] : [];
       if (install) {
@@ -894,6 +951,16 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
         },
       };
     });
+  };
+
+  const handleSelectModularMuonGroup = (groupId: MegaWarModularGroupId | null) => {
+    if (groupId === null) {
+      handleToggleMuonSource(activeShipTab, false);
+      return;
+    }
+    const grpMeta = MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === groupId);
+    const repShip = grpMeta?.ships[0] || (activeShipTab as ShipType);
+    handleToggleMuonSource(repShip, true, groupId);
   };
 
   const availableShipTypes = useMemo(() => {
@@ -1243,6 +1310,32 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
               </div>
             )}
 
+            {/* Mega War Inc.: Physical-Board Interactive Modular Strip inside Combat Simulator */}
+            {sideConfig.factionId === 'mega_war_inc' && (() => {
+              const simFaction = ALL_FACTIONS.find((f) => f.id === 'mega_war_inc');
+              if (!simFaction) return null;
+              return (
+                <MegaWarModularStrip
+                  blueprints={sideConfig.blueprints as any}
+                  faction={simFaction}
+                  activeExpansions={activeExpansions}
+                  interactive={true}
+                  activeShipType={activeBp.type}
+                  selectedSlotIndex={simSelectedSlotIndex}
+                  canModifyMore={true}
+                  hasMuonSourceAvailable={true}
+                  onSelectModule={(targetShip, targetIdx) => {
+                    onSelectShipTab(targetShip);
+                    setSimSelectedSlotIndex(targetIdx);
+                  }}
+                  onClearModule={(targetShip, targetIdx) => handleSlotChange(targetShip, targetIdx, null)}
+                  onSelectExternalGroup={(grpId) => handleSelectModularMuonGroup(grpId)}
+                  onDetachExternal={() => handleSelectModularMuonGroup(null)}
+                  onSelectShipType={(st) => onSelectShipTab(st)}
+                />
+              );
+            })()}
+
             {/* Blueprint Illegal Error Alert Banner */}
             {activeStats && !activeStats.isValid && (
               <div className="p-2.5 bg-rose-950/50 border border-rose-800 rounded-lg text-rose-200 text-xs flex items-start gap-2 shadow-sm">
@@ -1270,6 +1363,11 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 preprintedShield={activeBp.preprintedShield}
                 preprintedHull={activeBp.preprintedHull}
                 externalParts={activeBp.externalParts || []}
+                externalModularGroup={
+                  sideConfig.factionId === 'mega_war_inc'
+                    ? inferModularExternalGroup(sideConfig.blueprints, 'muon_source')
+                    : null
+                }
                 interactive={true}
                 selectedSlotIndex={simSelectedSlotIndex}
                 onSelectSlot={(idx) => setSimSelectedSlotIndex(idx)}
@@ -1285,7 +1383,16 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 <input
                   type="checkbox"
                   checked={Boolean(activeBp.externalParts?.some((p) => p.id === 'muon_source'))}
-                  onChange={(e) => handleToggleMuonSource(activeBp.type, e.target.checked)}
+                  onChange={(e) =>
+                    handleToggleMuonSource(
+                      activeBp.type,
+                      e.target.checked,
+                      sideConfig.factionId === 'mega_war_inc'
+                        ? inferModularExternalGroup(sideConfig.blueprints, 'muon_source') ||
+                            getDefaultModularGroupForShip(activeBp.type)
+                        : undefined
+                    )
+                  }
                   className="rounded border-slate-700 bg-slate-950 text-amber-500 focus:ring-amber-500 w-4 h-4 cursor-pointer accent-amber-500"
                 />
                 <span className="text-xs font-bold text-amber-300 flex items-center gap-1.5">
@@ -1313,15 +1420,26 @@ const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 className="flex-1 min-w-[180px] bg-slate-950 border border-slate-700 rounded-lg px-2.5 py-1 text-xs text-white focus:outline-none focus:border-cyan-400 font-medium"
               >
                 <option value="">{l('(Empty Slot)', '(空槽位)')}</option>
-                {partGroups.map((g) => (
-                  <optgroup key={g.category} label={g.category}>
-                    {g.parts.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.name}
-                      </option>
-                    ))}
-                  </optgroup>
-                ))}
+                {partGroups.map((g) => {
+                  const slotDisallowsDrives =
+                    Boolean(activeBp.noDrives || activeBp.type === 'starbase' || activeBp.type === 'orbital') ||
+                    (sideConfig.factionId === 'mega_war_inc' &&
+                      getMegaWarModularGroupInfo(activeBp.type, simSelectedSlotIndex)?.allowsDrives === false);
+                  return (
+                    <optgroup key={g.category} label={g.category}>
+                      {g.parts.map((p) => {
+                        const isDrive =
+                          p.category === 'drive' || Boolean(p.driveSpeed) || p.id === 'jump_drive' || Boolean(p.isJumpDrive);
+                        const disabled = slotDisallowsDrives && isDrive;
+                        return (
+                          <option key={p.id} value={p.id} disabled={disabled}>
+                            {p.name}{disabled ? ` (${l('No Drives on Starbase', '星际基地禁引擎')})` : ''}
+                          </option>
+                        );
+                      })}
+                    </optgroup>
+                  );
+                })}
               </select>
               {activeBp.slots[simSelectedSlotIndex] && (
                 <button

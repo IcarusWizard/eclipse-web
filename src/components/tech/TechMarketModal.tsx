@@ -7,6 +7,7 @@ import {
   NANO_TECHS,
   ALL_RARE_TECHS,
   calculateTechCost,
+  getTechTrackMaxSlots,
 } from '../../engine/rules/techData';
 import { getMinorSpeciesTechDiscount } from '../../engine/rules/minorSpecies';
 import { SHIP_PARTS } from '../../engine/rules/partData';
@@ -196,7 +197,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
       else if (item.targetTrack === 'grid') countBefore = gCount++;
       else countBefore = nCount++;
 
-      const baseCost = calculateTechCost(tech, countBefore);
+      const baseCost = calculateTechCost(tech, countBefore, item.targetTrack, commander.faction.id);
       const msDiscount = getMinorSpeciesTechDiscount(commander);
       const cost = Math.max(tech.minCost, baseCost - msDiscount);
       const discount = tech.baseCost - cost;
@@ -242,11 +243,24 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
       chosenTrack = getRareBestTrack(tech);
     }
     const trackCount = chosenTrack ? getTrackCount(chosenTrack) : 0;
-    const isTrackFull = trackCount >= 7;
+    const maxSlots = chosenTrack ? getTechTrackMaxSlots(chosenTrack, commander.faction.id) : 7;
+    const isTrackFull = trackCount >= maxSlots;
+    const isRestrictedForFaction = commander.faction.id === 'mega_war_inc' && tech.id === 'monolith';
     const msDiscount = getMinorSpeciesTechDiscount(commander);
-    const discountedCost = Math.max(tech.minCost, calculateTechCost(tech, trackCount) - msDiscount);
+    const discountedCost = Math.max(
+      tech.minCost,
+      calculateTechCost(tech, trackCount, chosenTrack, commander.faction.id) - msDiscount
+    );
     const canAfford = commander.resources.science >= discountedCost;
-    const canResearch = isCommanderTurn && !hasPassed && hasActionDiscs && stock > 0 && !isOwned && canAfford && !isTrackFull;
+    const canResearch =
+      isCommanderTurn &&
+      !hasPassed &&
+      hasActionDiscs &&
+      stock > 0 &&
+      !isOwned &&
+      !isRestrictedForFaction &&
+      canAfford &&
+      !isTrackFull;
 
     const categoryTheme =
       tech.category === 'military'
@@ -470,8 +484,12 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               <div className="grid grid-cols-3 gap-1">
                 {(['military', 'grid', 'nano'] as const).map((tr) => {
                   const trCount = getTrackCount(tr);
-                  const isTrFull = trCount >= 7;
-                  const costOnTr = Math.max(tech.minCost, calculateTechCost(tech, trCount) - msDiscount);
+                  const trMax = getTechTrackMaxSlots(tr, commander.faction.id);
+                  const isTrFull = trCount >= trMax;
+                  const costOnTr = Math.max(
+                    tech.minCost,
+                    calculateTechCost(tech, trCount, tr, commander.faction.id) - msDiscount
+                  );
                   const isSelectedTr = chosenTrack === tr;
                   return (
                     <button
@@ -493,7 +511,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                           : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
                       }`}
                     >
-                      <div className="uppercase text-[9px]">{language === 'zh' ? translateTechCategory(tr, language) : tr[0]} {isTrFull ? l('(Full)', '(满)') : `(${trCount}/7)`}</div>
+                      <div className="uppercase text-[9px]">{language === 'zh' ? translateTechCategory(tr, language) : tr[0]} {isTrFull ? l('(Full)', '(满)') : `(${trCount}/${trMax})`}</div>
                       <div className="text-[10px] flex items-center justify-center gap-0.5">
                         <span>{costOnTr}</span>
                         <FlaskConical className="w-2.5 h-2.5 text-pink-400 inline" />
@@ -557,6 +575,10 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 <Check className="w-3.5 h-3.5 text-emerald-400" />
                 {l('Researched', '已研发')}
               </span>
+            ) : isRestrictedForFaction ? (
+              <span className="w-full py-1 rounded text-[10px] text-rose-400 font-bold flex items-center justify-center bg-rose-950/40 border border-rose-900/70">
+                {l('Forbidden (Mega War)', '巨战公司禁用')}
+              </span>
             ) : stock === 0 ? (
               <span className="w-full py-1 rounded text-[10.5px] text-slate-500 italic font-semibold flex items-center justify-center bg-slate-950/40 border border-slate-900">
                 {l('Empty Slot', '空栏位')}
@@ -612,7 +634,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               )
             ) : isTrackFull ? (
               <span className="w-full py-1 rounded bg-amber-950/40 border border-amber-900/60 text-amber-400 font-bold text-[10px] flex items-center justify-center">
-                {l('Track Full (7/7)', '科技轨已满 (7/7)')}
+                {l(`Track Full (${maxSlots}/${maxSlots})`, `科技轨已满 (${maxSlots}/${maxSlots})`)}
               </span>
             ) : !canAfford ? (
               <div className="w-full py-0.5 rounded bg-rose-950/50 border border-rose-900/70 text-rose-300 font-bold text-[10px] flex items-center justify-center gap-1">

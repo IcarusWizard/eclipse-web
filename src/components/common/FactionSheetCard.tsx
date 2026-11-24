@@ -228,7 +228,9 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
         <div className="lg:col-span-4 p-4 pb-3 flex flex-col justify-between gap-2.5 border-b lg:border-b-0 lg:border-r border-slate-800/80">
           <div className="flex items-center justify-between gap-2">
             <span className="px-3 py-1 rounded-md bg-slate-800 border border-slate-600/70 text-[10px] font-black tracking-widest uppercase text-slate-200 font-display">
-              {faction.isHuman
+              {faction.id === 'mega_war_inc'
+                ? l('TERRAN ORIGIN', '人类衍生企业')
+                : faction.isHuman
                 ? l('TERRAN CIVILIZATION', '人类星际文明')
                 : l('ALIEN SPECIES', '外星高等种族')}
             </span>

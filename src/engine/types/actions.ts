@@ -106,6 +106,8 @@ export interface UpgradeAction extends BaseAction {
     slotIndex: number;
     partId: string | null;
     isExternal?: boolean;
+    /** Mega War Inc.: target modular color group when attaching/removing an external part (e.g. Muon Source). */
+    modularGroupId?: 'int_cru_dre' | 'cru_dre' | 'dre_sb' | 'sb_only';
   }[];
   pulsarSectorId?: string;
 }
@@ -115,6 +117,8 @@ export interface BuildAction extends BaseAction {
   items: {
     sectorId: string;
     itemType: ShipType | 'orbital' | 'monolith';
+    /** Mega War Inc.: upgrades an existing Interceptor->Cruiser or Cruiser->Dreadnought anywhere on map. */
+    upgradeFromShipId?: string;
   }[];
   pulsarSectorId?: string;
 }

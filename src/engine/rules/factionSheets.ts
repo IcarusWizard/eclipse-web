@@ -83,6 +83,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   the_exiles: '/factions/the_exiles.jpg',
   rho_indi_syndicate: '/factions/rho_indi_syndicate.jpg',
   atlantians: '/factions/atlantians.jpg',
+  mega_war_inc: '/factions/mega_war_inc.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -403,6 +404,40 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
       },
     ],
   },
+  mega_war_inc: {
+    historyEn:
+      'Born from Mega Omni Incorporated’s pivot into interstellar defense, this ruthless Terran defense conglomerate annexed its indebted former clients and fielded a standardized modular warship line. Where wars erupt, Mega War Inc. fights directly for the spoils.',
+    historyZh:
+      '脱胎自跨星际财团巨型全能公司的军工部门，巨战公司在吞并无力偿债的前人族盟友星球后，依托全舰队标准化模块化流水线，直接以武装股东身份介入银河每一场冲突收割战利品。',
+    portraitUrl: '/factions/mega_war_inc.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'megawar_home_resources',
+        icon: 'colony',
+        en: 'Terran Template Setup: Claim any unused Terran homeworld sector (221–226), start with 3 Materials, 3 Science, 2 Money, 3 Colony Ships, 2:1 Trade Value, 3 Move activations, and Terran 5-slot Reputation Track.',
+        zh: '人类衍生开局：占据任意未使用的地球母星系（221–226），起始 3 材料 / 3 科研 / 2 金钱 / 3 殖民船、2:1 贸易、3 次移动及人类 5 格声望轨。',
+      },
+      {
+        id: 'megawar_modular',
+        icon: 'ship',
+        en: 'Modular Blueprints (1 Upgrade/Action): Cruiser shares Interceptor’s 4 slots (+2), Dreadnought shares Cruiser’s 6 slots (+2), and Starbase shares Dreadnought slots 7–8 (+3). Energy & Drive legality must hold across all linked classes (Interceptor Cost 2, Init 1; Dreadnought Init 2).',
+        zh: '模块化蓝图（每次仅升级 1 格）：拦截舰 4 格与巡洋舰共享，巡洋舰 6 格与无畏舰共享，无畏舰末 2 格与星际基地共享。任一共享改动须满足所有联动船型合法性（拦截舰造价 2/先攻 1；无畏舰先攻 2）。',
+      },
+      {
+        id: 'megawar_build_upgrade',
+        icon: 'ship',
+        en: 'Field Hull Upgrade: During Build (1 activation, 3 Materials), upgrade any deployed Interceptor→Cruiser or Cruiser→Dreadnought anywhere on the map—even pinned ships in enemy territory (never downgrade).',
+        zh: '战地船体改型：每次建造激活（3 材料）可将地图任意处（含被牵制或敌方控制星区）一艘拦截舰升为巡洋舰，或巡洋舰升为无畏舰（不可降级）。',
+      },
+      {
+        id: 'megawar_tech_monolith_disc',
+        icon: 'warning',
+        en: 'Wartime Tech & Quality Control: Military discounts -1..-8 (7th slot = 6 VP); Nano has 6 slots (0..-6, 6th = 4 VP). Cannot research or build Monoliths (conquered Monoliths still score 3 VP). Ancient ship parts cannot be equipped immediately upon discovery.',
+        zh: '战时科研与品控：军事轨起始即享 -1 减免（7 格 6 VP）；纳米轨共 6 格（满轨 4 VP）。不可研发或建造方尖碑（占领他人方尖碑仍计 3 VP）；远古配件必须存入备用库后用升级行动装配。',
+      },
+    ],
+  },
 };
 
 function buildTerranHistory(faction: FactionInfo): { en: string; zh: string } {
@@ -586,7 +621,7 @@ export function getFactionSheetData(faction: FactionInfo): FactionSheetData {
     ALL_HOME_SECTORS[faction.id] ||
     HUMAN_HOME_SECTORS[faction.id] || {
       sectorNumber: faction.startingSectorNumber,
-      name: faction.name,
+      name: faction.id === 'mega_war_inc' ? 'Any Unused Terran Sector (221–226)' : faction.name,
       ring: 2,
       victoryPoints: 3,
       hasArtifact: true,
@@ -595,6 +630,8 @@ export function getFactionSheetData(faction: FactionInfo): FactionSheetData {
         { id: `${faction.id}_p1`, resource: 'money', isAdvanced: false },
         { id: `${faction.id}_p2`, resource: 'science', isAdvanced: false },
         { id: `${faction.id}_p3`, resource: 'material', isAdvanced: false },
+        { id: `${faction.id}_p4`, resource: 'money', isAdvanced: true },
+        { id: `${faction.id}_p5`, resource: 'science', isAdvanced: true },
       ],
     };
 

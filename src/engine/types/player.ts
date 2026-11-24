@@ -23,7 +23,8 @@ export type FactionId =
   | 'enlightened_of_lyra'
   | 'the_exiles'
   | 'rho_indi_syndicate'
-  | 'atlantians';
+  | 'atlantians'
+  | 'mega_war_inc';
 
 export interface FactionInfo {
   readonly id: FactionId;

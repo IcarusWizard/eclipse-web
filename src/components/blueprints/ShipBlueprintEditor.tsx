@@ -2,11 +2,22 @@ import React, { useState, useMemo } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { ShipType } from '../../engine/types/galaxy';
 import { ShipPart } from '../../engine/types/blueprints';
-import { calculateBlueprintStats, SHIP_LIMITS } from '../../engine/rules/shipValidation';
+import {
+  calculateBlueprintStats,
+  SHIP_LIMITS,
+  getLinkedModularSlots,
+  getCanonicalModularSlotKey,
+  getMegaWarModularGroupInfo,
+  MEGA_WAR_EXTERNAL_GROUPS,
+  MegaWarModularGroupId,
+  getDefaultModularGroupForShip,
+  inferModularExternalGroup,
+} from '../../engine/rules/shipValidation';
 import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
 import { ShipPartTileIconography, ShipPartSlotGraphic, getPartTooltip } from '../common/PhysicalTileIconography';
 import { ShipBlueprintSlotsLayout } from './ShipBlueprintSlotsLayout';
+import { MegaWarModularStrip } from './MegaWarModularStrip';
 import { ShipTypeIcon } from '../common/ShipTypeIcon';
 import {
   Zap,
@@ -31,7 +42,13 @@ interface ShipBlueprintEditorProps {
   initialShipType?: ShipType;
   pulsarSectorId?: string;
   onSaveBlueprint: (
-    upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
+    upgrades: {
+      shipType: ShipType;
+      slotIndex: number;
+      partId: string | null;
+      isExternal?: boolean;
+      modularGroupId?: MegaWarModularGroupId;
+    }[],
     pulsarSectorId?: string
   ) => void;
   readOnly?: boolean;
@@ -159,6 +176,20 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   }, [availableParts, selectedCategory]);
 
   // Compute modified slots across all ship classes relative to original player blueprints
+  const isModularFaction = player.faction.id === 'mega_war_inc';
+  const origExternalGroup = useMemo(
+    () => (isModularFaction ? inferModularExternalGroup(player.blueprints as any, 'muon_source') : null),
+    [isModularFaction, player.blueprints]
+  );
+  const draftExternalGroup = useMemo(() => {
+    if (!isModularFaction) return null;
+    const extOnlyMap: Record<string, any> = {};
+    for (const st of availableShipTypes) {
+      extOnlyMap[st] = { externalParts: draftExternalParts[st] || [] };
+    }
+    return inferModularExternalGroup(extOnlyMap, 'muon_source');
+  }, [isModularFaction, availableShipTypes, draftExternalParts]);
+
   const modifiedSlots = useMemo(() => {
     const list: {
       shipType: ShipType;
@@ -166,7 +197,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       oldPart: ShipPart | null;
       newPart: ShipPart | null;
       isExternal?: boolean;
+      modularGroupId?: MegaWarModularGroupId;
     }[] = [];
+    const seenCanonicalKeys = new Set<string>();
     const shipTypes = availableShipTypes;
     for (const st of shipTypes) {
       const origSlots = player.blueprints[st]?.slots || [];
@@ -175,6 +208,11 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
         const origId = origSlots[i]?.id || null;
         const curId = curSlots[i]?.id || null;
         if (origId !== curId) {
+          if (isModularFaction) {
+            const key = getCanonicalModularSlotKey(st, i);
+            if (seenCanonicalKeys.has(key)) continue;
+            seenCanonicalKeys.add(key);
+          }
           list.push({
             shipType: st,
             slotIndex: i,
@@ -184,23 +222,56 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
         }
       }
 
-      // External parts comparison
-      const origExt = player.blueprints[st]?.externalParts || [];
-      const curExt = draftExternalParts[st] || [];
-      const origExtId = origExt[0]?.id || null;
-      const curExtId = curExt[0]?.id || null;
-      if (origExtId !== curExtId) {
-        list.push({
-          shipType: st,
-          slotIndex: -1,
-          oldPart: origExt[0] || null,
-          newPart: curExt[0] || null,
-          isExternal: true,
-        });
+      if (!isModularFaction) {
+        // External parts comparison per ship
+        const origExt = player.blueprints[st]?.externalParts || [];
+        const curExt = draftExternalParts[st] || [];
+        const origExtId = origExt[0]?.id || null;
+        const curExtId = curExt[0]?.id || null;
+        if (origExtId !== curExtId) {
+          list.push({
+            shipType: st,
+            slotIndex: -1,
+            oldPart: origExt[0] || null,
+            newPart: curExt[0] || null,
+            isExternal: true,
+          });
+        }
       }
     }
+
+    if (isModularFaction && origExternalGroup !== draftExternalGroup) {
+      const targetGroup = draftExternalGroup || origExternalGroup!;
+      const grpMeta =
+        MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === targetGroup) || MEGA_WAR_EXTERNAL_GROUPS[0]!;
+      const repShip = grpMeta.ships[0]!;
+      const origExtPart = origExternalGroup
+        ? player.blueprints[MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === origExternalGroup)!.ships[0]!]
+            ?.externalParts?.[0] || null
+        : null;
+      const curExtPart = draftExternalGroup
+        ? draftExternalParts[repShip]?.[0] || null
+        : null;
+      list.push({
+        shipType: repShip,
+        slotIndex: -1,
+        oldPart: origExtPart,
+        newPart: curExtPart,
+        isExternal: true,
+        modularGroupId: draftExternalGroup || origExternalGroup || undefined,
+      });
+    }
+
     return list;
-  }, [draftBlueprints, draftExternalParts, player.blueprints, availableShipTypes]);
+  }, [
+    draftBlueprints,
+    draftExternalParts,
+    player.blueprints,
+    availableShipTypes,
+    isModularFaction,
+    origExternalGroup,
+    draftExternalGroup,
+  ]);
 
   const usedActivations = modifiedSlots.length;
   const remainingActivations = Math.max(0, maxUpgrades - usedActivations);
@@ -217,11 +288,11 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
   const stats = calculateBlueprintStats(currentBlueprint, activeExpansions);
 
-  // Check that all ship classes with modifications are valid
+  // Check that all ship classes with modifications are valid (for Mega War Inc., all linked classes must always stay valid)
   const allModifiedShipsValid = useMemo(() => {
     const shipTypes = availableShipTypes;
     for (const st of shipTypes) {
-      const isModified = modifiedSlots.some((m) => m.shipType === st);
+      const isModified = isModularFaction || modifiedSlots.some((m) => m.shipType === st);
       if (isModified || st === activeShipType) {
         const bp = {
           ...player.blueprints[st],
@@ -233,7 +304,63 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       }
     }
     return true;
-  }, [modifiedSlots, draftBlueprints, draftExternalParts, player.blueprints, activeShipType, availableShipTypes, activeExpansions]);
+  }, [modifiedSlots, draftBlueprints, draftExternalParts, player.blueprints, activeShipType, availableShipTypes, activeExpansions, isModularFaction]);
+
+  const isSlotModified = (shipType: ShipType, slotIndex: number): boolean => {
+    if (!isModularFaction) {
+      return modifiedSlots.some((m) => m.shipType === shipType && m.slotIndex === slotIndex && !m.isExternal);
+    }
+    const targetKey = getCanonicalModularSlotKey(shipType, slotIndex);
+    return modifiedSlots.some((m) => !m.isExternal && getCanonicalModularSlotKey(m.shipType, m.slotIndex) === targetKey);
+  };
+
+  const modifiedCanonicalKeys = useMemo(() => {
+    const keys = new Set<string>();
+    if (!isModularFaction) return keys;
+    for (const m of modifiedSlots) {
+      if (!m.isExternal && m.slotIndex >= 0) {
+        keys.add(getCanonicalModularSlotKey(m.shipType, m.slotIndex));
+      }
+    }
+    return keys;
+  }, [modifiedSlots, isModularFaction]);
+
+  const draftAllBlueprints = useMemo(() => {
+    const map: Record<string, any> = {};
+    for (const st of availableShipTypes) {
+      map[st] = {
+        ...player.blueprints[st],
+        slots: draftBlueprints[st] || player.blueprints[st]?.slots || [],
+        externalParts: draftExternalParts[st] || player.blueprints[st]?.externalParts || [],
+      };
+    }
+    return map as Record<ShipType, any>;
+  }, [availableShipTypes, player.blueprints, draftBlueprints, draftExternalParts]);
+
+  const slotRejectsDrives = (shipType: ShipType, slotIndex: number | null): boolean => {
+    const targets = isModularFaction && slotIndex !== null
+      ? getLinkedModularSlots(shipType, slotIndex)
+      : [{ shipType, slotIndex: slotIndex ?? 0 }];
+    return targets.some((t) => {
+      const bp = player.blueprints[t.shipType];
+      return Boolean(bp?.noDrives || bp?.type === 'starbase' || bp?.type === 'orbital');
+    });
+  };
+
+  const applyDraftSlotUpdate = (shipType: ShipType, slotIndex: number, part: ShipPart | null) => {
+    setDraftBlueprints((prev) => {
+      const next = { ...prev };
+      const targets = isModularFaction ? getLinkedModularSlots(shipType, slotIndex) : [{ shipType, slotIndex }];
+      for (const link of targets) {
+        const arr = [...(next[link.shipType] || [])];
+        if (link.slotIndex >= 0 && link.slotIndex < arr.length) {
+          arr[link.slotIndex] = part;
+          next[link.shipType] = arr;
+        }
+      }
+      return next;
+    });
+  };
 
   const handleInstallPart = (part: ShipPart) => {
     if (part.id === 'muon_source') {
@@ -242,46 +369,53 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     }
     if (readOnly) return;
     if (selectedSlotIndex === null) return;
-    if ((baseBp.noDrives || baseBp.type === 'starbase' || baseBp.type === 'orbital') && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
+    if (slotRejectsDrives(activeShipType, selectedSlotIndex) && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       return;
     }
-    const isSlotCurrentlyModified = modifiedSlots.some(
-      (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex && !m.isExternal
-    );
-    if (!isSlotCurrentlyModified && remainingActivations <= 0) return;
+    if (!isSlotModified(activeShipType, selectedSlotIndex) && remainingActivations <= 0) return;
 
-    const newSlots = [...currentSlots];
-    newSlots[selectedSlotIndex] = part;
-    setDraftBlueprints((prev) => ({ ...prev, [activeShipType]: newSlots }));
+    applyDraftSlotUpdate(activeShipType, selectedSlotIndex, part);
   };
 
-  const handleClearSlot = (index: number) => {
+  const handleClearSlot = (index: number, shipTypeOverride?: ShipType) => {
+    const targetShip = shipTypeOverride ?? activeShipType;
     if (readOnly) return;
-    const isSlotCurrentlyModified = modifiedSlots.some(
-      (m) => m.shipType === activeShipType && m.slotIndex === index && !m.isExternal
-    );
-    if (!isSlotCurrentlyModified && remainingActivations <= 0) return;
+    if (!isSlotModified(targetShip, index) && remainingActivations <= 0) return;
 
-    const newSlots = [...currentSlots];
-    newSlots[index] = null;
-    setDraftBlueprints((prev) => ({ ...prev, [activeShipType]: newSlots }));
-    setSelectedSlotIndex(null);
+    applyDraftSlotUpdate(targetShip, index, null);
+    if (targetShip === activeShipType && selectedSlotIndex === index) {
+      setSelectedSlotIndex(null);
+    }
   };
 
-  const handleRevertSlot = (index: number) => {
+  const handleRevertSlot = (index: number, shipTypeOverride?: ShipType) => {
+    const targetShip = shipTypeOverride ?? activeShipType;
     if (readOnly) return;
-    const origPart = player.blueprints[activeShipType].slots[index] || null;
-    const newSlots = [...currentSlots];
-    newSlots[index] = origPart;
-    setDraftBlueprints((prev) => ({ ...prev, [activeShipType]: newSlots }));
+    const origPart = player.blueprints[targetShip].slots[index] || null;
+    applyDraftSlotUpdate(targetShip, index, origPart);
   };
 
-  const handleAttachExternalPart = (part: ShipPart) => {
+  const handleAttachExternalPart = (part: ShipPart, modularGroupOverride?: MegaWarModularGroupId) => {
     if (readOnly) return;
-    const isCurrentlyModified = modifiedSlots.some(
-      (m) => m.shipType === activeShipType && m.isExternal
-    );
+    const isCurrentlyModified = isModularFaction
+      ? modifiedSlots.some((m) => m.isExternal)
+      : modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal);
     if (!isCurrentlyModified && remainingActivations <= 0) return;
+
+    if (isModularFaction) {
+      const targetGroupId =
+        modularGroupOverride || draftExternalGroup || getDefaultModularGroupForShip(activeShipType);
+      const grpMeta =
+        MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === targetGroupId) || MEGA_WAR_EXTERNAL_GROUPS[0]!;
+      setDraftExternalParts((prev) => {
+        const next = { ...prev };
+        for (const st of availableShipTypes) {
+          next[st] = grpMeta.ships.includes(st) ? [part] : [];
+        }
+        return next;
+      });
+      return;
+    }
 
     setDraftExternalParts((prev) => ({
       ...prev,
@@ -291,10 +425,21 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
   const handleDetachExternalPart = () => {
     if (readOnly) return;
-    const isCurrentlyModified = modifiedSlots.some(
-      (m) => m.shipType === activeShipType && m.isExternal
-    );
+    const isCurrentlyModified = isModularFaction
+      ? modifiedSlots.some((m) => m.isExternal)
+      : modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal);
     if (!isCurrentlyModified && remainingActivations <= 0) return;
+
+    if (isModularFaction) {
+      setDraftExternalParts((prev) => {
+        const next = { ...prev };
+        for (const st of availableShipTypes) {
+          next[st] = [];
+        }
+        return next;
+      });
+      return;
+    }
 
     setDraftExternalParts((prev) => ({
       ...prev,
@@ -304,6 +449,16 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
   const handleRevertExternalPart = () => {
     if (readOnly) return;
+    if (isModularFaction) {
+      setDraftExternalParts(() => {
+        const next: Partial<Record<ShipType, ShipPart[]>> = {};
+        for (const st of availableShipTypes) {
+          next[st] = [...(player.blueprints[st]?.externalParts || [])];
+        }
+        return next as Record<ShipType, ShipPart[]>;
+      });
+      return;
+    }
     const origParts = player.blueprints[activeShipType]?.externalParts || [];
     setDraftExternalParts((prev) => ({
       ...prev,
@@ -324,6 +479,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       slotIndex: m.slotIndex,
       partId: m.newPart?.id || null,
       isExternal: m.isExternal,
+      modularGroupId: m.modularGroupId,
     }));
     onSaveBlueprint(upgradesToApply, pulsarSectorId);
   };
@@ -515,6 +671,66 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
               </div>
             )}
 
+            {/* Physical-Board Interactive Modular Strip + Active Editing Impact Banner for Mega War Inc. */}
+            {isModularFaction && (
+              <div className="space-y-2">
+                <MegaWarModularStrip
+                  blueprints={draftAllBlueprints}
+                  faction={player.faction}
+                  activeExpansions={activeExpansions}
+                  interactive={!readOnly}
+                  activeShipType={activeShipType}
+                  selectedSlotIndex={selectedSlotIndex}
+                  modifiedCanonicalKeys={modifiedCanonicalKeys}
+                  canModifyMore={remainingActivations > 0}
+                  hasMuonSourceAvailable={availableParts.some((p) => p.id === 'muon_source')}
+                  externalModified={modifiedSlots.some((m) => m.isExternal)}
+                  onSelectModule={(targetShip, targetIdx) => {
+                    setActiveShipType(targetShip);
+                    setSelectedSlotIndex(targetIdx);
+                  }}
+                  onRevertModule={(targetShip, targetIdx) => handleRevertSlot(targetIdx, targetShip)}
+                  onClearModule={(targetShip, targetIdx) => handleClearSlot(targetIdx, targetShip)}
+                  onSelectExternalGroup={(grpId) => {
+                    const muon = availableParts.find((p) => p.id === 'muon_source') || SHIP_PARTS.muon_source;
+                    if (muon) {
+                      handleAttachExternalPart(muon, grpId);
+                    }
+                  }}
+                  onRevertExternal={handleRevertExternalPart}
+                  onDetachExternal={handleDetachExternalPart}
+                  onSelectShipType={(st) => {
+                    setActiveShipType(st);
+                    setSelectedSlotIndex(null);
+                  }}
+                />
+
+                <div className="bg-indigo-950/50 border border-indigo-500/60 rounded-lg px-3 py-2 text-xs text-indigo-200 flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2">
+                    <AlertTriangle className="w-3.5 h-3.5 text-indigo-400 shrink-0" />
+                    <span>
+                      {l(
+                        'Modular Chassis (1 Upgrade/Action): Click any color-coded slot (M1–M11) above or below to edit all linked hulls at once.',
+                        '模块化联动船体（每次仅升级 1 格）：点击上方或下方任意带颜色分组编号的槽位 (M1–M11) 即可同步改装关联战舰。'
+                      )}
+                    </span>
+                  </div>
+                  {selectedSlotIndex !== null && (() => {
+                    const gInfo = getMegaWarModularGroupInfo(activeShipType, selectedSlotIndex);
+                    if (!gInfo) return null;
+                    return (
+                      <span className={`px-2 py-0.5 rounded border font-mono text-[10px] font-bold shrink-0 ${gInfo.badgeClass}`}>
+                        {l(
+                          `Editing ${gInfo.code} → Affects: ${gInfo.shortLabel}${gInfo.allowsDrives ? '' : ' (No Drives)'}`,
+                          `正在编辑 ${gInfo.code} → 同步影响：${gInfo.shortLabelZh}${gInfo.allowsDrives ? '' : '（禁引擎）'}`
+                        )}
+                      </span>
+                    );
+                  })()}
+                </div>
+              </div>
+            )}
+
             {/* Slots Grid */}
             <div>
               <div className="flex items-center justify-between mb-3">
@@ -548,26 +764,21 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   preprintedShield={baseBp.preprintedShield}
                   preprintedHull={baseBp.preprintedHull}
                   externalParts={currentExternal}
+                  externalModularGroup={draftExternalGroup}
                   interactive={true}
                   selectedSlotIndex={selectedSlotIndex}
                   onSelectSlot={(idx) => {
-                    const isModified = modifiedSlots.some(
-                      (m) => m.shipType === activeShipType && m.slotIndex === idx
-                    );
-                    const canSelect = isModified || remainingActivations > 0;
+                    const canSelect = isSlotModified(activeShipType, idx) || remainingActivations > 0;
                     if (canSelect) {
                       setSelectedSlotIndex(idx);
                     }
                   }}
-                  modifiedSlotIndices={modifiedSlots
-                    .filter((m) => m.shipType === activeShipType && !m.isExternal && m.slotIndex !== undefined)
-                    .map((m) => m.slotIndex!)}
+                  modifiedSlotIndices={currentSlots
+                    .map((_, idx) => (isSlotModified(activeShipType, idx) ? idx : -1))
+                    .filter((idx) => idx !== -1)}
                   onRevertSlot={(idx) => handleRevertSlot(idx)}
                   onClearSlot={(idx) => {
-                    const isModified = modifiedSlots.some(
-                      (m) => m.shipType === activeShipType && m.slotIndex === idx
-                    );
-                    if (isModified || remainingActivations > 0) {
+                    if (isSlotModified(activeShipType, idx) || remainingActivations > 0) {
                       handleClearSlot(idx);
                     }
                   }}
@@ -578,16 +789,30 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
                 {/* External Modules Banner & Detach Action */}
                 {currentExternal.length > 0 && (
-                  <div className="mt-3 flex items-center justify-between p-2 rounded-lg bg-amber-950/40 border border-amber-600/60 text-xs">
+                  <div className="mt-3 flex items-center justify-between p-2 rounded-lg bg-amber-950/40 border border-amber-600/60 text-xs gap-2">
                     <div className="flex items-center gap-2 text-amber-300 font-bold">
-                      <Zap className="w-3.5 h-3.5 text-amber-400" />
-                      <span>{l(`External Module (${currentExternal.length}):`, `外置模块（${currentExternal.length}）：`)} {currentExternal.map((p) => translatePartName(p.id, p.name, language)).join(', ')}</span>
+                      <Zap className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+                      <span>
+                        {l(`External Module (${currentExternal.length}):`, `外置模块（${currentExternal.length}）：`)}{' '}
+                        {currentExternal.map((p) => translatePartName(p.id, p.name, language)).join(', ')}
+                      </span>
+                      {isModularFaction && draftExternalGroup && (() => {
+                        const grpMeta = MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === draftExternalGroup);
+                        return grpMeta ? (
+                          <span className={`px-1.5 py-0.5 rounded border text-[9.5px] font-mono ${grpMeta.badgeClass}`}>
+                            {language === 'zh'
+                              ? `${grpMeta.colorNameZh} (${grpMeta.shortLabelZh})`
+                              : `${grpMeta.colorName}: ${grpMeta.shortLabel}`}
+                          </span>
+                        ) : null;
+                      })()}
                     </div>
-                    {(remainingActivations > 0 || modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal)) && (
+                    {(remainingActivations > 0 ||
+                      modifiedSlots.some((m) => (isModularFaction ? m.isExternal : m.shipType === activeShipType && m.isExternal))) && (
                       <button
                         type="button"
                         onClick={handleDetachExternalPart}
-                        className="px-2 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-300 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer"
+                        className="px-2 py-1 rounded bg-rose-950/80 hover:bg-rose-900 border border-rose-700/80 text-rose-300 text-[11px] font-bold flex items-center gap-1 transition cursor-pointer shrink-0"
                         title={l('Detach external module to reserves', '将外置模块卸下放回备用库')}
                       >
                         <Trash2 className="w-3 h-3" />
@@ -603,19 +828,38 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                     type="button"
                     onClick={() => {
                       const muon = availableParts.find((p) => p.id === 'muon_source');
-                      if (muon && (modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal) || remainingActivations > 0)) {
+                      if (
+                        muon &&
+                        (modifiedSlots.some((m) => (isModularFaction ? m.isExternal : m.shipType === activeShipType && m.isExternal)) ||
+                          remainingActivations > 0)
+                      ) {
                         handleAttachExternalPart(muon);
                       }
                     }}
                     className={`mt-3 px-3 py-1.5 rounded-lg border-2 border-dashed flex items-center gap-1.5 text-xs font-bold transition cursor-pointer ${
-                      remainingActivations > 0 || modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal)
+                      remainingActivations > 0 ||
+                      modifiedSlots.some((m) => (isModularFaction ? m.isExternal : m.shipType === activeShipType && m.isExternal))
                         ? 'border-amber-600/70 bg-amber-950/20 hover:border-amber-400 hover:bg-amber-950/40 text-amber-300'
                         : 'border-slate-800 bg-slate-950/20 opacity-50 cursor-not-allowed text-slate-500'
                     }`}
-                    title={l('Click to attach Muon Source outside the blueprint grid', '点击将μ子能源安装到蓝图外置槽位')}
+                    title={
+                      isModularFaction
+                        ? l(
+                            'Click to attach Muon Source to this ship’s modular color group (or choose any color group in the strip above)',
+                            '点击将μ子能源装配到当前战舰所属的模块颜色组（或在上方物理条中任选颜色组）'
+                          )
+                        : l('Click to attach Muon Source outside the blueprint grid', '点击将μ子能源安装到蓝图外置槽位')
+                    }
                   >
                     <Plus className="w-3.5 h-3.5 text-amber-400" />
-                    <span>{l('Attach Muon Source (+2 Pwr, +1 Init outside grid)', '安装 μ子能源（蓝图外 +2 能量，+1 先攻）')}</span>
+                    <span>
+                      {isModularFaction
+                        ? l(
+                            `Attach Muon Source to ${MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === getDefaultModularGroupForShip(activeShipType))!.colorName} (${MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === getDefaultModularGroupForShip(activeShipType))!.shortLabel})`,
+                            `将 μ子能源 装配至${MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === getDefaultModularGroupForShip(activeShipType))!.colorNameZh}（${MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === getDefaultModularGroupForShip(activeShipType))!.shortLabelZh}）`
+                          )
+                        : l('Attach Muon Source (+2 Pwr, +1 Init outside grid)', '安装 μ子能源（蓝图外 +2 能量，+1 先攻）')}
+                    </span>
                   </button>
                 )}
               </div>
@@ -672,9 +916,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             </div>
 
             {selectedSlotIndex !== null &&
-              !modifiedSlots.some(
-                (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex
-              ) &&
+              !isSlotModified(activeShipType, selectedSlotIndex) &&
               remainingActivations <= 0 && (
                 <div className="mb-3 p-2.5 rounded-lg bg-amber-950/60 border border-amber-700/80 text-amber-200 text-xs flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
@@ -692,17 +934,22 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   const isAncientUnlocked = ANCIENT_PART_IDS.has(part.id);
                   const isSelectedSlotModified =
                     selectedSlotIndex !== null &&
-                    modifiedSlots.some(
-                      (m) => m.shipType === activeShipType && m.slotIndex === selectedSlotIndex && !m.isExternal
-                    );
+                    isSlotModified(activeShipType, selectedSlotIndex);
                   const isMuon = part.id === 'muon_source';
-                  const isExtModified = modifiedSlots.some(
-                    (m) => m.shipType === activeShipType && m.isExternal
-                  );
+                  const isExtModified = isModularFaction
+                    ? modifiedSlots.some((m) => m.isExternal)
+                    : modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal);
+                  const isDrivePart =
+                    part.category === 'drive' ||
+                    Boolean(part.driveSpeed) ||
+                    part.id === 'jump_drive' ||
+                    Boolean(part.isJumpDrive);
+                  const isDriveBlockedHere =
+                    isDrivePart && selectedSlotIndex !== null && slotRejectsDrives(activeShipType, selectedSlotIndex);
                   const canAttachMuon = (isExtModified || remainingActivations > 0);
                   const canEquip = isMuon
                     ? canAttachMuon
-                    : selectedSlotIndex !== null && (isSelectedSlotModified || remainingActivations > 0);
+                    : !isDriveBlockedHere && selectedSlotIndex !== null && (isSelectedSlotModified || remainingActivations > 0);
 
                   return (
                     <button
@@ -710,7 +957,10 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                       disabled={!canEquip}
                       onClick={() => {
                         if (isMuon) {
-                          handleAttachExternalPart(part);
+                          handleAttachExternalPart(
+                            part,
+                            isModularFaction ? getDefaultModularGroupForShip(activeShipType) : undefined
+                          );
                         } else {
                           handleInstallPart(part);
                         }
@@ -830,6 +1080,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   slotIndex: m.slotIndex,
                   partId: m.newPart?.id || null,
                   isExternal: m.isExternal,
+                  modularGroupId: m.modularGroupId,
                 }));
                 onSaveBlueprint(upgradesToApply, pulsarSectorId);
               }}

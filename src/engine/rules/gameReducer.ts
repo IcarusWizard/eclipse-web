@@ -33,13 +33,23 @@ import {
 } from './galacticEvents';
 import { areCoordsEqual, areCoordsAdjacent, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors, getExplorableHexes } from './hexMath';
 import { mergeChatMessages } from './persistence';
-import { calculateTechCost, drawTechTilesForRound } from './techData';
+import {
+  calculateTechCost,
+  drawTechTilesForRound,
+  getTechTrackMaxSlots,
+  getTechTrackVPForPlayer,
+} from './techData';
 import {
   calculateBlueprintStats,
   SHIP_LIMITS,
   countPlayerShips,
   getBaseBuildItemCost,
   getPlayerDiscoveryShipPartsCount,
+  applyModularSlotChange,
+  applyModularExternalChange,
+  getDefaultModularGroupForShip,
+  inferModularExternalGroup,
+  MEGA_WAR_EXTERNAL_GROUPS,
 } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet } from './economyEngine';
@@ -56,6 +66,7 @@ import {
   drawDiscoveryTileForPlayer,
   buildPendingDiscoveryForPlayer,
   triggerPendingAtlantiansStartingLabsDiscovery,
+  assignUnusedTerranHomeworldForMegaWar,
 } from './setup';
 import { DISCOVERY_TILES } from './sectorData';
 import {
@@ -1167,46 +1178,57 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         simResearched.add(item.techId);
 
         const tech = state.techSupply.find((t) => t.id === item.techId)!;
+        if (player.faction.id === 'mega_war_inc' && tech.id === 'monolith') {
+          return { valid: false, error: 'Mega War Inc. may not research Monoliths.' };
+        }
+        const maxMil = getTechTrackMaxSlots('military', player.faction.id);
+        const maxGrid = getTechTrackMaxSlots('grid', player.faction.id);
+        const maxNano = getTechTrackMaxSlots('nano', player.faction.id);
         let count = 0;
+        let resolvedTrack: 'military' | 'grid' | 'nano' = 'nano';
         if (tech.category === 'military') {
-          if (simMilitary >= 7) {
-            return { valid: false, error: 'Military tech track is full (maximum 7 technologies).' };
+          if (simMilitary >= maxMil) {
+            return { valid: false, error: `Military tech track is full (maximum ${maxMil} technologies).` };
           }
+          resolvedTrack = 'military';
           count = simMilitary++;
         } else if (tech.category === 'grid') {
-          if (simGrid >= 7) {
-            return { valid: false, error: 'Grid tech track is full (maximum 7 technologies).' };
+          if (simGrid >= maxGrid) {
+            return { valid: false, error: `Grid tech track is full (maximum ${maxGrid} technologies).` };
           }
+          resolvedTrack = 'grid';
           count = simGrid++;
         } else if (tech.category === 'nano') {
-          if (simNano >= 7) {
-            return { valid: false, error: 'Nano tech track is full (maximum 7 technologies).' };
+          if (simNano >= maxNano) {
+            return { valid: false, error: `Nano tech track is full (maximum ${maxNano} technologies).` };
           }
+          resolvedTrack = 'nano';
           count = simNano++;
         } else {
           let targetTrack = item.targetTrack;
           if (targetTrack) {
-            if (targetTrack === 'military' && simMilitary >= 7) {
-              return { valid: false, error: 'Military tech track is full (maximum 7 technologies).' };
+            if (targetTrack === 'military' && simMilitary >= maxMil) {
+              return { valid: false, error: `Military tech track is full (maximum ${maxMil} technologies).` };
             }
-            if (targetTrack === 'grid' && simGrid >= 7) {
-              return { valid: false, error: 'Grid tech track is full (maximum 7 technologies).' };
+            if (targetTrack === 'grid' && simGrid >= maxGrid) {
+              return { valid: false, error: `Grid tech track is full (maximum ${maxGrid} technologies).` };
             }
-            if (targetTrack === 'nano' && simNano >= 7) {
-              return { valid: false, error: 'Nano tech track is full (maximum 7 technologies).' };
+            if (targetTrack === 'nano' && simNano >= maxNano) {
+              return { valid: false, error: `Nano tech track is full (maximum ${maxNano} technologies).` };
             }
           } else {
             const availTracks: ('military' | 'grid' | 'nano')[] = [];
-            if (simMilitary < 7) availTracks.push('military');
-            if (simGrid < 7) availTracks.push('grid');
-            if (simNano < 7) availTracks.push('nano');
+            if (simMilitary < maxMil) availTracks.push('military');
+            if (simGrid < maxGrid) availTracks.push('grid');
+            if (simNano < maxNano) availTracks.push('nano');
             if (availTracks.length === 0) {
-              return { valid: false, error: 'All technology tracks are full (maximum 7 technologies each).' };
+              return { valid: false, error: 'All technology tracks are full.' };
             }
             const getCnt = (tr: 'military' | 'grid' | 'nano') => (tr === 'military' ? simMilitary : tr === 'grid' ? simGrid : simNano);
             availTracks.sort((a, b) => getCnt(b) - getCnt(a));
             targetTrack = availTracks[0]!;
           }
+          resolvedTrack = targetTrack;
           if (targetTrack === 'military') count = simMilitary++;
           else if (targetTrack === 'grid') count = simGrid++;
           else count = simNano++;
@@ -1227,7 +1249,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
         }
 
-        const baseCost = calculateTechCost(tech, count);
+        const baseCost = calculateTechCost(tech, count, resolvedTrack, player.faction.id);
         const msTechDiscount = getMinorSpeciesTechDiscount(player);
         const actualCost = Math.max(tech.minCost, baseCost - msTechDiscount);
         totalScienceCost += actualCost;
@@ -1375,17 +1397,28 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
 
       // Count actual modified slots compared to current blueprint state
+      const isModularFaction = player.faction.id === 'mega_war_inc';
+      const currentExternalGroup = isModularFaction ? inferModularExternalGroup(player.blueprints, 'muon_source') : null;
       let modifiedCount = 0;
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType]!;
-        let currentPartId: string | null = null;
         if (up.isExternal || up.slotIndex === -1) {
-          currentPartId = bp.externalParts && bp.externalParts.length > 0 ? bp.externalParts[0].id : null;
+          if (isModularFaction) {
+            const targetGroup = up.partId ? (up.modularGroupId || getDefaultModularGroupForShip(up.shipType)) : null;
+            if (currentExternalGroup !== targetGroup) {
+              modifiedCount += 1;
+            }
+          } else {
+            const currentPartId = bp.externalParts && bp.externalParts.length > 0 ? bp.externalParts[0].id : null;
+            if (currentPartId !== up.partId) {
+              modifiedCount += 1;
+            }
+          }
         } else {
-          currentPartId = bp.slots[up.slotIndex]?.id || null;
-        }
-        if (currentPartId !== up.partId) {
-          modifiedCount += 1;
+          const currentPartId = bp.slots[up.slotIndex]?.id || null;
+          if (currentPartId !== up.partId) {
+            modifiedCount += 1;
+          }
         }
       }
 
@@ -1406,8 +1439,19 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         };
       }
 
-      // Simulate applying all modifications per touched ship type and verify resulting blueprints are legal
+      // Simulate applying all modifications per touched ship type (or all linked modular blueprints for Mega War Inc.)
       const simulatedBps: Record<string, ShipBlueprint> = {};
+      if (isModularFaction) {
+        for (const [k, origBp] of Object.entries(player.blueprints)) {
+          if (origBp) {
+            simulatedBps[k] = {
+              ...origBp,
+              slots: [...origBp.slots],
+              externalParts: origBp.externalParts ? [...origBp.externalParts] : undefined,
+            };
+          }
+        }
+      }
       for (const up of action.upgrades) {
         if (up.partId !== null && !SHIP_PARTS[up.partId]) {
           return { valid: false, error: `Unknown ship part ${up.partId}.` };
@@ -1423,11 +1467,19 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (part && part.id !== 'muon_source') {
             return { valid: false, error: `${part.name} cannot be placed outside the blueprint grid.` };
           }
-          simBp.externalParts = part ? [part] : [];
+          if (isModularFaction) {
+            applyModularExternalChange(simulatedBps, up.shipType, part, up.modularGroupId);
+          } else {
+            simBp.externalParts = part ? [part] : [];
+            simulatedBps[up.shipType] = simBp;
+          }
+        } else if (isModularFaction) {
+          simulatedBps[up.shipType] = simBp;
+          applyModularSlotChange(simulatedBps, up.shipType, up.slotIndex, part);
         } else {
           simBp.slots[up.slotIndex] = part;
+          simulatedBps[up.shipType] = simBp;
         }
-        simulatedBps[up.shipType] = simBp;
       }
 
       for (const [shipType, simBp] of Object.entries(simulatedBps)) {
@@ -1496,6 +1548,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       };
       const queuedMonolithSectors = new Set<string>();
       const queuedOrbitalSectors = new Set<string>();
+      const virtualUpgradeShipTypes = new Map<string, ShipType>();
 
       let totalMaterialsCost = 0;
       for (const item of action.items) {
@@ -1510,34 +1563,58 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (player.faction.id === 'rho_indi_syndicate' && item.itemType === 'dreadnought') {
           return { valid: false, error: 'Rho Indi Syndicate cannot construct Dreadnoughts.' };
         }
+        if (player.faction.id === 'mega_war_inc' && item.itemType === 'monolith') {
+          return { valid: false, error: 'Mega War Inc. cannot construct Monoliths.' };
+        }
 
         const sector = state.sectors.find((s) => s.id === item.sectorId);
         if (!sector) {
           return { valid: false, error: `Sector ${item.sectorId} not found.` };
         }
-        if (sector.discOwner !== action.playerId) {
-          return { valid: false, error: `Must control sector ${item.sectorId} with an influence disc to build here.` };
-        }
-        // Official Eclipse rules: Ships and Starbases CAN be built in sectors with enemy ships!
-        // Only Structures (Orbitals and Monoliths) cannot be built while enemy ships are present.
-        const isDraco = player.faction.id === 'descendants_of_draco';
-        const hasEnemies = sector.ships.some(
-          (s) => s.ownerId !== action.playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
-        );
-        const isStructure = item.itemType === 'orbital' || item.itemType === 'monolith';
-        if (hasEnemies && isStructure) {
-          return { valid: false, error: `Cannot build structures (${item.itemType}) in sector ${item.sectorId} while enemy ships are present.` };
-        }
 
-        // Validate Ship Supply Limits (8 Interceptors, 4 Cruisers, 2 Dreadnoughts, 4 Starbases, 10 Orbitals)
-        if (item.itemType in queuedShips) {
-          const st = item.itemType as ShipType;
-          queuedShips[st]++;
-          if (currentShips[st] + queuedShips[st] > SHIP_LIMITS[st]) {
+        const isUpgradeBuild = Boolean(item.upgradeFromShipId);
+        if (isUpgradeBuild) {
+          if (player.faction.id !== 'mega_war_inc') {
+            return { valid: false, error: 'Only Mega War Inc. may upgrade ships into higher hull classes during Build.' };
+          }
+          if (item.itemType !== 'cruiser' && item.itemType !== 'dreadnought') {
+            return { valid: false, error: 'Mega War Inc. can only field-upgrade Interceptors to Cruisers or Cruisers to Dreadnoughts (no downgrades).' };
+          }
+          const targetShip = sector.ships.find(
+            (s) => s.id === item.upgradeFromShipId && s.ownerId === action.playerId
+          );
+          if (!targetShip) {
+            return { valid: false, error: `Ship ${item.upgradeFromShipId} not found in Sector ${sector.sectorNumber}.` };
+          }
+          const currentVirtualType = virtualUpgradeShipTypes.get(item.upgradeFromShipId!) ?? (targetShip.type as ShipType);
+          const expectedFromType: ShipType = item.itemType === 'cruiser' ? 'interceptor' : 'cruiser';
+          if (currentVirtualType !== expectedFromType) {
             return {
               valid: false,
-              error: `Cannot build ${st}: reached maximum limit of ${SHIP_LIMITS[st]} (${currentShips[st]} currently in service).`,
+              error: `Cannot field-upgrade ${currentVirtualType.toUpperCase()} to ${item.itemType.toUpperCase()} (only Interceptor→Cruiser or Cruiser→Dreadnought allowed).`,
             };
+          }
+          virtualUpgradeShipTypes.set(item.upgradeFromShipId!, item.itemType as ShipType);
+          queuedShips[expectedFromType]--;
+          queuedShips[item.itemType]++;
+        } else {
+          if (sector.discOwner !== action.playerId) {
+            return { valid: false, error: `Must control sector ${item.sectorId} with an influence disc to build here.` };
+          }
+          // Official Eclipse rules: Ships and Starbases CAN be built in sectors with enemy ships!
+          // Only Structures (Orbitals and Monoliths) cannot be built while enemy ships are present.
+          const isDraco = player.faction.id === 'descendants_of_draco';
+          const hasEnemies = sector.ships.some(
+            (s) => s.ownerId !== action.playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+          );
+          const isStructure = item.itemType === 'orbital' || item.itemType === 'monolith';
+          if (hasEnemies && isStructure) {
+            return { valid: false, error: `Cannot build structures (${item.itemType}) in sector ${item.sectorId} while enemy ships are present.` };
+          }
+
+          if (item.itemType in queuedShips) {
+            const st = item.itemType as ShipType;
+            queuedShips[st]++;
           }
         }
 
@@ -1579,11 +1656,21 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           queuedMonolithSectors.add(sector.id);
         }
 
-        const baseBuildCost = getBaseBuildItemCost(player, item.itemType);
+        const baseBuildCost = getBaseBuildItemCost(player, item.itemType, isUpgradeBuild);
         const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
         const cost = Math.max(0, baseBuildCost - msBuildDiscount);
 
         totalMaterialsCost += cost;
+      }
+
+      // Validate final ship supply limits after all constructions and upgrades
+      for (const st of Object.keys(queuedShips) as ShipType[]) {
+        if (queuedShips[st] > 0 && currentShips[st] + queuedShips[st] > SHIP_LIMITS[st]) {
+          return {
+            valid: false,
+            error: `Cannot build ${st}: reached maximum limit of ${SHIP_LIMITS[st]} (${currentShips[st]} currently in service).`,
+          };
+        }
       }
 
       if (player.resources.materials < totalMaterialsCost) {
@@ -2173,6 +2260,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         (action.chosenDiscoveryId && pd.discoveryOptions?.find((d) => d.id === action.chosenDiscoveryId)) ||
         pd.discovery;
       if (action.equipShipType) {
+        if (player.faction.id === 'mega_war_inc') {
+          return {
+            valid: false,
+            error: 'Mega War Inc. cannot install Ancient Ship Parts directly upon discovery; store them for a future Upgrade action or keep for 2 VP.',
+          };
+        }
         const bp = player.blueprints[action.equipShipType];
         if (!bp) return { valid: false, error: `Invalid ship type ${action.equipShipType}.` };
         const isMuonSource = disc.shipPartId === 'muon_source';
@@ -2723,6 +2816,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         const bSec = state.sectors.find((s) => s.id === action.build!.sectorId);
         if (!bSec || bSec.discOwner !== action.playerId) {
           return { valid: false, error: 'Must control target sector to build with Pulsar.' };
+        }
+        if (action.build.itemType === 'monolith' && player.faction.id === 'mega_war_inc') {
+          return { valid: false, error: 'Mega War Inc. cannot construct Monoliths.' };
         }
         if (action.build.itemType === 'starbase') {
           if (player.faction.id === 'the_exiles') {
@@ -3430,20 +3526,23 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         if (tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano') {
           targetTrack = tech.category;
         } else {
+          const maxMil = getTechTrackMaxSlots('military', player.faction.id);
+          const maxGrid = getTechTrackMaxSlots('grid', player.faction.id);
+          const maxNano = getTechTrackMaxSlots('nano', player.faction.id);
           if (
             item.targetTrack &&
             (item.targetTrack === 'military'
-              ? player.techTrack.militaryCount < 7
+              ? player.techTrack.militaryCount < maxMil
               : item.targetTrack === 'grid'
-              ? player.techTrack.gridCount < 7
-              : player.techTrack.nanoCount < 7)
+              ? player.techTrack.gridCount < maxGrid
+              : player.techTrack.nanoCount < maxNano)
           ) {
             targetTrack = item.targetTrack;
           } else {
             const availTracks: ('military' | 'grid' | 'nano')[] = [];
-            if (player.techTrack.militaryCount < 7) availTracks.push('military');
-            if (player.techTrack.gridCount < 7) availTracks.push('grid');
-            if (player.techTrack.nanoCount < 7) availTracks.push('nano');
+            if (player.techTrack.militaryCount < maxMil) availTracks.push('military');
+            if (player.techTrack.gridCount < maxGrid) availTracks.push('grid');
+            if (player.techTrack.nanoCount < maxNano) availTracks.push('nano');
             if (availTracks.length > 0) {
               const getCnt = (tr: 'military' | 'grid' | 'nano') =>
                 tr === 'military' ? player.techTrack.militaryCount : tr === 'grid' ? player.techTrack.gridCount : player.techTrack.nanoCount;
@@ -3462,7 +3561,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             ? player.techTrack.gridCount
             : player.techTrack.nanoCount;
 
-        const baseCost = calculateTechCost(tech, count);
+        const baseCost = calculateTechCost(tech, count, targetTrack, player.faction.id);
         const msTechDiscount = getMinorSpeciesTechDiscount(player);
         const cost = Math.max(tech.minCost, baseCost - msTechDiscount);
         player.resources.science -= cost;
@@ -3590,7 +3689,29 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         if (up.isExternal || up.slotIndex === -1) {
           const oldPart = bp.externalParts && bp.externalParts.length > 0 ? bp.externalParts[0] : null;
           const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
-          bp.externalParts = part ? [part] : [];
+
+          if (player.faction.id === 'mega_war_inc') {
+            const targetGroupId = applyModularExternalChange(player.blueprints, up.shipType, part, up.modularGroupId);
+            const grpMeta = MEGA_WAR_EXTERNAL_GROUPS.find((g) => g.id === targetGroupId)!;
+            if (part) {
+              upgradeDetails.push(
+                `installed ${part.name} on ${grpMeta.colorName} modular group (${grpMeta.shortLabel})`
+              );
+            } else {
+              upgradeDetails.push(
+                `removed external module from ${grpMeta.colorName} modular group (${grpMeta.shortLabel})`
+              );
+            }
+          } else {
+            bp.externalParts = part ? [part] : [];
+            if (part && oldPart) {
+              upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (outside blueprint grid, replaced ${oldPart.name})`);
+            } else if (part) {
+              upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (outside blueprint grid)`);
+            } else if (oldPart) {
+              upgradeDetails.push(`removed ${oldPart.name} from ${up.shipType.toUpperCase()} (outside blueprint grid)`);
+            }
+          }
 
           // When installing an Ancient part from storage, remove it so it cannot be placed again
           if (up.partId && player.unlockedAncientParts && player.unlockedAncientParts.includes(up.partId)) {
@@ -3599,20 +3720,16 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
               player.discoveryTilesUsedAsShipPartsCount = (player.discoveryTilesUsedAsShipPartsCount || 0) + 1;
             }
           }
-
-          if (part && oldPart) {
-            upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (outside blueprint grid, replaced ${oldPart.name})`);
-          } else if (part) {
-            upgradeDetails.push(`installed ${part.name} on ${up.shipType.toUpperCase()} (outside blueprint grid)`);
-          } else if (oldPart) {
-            upgradeDetails.push(`removed ${oldPart.name} from ${up.shipType.toUpperCase()} (outside blueprint grid)`);
-          }
           continue;
         }
 
         const oldPart = bp.slots[up.slotIndex];
         const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
-        bp.slots[up.slotIndex] = part;
+        if (player.faction.id === 'mega_war_inc') {
+          applyModularSlotChange(player.blueprints, up.shipType, up.slotIndex, part);
+        } else {
+          bp.slots[up.slotIndex] = part;
+        }
 
         // When installing an Ancient part from storage, remove it so it cannot be placed again
         if (up.partId && player.unlockedAncientParts && player.unlockedAncientParts.includes(up.partId)) {
@@ -3655,13 +3772,30 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       for (const item of action.items) {
         const sector = newState.sectors.find((s) => s.id === item.sectorId)!;
         const isExiles = player.faction.id === 'the_exiles';
-        const baseBuildCost = getBaseBuildItemCost(player, item.itemType);
+        const isUpgradeBuild = Boolean(item.upgradeFromShipId);
+        const baseBuildCost = getBaseBuildItemCost(player, item.itemType, isUpgradeBuild);
         const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
         const cost = Math.max(0, baseBuildCost - msBuildDiscount);
 
         player.resources.materials -= cost;
 
-        if (item.itemType === 'monolith') {
+        if (isUpgradeBuild && item.upgradeFromShipId) {
+          const targetShipIdx = sector.ships.findIndex(
+            (s) => s.id === item.upgradeFromShipId && s.ownerId === player.id
+          );
+          if (targetShipIdx !== -1) {
+            const targetShip = sector.ships[targetShipIdx]!;
+            const oldType = targetShip.type;
+            sector.ships[targetShipIdx] = {
+              ...targetShip,
+              type: item.itemType as ShipType,
+            };
+            addLog(
+              `🔧 ${player.name} field-upgraded ${oldType.toUpperCase()} in Sector ${sector.sectorNumber} to ${item.itemType.toUpperCase()} for ${cost} Materials.`,
+              'action'
+            );
+          }
+        } else if (item.itemType === 'monolith') {
           sector.structures = sector.structures || {};
           sector.structures.monolith = true;
           sector.hasMonolith = true;
@@ -5638,7 +5772,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       } else if (action.targetSlot === 'upgrade' && action.upgrade) {
         const bp = player.blueprints[action.upgrade.shipType]!;
         const part = action.upgrade.partId ? SHIP_PARTS[action.upgrade.partId] || null : null;
-        bp.slots[action.upgrade.slotIndex] = part;
+        if (player.faction.id === 'mega_war_inc') {
+          applyModularSlotChange(player.blueprints, action.upgrade.shipType, action.upgrade.slotIndex, part);
+        } else {
+          bp.slots[action.upgrade.slotIndex] = part;
+        }
         if (action.upgrade.partId && player.unlockedAncientParts && player.unlockedAncientParts.includes(action.upgrade.partId)) {
           player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== action.upgrade!.partId);
         }
@@ -5713,6 +5851,15 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       const pIdx = newState.players.findIndex((p) => p.id === action.playerId);
       const wasBot = newState.players[pIdx]?.isBot;
       newState.players[pIdx] = wasBot ? { ...builtPlayer, isBot: true } : builtPlayer;
+
+      if (builtPlayer.faction.id === 'mega_war_inc') {
+        assignUnusedTerranHomeworldForMegaWar(
+          newState.players,
+          newState.sectors,
+          newState.players[pIdx]!,
+          builtHomeSector
+        );
+      }
 
       const secIdx = newState.sectors.findIndex((s) => s.id === `draft_slot_${action.playerId}`);
       if (secIdx >= 0) {
@@ -8133,15 +8280,10 @@ export function computeCurrentScores(state: GameState): {
       p.techTrack.researched.filter((t) => (t.placedTrack || t.category) === 'nano').length
     );
 
-    const getTrackVP = (cnt: number) => {
-      if (cnt >= 7) return 5;
-      if (cnt === 6) return 3;
-      if (cnt === 5) return 2;
-      if (cnt === 4) return 1;
-      return 0;
-    };
-
-    const trackVP = getTrackVP(mCount) + getTrackVP(gCount) + getTrackVP(nCount);
+    const trackVP =
+      getTechTrackVPForPlayer('military', mCount, p.faction.id) +
+      getTechTrackVPForPlayer('grid', gCount, p.faction.id) +
+      getTechTrackVPForPlayer('nano', nCount, p.faction.id);
     const tileVP = p.techTrack.researched.reduce((sum, t) => sum + (t.victoryPoints || 0), 0);
     const techVP = trackVP + tileVP;
 

@@ -25,6 +25,8 @@ import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
 export interface BuildItemPayload {
   sectorId: string;
   itemType: ShipType | 'orbital' | 'monolith';
+  /** Mega War Inc.: upgrades an existing Interceptor->Cruiser or Cruiser->Dreadnought anywhere on map. */
+  upgradeFromShipId?: string;
 }
 
 export interface BuildModalProps {
@@ -63,7 +65,11 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   // Deployed ships across the galaxy
   const deployedShips = countPlayerShips(sectors, player.id);
 
-  // Staged ships in other slots of the construction queue (excluding the currently active slot)
+  const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
+  const isExiles = player.faction.id === 'the_exiles';
+  const isMegaWar = player.faction.id === 'mega_war_inc';
+
+  // Net supply delta queued by OTHER slots (positive = newly built/target; negative = freed hull by Mega War upgrade)
   const stagedInOtherSlots: Record<ShipType, number> = {
     interceptor: 0,
     cruiser: 0,
@@ -74,6 +80,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   slots.forEach((s, idx) => {
     if (idx !== activeSlotIndex && s.itemType in stagedInOtherSlots) {
       stagedInOtherSlots[s.itemType as ShipType]++;
+      if (s.upgradeFromShipId) {
+        const fromType: ShipType = s.itemType === 'cruiser' ? 'interceptor' : 'cruiser';
+        stagedInOtherSlots[fromType]--;
+      }
     }
   });
 
@@ -95,20 +105,70 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     otherSlotHasOrbitalInSector
   );
 
-  const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
-  const isExiles = player.faction.id === 'the_exiles';
-
   const getAvailableSupply = (type: ShipType): number => {
     if (isRhoIndi && type === 'dreadnought') return 0;
     if (isExiles && type === 'starbase') return 0;
     return Math.max(0, SHIP_LIMITS[type] - deployedShips[type] - stagedInOtherSlots[type]);
   };
 
-  const getItemCost = (type: ShipType | 'orbital' | 'monolith') => {
-    const base = getBaseBuildItemCost(player, type);
+  const getItemCost = (type: ShipType | 'orbital' | 'monolith', isUpgradeBuild?: boolean) => {
+    const base = getBaseBuildItemCost(player, type, isUpgradeBuild);
     const discount = getMinorSpeciesBuildDiscount(player, type);
     return Math.max(0, base - discount);
   };
+
+  // Deployed upgradeable ships across ALL sectors on map (even pinned / enemy territory) for Mega War Inc.,
+  // taking into account any earlier Build slots that already promoted a ship (e.g. Slot #1 INT->CRU enables Slot #2 CRU->DRE).
+  const upgradeableShipsOnMap = React.useMemo(() => {
+    if (!isMegaWar) return [];
+    const stagedTypesBeforeCurrent = new Map<string, ShipType>();
+    for (let idx = 0; idx < activeSlotIndex && idx < slots.length; idx++) {
+      const s = slots[idx];
+      if (s?.upgradeFromShipId && (s.itemType === 'cruiser' || s.itemType === 'dreadnought')) {
+        stagedTypesBeforeCurrent.set(s.upgradeFromShipId, s.itemType);
+      }
+    }
+    const usedInLaterSlots = new Set<string>();
+    for (let idx = activeSlotIndex + 1; idx < slots.length; idx++) {
+      const s = slots[idx];
+      if (s?.upgradeFromShipId) {
+        usedInLaterSlots.add(s.upgradeFromShipId);
+      }
+    }
+
+    const list: {
+      shipId: string;
+      shipType: 'interceptor' | 'cruiser';
+      targetType: 'cruiser' | 'dreadnought';
+      sectorId: string;
+      sectorNumber: number;
+      sectorName?: string;
+      inEnemyOrUncontrolled: boolean;
+      stagedFromEarlierSlot: boolean;
+      blockedByLaterSlot: boolean;
+    }[] = [];
+    for (const sec of sectors) {
+      const hasEnemies = sec.ships.some((sh) => sh.ownerId !== player.id);
+      for (const sh of sec.ships) {
+        if (sh.ownerId !== player.id) continue;
+        const effectiveType = stagedTypesBeforeCurrent.get(sh.id) ?? sh.type;
+        if (effectiveType === 'interceptor' || effectiveType === 'cruiser') {
+          list.push({
+            shipId: sh.id,
+            shipType: effectiveType,
+            targetType: effectiveType === 'interceptor' ? 'cruiser' : 'dreadnought',
+            sectorId: sec.id,
+            sectorNumber: sec.sectorNumber,
+            sectorName: sec.name,
+            inEnemyOrUncontrolled: sec.discOwner !== player.id || hasEnemies,
+            stagedFromEarlierSlot: stagedTypesBeforeCurrent.has(sh.id),
+            blockedByLaterSlot: usedInLaterSlots.has(sh.id),
+          });
+        }
+      }
+    }
+    return list;
+  }, [isMegaWar, sectors, player.id, slots, activeSlotIndex]);
 
   const getPriceOfPowerNote = (type: ShipType) => {
     if (player.faction.id !== 'atlantians') return '';
@@ -194,8 +254,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       type: 'monolith',
       name: l('Monolith', '方尖碑'),
       cost: getItemCost('monolith'),
-      unlocked: hasMonolithTech && !currentSectorHasMonolith,
-      disabledReason: !hasMonolithTech
+      unlocked: !isMegaWar && hasMonolithTech && !currentSectorHasMonolith,
+      disabledReason: isMegaWar
+        ? l('Mega War Inc. cannot construct Monoliths.', '巨战公司无法建造方尖碑。')
+        : !hasMonolithTech
         ? l('Requires Monolith tech', '需要方尖碑科技')
         : currentSectorHasMonolith
         ? l('Sector already has Monolith', '星区已有方尖碑')
@@ -204,7 +266,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     },
   ];
 
-  const totalCost = slots.reduce((sum, s) => sum + getItemCost(s.itemType), 0);
+  const totalCost = slots.reduce((sum, s) => sum + getItemCost(s.itemType, Boolean(s.upgradeFromShipId)), 0);
   const canAfford = player.resources.materials >= totalCost;
   const allSlotsValid =
     slots.length > 0 &&
@@ -212,6 +274,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       if (!s.sectorId) return false;
       const sec = sectors.find((sector) => sector.id === s.sectorId);
       if (!sec) return false;
+      if (s.upgradeFromShipId) {
+        if (!isMegaWar) return false;
+        const expectedFrom: ShipType = s.itemType === 'cruiser' ? 'interceptor' : 'cruiser';
+        const sh = sec.ships.find((ship) => ship.id === s.upgradeFromShipId && ship.ownerId === player.id);
+        if (!sh || sh.type !== expectedFrom) return false;
+        if (slots.slice(0, idx).some((prev) => prev.upgradeFromShipId === s.upgradeFromShipId)) return false;
+        return true;
+      }
       if (s.itemType === 'starbase' && !hasStarbaseTech) return false;
       if (s.itemType === 'orbital') {
         if (!hasOrbitalTech) return false;
@@ -219,7 +289,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         if (slots.slice(0, idx).some((prev) => prev.sectorId === s.sectorId && prev.itemType === 'orbital')) return false;
       }
       if (s.itemType === 'monolith') {
-        if (!hasMonolithTech) return false;
+        if (isMegaWar || !hasMonolithTech) return false;
         if (sec.structures?.monolith || sec.hasMonolith) return false;
         if (slots.slice(0, idx).some((prev) => prev.sectorId === s.sectorId && prev.itemType === 'monolith')) return false;
       }
@@ -238,6 +308,10 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   for (const s of slots) {
     if (s.itemType in overallQueuedShips) {
       overallQueuedShips[s.itemType as ShipType]++;
+      if (s.upgradeFromShipId) {
+        const fromType: ShipType = s.itemType === 'cruiser' ? 'interceptor' : 'cruiser';
+        overallQueuedShips[fromType]--;
+      }
     }
   }
 
@@ -251,7 +325,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const canBuild =
     canAfford &&
     allSlotsValid &&
-    eligibleSectors.length > 0 &&
+    (eligibleSectors.length > 0 || (isMegaWar && upgradeableShipsOnMap.length > 0)) &&
     !exceedsShipLimits;
 
   const handleAddSlot = () => {
@@ -278,16 +352,40 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     }
   };
 
+  const sanitizeChainedUpgrades = (candidateSlots: BuildItemPayload[]): BuildItemPayload[] => {
+    if (!isMegaWar) return candidateSlots;
+    const simShipTypes = new Map<string, ShipType>();
+    for (const sec of sectors) {
+      for (const sh of sec.ships) {
+        if (sh.ownerId === player.id && (sh.type === 'interceptor' || sh.type === 'cruiser' || sh.type === 'dreadnought')) {
+          simShipTypes.set(sh.id, sh.type);
+        }
+      }
+    }
+    return candidateSlots.map((slot) => {
+      if (!slot.upgradeFromShipId) return slot;
+      const curType = simShipTypes.get(slot.upgradeFromShipId);
+      const expectedFrom = slot.itemType === 'cruiser' ? 'interceptor' : slot.itemType === 'dreadnought' ? 'cruiser' : null;
+      if (!curType || !expectedFrom || curType !== expectedFrom) {
+        // Prior chained step was removed/changed; fall back to standard new-hull slot cleanly
+        return { sectorId: slot.sectorId, itemType: 'interceptor' };
+      }
+      simShipTypes.set(slot.upgradeFromShipId, slot.itemType as ShipType);
+      return slot;
+    });
+  };
+
   const handleRemoveSlot = (index: number) => {
     if (slots.length > 1) {
-      const newSlots = slots.filter((_, idx) => idx !== index);
+      const newSlots = sanitizeChainedUpgrades(slots.filter((_, idx) => idx !== index));
       onChangeSlots(newSlots);
       onSelectSlotIndex(Math.max(0, index - 1));
     }
   };
 
   const handleUpdateSlot = (index: number, updates: Partial<BuildItemPayload>) => {
-    onChangeSlots(slots.map((s, idx) => (idx === index ? { ...s, ...updates } : s)));
+    const updated = slots.map((s, idx) => (idx === index ? { ...s, ...updates } : s));
+    onChangeSlots(sanitizeChainedUpgrades(updated));
   };
 
   const [showUnusedWarning, setShowUnusedWarning] = useState(false);
@@ -388,7 +486,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         </div>
 
         {/* Content */}
-        {eligibleSectors.length === 0 ? (
+        {eligibleSectors.length === 0 && !(isMegaWar && upgradeableShipsOnMap.length > 0) ? (
           <div className="p-3 bg-rose-950/40 border border-rose-800/80 rounded-xl text-rose-300 text-xs flex items-center gap-2">
             <CircleAlert className="w-4 h-4 shrink-0 text-rose-400" />
             <span>
@@ -401,7 +499,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             <div className="flex items-center gap-2 overflow-x-auto pb-0.5">
               {slots.map((slot, sIdx) => {
                 const sec = sectors.find((s) => s.id === slot.sectorId);
-                const cost = getItemCost(slot.itemType);
+                const cost = getItemCost(slot.itemType, Boolean(slot.upgradeFromShipId));
                 const isActive = sIdx === activeSlotIndex;
 
                 return (
@@ -495,13 +593,13 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 {/* Blueprint / Structure Buttons */}
                 <div className="grid grid-cols-6 gap-1.5">
                   {buildItems.map((item) => {
-                    const isSelected = currentSlot.itemType === item.type;
+                    const isSelected = !currentSlot.upgradeFromShipId && currentSlot.itemType === item.type;
                     return (
                       <button
                         key={item.type}
                         type="button"
                         disabled={!item.unlocked}
-                        onClick={() => handleUpdateSlot(activeSlotIndex, { itemType: item.type })}
+                        onClick={() => handleUpdateSlot(activeSlotIndex, { itemType: item.type, upgradeFromShipId: undefined })}
                         className={`p-2 rounded-lg border text-center transition-all flex flex-col items-center justify-between min-h-[64px] ${
                           isSelected
                             ? 'bg-amber-950/80 border-amber-500 shadow ring-1 ring-amber-500 text-white'
@@ -550,6 +648,69 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                     );
                   })}
                 </div>
+
+                {/* Mega War Inc.: Field Hull Upgrade (Anywhere on Map, including Enemy / Pinned Territory) */}
+                {isMegaWar && upgradeableShipsOnMap.length > 0 && (
+                  <div className="pt-2.5 border-t border-slate-800/80 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-indigo-300 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-indigo-400" />
+                        {l(
+                          'Field Hull Upgrade (Any Sector, Including Enemy / Pinned):',
+                          '战地船体改型（任意星区，含敌方/牵制星区）：'
+                        )}
+                      </span>
+                      <span className="font-mono text-[10px] text-amber-300 font-bold">
+                        {l('Cost: 3 Mats (1 Build Activation)', '费用：3 材料（占 1 次建造）')}
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {upgradeableShipsOnMap.map((cand) => {
+                        const hasSupply = getAvailableSupply(cand.targetType) > 0;
+                        const isPicked = currentSlot.upgradeFromShipId === cand.shipId;
+                        const isDisabled = cand.blockedByLaterSlot || (!isPicked && !hasSupply);
+                        const upCost = getItemCost(cand.targetType, true);
+                        return (
+                          <button
+                            key={cand.shipId}
+                            type="button"
+                            disabled={isDisabled}
+                            onClick={() =>
+                              handleUpdateSlot(activeSlotIndex, {
+                                sectorId: cand.sectorId,
+                                itemType: cand.targetType,
+                                upgradeFromShipId: cand.shipId,
+                              })
+                            }
+                            className={`px-2.5 py-1.5 rounded-lg border text-[11px] font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                              isPicked
+                                ? 'bg-indigo-600/80 border-indigo-400 text-white shadow ring-1 ring-indigo-300'
+                                : isDisabled
+                                ? 'bg-slate-900/40 border-slate-800 text-slate-500 opacity-45 cursor-not-allowed'
+                                : 'bg-slate-900 border-indigo-900/60 hover:border-indigo-500 text-indigo-200'
+                            }`}
+                          >
+                            <span className="uppercase">{cand.shipType.slice(0, 3)} → {cand.targetType.slice(0, 3)}</span>
+                            <span className="text-slate-400 font-mono">
+                              @{l(`Sec ${cand.sectorNumber}`, `星区${cand.sectorNumber}`)}
+                            </span>
+                            {cand.stagedFromEarlierSlot && (
+                              <span className="px-1 py-0.2 rounded bg-cyan-950 text-cyan-300 border border-cyan-700 text-[9px]">
+                                {l('Chained', '连续升级')}
+                              </span>
+                            )}
+                            {cand.inEnemyOrUncontrolled && (
+                              <span className="px-1 py-0.2 rounded bg-rose-950 text-rose-300 border border-rose-800 text-[9px]">
+                                {l('Field', '前线')}
+                              </span>
+                            )}
+                            <span className="text-amber-300 font-mono">{upCost}M</span>
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>

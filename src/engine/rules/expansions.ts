@@ -137,12 +137,13 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
     name: 'Community Factions',
     shortName: 'Community',
     badge: 'Community Species',
-    description: 'Introduces fan-created and community-curated Alien Species factions, beginning with the resurgent Atlantians.',
+    description: 'Introduces fan-created and community-curated Alien Species factions, beginning with the resurgent Atlantians and corporate-militarist Mega War Inc.',
     features: [
       'Atlantians (Sector 241): Start with Ancient Labs, 3/3/3 resources, and 4 Rep/Ambassador slots.',
       'Ancient Spirit: Draw an extra Discovery Tile and pick 1 to resolve (discard & redraw +6 Materials or Ancient Cruiser).',
       'Ancient Instinct: After researching a tech, optionally perform an Upgrade 1 action using that researched technology.',
       'Ancient Power & Price of Power: Score +1 VP per Discovery Tile on ships; +1 Material build cost surcharge per extra Discovery Tile beyond the first on each ship class.',
+      'Mega War Inc. (Unused Terran Sector): Starts with 3 Mat / 3 Sci / 2 Money, 1 Upgrade activation, modular linked ship blueprints (Interceptor→Cruiser→Dreadnought←→Starbase), Build ship-class upgrades anywhere (3 Mats), custom Military (-1..6 VP) & 6-slot Nano (4 VP) tech tracks, no Monoliths, and no immediate Ancient part equips.',
     ],
   },
 ];
@@ -244,7 +245,15 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
   if (norm === 'community_balance' || norm === 'community balance' || norm === 'community_rebalance' || norm === 'balance') {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_balance') || null;
   }
-  if (norm === 'community_factions' || norm === 'community factions' || norm === 'atlantians' || norm === 'atlantian') {
+  if (
+    norm === 'community_factions' ||
+    norm === 'community factions' ||
+    norm === 'atlantians' ||
+    norm === 'atlantian' ||
+    norm === 'mega_war_inc' ||
+    norm === 'mega war inc' ||
+    norm === 'mega war inc.'
+  ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }
   return null;

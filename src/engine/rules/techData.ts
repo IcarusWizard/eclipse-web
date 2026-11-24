@@ -489,22 +489,89 @@ export const TECH_TRACK_DISCOUNT_TABLE: Record<number, number> = {
   7: 8,
 };
 
-export function getTechDiscountForTrack(techsResearchedInTrack: number): number {
-  if (techsResearchedInTrack >= OFFICIAL_TECH_DISCOUNTS.length) {
-    return OFFICIAL_TECH_DISCOUNTS[OFFICIAL_TECH_DISCOUNTS.length - 1]!;
+const MEGA_WAR_TECH_DISCOUNTS: Record<'military' | 'grid' | 'nano', readonly number[]> = {
+  military: [1, 2, 3, 4, 5, 6, 8],
+  grid: [0, 1, 2, 3, 4, 6, 8],
+  nano: [0, 1, 1, 2, 4, 6],
+};
+
+const MEGA_WAR_TECH_VP: Record<'military' | 'grid' | 'nano', Record<number, number>> = {
+  military: { 4: 1, 5: 2, 6: 3, 7: 6 },
+  grid: { 4: 1, 5: 2, 6: 3, 7: 5 },
+  nano: { 4: 1, 5: 2, 6: 4 },
+};
+
+export function getTechTrackDiscountsForPlayer(
+  track: 'military' | 'grid' | 'nano',
+  factionId?: string
+): readonly number[] {
+  if (factionId === 'mega_war_inc') {
+    return MEGA_WAR_TECH_DISCOUNTS[track];
   }
-  return OFFICIAL_TECH_DISCOUNTS[Math.max(0, techsResearchedInTrack)]!;
+  return OFFICIAL_TECH_DISCOUNTS;
+}
+
+export function getTechTrackMaxSlots(
+  track: 'military' | 'grid' | 'nano',
+  factionId?: string
+): number {
+  if (factionId === 'mega_war_inc' && track === 'nano') {
+    return 6;
+  }
+  return 7;
+}
+
+export function getTechTrackVPForPlayer(
+  track: 'military' | 'grid' | 'nano',
+  count: number,
+  factionId?: string
+): number {
+  if (factionId === 'mega_war_inc') {
+    const table = MEGA_WAR_TECH_VP[track];
+    if (track === 'nano') {
+      return count >= 6 ? table[6]! : (table[count] ?? 0);
+    }
+    return count >= 7 ? table[7]! : (table[count] ?? 0);
+  }
+  if (count >= 7) return 5;
+  if (count === 6) return 3;
+  if (count === 5) return 2;
+  if (count === 4) return 1;
+  return 0;
+}
+
+export function getTechDiscountForTrack(
+  techsResearchedInTrack: number,
+  track?: 'military' | 'grid' | 'nano',
+  factionId?: string
+): number {
+  const discounts = track ? getTechTrackDiscountsForPlayer(track, factionId) : OFFICIAL_TECH_DISCOUNTS;
+  if (techsResearchedInTrack >= discounts.length) {
+    return discounts[discounts.length - 1]!;
+  }
+  return discounts[Math.max(0, techsResearchedInTrack)]!;
 }
 
 /**
  * Calculates the exact discounted cost for researching a technology.
  * In Eclipse: Second Dawn, the discount is strictly dictated by the leftmost visible discount
- * printed on the Species Board for that category (0, 1, 2, 3, 4, 6, 8), subject to the tech's minCost.
+ * printed on the Species Board for that category (standard 0, 1, 2, 3, 4, 6, 8; custom for Mega War Inc.),
+ * subject to the tech's minCost.
  * @param tech The target technology
  * @param techsResearchedInTrack Count of technologies currently researched in this track
  */
-export function calculateTechCost(tech: Technology, techsResearchedInTrack: number): number {
-  const discount = getTechDiscountForTrack(techsResearchedInTrack);
+export function calculateTechCost(
+  tech: Technology,
+  techsResearchedInTrack: number,
+  targetTrack?: 'military' | 'grid' | 'nano',
+  factionId?: string
+): number {
+  const resolvedTrack =
+    targetTrack ||
+    (tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano'
+      ? tech.category
+      : undefined);
+  const discount = getTechDiscountForTrack(techsResearchedInTrack, resolvedTrack, factionId);
   return Math.max(tech.minCost, tech.baseCost - discount);
 }
 

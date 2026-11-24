@@ -24396,27 +24396,133 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const resolvedStep3 = resolveStepState(compacted, 3);
         expect(resolvedStep3.round).toBe(2);
 
-        // 5. Verify galaxy-481.json on disk is compact (< 1MB) and has exactly round keyframes
+        // 5. Simulate multi-round gameplay across real actions, persist to a temp file, and verify compression & step resolution
         const fs = await import('fs');
         const path = await import('path');
-        const g481Path = path.resolve(process.cwd(), 'server_data', 'tables', 'galaxy-481.json');
-        if (fs.existsSync(g481Path)) {
-          const stats = fs.statSync(g481Path);
-          expect(stats.size).toBeLessThan(1024 * 1024); // Was 7.3 MB, now ~857 KB!
+        const os = await import('os');
 
-          const g481Data = JSON.parse(fs.readFileSync(g481Path, 'utf-8'));
-          const steps = g481Data.replaySteps || [];
-          expect(steps.length).toBe(143);
-          const keyframes = steps.filter((s: any) => s.isKeyframe);
-          const deltas = steps.filter((s: any) => s.delta);
-          expect(keyframes.length).toBe(9); // Only 8 rounds + game over
-          expect(deltas.length).toBe(134);
+        let simState = createInitialGame(4, [
+          'terran_federation',
+          'eridani_empire',
+          'hydran_progress',
+          'orion_hegemony',
+        ]);
+        const recordedSteps: any[] = [
+          {
+            stepIndex: 0,
+            timestamp: Date.now(),
+            round: simState.round,
+            phase: simState.phase,
+            actionType: 'GAME_SETUP',
+            summary: 'Initial 4-player setup',
+            isKeyframe: true,
+            snapshot: createCleanSnapshot(simState),
+          },
+        ];
+        const uncompactedSteps: any[] = [{ ...recordedSteps[0] }];
+        const expectedCheckpoints: { round: number; phase: string; activePlayerIndex: number }[] = [
+          { round: simState.round, phase: simState.phase, activePlayerIndex: simState.activePlayerIndex },
+        ];
 
-          // All 143 steps resolve without error
-          const step0 = resolveStepState(steps, 0);
-          expect(step0.phase).toBe('DRAFT_PHASE');
-          const lastStep = resolveStepState(steps, 142);
-          expect(lastStep.phase).toBe('GAME_OVER');
+        const pushSimStep = (nextState: typeof simState, prevState: typeof simState, actionType: string, actorId: string) => {
+          const workingState = { ...nextState, replaySteps: recordedSteps };
+          commitReplayStep(workingState, actionType, `${actionType} by ${actorId}`, actorId, prevState);
+          const idx = recordedSteps.length - 1;
+          uncompactedSteps.push({
+            stepIndex: idx,
+            timestamp: Date.now(),
+            round: nextState.round,
+            phase: nextState.phase,
+            actionType,
+            summary: `${actionType} by ${actorId}`,
+            isKeyframe: true,
+            snapshot: createCleanSnapshot(nextState),
+          });
+          expectedCheckpoints.push({
+            round: nextState.round,
+            phase: nextState.phase,
+            activePlayerIndex: nextState.activePlayerIndex,
+          });
+        };
+
+        // Run 3 full rounds with varied intermediate actions (UPGRADE, BUILD, INFLUENCE, PASS)
+        for (let r = 0; r < 3; r++) {
+          for (let turnIdx = 0; turnIdx < simState.players.length; turnIdx++) {
+            const actor = simState.players[simState.activePlayerIndex]!;
+            const homeSec = simState.sectors.find((s) => s.id === `home_sector_${actor.id}`)!;
+
+            // Each player takes an actual intermediate board action before passing on a later turn
+            if (turnIdx === 0 && simState.round === 1 && actor.influenceTrack.discsOnTrack > 1) {
+              const upgRes = executeAction(simState, {
+                type: 'UPGRADE',
+                playerId: actor.id,
+                upgrades: [{ shipType: 'interceptor', slotIndex: 3, partId: 'hull' }],
+              });
+              expect(upgRes.success).toBe(true);
+              pushSimStep(upgRes.newState, simState, 'UPGRADE', actor.id);
+              simState = upgRes.newState;
+            } else if (turnIdx === 1 && actor.resources.materials >= 3 && actor.influenceTrack.discsOnTrack > 1) {
+              const bldRes = executeAction(simState, {
+                type: 'BUILD',
+                playerId: actor.id,
+                items: [{ sectorId: homeSec.id, itemType: 'interceptor' }],
+              });
+              expect(bldRes.success).toBe(true);
+              pushSimStep(bldRes.newState, simState, 'BUILD', actor.id);
+              simState = bldRes.newState;
+            }
+          }
+
+          // Pass remaining non-passed players until the round advances
+          let guard = 0;
+          const startingRound = simState.round;
+          while (simState.round === startingRound && guard < 10) {
+            const actor = simState.players[simState.activePlayerIndex]!;
+            const passRes = executeAction(simState, { type: 'PASS', playerId: actor.id });
+            expect(passRes.success).toBe(true);
+            pushSimStep(passRes.newState, simState, 'PASS', actor.id);
+            simState = passRes.newState;
+            guard += 1;
+          }
+        }
+
+        const gameOverState = { ...simState, phase: 'GAME_OVER' as any };
+        pushSimStep(gameOverState, simState, 'GAME_OVER', simState.players[0]!.id);
+        simState = gameOverState;
+
+        const compactedSim = compactReplaySteps(recordedSteps);
+        expect(compactedSim.length).toBeGreaterThanOrEqual(15);
+
+        const keyframes = compactedSim.filter((s: any) => s.isKeyframe);
+        const deltas = compactedSim.filter((s: any) => !s.isKeyframe && s.delta);
+        // Step 0 + round transitions + GAME_OVER transition only
+        expect(keyframes.length).toBeLessThan(compactedSim.length / 2);
+        expect(deltas.length).toBe(compactedSim.length - keyframes.length);
+        for (const df of deltas) {
+          expect(df.snapshot).toBeUndefined();
+        }
+
+        // Write & read back from temporary JSON file and verify substantial byte reduction over snapshot-per-step
+        const tmpFile = path.join(os.tmpdir(), `eclipse-compact-test-${Date.now()}.json`);
+        try {
+          const compactPayload = JSON.stringify({ ...simState, replaySteps: compactedSim });
+          const uncompactedPayload = JSON.stringify({ ...simState, replaySteps: uncompactedSteps });
+          fs.writeFileSync(tmpFile, compactPayload, 'utf-8');
+          const diskBytes = fs.statSync(tmpFile).size;
+          const uncompactedBytes = Buffer.byteLength(uncompactedPayload, 'utf-8');
+
+          expect(diskBytes).toBeLessThan(uncompactedBytes * 0.45);
+          expect(diskBytes).toBeLessThan(512 * 1024);
+
+          const parsedBack = JSON.parse(fs.readFileSync(tmpFile, 'utf-8'));
+          const backSteps = parsedBack.replaySteps;
+          for (let i = 0; i < backSteps.length; i++) {
+            const resolved = resolveStepState(backSteps, i);
+            expect(resolved.round).toBe(expectedCheckpoints[i]!.round);
+            expect(resolved.phase).toBe(expectedCheckpoints[i]!.phase);
+          }
+        } finally {
+          if (fs.existsSync(tmpFile)) fs.unlinkSync(tmpFile);
         }
       });
 
@@ -30007,6 +30113,561 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(sheetHtml).toContain('Ancient Instinct');
       expect(sheetHtml).toContain('Ancient Power');
       expect(sheetHtml).toContain('Price of Power');
+    });
+
+    it('298. verifies Mega War Inc. community faction modular blueprints, custom tech tracks, field hull upgrade, and monolith/discovery restrictions', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const {
+        ALL_FACTIONS,
+        isFactionAvailable,
+        getFactionReputationSlotTypes,
+      } = await import('../rules/setup');
+      const {
+        TECH_CATALOG,
+        calculateTechCost,
+        getTechTrackDiscountsForPlayer,
+        getTechTrackMaxSlots,
+        getTechTrackVPForPlayer,
+      } = await import('../rules/techData');
+      const { getPlayerTechRows } = await import('../rules/economyEngine');
+      const {
+        getBaseBuildItemCost,
+        getLinkedModularSlots,
+        getCanonicalModularSlotKey,
+        getMegaWarModularGroupInfo,
+        inferModularExternalGroup,
+      } = await import('../rules/shipValidation');
+      const { DISCOVERY_TILES } = await import('../rules/sectorData');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { BuildModal } = await import('../../components/actions/BuildModal');
+      const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+      const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+      const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+
+      // 1. Expansion registration & Terran-based defaults
+      expect(getExpansionForItem('mega_war_inc')?.id).toBe('community_factions');
+      expect(isFactionAvailable('mega_war_inc', [])).toBe(false);
+      expect(isFactionAvailable('mega_war_inc', ['community_factions'])).toBe(true);
+
+      const megaWarFaction = ALL_FACTIONS.find((f) => f.id === 'mega_war_inc')!;
+      expect(megaWarFaction).toBeDefined();
+      expect(megaWarFaction.tradeRatio).toBe(2);
+      expect(megaWarFaction.upgradeActivations).toBe(1);
+      expect(megaWarFaction.moveActivations).toBe(3);
+      expect(megaWarFaction.buildActivations).toBe(2);
+      expect(megaWarFaction.influenceActivations).toBe(2);
+      expect(megaWarFaction.startingColonyShips).toBe(3);
+      expect(megaWarFaction.startingTechIds).toEqual([]);
+      expect(megaWarFaction.startingResources).toEqual({ money: 2, science: 3, materials: 3 });
+
+      const repTypes = getFactionReputationSlotTypes(megaWarFaction);
+      expect(repTypes).toEqual(['amb_only', 'both', 'both', 'both', 'both']);
+
+      // 2. Game setup: assigns first unused Terran homeworld sector (222 when Terran Federation uses 221)
+      const game = createInitialGame(2, ['terran_federation', 'mega_war_inc'], ['community_factions']);
+
+      const megaWar = game.players.find((p) => p.faction.id === 'mega_war_inc')!;
+      expect(megaWar).toBeDefined();
+      const megaHomeSectorId = `home_sector_${megaWar.id}`;
+      const megaHome = game.sectors.find((s) => s.id === megaHomeSectorId)!;
+      expect(megaHome.sectorNumber).toBe(222);
+      expect(megaHome.planets.filter((p) => Boolean(p.colonizedBy)).length).toBe(3);
+
+      // 3. Starting modular blueprints & initiative/cost overrides
+      expect(megaWar.blueprints.interceptor!.baseBuildCost).toBe(2);
+      expect(megaWar.blueprints.interceptor!.baseInitiative).toBe(1);
+      expect(megaWar.blueprints.cruiser!.baseBuildCost).toBe(5);
+      expect(megaWar.blueprints.cruiser!.baseInitiative).toBe(1);
+      expect(megaWar.blueprints.dreadnought!.baseBuildCost).toBe(8);
+      expect(megaWar.blueprints.dreadnought!.baseInitiative).toBe(1);
+      expect(calculateBlueprintStats(megaWar.blueprints.dreadnought!).totalInitiative).toBe(2);
+      expect(megaWar.blueprints.starbase!.noDrives).toBe(true);
+      expect(megaWar.blueprints.starbase!.preprintedPower).toBe(3);
+
+      // Shared modular slot mapping verification
+      expect(getLinkedModularSlots('interceptor', 2)).toEqual([
+        { shipType: 'interceptor', slotIndex: 2 },
+        { shipType: 'cruiser', slotIndex: 2 },
+        { shipType: 'dreadnought', slotIndex: 2 },
+      ]);
+      expect(getLinkedModularSlots('dreadnought', 6)).toEqual([
+        { shipType: 'dreadnought', slotIndex: 6 },
+        { shipType: 'starbase', slotIndex: 0 },
+      ]);
+      expect(getCanonicalModularSlotKey('cruiser', 4)).toBe('M4');
+      expect(getCanonicalModularSlotKey('dreadnought', 4)).toBe('M4');
+      expect(getCanonicalModularSlotKey('starbase', 1)).toBe('M7');
+      expect(getCanonicalModularSlotKey('dreadnought', 7)).toBe('M7');
+
+      // 4. UPG 1 limit & modular propagation (including Drive-on-Starbase-shared-slot guard)
+      const upgState: typeof game = {
+        ...game,
+        activePlayerIndex: game.players.findIndex((p) => p.id === megaWar.id),
+      };
+
+      // Reject > 1 upgrade per action (Terran has 2, Mega War has 1)
+      const tooManyUpgrades = executeAction(upgState, {
+        type: 'UPGRADE',
+        playerId: megaWar.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 3, partId: 'hull' },
+          { shipType: 'starbase', slotIndex: 4, partId: 'hull' },
+        ],
+      });
+      expect(tooManyUpgrades.success).toBe(false);
+
+      // Putting a Drive in Dreadnought slot 6 (linked to Starbase slot 0) violates Starbase noDrives
+      const invalidSharedDrive = executeAction(upgState, {
+        type: 'UPGRADE',
+        playerId: megaWar.id,
+        upgrades: [
+          { shipType: 'dreadnought', slotIndex: 6, partId: 'nuclear_drive' },
+        ],
+      });
+      expect(invalidSharedDrive.success).toBe(false);
+
+      // Replacing slot 3 with hull works and propagates across Interceptor/Cruiser/Dreadnought
+      const validModUpgrade = executeAction(upgState, {
+        type: 'UPGRADE',
+        playerId: megaWar.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 3, partId: 'hull' },
+        ],
+      });
+      expect(validModUpgrade.success).toBe(true);
+      const afterModUpg = validModUpgrade.newState;
+      const megaAfterUpg = afterModUpg.players.find((p) => p.id === megaWar.id)!;
+      expect(megaAfterUpg.blueprints.interceptor!.slots[3]?.id).toBe('hull');
+      expect(megaAfterUpg.blueprints.cruiser!.slots[3]?.id).toBe('hull');
+      expect(megaAfterUpg.blueprints.dreadnought!.slots[3]?.id).toBe('hull');
+
+      // Upgrading Starbase slot 0 -> positron_computer updates both Starbase[0] and Dreadnought[6]
+      megaAfterUpg.techTrack.researched.push(TECH_CATALOG.find((t) => t.id === 'positron_computer')!);
+      megaAfterUpg.hasPassed = false;
+      afterModUpg.activePlayerIndex = afterModUpg.players.findIndex((p) => p.id === megaWar.id);
+      const starbaseDreadUpgrade = executeAction(afterModUpg, {
+        type: 'UPGRADE',
+        playerId: megaWar.id,
+        upgrades: [
+          { shipType: 'starbase', slotIndex: 0, partId: 'positron_computer' },
+        ],
+      });
+      expect(starbaseDreadUpgrade.success).toBe(true);
+      const megaAfterSbUpg = starbaseDreadUpgrade.newState.players.find((p) => p.id === megaWar.id)!;
+      expect(megaAfterSbUpg.blueprints.starbase!.slots[0]?.id).toBe('positron_computer');
+      expect(megaAfterSbUpg.blueprints.dreadnought!.slots[6]?.id).toBe('positron_computer');
+
+      // 5. Custom Tech Tracks (Military -1...-8 & 6 VP, Grid standard 5 VP, Nano 6 slots & 4 VP) + Monolith forbidden
+      expect(getTechTrackDiscountsForPlayer('military', 'mega_war_inc')).toEqual([1, 2, 3, 4, 5, 6, 8]);
+      expect(getTechTrackVPForPlayer('military', 7, 'mega_war_inc')).toBe(6);
+      expect(getTechTrackDiscountsForPlayer('nano', 'mega_war_inc')).toEqual([0, 1, 1, 2, 4, 6]);
+      expect(getTechTrackMaxSlots('nano', 'mega_war_inc')).toBe(6);
+      expect(getTechTrackVPForPlayer('nano', 6, 'mega_war_inc')).toBe(4);
+
+      const starbaseTech = TECH_CATALOG.find((t) => t.id === 'starbase')!; // base 4, min 3 -> with -1 discount = 3
+      expect(calculateTechCost(starbaseTech, 0, 'military', 'mega_war_inc')).toBe(3);
+
+      const techState = starbaseDreadUpgrade.newState;
+      const megaTechPlayer = techState.players.find((p) => p.id === megaWar.id)!;
+      techState.activePlayerIndex = techState.players.findIndex((p) => p.id === megaWar.id);
+      megaTechPlayer.resources.science = 30;
+      const monolithTech = TECH_CATALOG.find((t) => t.id === 'monolith')!;
+      techState.techSupply = [monolithTech, ...techState.techSupply];
+
+      // Forbid researching Monolith
+      const researchMonolith = executeAction(techState, {
+        type: 'RESEARCH',
+        playerId: megaWar.id,
+        researches: [{ techId: 'monolith', targetTrack: 'nano' }],
+      });
+      expect(researchMonolith.success).toBe(false);
+
+      // Nano track max 6 slots: 6 techs allowed, 7th rejected
+      const nanoIds = [
+        'nanorobots',
+        'fusion_drive',
+        'advanced_robotics',
+        'orbital',
+        'advanced_labs',
+        'wormhole_generator',
+      ];
+      megaTechPlayer.techTrack.researched.push(
+        ...nanoIds.map((id) => TECH_CATALOG.find((t) => t.id === id)!)
+      );
+      megaTechPlayer.techTrack.nanoCount = 6;
+      expect(getPlayerTechRows(megaTechPlayer).nano.count).toBe(6);
+      expect(getPlayerTechRows(megaTechPlayer).nano.victoryPoints).toBe(4);
+
+      const artifactKeyTech = TECH_CATALOG.find((t) => t.id === 'artifact_key')!;
+      techState.techSupply = [artifactKeyTech, ...techState.techSupply];
+      const nanoOverflow = executeAction(techState, {
+        type: 'RESEARCH',
+        playerId: megaWar.id,
+        researches: [{ techId: 'artifact_key', targetTrack: 'nano' }],
+      });
+      expect(nanoOverflow.success).toBe(false);
+
+      // 7 Military techs = 6 VP in computeCurrentScores
+      const milIds = [
+        'neutron_bombs',
+        'starbase',
+        'plasma_cannon',
+        'phase_shield',
+        'advanced_mining',
+        'tachyon_source',
+        'plasma_missile',
+      ];
+      megaTechPlayer.techTrack.researched.push(
+        ...milIds.map((id) => TECH_CATALOG.find((t) => t.id === id)!)
+      );
+      megaTechPlayer.techTrack.militaryCount = 7;
+      expect(getPlayerTechRows(megaTechPlayer).military.victoryPoints).toBe(6);
+
+      // 6. Field Hull Upgrade during BUILD (3 Materials, works anywhere on map incl. enemy sectors, never downgrades) & Monolith build blocked
+      expect(getBaseBuildItemCost(megaTechPlayer, 'interceptor')).toBe(2);
+      expect(getBaseBuildItemCost(megaTechPlayer, 'cruiser', true)).toBe(3);
+      expect(getBaseBuildItemCost(megaTechPlayer, 'dreadnought', true)).toBe(3);
+
+      const enemySector = techState.sectors.find((s) => s.id !== megaHomeSectorId)!;
+      const p1Id = techState.players.find((p) => p.id !== megaWar.id)!.id;
+      enemySector.discOwner = p1Id;
+      const deployedInterceptor = {
+        id: 'mw_field_int_1',
+        type: 'interceptor' as const,
+        ownerId: megaWar.id,
+        sectorId: enemySector.id,
+        damage: 0,
+      };
+      const enemyGuardShip = {
+        id: 'p1_guard_1',
+        type: 'interceptor' as const,
+        ownerId: p1Id,
+        sectorId: enemySector.id,
+        damage: 0,
+      };
+      enemySector.ships.push(deployedInterceptor, enemyGuardShip);
+      megaTechPlayer.techTrack.researched.push(monolithTech);
+      megaTechPlayer.resources.materials = 20;
+
+      // Building Monolith via BUILD fails even with unlockedTechs containing monolith
+      const buildMonolithFail = executeAction(techState, {
+        type: 'BUILD',
+        playerId: megaWar.id,
+        items: [{ sectorId: megaHomeSectorId, itemType: 'monolith' }],
+      });
+      expect(buildMonolithFail.success).toBe(false);
+
+      // Downgrade Cruiser -> Interceptor fails
+      const deployedCruiser = {
+        id: 'mw_field_cru_1',
+        type: 'cruiser' as const,
+        ownerId: megaWar.id,
+        sectorId: enemySector.id,
+        damage: 0,
+      };
+      enemySector.ships.push(deployedCruiser);
+      const downgradeFail = executeAction(techState, {
+        type: 'BUILD',
+        playerId: megaWar.id,
+        items: [{ sectorId: enemySector.id, itemType: 'interceptor', upgradeFromShipId: deployedCruiser.id }],
+      });
+      expect(downgradeFail.success).toBe(false);
+
+      // Upgrade Interceptor -> Cruiser (3 Mats) and Cruiser -> Dreadnought (3 Mats) in enemy-controlled pinned sector
+      const fieldUpgradeRes = executeAction(techState, {
+        type: 'BUILD',
+        playerId: megaWar.id,
+        items: [
+          { sectorId: enemySector.id, itemType: 'cruiser', upgradeFromShipId: deployedInterceptor.id },
+          { sectorId: enemySector.id, itemType: 'dreadnought', upgradeFromShipId: deployedCruiser.id },
+        ],
+      });
+      expect(fieldUpgradeRes.success).toBe(true);
+      const afterBuild = fieldUpgradeRes.newState;
+      const megaAfterBuild = afterBuild.players.find((p) => p.id === megaWar.id)!;
+      expect(megaAfterBuild.resources.materials).toBe(14); // 20 - 3 - 3
+      const updatedEnemySector = afterBuild.sectors.find((s) => s.id === enemySector.id)!;
+      expect(updatedEnemySector.ships.find((s) => s.id === deployedInterceptor.id)?.type).toBe('cruiser');
+      expect(updatedEnemySector.ships.find((s) => s.id === deployedCruiser.id)?.type).toBe('dreadnought');
+
+      // Conquered Monolith in a controlled sector still scores 3 VP
+      const megaHomeAfter = afterBuild.sectors.find((s) => s.id === megaHomeSectorId)!;
+      megaHomeAfter.structures = { ...megaHomeAfter.structures, monolith: true };
+      const scoreWithConqueredMonolith = computeCurrentScores(afterBuild);
+      expect(scoreWithConqueredMonolith.scores[megaWar.id]!.monoliths).toBe(3);
+
+      // 7. Discovery Ancient Ship Parts: immediate equip rejected, reserve & 2 VP allowed
+      const ancientPartDisc = DISCOVERY_TILES.find((d) => Boolean(d.shipPartId))!;
+      afterBuild.pendingDiscovery = {
+        playerId: megaWar.id,
+        sectorId: megaHomeSectorId,
+        discovery: ancientPartDisc,
+      };
+      const immediateEquipFail = executeAction(afterBuild, {
+        type: 'DISCOVERY_CHOICE',
+        playerId: megaWar.id,
+        sectorId: megaHomeSectorId,
+        keepForVictoryPoints: false,
+        equipShipType: 'cruiser',
+        equipSlotIndex: 0,
+      });
+      expect(immediateEquipFail.success).toBe(false);
+
+      const reservePartOk = executeAction(afterBuild, {
+        type: 'DISCOVERY_CHOICE',
+        playerId: megaWar.id,
+        sectorId: megaHomeSectorId,
+        keepForVictoryPoints: false,
+      });
+      expect(reservePartOk.success).toBe(true);
+      expect(
+        reservePartOk.newState.players
+          .find((p) => p.id === megaWar.id)!
+          .unlockedAncientParts.includes(ancientPartDisc.shipPartId!)
+      ).toBe(true);
+
+      // 8. UI SSR rendering checks
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(FactionSheetCard, { faction: megaWarFaction })
+      );
+      expect(sheetHtml).toContain('Mega War Inc.');
+      expect(sheetHtml).toContain('Community Factions');
+      expect(sheetHtml).toContain('/factions/mega_war_inc.jpg');
+
+      const buildModalHtml = renderToStaticMarkup(
+        React.createElement(BuildModal, {
+          player: megaAfterBuild,
+          sectors: afterBuild.sectors,
+          eligibleSectors: [megaHomeAfter],
+          slots: [{ sectorId: megaHomeAfter.id, itemType: 'cruiser' }],
+          onChangeSlots: () => {},
+          activeSlotIndex: 0,
+          onSelectSlotIndex: () => {},
+          onBuild: () => {},
+          onClose: () => {},
+        })
+      );
+      expect(buildModalHtml).toContain('Field Hull Upgrade');
+
+      const discHtml = renderToStaticMarkup(
+        React.createElement(DiscoveryChoiceModal, {
+          discovery: ancientPartDisc,
+          player: megaAfterBuild,
+          onChoice: () => {},
+        })
+      );
+      expect(discHtml).toContain('Mega War Inc. Quality Control');
+
+      const megaForMarket = {
+        ...megaAfterBuild,
+        techTrack: {
+          ...megaAfterBuild.techTrack,
+          researched: megaAfterBuild.techTrack.researched.filter((t) => t.id !== 'monolith'),
+        },
+      };
+      const techHtml = renderToStaticMarkup(
+        React.createElement(TechMarketModal, {
+          player: megaForMarket,
+          techSupply: techState.techSupply,
+          onResearchTech: () => {},
+          onClose: () => {},
+        })
+      );
+      expect(techHtml).toContain('Forbidden (Mega War)');
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(PhysicalPlayerBoardModal, {
+          player: megaAfterBuild,
+          players: afterBuild.players,
+          activePlayerId: megaAfterBuild.id,
+          sectors: afterBuild.sectors,
+          onClose: () => {},
+          onSelectPlayer: () => {},
+          onOpenBlueprintEditor: () => {},
+          onOpenTechMarket: () => {},
+        })
+      );
+      expect(boardHtml).toContain('Mega War Inc.');
+      expect(boardHtml).toContain('6 VP');
+      expect(boardHtml).toContain('4 VP');
+      expect(boardHtml).toContain('data-testid="mega-war-modular-strip"');
+      expect(boardHtml).toContain('data-testid="mega-war-module-m1"');
+      expect(boardHtml).toContain('data-testid="mega-war-module-m11"');
+      expect(boardHtml).toContain('M1–M4 • INT + CRU + DRE');
+      expect(boardHtml).toContain('M7–M8 • DRE + SB');
+
+      const bpEditorHtml = renderToStaticMarkup(
+        React.createElement(ShipBlueprintEditor, {
+          player: megaAfterBuild,
+          onSaveBlueprint: () => {},
+          onClose: () => {},
+        })
+      );
+      expect(bpEditorHtml).toContain('Modular Chassis');
+      expect(bpEditorHtml).toContain('data-testid="mega-war-modular-strip"');
+      expect(bpEditorHtml).toContain('Yellow: INT+CRU+DRE');
+      expect(bpEditorHtml).toContain('Orange: CRU+DRE');
+      expect(bpEditorHtml).toContain('Purple: DRE+SB (No Drive)');
+      expect(bpEditorHtml).toContain('Blue: SB Only');
+
+      expect(getMegaWarModularGroupInfo('interceptor', 0)?.code).toBe('M1');
+      expect(getMegaWarModularGroupInfo('cruiser', 4)?.code).toBe('M5');
+      expect(getMegaWarModularGroupInfo('dreadnought', 6)?.allowsDrives).toBe(false);
+      expect(getMegaWarModularGroupInfo('starbase', 0)?.code).toBe('M7');
+      expect(getMegaWarModularGroupInfo('starbase', 4)?.code).toBe('M11');
+
+      // 9. Modular Muon Source attachment by color group (e.g. Yellow -> INT + CRU + DRE; Purple -> DRE + SB)
+      const muonState = reservePartOk.newState;
+      const megaMuonPlayer = muonState.players.find((p) => p.id === megaWar.id)!;
+      if (!megaMuonPlayer.unlockedAncientParts.includes('muon_source')) {
+        megaMuonPlayer.unlockedAncientParts.push('muon_source');
+      }
+      megaMuonPlayer.hasPassed = false;
+      muonState.activePlayerIndex = muonState.players.findIndex((p) => p.id === megaWar.id);
+
+      const attachMuonYellow = executeAction(muonState, {
+        type: 'UPGRADE',
+        playerId: megaWar.id,
+        upgrades: [
+          {
+            shipType: 'interceptor',
+            slotIndex: -1,
+            partId: 'muon_source',
+            isExternal: true,
+            modularGroupId: 'int_cru_dre',
+          },
+        ],
+      });
+      expect(attachMuonYellow.success).toBe(true);
+      const afterMuonYellow = attachMuonYellow.newState;
+      const megaWithMuonYellow = afterMuonYellow.players.find((p) => p.id === megaWar.id)!;
+      expect(megaWithMuonYellow.blueprints.interceptor!.externalParts?.map((p) => p.id)).toEqual(['muon_source']);
+      expect(megaWithMuonYellow.blueprints.cruiser!.externalParts?.map((p) => p.id)).toEqual(['muon_source']);
+      expect(megaWithMuonYellow.blueprints.dreadnought!.externalParts?.map((p) => p.id)).toEqual(['muon_source']);
+      expect(megaWithMuonYellow.blueprints.starbase!.externalParts || []).toEqual([]);
+      expect(inferModularExternalGroup(megaWithMuonYellow.blueprints, 'muon_source')).toBe('int_cru_dre');
+      expect(calculateBlueprintStats(megaWithMuonYellow.blueprints.cruiser!).totalInitiative).toBe(3);
+
+      // Moving Muon Source to Purple (Dreadnought + Starbase) counts as 1 Upgrade and updates linked hulls cleanly
+      megaWithMuonYellow.hasPassed = false;
+      afterMuonYellow.activePlayerIndex = afterMuonYellow.players.findIndex((p) => p.id === megaWar.id);
+      const moveMuonPurple = executeAction(afterMuonYellow, {
+        type: 'UPGRADE',
+        playerId: megaWar.id,
+        upgrades: [
+          {
+            shipType: 'dreadnought',
+            slotIndex: -1,
+            partId: 'muon_source',
+            isExternal: true,
+            modularGroupId: 'dre_sb',
+          },
+        ],
+      });
+      expect(moveMuonPurple.success).toBe(true);
+      const megaWithMuonPurple = moveMuonPurple.newState.players.find((p) => p.id === megaWar.id)!;
+      expect(megaWithMuonPurple.blueprints.interceptor!.externalParts || []).toEqual([]);
+      expect(megaWithMuonPurple.blueprints.cruiser!.externalParts || []).toEqual([]);
+      expect(megaWithMuonPurple.blueprints.dreadnought!.externalParts?.map((p) => p.id)).toEqual(['muon_source']);
+      expect(megaWithMuonPurple.blueprints.starbase!.externalParts?.map((p) => p.id)).toEqual(['muon_source']);
+      expect(inferModularExternalGroup(megaWithMuonPurple.blueprints, 'muon_source')).toBe('dre_sb');
+
+      // Render ShipBlueprintEditor & PhysicalPlayerBoardModal showing modular Muon Source badge & color picker
+      const muonEditorHtml = renderToStaticMarkup(
+        React.createElement(ShipBlueprintEditor, {
+          player: megaWithMuonYellow,
+          initialShipType: 'interceptor',
+          onSaveBlueprint: () => {},
+          onClose: () => {},
+        })
+      );
+      expect(muonEditorHtml).toContain('data-testid="mega-war-strip-muon-badge"');
+      expect(muonEditorHtml).toContain('data-testid="mega-war-muon-group-picker"');
+      expect(muonEditorHtml).toContain('Yellow: INT + CRU + DRE');
+      expect(muonEditorHtml).toContain('Purple: DRE + SB');
+
+      // 10. Chained BUILD Field Hull Upgrade (same ship upgraded Interceptor -> Cruiser -> Dreadnought in one BUILD action for 6 Mats)
+      const chainState = moveMuonPurple.newState;
+      const chainPlayer = chainState.players.find((p) => p.id === megaWar.id)!;
+      const chainSector = chainState.sectors.find((s) => s.id === megaHomeSectorId)!;
+      const chainShip = {
+        id: 'mw_chain_int_1',
+        type: 'interceptor' as const,
+        ownerId: megaWar.id,
+        sectorId: chainSector.id,
+        damage: 0,
+      };
+      chainSector.ships.push(chainShip);
+      chainPlayer.resources.materials = 10;
+      chainPlayer.hasPassed = false;
+      chainState.activePlayerIndex = chainState.players.findIndex((p) => p.id === megaWar.id);
+
+      // BuildModal renders Slot #2 chained option (CRU -> DRE) when Slot #1 upgrades mw_chain_int_1 INT -> CRU
+      const chainedBuildModalHtml = renderToStaticMarkup(
+        React.createElement(BuildModal, {
+          player: chainPlayer,
+          sectors: chainState.sectors,
+          eligibleSectors: [chainSector],
+          slots: [
+            { sectorId: chainSector.id, itemType: 'cruiser', upgradeFromShipId: chainShip.id },
+            { sectorId: chainSector.id, itemType: 'interceptor' },
+          ],
+          onChangeSlots: () => {},
+          activeSlotIndex: 1,
+          onSelectSlotIndex: () => {},
+          onBuild: () => {},
+          onClose: () => {},
+        })
+      );
+      expect(chainedBuildModalHtml).toContain('cru → dre');
+      expect(chainedBuildModalHtml).toContain('Chained');
+
+      const chainedBuildRes = executeAction(chainState, {
+        type: 'BUILD',
+        playerId: megaWar.id,
+        items: [
+          { sectorId: chainSector.id, itemType: 'cruiser', upgradeFromShipId: chainShip.id },
+          { sectorId: chainSector.id, itemType: 'dreadnought', upgradeFromShipId: chainShip.id },
+        ],
+      });
+      expect(chainedBuildRes.success).toBe(true);
+      const afterChainBuild = chainedBuildRes.newState;
+      expect(
+        afterChainBuild.sectors
+          .find((s) => s.id === chainSector.id)!
+          .ships.find((sh) => sh.id === chainShip.id)?.type
+      ).toBe('dreadnought');
+      expect(afterChainBuild.players.find((p) => p.id === megaWar.id)!.resources.materials).toBe(4); // 10 - 3 - 3
+
+      // 11. CombatSimulatorModal renders modular strip, color coding, and syncs modular hulls for Mega War Inc.
+      const { SideConfigCard } = await import('../../components/simulator/CombatSimulatorModal');
+      const { createDefaultSimulatorSide, validateSimulatorSide } = await import('../rules/combatSimulator');
+      const mwSimSide = createDefaultSimulatorSide('mega_war_inc', {
+        shipCounts: { interceptor: 1, cruiser: 0, dreadnought: 0, starbase: 0 },
+      });
+      const simCardHtml = renderToStaticMarkup(
+        React.createElement(SideConfigCard, {
+          role: 'attacker',
+          sideConfig: mwSimSide,
+          onChangeSideConfig: () => {},
+          activeShipTab: 'cruiser',
+          onSelectShipTab: () => {},
+          onResetBlueprints: () => {},
+        })
+      );
+      expect(simCardHtml).toContain('data-testid="mega-war-modular-strip"');
+      expect(simCardHtml).toContain('Yellow: INT+CRU+DRE');
+      expect(simCardHtml).toContain('Purple: DRE+SB (No Drive)');
+      expect(simCardHtml).toContain('top-0.5 left-0.5 flex items-center');
+      expect(simCardHtml).toContain('data-initiative-arrows="1"');
+
+      // Validate that illegal Starbase drive in Dreadnought M7/M8 is flagged by validateSimulatorSide even with starbase count 0
+      mwSimSide.blueprints.dreadnought!.slots[6] = SHIP_PARTS.nuclear_drive!;
+      mwSimSide.blueprints.starbase!.slots[0] = SHIP_PARTS.nuclear_drive!;
+      const simVal = validateSimulatorSide(mwSimSide, true);
+      expect(simVal.isValid).toBe(false);
     });
   });
 });

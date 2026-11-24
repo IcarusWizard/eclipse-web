@@ -16,12 +16,19 @@ import {
   calculateBlueprintStats,
   countPlayerShips,
   getBaseBuildItemCost,
+  inferModularExternalGroup,
   SHIP_LIMITS,
 } from '../../engine/rules/shipValidation';
-import { OFFICIAL_TECH_DISCOUNTS } from '../../engine/rules/techData';
+import {
+  OFFICIAL_TECH_DISCOUNTS,
+  getTechTrackDiscountsForPlayer,
+  getTechTrackMaxSlots,
+  getTechTrackVPForPlayer,
+} from '../../engine/rules/techData';
 import { ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { TechTileIconography, ShipPartSlotGraphic, getPartTooltip, TechHoverTooltip } from '../common/PhysicalTileIconography';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
+import { MegaWarModularStrip } from '../blueprints/MegaWarModularStrip';
 import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
 import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
 import { getPlayerShortName, getPlayerDisplayName, playerHasWormholeGenerator, canExchangeAmbassadors } from '../../engine/rules/gameReducer';
@@ -988,12 +995,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </div>
                   </div>
 
-                  {/* 7 Slots */}
+                  {/* Military Slots */}
                   <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
-                    {Array.from({ length: TECH_ROW_SLOT_COUNT }).map((_, sIdx) => {
+                    {Array.from({ length: getTechTrackMaxSlots('military', player.faction.id) }).map((_, sIdx) => {
                       const tech = techRows.military.techs[sIdx];
-                      const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
-                      const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
+                      const discounts = getTechTrackDiscountsForPlayer('military', player.faction.id);
+                      const discount = discounts[sIdx] ?? 8;
+                      const vpEarned = getTechTrackVPForPlayer('military', sIdx + 1, player.faction.id);
                       const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
                       const tName = tech ? translateTechName(tech.id, tech.name, language) : '';
                       const tDesc = tech ? translateTechDesc(tech.id, tech.description, language) : '';
@@ -1069,12 +1077,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </div>
                   </div>
 
-                  {/* 7 Slots */}
+                  {/* Grid Slots */}
                   <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
-                    {Array.from({ length: TECH_ROW_SLOT_COUNT }).map((_, sIdx) => {
+                    {Array.from({ length: getTechTrackMaxSlots('grid', player.faction.id) }).map((_, sIdx) => {
                       const tech = techRows.grid.techs[sIdx];
-                      const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
-                      const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
+                      const discounts = getTechTrackDiscountsForPlayer('grid', player.faction.id);
+                      const discount = discounts[sIdx] ?? 8;
+                      const vpEarned = getTechTrackVPForPlayer('grid', sIdx + 1, player.faction.id);
                       const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
                       const tName = tech ? translateTechName(tech.id, tech.name, language) : '';
                       const tDesc = tech ? translateTechDesc(tech.id, tech.description, language) : '';
@@ -1150,12 +1159,13 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </div>
                   </div>
 
-                  {/* 7 Slots */}
-                  <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
-                    {Array.from({ length: TECH_ROW_SLOT_COUNT }).map((_, sIdx) => {
+                  {/* Nano Slots */}
+                  <div className={`grid grid-cols-2 ${getTechTrackMaxSlots('nano', player.faction.id) === 6 ? 'sm:grid-cols-6' : 'sm:grid-cols-7'} gap-2`}>
+                    {Array.from({ length: getTechTrackMaxSlots('nano', player.faction.id) }).map((_, sIdx) => {
                       const tech = techRows.nano.techs[sIdx];
-                      const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
-                      const vpEarned = sIdx >= 6 ? 5 : sIdx >= 5 ? 3 : sIdx >= 4 ? 2 : sIdx >= 3 ? 1 : 0;
+                      const discounts = getTechTrackDiscountsForPlayer('nano', player.faction.id);
+                      const discount = discounts[sIdx] ?? 8;
+                      const vpEarned = getTechTrackVPForPlayer('nano', sIdx + 1, player.faction.id);
                       const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
                       const tName = tech ? translateTechName(tech.id, tech.name, language) : '';
                       const tDesc = tech ? translateTechDesc(tech.id, tech.description, language) : '';
@@ -1475,6 +1485,17 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 </button>
               </div>
 
+              {/* Mega War Inc.: Physical-Board Continuous 11-Module Strip above Ship Cards */}
+              {player.faction.id === 'mega_war_inc' && (
+                <MegaWarModularStrip
+                  blueprints={player.blueprints as any}
+                  faction={player.faction}
+                  activeExpansions={activeExpansions}
+                  interactive={false}
+                  onSelectShipType={(st) => onOpenBlueprintEditor(st)}
+                />
+              )}
+
               {/* 4 Ship Classes Grid */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {blueprintsWithStats.map((sc) => {
@@ -1628,6 +1649,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             preprintedShield={bp?.preprintedShield}
                             preprintedHull={bp?.preprintedHull}
                             externalParts={bp?.externalParts || []}
+                            externalModularGroup={
+                              player.faction.id === 'mega_war_inc'
+                                ? inferModularExternalGroup(player.blueprints as any, 'muon_source')
+                                : null
+                            }
                             size="md"
                           />
                         </div>

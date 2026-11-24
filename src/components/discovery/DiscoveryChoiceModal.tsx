@@ -536,7 +536,19 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
         </div>
 
         {/* If Ancient Tech Module: Immediate Blueprint Installation Interface */}
-        {part && currentBlueprint && (
+        {part && player.faction.id === 'mega_war_inc' && (
+          <div className="w-full mb-3 p-3 rounded-xl bg-amber-950/40 border border-amber-500/60 text-amber-200 text-xs flex items-center gap-2.5 text-left">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>
+              <strong>{l('Mega War Inc. Quality Control:', '巨战公司品控限制：')}</strong>{' '}
+              {l(
+                'You may not place Ancient ship parts from Discovery tiles directly into modular blueprints. Store in Reserve (to equip on a future Upgrade action) or Keep for 2 VP.',
+                '探索发现获得的远古舰船配件不可直接装入模块化蓝图。请先存入备用库（待之后执行升级行动时装配）或保留换取 2 胜利分。'
+              )}
+            </span>
+          </div>
+        )}
+        {part && currentBlueprint && player.faction.id !== 'mega_war_inc' && (
           <div className="w-full bg-slate-950/60 border border-cyan-900/50 rounded-xl p-3 mb-4 text-left">
             <div className="flex items-center justify-between mb-2">
               <span className="text-xs font-bold text-cyan-400 uppercase tracking-wider flex items-center gap-1.5">
@@ -682,24 +694,26 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
         {/* Action Buttons */}
         {part ? (
-          <div className="w-full grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <button
-              type="button"
-              disabled={isPowerDeficit}
-              onClick={() => onChoice(false, selectedShipType, isMuonSource ? -1 : selectedSlotIndex, undefined, undefined, undefined, activeDiscovery.id)}
-              className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 disabled:opacity-30 disabled:cursor-not-allowed transition group cursor-pointer"
-            >
-              <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
-                <Wrench className="w-3.5 h-3.5" /> {isMuonSource ? l('Equip Outside Grid', '装配于蓝图外') : l('Equip Immediately', '立即装配')}
-              </div>
-              <span className="text-[10px] text-slate-300">
-                {isMuonSource ? (
-                  <>{l('To', '至')} <strong>{translateShipType(selectedShipType, language)}</strong> ({l('Outside Grid', '蓝图外')})</>
-                ) : (
-                  <>{l('To', '至')} <strong>{translateShipType(selectedShipType, language)}</strong> ({l(`Slot ${selectedSlotIndex + 1}`, `槽位 ${selectedSlotIndex + 1}`)})</>
-                )}
-              </span>
-            </button>
+          <div className={`w-full grid grid-cols-1 ${player.faction.id === 'mega_war_inc' ? 'sm:grid-cols-2' : 'sm:grid-cols-3'} gap-2`}>
+            {player.faction.id !== 'mega_war_inc' && (
+              <button
+                type="button"
+                disabled={isPowerDeficit}
+                onClick={() => onChoice(false, selectedShipType, isMuonSource ? -1 : selectedSlotIndex, undefined, undefined, undefined, activeDiscovery.id)}
+                className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 disabled:opacity-30 disabled:cursor-not-allowed transition group cursor-pointer"
+              >
+                <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
+                  <Wrench className="w-3.5 h-3.5" /> {isMuonSource ? l('Equip Outside Grid', '装配于蓝图外') : l('Equip Immediately', '立即装配')}
+                </div>
+                <span className="text-[10px] text-slate-300">
+                  {isMuonSource ? (
+                    <>{l('To', '至')} <strong>{translateShipType(selectedShipType, language)}</strong> ({l('Outside Grid', '蓝图外')})</>
+                  ) : (
+                    <>{l('To', '至')} <strong>{translateShipType(selectedShipType, language)}</strong> ({l(`Slot ${selectedSlotIndex + 1}`, `槽位 ${selectedSlotIndex + 1}`)})</>
+                  )}
+                </span>
+              </button>
+            )}
 
             <button
               type="button"

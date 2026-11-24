@@ -271,6 +271,10 @@ const FACTION_ZH: Record<string, { name: string; trait?: string }> = {
     name: '亚特兰蒂斯人 (Atlantians)',
     trait: '起始拥有远古实验室科技，获取探索发现板块时双抽选一（排除+6材料与远古巡洋舰），研发后可免费升级 1 个该科技解锁配件；舰船上每件发现配件终局 +1 VP，且同船型第 2 件起建造多耗 +1 材料。',
   },
+  mega_war_inc: {
+    name: '巨战公司 (Mega War Inc.)',
+    trait: '人类起源商业军工巨头：3 材料/3 科研/2 金钱开局；模块化联动蓝图（每次升级 1 格同步影响联动船型）；建造时可用 3 材料将任意星区（含敌方/牵制星区）的拦截舰升巡洋舰或巡洋舰升无畏舰；定制军事与 6 格纳米科技轨；禁用方尖碑且不可立即装配发现配件。',
+  },
 };
 
 const EXPANSION_ZH: Record<string, { name: string; shortName: string }> = {
