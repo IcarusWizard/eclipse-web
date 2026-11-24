@@ -351,6 +351,20 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'ra_p3', resource: 'money', isAdvanced: false },
     ],
   },
+  the_horde: {
+    sectorNumber: 299,
+    name: 'Kassus Gar Rift',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'ho_p1', resource: 'money', isAdvanced: false },
+      { id: 'ho_p2', resource: 'money', isAdvanced: true },
+      { id: 'ho_p3', resource: 'material', isAdvanced: false },
+      { id: 'ho_p4', resource: 'material', isAdvanced: true },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

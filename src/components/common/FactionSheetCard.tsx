@@ -336,6 +336,11 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
                         +1 UPG
                       </span>
                     )}
+                    {faction.id === 'the_horde' && act.key === 'MOV' && (
+                      <span className="text-[9px] font-black font-mono text-amber-300 bg-amber-950/80 border border-amber-500/40 px-1 rounded leading-tight">
+                        +1 BUI
+                      </span>
+                    )}
                     {(faction.influenceColonyShipRefreshes ??
                       (faction.id === 'wardens_of_magellan' ? 1 : 2)) === 1 &&
                       act.key === 'INF' && (

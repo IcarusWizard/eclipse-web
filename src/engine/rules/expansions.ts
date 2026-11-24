@@ -137,7 +137,7 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
     name: 'Community Factions',
     shortName: 'Community',
     badge: 'Community Species',
-    description: 'Introduces fan-created and community-curated Alien Species factions: Atlantians, Mega War Inc., and Remnants of Ra.',
+    description: 'Introduces fan-created and community-curated Alien Species factions: Atlantians, Mega War Inc., Remnants of Ra, and The Horde.',
     features: [
       'Atlantians (Sector 266): Start with Ancient Labs, 3/3/3 resources, and 4 Rep/Ambassador slots.',
       'Ancient Spirit: Draw an extra Discovery Tile and pick 1 to resolve (discard & redraw +6 Materials or Ancient Cruiser).',
@@ -145,6 +145,7 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'Ancient Power & Price of Power: Score +1 VP per Discovery Tile on ships; +1 Material build cost surcharge per extra Discovery Tile beyond the first on each ship class.',
       'Mega War Inc. (Unused Terran Sector): Starts with 3 Mat / 3 Sci / 2 Money, 1 Upgrade activation, modular linked ship blueprints (Interceptor→Cruiser→Dreadnought←→Starbase), Build ship-class upgrades anywhere (3 Mats), custom Military (-1..6 VP) & 6-slot Nano (4 VP) tech tracks, no Monoliths, and no immediate Ancient part equips.',
       'Remnants of Ra (Sector 255 Osiris Seth): Starts with Plasma Cannon, 3 Mat / 3 Sci / 2 Money, 4:1 Trade, INF 2 (1 Colony Ship refresh); Power of the Ancients grants an extra Wild population slot in every controlled Artifact sector (including homeworld); Secrets of the Ancients awards +1 VP per controlled Artifact sector.',
+      'The Horde (Sector 299 Kassus Gar Rift): Starts with Neutron Bombs & Nanorobots, 3 Mat / 3 Sci / 2 Money, 4 Colony Ships, UPG 3 (each upgrade on a different ship class), 4-slot Tech Rows (0/-1/-3/-5, 1 VP); Built for War (+1 damage on unmodified 6 except Rift weapons, reduced INT/CRU/SB initiative); Raid (+1 Build included with Move actions); Call to Arms (gain 1/2/3 Materials when INT/CRU/DRE destroyed in uncontrolled sector).',
     ],
   },
 ];
@@ -256,7 +257,10 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'mega war inc.' ||
     norm === 'remnants_of_ra' ||
     norm === 'remnants of ra' ||
-    norm === 'osiris seth'
+    norm === 'osiris seth' ||
+    norm === 'the_horde' ||
+    norm === 'the horde' ||
+    norm === 'kassus gar rift'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }

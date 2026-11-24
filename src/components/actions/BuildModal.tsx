@@ -40,6 +40,8 @@ export interface BuildModalProps {
   onBuild: (items: BuildItemPayload[], pulsarSectorId?: string) => void;
   onClose: () => void;
   pulsarSectorId?: string;
+  isRaidBuild?: boolean;
+  onSkipRaidBuild?: () => void;
 }
 
 export const BuildModal: React.FC<BuildModalProps> = ({
@@ -53,10 +55,12 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   onBuild,
   onClose,
   pulsarSectorId,
+  isRaidBuild,
+  onSkipRaidBuild,
 }) => {
   const { language, l } = useLanguage();
   const isPulsarActive = Boolean(pulsarSectorId);
-  const maxBuild = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxBuildActivations(player));
+  const maxBuild = isPulsarActive || isRaidBuild ? 1 : (player.hasPassed ? 1 : getMaxBuildActivations(player));
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
   const hasOrbitalTech = player.techTrack.researched.some((t) => t.id === 'orbital');
   const hasMonolithTech = player.techTrack.researched.some((t) => t.id === 'monolith');
@@ -426,6 +430,27 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     <>
       <div className="fixed bottom-5 left-1/2 -translate-x-1/2 z-40 w-full max-w-2xl px-4 pointer-events-none font-sans">
       <div className="bg-slate-900/95 backdrop-blur-md border border-amber-700/80 rounded-2xl shadow-2xl max-h-[85vh] overflow-y-auto text-slate-100 p-4 pointer-events-auto flex flex-col gap-3 transition-all scrollbar-thin">
+        {/* Raid Build Banner (The Horde) */}
+        {isRaidBuild && (
+          <div
+            data-testid="horde-raid-build-banner"
+            className="p-2 px-3 rounded-xl bg-lime-950/60 border border-lime-500/80 text-lime-200 text-xs flex items-center justify-between shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-lime-400 shrink-0" />
+              <div>
+                <span className="font-bold">⚔️ {l('Raid (+1 BUI) — Step 1: Optional Build 1', '突袭掠夺 (+1 建造) — 第一步：可选建造 1 项')}</span>
+                <span className="text-lime-300/85 text-[11px] block">
+                  {l('Build 1 unit or structure first, then proceed to Move. Reverting later cancels both Build and Move.', '可先执行 1 次建造后再进入移动界面；最后撤回将一并撤回建造与移动。')}
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-lime-900 text-lime-200 font-mono text-[10px] font-bold uppercase border border-lime-700 shrink-0">
+              {l('1 Item Limit', '限 1 项')}
+            </span>
+          </div>
+        )}
+
         {/* Pulsar Banner */}
         {isPulsarActive && (
           <div className="p-2 px-3 rounded-xl bg-cyan-950/60 border border-cyan-500/80 text-cyan-200 text-xs flex items-center justify-between shadow-sm">
@@ -737,12 +762,24 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             >
               {l('Cancel', '取消')}
             </button>
+            {isRaidBuild && onSkipRaidBuild && (
+              <button
+                type="button"
+                data-testid="raid-skip-build-btn"
+                onClick={onSkipRaidBuild}
+                className="px-3.5 py-1.5 rounded-xl bg-cyan-950/90 hover:bg-cyan-900 border border-cyan-600/70 text-cyan-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                {l('Skip Build ➔ Move', '跳过建造 ➔ 移动')}
+              </button>
+            )}
             <button
               disabled={!canBuild}
               onClick={handleTriggerBuild}
               className="px-4 py-1.5 rounded-xl bg-amber-500 hover:bg-amber-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all"
             >
-              {l(`Construct ${slots.length} ${slots.length === 1 ? 'Item' : 'Items'} (Enter)`, `建造 ${slots.length} 项 (Enter)`)}
+              {isRaidBuild
+                ? l('Build 1 & Proceed to Move ➔', '建造并进入移动 ➔')
+                : l(`Construct ${slots.length} ${slots.length === 1 ? 'Item' : 'Items'} (Enter)`, `建造 ${slots.length} 项 (Enter)`)}
             </button>
           </div>
         </div>

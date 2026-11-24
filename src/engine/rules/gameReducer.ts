@@ -860,6 +860,299 @@ export function hasPendingPreGameCubeSetup(
   return Boolean(state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup);
 }
 
+export function validateBuildItems(
+  state: GameState,
+  player: PlayerState,
+  items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string; createdShipId?: string }[]
+): { valid: boolean; error?: string } {
+  const currentShips = countPlayerShips(state.sectors, player.id);
+  const queuedShips: Record<ShipType, number> = {
+    interceptor: 0,
+    cruiser: 0,
+    dreadnought: 0,
+    starbase: 0,
+    orbital: 0,
+  };
+  const queuedMonolithSectors = new Set<string>();
+  const queuedOrbitalSectors = new Set<string>();
+  const virtualUpgradeShipTypes = new Map<string, ShipType>();
+
+  let totalMaterialsCost = 0;
+  for (const item of items) {
+    if (item.itemType === 'starbase') {
+      if (player.faction.id === 'the_exiles') {
+        return { valid: false, error: 'The Exiles cannot construct Starbases.' };
+      }
+      if (!player.techTrack.researched.some((t) => t.id === 'starbase')) {
+        return { valid: false, error: 'Must research Starbase tech before building Starbases.' };
+      }
+    }
+    if (player.faction.id === 'rho_indi_syndicate' && item.itemType === 'dreadnought') {
+      return { valid: false, error: 'Rho Indi Syndicate cannot construct Dreadnoughts.' };
+    }
+    if (player.faction.id === 'mega_war_inc' && item.itemType === 'monolith') {
+      return { valid: false, error: 'Mega War Inc. cannot construct Monoliths.' };
+    }
+
+    const sector = state.sectors.find((s) => s.id === item.sectorId);
+    if (!sector) {
+      return { valid: false, error: `Sector ${item.sectorId} not found.` };
+    }
+
+    const isUpgradeBuild = Boolean(item.upgradeFromShipId);
+    if (isUpgradeBuild) {
+      if (player.faction.id !== 'mega_war_inc') {
+        return { valid: false, error: 'Only Mega War Inc. may upgrade ships into higher hull classes during Build.' };
+      }
+      if (item.itemType !== 'cruiser' && item.itemType !== 'dreadnought') {
+        return { valid: false, error: 'Mega War Inc. can only field-upgrade Interceptors to Cruisers or Cruisers to Dreadnoughts (no downgrades).' };
+      }
+      const targetShip = sector.ships.find(
+        (s) => s.id === item.upgradeFromShipId && s.ownerId === player.id
+      );
+      if (!targetShip) {
+        return { valid: false, error: `Ship ${item.upgradeFromShipId} not found in Sector ${sector.sectorNumber}.` };
+      }
+      const currentVirtualType = virtualUpgradeShipTypes.get(item.upgradeFromShipId!) ?? (targetShip.type as ShipType);
+      const expectedFromType: ShipType = item.itemType === 'cruiser' ? 'interceptor' : 'cruiser';
+      if (currentVirtualType !== expectedFromType) {
+        return {
+          valid: false,
+          error: `Cannot field-upgrade ${currentVirtualType.toUpperCase()} to ${item.itemType.toUpperCase()} (only Interceptor→Cruiser or Cruiser→Dreadnought allowed).`,
+        };
+      }
+      virtualUpgradeShipTypes.set(item.upgradeFromShipId!, item.itemType as ShipType);
+      queuedShips[expectedFromType]--;
+      queuedShips[item.itemType]++;
+    } else {
+      if (sector.discOwner !== player.id) {
+        return { valid: false, error: `Must control sector ${item.sectorId} with an influence disc to build here.` };
+      }
+      const isDraco = player.faction.id === 'descendants_of_draco';
+      const hasEnemies = sector.ships.some(
+        (s) => s.ownerId !== player.id && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+      );
+      const isStructure = item.itemType === 'orbital' || item.itemType === 'monolith';
+      if (hasEnemies && isStructure) {
+        return { valid: false, error: `Cannot build structures (${item.itemType}) in sector ${item.sectorId} while enemy ships are present.` };
+      }
+
+      if (item.itemType in queuedShips) {
+        const st = item.itemType as ShipType;
+        queuedShips[st]++;
+      }
+    }
+
+    if (item.itemType === 'orbital') {
+      if (!player.techTrack.researched.some((t) => t.id === 'orbital')) {
+        return { valid: false, error: 'Must research Orbital tech before building Orbitals.' };
+      }
+      if (sector.structures?.orbital || sector.hasOrbital || sector.planets.some((p) => p.isOrbital)) {
+        return {
+          valid: false,
+          error: `Sector ${sector.sectorNumber} already contains an Orbital structure (maximum 1 per sector).`,
+        };
+      }
+      if (queuedOrbitalSectors.has(sector.id)) {
+        return {
+          valid: false,
+          error: `Cannot construct multiple Orbitals in Sector ${sector.sectorNumber} in the same action.`,
+        };
+      }
+      queuedOrbitalSectors.add(sector.id);
+    }
+
+    if (item.itemType === 'monolith') {
+      if (!player.techTrack.researched.some((t) => t.id === 'monolith')) {
+        return { valid: false, error: 'Must research Monolith tech before building Monoliths.' };
+      }
+      if (sector.structures?.monolith || sector.hasMonolith) {
+        return {
+          valid: false,
+          error: `Sector ${sector.sectorNumber} already contains a Monolith (maximum 1 per sector).`,
+        };
+      }
+      if (queuedMonolithSectors.has(sector.id)) {
+        return {
+          valid: false,
+          error: `Cannot construct multiple Monoliths in Sector ${sector.sectorNumber} in the same action.`,
+        };
+      }
+      queuedMonolithSectors.add(sector.id);
+    }
+
+    const baseBuildCost = getBaseBuildItemCost(player, item.itemType, isUpgradeBuild);
+    const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
+    const cost = Math.max(0, baseBuildCost - msBuildDiscount);
+    totalMaterialsCost += cost;
+  }
+
+  for (const st of Object.keys(queuedShips) as ShipType[]) {
+    if (queuedShips[st] > 0 && currentShips[st] + queuedShips[st] > SHIP_LIMITS[st]) {
+      return {
+        valid: false,
+        error: `Cannot build ${st}: reached maximum limit of ${SHIP_LIMITS[st]} (${currentShips[st]} currently in service).`,
+      };
+    }
+  }
+
+  if (player.resources.materials < totalMaterialsCost) {
+    return {
+      valid: false,
+      error: `Insufficient materials. Required: ${totalMaterialsCost}, Available: ${player.resources.materials}.`,
+    };
+  }
+  return { valid: true };
+}
+
+function applyBuildItems(
+  newState: GameState,
+  player: PlayerState,
+  items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string; createdShipId?: string }[],
+  addLog: (msg: string, type?: GameLogEntry['type']) => void,
+  logPrefix: string = ''
+): void {
+  const isExiles = player.faction.id === 'the_exiles';
+  for (const item of items) {
+    const sector = newState.sectors.find((s) => s.id === item.sectorId)!;
+    const isUpgradeBuild = Boolean(item.upgradeFromShipId);
+    const baseBuildCost = getBaseBuildItemCost(player, item.itemType, isUpgradeBuild);
+    const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
+    const cost = Math.max(0, baseBuildCost - msBuildDiscount);
+
+    player.resources.materials -= cost;
+
+    if (isUpgradeBuild && item.upgradeFromShipId) {
+      const targetShipIdx = sector.ships.findIndex(
+        (s) => s.id === item.upgradeFromShipId && s.ownerId === player.id
+      );
+      if (targetShipIdx !== -1) {
+        const targetShip = sector.ships[targetShipIdx]!;
+        const oldType = targetShip.type;
+        sector.ships[targetShipIdx] = {
+          ...targetShip,
+          type: item.itemType as ShipType,
+        };
+        addLog(
+          `🔧 ${logPrefix}${player.name} field-upgraded ${oldType.toUpperCase()} in Sector ${sector.sectorNumber} to ${item.itemType.toUpperCase()} for ${cost} Materials.`,
+          'action'
+        );
+      }
+    } else if (item.itemType === 'monolith') {
+      sector.structures = sector.structures || {};
+      sector.structures.monolith = true;
+      sector.hasMonolith = true;
+      addLog(`🏗️ ${logPrefix}${player.name} built a Monolith in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
+    } else if (item.itemType === 'orbital') {
+      sector.structures = sector.structures || {};
+      sector.structures.orbital = true;
+      sector.hasOrbital = true;
+      sector.planets.push({
+        id: `orbital_${sector.id}_${Date.now()}`,
+        resource: 'science',
+        isAdvanced: false,
+        isOrbital: true,
+      });
+      if (isExiles) {
+        sector.ships.push({
+          id: item.createdShipId || `ship_${player.id}_orbital_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+          ownerId: player.id,
+          type: 'orbital',
+          damage: 0,
+        });
+      }
+      addLog(`🛰️ ${logPrefix}${player.name} built an Orbital in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
+    } else {
+      sector.ships.push({
+        id: item.createdShipId || `ship_${player.id}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        ownerId: player.id,
+        type: item.itemType as ShipType,
+        damage: 0,
+      });
+      addLog(`🚀 ${logPrefix}${player.name} constructed a ${item.itemType.toUpperCase()} in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
+    }
+  }
+}
+
+/**
+ * Returns a non-mutating preview GameState with The Horde's staged Raid Build item applied
+ * so Move planning, UI pinning checks, and validation reflect the newly constructed ship.
+ */
+export function applyRaidBuildToPreviewState(
+  state: GameState,
+  playerId: string,
+  raidBuild: NonNullable<MoveAction['raidBuild']>
+): GameState {
+  const previewState: GameState = {
+    ...state,
+    players: state.players.map((p) =>
+      p.id === playerId
+        ? {
+            ...p,
+            resources: { ...p.resources },
+          }
+        : p
+    ),
+    sectors: state.sectors.map((s) =>
+      s.id === raidBuild.sectorId
+        ? {
+            ...s,
+            ships: s.ships.map((sh) => ({ ...sh })),
+            planets: s.planets.map((pl) => ({ ...pl })),
+            structures: s.structures ? { ...s.structures } : undefined,
+          }
+        : s
+    ),
+  };
+  const previewPlayer = previewState.players.find((p) => p.id === playerId);
+  if (!previewPlayer || !validateBuildItems(previewState, previewPlayer, [raidBuild]).valid) {
+    return state;
+  }
+  applyBuildItems(previewState, previewPlayer, [raidBuild], () => {});
+  return previewState;
+}
+
+/**
+ * Call to Arms (The Horde): Gains 1/2/3 Materials when an Interceptor/Cruiser/Dreadnought
+ * is destroyed in a sector not controlled by The Horde.
+ */
+export function applyHordeCallToArmsSalvage(
+  state: GameState,
+  sector: SectorTile,
+  casualties: { type: string; ownerId: string }[],
+  addLog?: (msg: string, type?: GameLogEntry['type']) => void
+): void {
+  for (const des of casualties) {
+    const victimOwner = state.players.find((p) => p.id === des.ownerId);
+    if (!victimOwner || victimOwner.faction.id !== 'the_horde') continue;
+    if (sector.discOwner === victimOwner.id) continue;
+    const bonus =
+      des.type === 'interceptor'
+        ? 1
+        : des.type === 'cruiser'
+        ? 2
+        : des.type === 'dreadnought'
+        ? 3
+        : 0;
+    if (bonus <= 0) continue;
+    victimOwner.resources.materials += bonus;
+    const msg = `🪨 Call to Arms: ${victimOwner.name} gained +${bonus} Material(s) after losing a ${des.type.toUpperCase()} in uncontrolled Sector ${sector.sectorNumber}.`;
+    if (addLog) {
+      addLog(msg, 'combat');
+    } else {
+      state.log.unshift({
+        id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+        timestamp: Date.now(),
+        round: state.round,
+        phase: state.phase,
+        playerId: victimOwner.id,
+        message: msg,
+        type: 'combat',
+      });
+    }
+  }
+}
+
 export function validateAction(state: GameState, action: GameAction): { valid: boolean; error?: string } {
   if (action.type === 'SEND_CHAT') {
     const chatAct = action as SendChatAction;
@@ -1424,27 +1717,42 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
       // Count actual modified slots compared to current blueprint state
       const isModularFaction = player.faction.id === 'mega_war_inc';
+      const isBattleFocusFaction = player.faction.id === 'the_horde';
       const currentExternalGroup = isModularFaction ? inferModularExternalGroup(player.blueprints, 'muon_source') : null;
+      const modifiedClasses = new Set<string>();
       let modifiedCount = 0;
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType]!;
+        let didModify = false;
         if (up.isExternal || up.slotIndex === -1) {
           if (isModularFaction) {
             const targetGroup = up.partId ? (up.modularGroupId || getDefaultModularGroupForShip(up.shipType)) : null;
             if (currentExternalGroup !== targetGroup) {
               modifiedCount += 1;
+              didModify = true;
             }
           } else {
             const currentPartId = bp.externalParts && bp.externalParts.length > 0 ? bp.externalParts[0].id : null;
             if (currentPartId !== up.partId) {
               modifiedCount += 1;
+              didModify = true;
             }
           }
         } else {
           const currentPartId = bp.slots[up.slotIndex]?.id || null;
           if (currentPartId !== up.partId) {
             modifiedCount += 1;
+            didModify = true;
           }
+        }
+        if (didModify && isBattleFocusFaction) {
+          if (modifiedClasses.has(up.shipType)) {
+            return {
+              valid: false,
+              error: `Battle Focus (The Horde): Upgrade activations must be spent on different ship classes (multiple changes attempted on ${up.shipType.toUpperCase()}).`,
+            };
+          }
+          modifiedClasses.add(up.shipType);
         }
       }
 
@@ -1563,149 +1871,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         };
       }
 
-      // Track deployed ships and staged ships in this action
-      const currentShips = countPlayerShips(state.sectors, action.playerId);
-      const queuedShips: Record<ShipType, number> = {
-        interceptor: 0,
-        cruiser: 0,
-        dreadnought: 0,
-        starbase: 0,
-        orbital: 0,
-      };
-      const queuedMonolithSectors = new Set<string>();
-      const queuedOrbitalSectors = new Set<string>();
-      const virtualUpgradeShipTypes = new Map<string, ShipType>();
-
-      let totalMaterialsCost = 0;
-      for (const item of action.items) {
-        if (item.itemType === 'starbase') {
-          if (player.faction.id === 'the_exiles') {
-            return { valid: false, error: 'The Exiles cannot construct Starbases.' };
-          }
-          if (!player.techTrack.researched.some((t) => t.id === 'starbase')) {
-            return { valid: false, error: 'Must research Starbase tech before building Starbases.' };
-          }
-        }
-        if (player.faction.id === 'rho_indi_syndicate' && item.itemType === 'dreadnought') {
-          return { valid: false, error: 'Rho Indi Syndicate cannot construct Dreadnoughts.' };
-        }
-        if (player.faction.id === 'mega_war_inc' && item.itemType === 'monolith') {
-          return { valid: false, error: 'Mega War Inc. cannot construct Monoliths.' };
-        }
-
-        const sector = state.sectors.find((s) => s.id === item.sectorId);
-        if (!sector) {
-          return { valid: false, error: `Sector ${item.sectorId} not found.` };
-        }
-
-        const isUpgradeBuild = Boolean(item.upgradeFromShipId);
-        if (isUpgradeBuild) {
-          if (player.faction.id !== 'mega_war_inc') {
-            return { valid: false, error: 'Only Mega War Inc. may upgrade ships into higher hull classes during Build.' };
-          }
-          if (item.itemType !== 'cruiser' && item.itemType !== 'dreadnought') {
-            return { valid: false, error: 'Mega War Inc. can only field-upgrade Interceptors to Cruisers or Cruisers to Dreadnoughts (no downgrades).' };
-          }
-          const targetShip = sector.ships.find(
-            (s) => s.id === item.upgradeFromShipId && s.ownerId === action.playerId
-          );
-          if (!targetShip) {
-            return { valid: false, error: `Ship ${item.upgradeFromShipId} not found in Sector ${sector.sectorNumber}.` };
-          }
-          const currentVirtualType = virtualUpgradeShipTypes.get(item.upgradeFromShipId!) ?? (targetShip.type as ShipType);
-          const expectedFromType: ShipType = item.itemType === 'cruiser' ? 'interceptor' : 'cruiser';
-          if (currentVirtualType !== expectedFromType) {
-            return {
-              valid: false,
-              error: `Cannot field-upgrade ${currentVirtualType.toUpperCase()} to ${item.itemType.toUpperCase()} (only Interceptor→Cruiser or Cruiser→Dreadnought allowed).`,
-            };
-          }
-          virtualUpgradeShipTypes.set(item.upgradeFromShipId!, item.itemType as ShipType);
-          queuedShips[expectedFromType]--;
-          queuedShips[item.itemType]++;
-        } else {
-          if (sector.discOwner !== action.playerId) {
-            return { valid: false, error: `Must control sector ${item.sectorId} with an influence disc to build here.` };
-          }
-          // Official Eclipse rules: Ships and Starbases CAN be built in sectors with enemy ships!
-          // Only Structures (Orbitals and Monoliths) cannot be built while enemy ships are present.
-          const isDraco = player.faction.id === 'descendants_of_draco';
-          const hasEnemies = sector.ships.some(
-            (s) => s.ownerId !== action.playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
-          );
-          const isStructure = item.itemType === 'orbital' || item.itemType === 'monolith';
-          if (hasEnemies && isStructure) {
-            return { valid: false, error: `Cannot build structures (${item.itemType}) in sector ${item.sectorId} while enemy ships are present.` };
-          }
-
-          if (item.itemType in queuedShips) {
-            const st = item.itemType as ShipType;
-            queuedShips[st]++;
-          }
-        }
-
-        if (item.itemType === 'orbital') {
-          if (!player.techTrack.researched.some((t) => t.id === 'orbital')) {
-            return { valid: false, error: 'Must research Orbital tech before building Orbitals.' };
-          }
-          if (sector.structures?.orbital || sector.hasOrbital || sector.planets.some((p) => p.isOrbital)) {
-            return {
-              valid: false,
-              error: `Sector ${sector.sectorNumber} already contains an Orbital structure (maximum 1 per sector).`,
-            };
-          }
-          if (queuedOrbitalSectors.has(sector.id)) {
-            return {
-              valid: false,
-              error: `Cannot construct multiple Orbitals in Sector ${sector.sectorNumber} in the same action.`,
-            };
-          }
-          queuedOrbitalSectors.add(sector.id);
-        }
-
-        if (item.itemType === 'monolith') {
-          if (!player.techTrack.researched.some((t) => t.id === 'monolith')) {
-            return { valid: false, error: 'Must research Monolith tech before building Monoliths.' };
-          }
-          if (sector.structures?.monolith || sector.hasMonolith) {
-            return {
-              valid: false,
-              error: `Sector ${sector.sectorNumber} already contains a Monolith (maximum 1 per sector).`,
-            };
-          }
-          if (queuedMonolithSectors.has(sector.id)) {
-            return {
-              valid: false,
-              error: `Cannot construct multiple Monoliths in Sector ${sector.sectorNumber} in the same action.`,
-            };
-          }
-          queuedMonolithSectors.add(sector.id);
-        }
-
-        const baseBuildCost = getBaseBuildItemCost(player, item.itemType, isUpgradeBuild);
-        const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
-        const cost = Math.max(0, baseBuildCost - msBuildDiscount);
-
-        totalMaterialsCost += cost;
-      }
-
-      // Validate final ship supply limits after all constructions and upgrades
-      for (const st of Object.keys(queuedShips) as ShipType[]) {
-        if (queuedShips[st] > 0 && currentShips[st] + queuedShips[st] > SHIP_LIMITS[st]) {
-          return {
-            valid: false,
-            error: `Cannot build ${st}: reached maximum limit of ${SHIP_LIMITS[st]} (${currentShips[st]} currently in service).`,
-          };
-        }
-      }
-
-      if (player.resources.materials < totalMaterialsCost) {
-        return {
-          valid: false,
-          error: `Insufficient materials. Required: ${totalMaterialsCost}, Available: ${player.resources.materials}.`,
-        };
-      }
-      return { valid: true };
+      return validateBuildItems(state, player, action.items);
     }
 
     case 'MOVE': {
@@ -1741,12 +1907,29 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       const maxMoveActivations = getEffectiveMoveActivationLimit(player, action.pulsarSectorId, isPassed);
       const hasWormholeGen = playerHasWormholeGenerator(player);
 
+      if (action.raidBuild) {
+        if (player.faction.id !== 'the_horde') {
+          return { valid: false, error: 'Only The Horde may attach a Raid Build activation to a Move action.' };
+        }
+        if (isPassed || action.pulsarSectorId) {
+          return { valid: false, error: 'Raid Build is only included with a full Move action (not Reaction or Pulsar move).' };
+        }
+        const raidCheck = validateBuildItems(state, player, [action.raidBuild]);
+        if (!raidCheck.valid) {
+          return raidCheck;
+        }
+      }
+
+      const effectiveMoveState = action.raidBuild
+        ? applyRaidBuildToPreviewState(state, action.playerId, action.raidBuild)
+        : state;
+
       // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed and Jump Drive
       const shipMap = new Map<
         string,
         { ship: SectorShip; currentSectorId: string; driveSpeed: number; hasJumpDrive: boolean }
       >();
-      for (const s of state.sectors) {
+      for (const s of effectiveMoveState.sectors) {
         for (const ship of s.ships) {
           if (ship.ownerId === action.playerId) {
             const bp = player.blueprints[ship.type];
@@ -1816,7 +1999,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
       // Track ships in each sector across activations
       const simSectorShips = new Map<string, { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[]>();
-      for (const s of state.sectors) {
+      for (const s of effectiveMoveState.sectors) {
         simSectorShips.set(s.id, s.ships.map((sh) => ({ id: sh.id, ownerId: sh.ownerId, type: sh.type, subsector: sh.subsector })));
       }
 
@@ -1864,7 +2047,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
         // Check if origin sector pins this ship before taking any step (GCDS pins all, other hostiles pin 1:1)
         const originSecId = shipInfo.currentSectorId;
-        const originSec = state.sectors.find((s) => s.id === originSecId);
+        const originSec = effectiveMoveState.sectors.find((s) => s.id === originSecId);
         if (originSec) {
           const shipsInOrigin = simSectorShips.get(originSecId) || [];
           const hasLiveGcds = !originSec.isNebula && (originSec.hasGCDS || shipsInOrigin.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
@@ -1904,8 +2087,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             };
           }
 
-          const fromSec = state.sectors.find((s) => s.id === step.fromSectorId);
-          const toSec = state.sectors.find((s) => s.id === step.toSectorId);
+          const fromSec = effectiveMoveState.sectors.find((s) => s.id === step.fromSectorId);
+          const toSec = effectiveMoveState.sectors.find((s) => s.id === step.toSectorId);
           if (!fromSec || !toSec) {
             return { valid: false, error: 'Sector not found for movement.' };
           }
@@ -3826,66 +4009,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       }
       player.actionsTakenThisRound += 1;
 
-      for (const item of action.items) {
-        const sector = newState.sectors.find((s) => s.id === item.sectorId)!;
-        const isExiles = player.faction.id === 'the_exiles';
-        const isUpgradeBuild = Boolean(item.upgradeFromShipId);
-        const baseBuildCost = getBaseBuildItemCost(player, item.itemType, isUpgradeBuild);
-        const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
-        const cost = Math.max(0, baseBuildCost - msBuildDiscount);
-
-        player.resources.materials -= cost;
-
-        if (isUpgradeBuild && item.upgradeFromShipId) {
-          const targetShipIdx = sector.ships.findIndex(
-            (s) => s.id === item.upgradeFromShipId && s.ownerId === player.id
-          );
-          if (targetShipIdx !== -1) {
-            const targetShip = sector.ships[targetShipIdx]!;
-            const oldType = targetShip.type;
-            sector.ships[targetShipIdx] = {
-              ...targetShip,
-              type: item.itemType as ShipType,
-            };
-            addLog(
-              `🔧 ${player.name} field-upgraded ${oldType.toUpperCase()} in Sector ${sector.sectorNumber} to ${item.itemType.toUpperCase()} for ${cost} Materials.`,
-              'action'
-            );
-          }
-        } else if (item.itemType === 'monolith') {
-          sector.structures = sector.structures || {};
-          sector.structures.monolith = true;
-          sector.hasMonolith = true;
-          addLog(`🏗️ ${player.name} built a Monolith in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
-        } else if (item.itemType === 'orbital') {
-          sector.structures = sector.structures || {};
-          sector.structures.orbital = true;
-          sector.hasOrbital = true;
-          sector.planets.push({
-            id: `orbital_${sector.id}_${Date.now()}`,
-            resource: 'science',
-            isAdvanced: false,
-            isOrbital: true,
-          });
-          if (isExiles) {
-            sector.ships.push({
-              id: `ship_${player.id}_orbital_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-              ownerId: player.id,
-              type: 'orbital',
-              damage: 0,
-            });
-          }
-          addLog(`🛰️ ${player.name} built an Orbital in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
-        } else {
-          sector.ships.push({
-            id: `ship_${player.id}_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
-            ownerId: player.id,
-            type: item.itemType as ShipType,
-            damage: 0,
-          });
-          addLog(`🚀 ${player.name} constructed a ${item.itemType.toUpperCase()} in Sector ${sector.sectorNumber} for ${cost} Materials.`, 'action');
-        }
-      }
+      applyBuildItems(newState, player, action.items, addLog);
       break;
     }
 
@@ -3905,6 +4029,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       }
       player.actionsTakenThisRound += 1;
+
+      if (action.raidBuild && player.faction.id === 'the_horde') {
+        applyBuildItems(newState, player, [action.raidBuild], addLog, 'Raid (+1 BUI): ');
+      }
 
       // Group moves by activation index
       const stepsByActivation: Record<number, typeof action.moves> = {};
@@ -5219,8 +5347,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             );
           }
 
-          // Log any newly destroyed ships
+          // Log any newly destroyed ships & trigger Call to Arms salvage for The Horde
           const newlyDestroyed = (newState.activeCombat.destroyedShips || []).slice(destroyedBeforeCount);
+          applyHordeCallToArmsSalvage(newState, sector, newlyDestroyed, addLog);
           for (const des of newlyDestroyed) {
             const victimOwner = newState.players.find((p) => p.id === des.ownerId);
             const victimLabel = victimOwner ? victimOwner.name : des.ownerId.toUpperCase();
@@ -6169,6 +6298,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         } else {
           description = `Executed ${count} fleet move(s)`;
         }
+        if (mvAct.raidBuild) {
+          description = `${description} + Raid Build (${mvAct.raidBuild.itemType.toUpperCase()})`;
+        }
       } else if (action.type === 'RESEARCH') {
         const resAct = action as ResearchAction;
         const count = resAct.researches?.length || 1;
@@ -6729,6 +6861,7 @@ function finalizeBombardmentAndOverthrow(
       if (u) sh.damage = u.currentDamage;
     }
     if (dummyCombat.destroyedShips.length > 0) {
+      applyHordeCallToArmsSalvage(state, sector, dummyCombat.destroyedShips);
       state.log.unshift({
         id: `log_${Date.now()}_${Math.random()}`,
         timestamp: Date.now(),

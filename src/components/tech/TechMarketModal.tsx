@@ -757,19 +757,19 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             {/* Military Track Status */}
             <div className="flex items-center gap-1.5 text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-900/60">
               <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>{l(`Military: ${commander.techTrack.militaryCount}/7 Researched`, `军事：${commander.techTrack.militaryCount}/7 已研发`)}</span>
+              <span>{l(`Military: ${commander.techTrack.militaryCount}/${getTechTrackMaxSlots('military', commander.faction.id)} Researched`, `军事：${commander.techTrack.militaryCount}/${getTechTrackMaxSlots('military', commander.faction.id)} 已研发`)}</span>
             </div>
 
             {/* Grid Track Status */}
             <div className="flex items-center gap-1.5 text-emerald-300 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-900/60">
               <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>{l(`Grid: ${commander.techTrack.gridCount}/7 Researched`, `网络：${commander.techTrack.gridCount}/7 已研发`)}</span>
+              <span>{l(`Grid: ${commander.techTrack.gridCount}/${getTechTrackMaxSlots('grid', commander.faction.id)} Researched`, `网络：${commander.techTrack.gridCount}/${getTechTrackMaxSlots('grid', commander.faction.id)} 已研发`)}</span>
             </div>
 
             {/* Nano Track Status */}
             <div className="flex items-center gap-1.5 text-sky-300 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-900/60">
               <span className="w-2 h-2 rounded-full bg-sky-500" />
-              <span>{l(`Nano: ${commander.techTrack.nanoCount}/7 Researched`, `纳米：${commander.techTrack.nanoCount}/7 已研发`)}</span>
+              <span>{l(`Nano: ${commander.techTrack.nanoCount}/${getTechTrackMaxSlots('nano', commander.faction.id)} Researched`, `纳米：${commander.techTrack.nanoCount}/${getTechTrackMaxSlots('nano', commander.faction.id)} 已研发`)}</span>
             </div>
           </div>
         </div>

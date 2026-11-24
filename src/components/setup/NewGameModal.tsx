@@ -151,7 +151,7 @@ export const NewGameModal: React.FC<NewGameModalProps> = ({ onStartGame, onClose
       colorGroups.push('teal', 'amber');
     }
     if (selectedExpansions.includes('community_factions')) {
-      colorGroups.push('cyan', 'indigo', 'magenta');
+      colorGroups.push('cyan', 'indigo', 'magenta', 'lime');
     }
     const shuffledColors = [...colorGroups].sort(() => Math.random() - 0.5).slice(0, playerCount);
     const selected: string[] = [];

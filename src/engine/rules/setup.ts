@@ -41,9 +41,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   cyan: '#06b6d4', // Atlantians
   indigo: '#6366f1', // Mega War Inc.
   magenta: '#ec4899', // Remnants of Ra
+  lime: '#84cc16', // The Horde
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -74,6 +75,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   atlantians: 'cyan',
   mega_war_inc: 'indigo',
   remnants_of_ra: 'magenta',
+  the_horde: 'lime',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -96,6 +98,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   atlantians: ECLIPSE_COLOR_PALETTE.cyan,
   mega_war_inc: ECLIPSE_COLOR_PALETTE.indigo,
   remnants_of_ra: ECLIPSE_COLOR_PALETTE.magenta,
+  the_horde: ECLIPSE_COLOR_PALETTE.lime,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -568,6 +571,28 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 4,
     reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
+  {
+    id: 'the_horde',
+    name: 'The Horde',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.lime,
+    startingSectorNumber: 299,
+    startingResources: { money: 2, science: 3, materials: 3 },
+    startingDiscs: 13,
+    startingColonyShips: 4,
+    startingTechIds: ['neutron_bombs', 'nanorobots'],
+    traitDescription: 'Built for War (+1 dmg on unmodified 6 hits except Rift weapons; -1 base init on INT/CRU/SB), Raid (Move includes Build 1), Call to Arms (+1/2/3 Mats on INT/CRU/DRE loss in uncontrolled sector), Battle Focus (UPG 3 on different classes; 4-slot tech rows).',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 3,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    reputationSlots: 5,
+    ambassadorSlots: 2,
+    reputationSlotTypes: ['rep_only', 'rep_only', 'rep_only', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -589,7 +614,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -628,6 +653,9 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   }
   if (faction.id === 'the_exiles') {
     return ['both', 'both', 'both', 'rep_only'];
+  }
+  if (faction.id === 'the_horde') {
+    return ['rep_only', 'rep_only', 'rep_only', 'both', 'both'];
   }
   if (faction.id === 'rho_indi_syndicate') {
     return ['both', 'both', 'rep_only', 'rep_only', 'rep_only'];

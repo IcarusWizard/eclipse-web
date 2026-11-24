@@ -30476,6 +30476,9 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         })
       );
       expect(techHtml).toContain('Forbidden (Mega War)');
+      expect(techHtml).toContain('Military: 7/7 Researched');
+      expect(techHtml).toContain('Grid: 0/7 Researched');
+      expect(techHtml).toContain('Nano: 6/6 Researched');
 
       const boardHtml = renderToStaticMarkup(
         React.createElement(PhysicalPlayerBoardModal, {
@@ -31258,6 +31261,399 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         )
       );
       expect(modalMidActHtml).toContain('1-activation Move locked to the ship already moving');
+    });
+
+    it('301. verifies The Horde community faction, Built for War, Raid (+1 Build on Move), Call to Arms salvage, Battle Focus (UPG 3 per-class), and 4-slot Tech Board', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const {
+        ALL_FACTIONS,
+        isFactionAvailable,
+        getFactionReputationSlotTypes,
+      } = await import('../rules/setup');
+      const {
+        getTechTrackDiscountsForPlayer,
+        getTechTrackMaxSlots,
+        getTechTrackVPForPlayer,
+        TECH_CATALOG,
+      } = await import('../rules/techData');
+      const {
+        getEffectiveWeaponHitDamage,
+        buildCombatUnitsForSector,
+      } = await import('../rules/combatEngine');
+      const { applyHordeCallToArmsSalvage, applyRaidBuildToPreviewState } = await import('../rules/gameReducer');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { BuildModal } = await import('../../components/actions/BuildModal');
+      const { MoveModal } = await import('../../components/actions/MoveModal');
+      const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+      const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+
+      // 1. Expansion gating, starting stats, activations, reputation track, and home sector
+      expect(getExpansionForItem('the_horde')?.id).toBe('community_factions');
+      expect(isFactionAvailable('the_horde', [])).toBe(false);
+      expect(isFactionAvailable('the_horde', ['community_factions'])).toBe(true);
+
+      const hordeFaction = ALL_FACTIONS.find((f) => f.id === 'the_horde')!;
+      expect(hordeFaction).toBeDefined();
+      expect(hordeFaction.startingSectorNumber).toBe(299);
+      expect(hordeFaction.startingResources).toEqual({ money: 2, science: 3, materials: 3 });
+      expect(hordeFaction.startingColonyShips).toBe(4);
+      expect(hordeFaction.startingTechIds).toEqual(['neutron_bombs', 'nanorobots']);
+      expect(hordeFaction.tradeRatio).toBe(3);
+      expect(hordeFaction.upgradeActivations).toBe(3);
+      expect(hordeFaction.buildActivations).toBe(2);
+      expect(hordeFaction.moveActivations).toBe(2);
+      expect(getFactionReputationSlotTypes(hordeFaction)).toEqual([
+        'rep_only',
+        'rep_only',
+        'rep_only',
+        'both',
+        'both',
+      ]);
+
+      const game = createInitialGame(2, ['the_horde', 'terran_federation'], ['community_factions']);
+      const horde = game.players.find((p) => p.faction.id === 'the_horde')!;
+      expect(horde).toBeDefined();
+      expect(horde.colonyShips).toEqual({ total: 4, ready: 4 });
+      expect(horde.techTrack.researched.map((t) => t.id)).toEqual(['neutron_bombs', 'nanorobots']);
+
+      const kassusHome = game.sectors.find((s) => s.sectorNumber === 299)!;
+      expect(kassusHome.name).toBe('Kassus Gar Rift');
+      expect(kassusHome.hasArtifact).toBe(true);
+      expect(kassusHome.planets.map((p) => `${p.resource}${p.isAdvanced ? '*' : ''}`)).toEqual([
+        'money',
+        'money*',
+        'material',
+        'material*',
+      ]);
+      expect(kassusHome.planets[0]!.colonizedBy).toBe(horde.id);
+      expect(kassusHome.planets[1]!.colonizedBy).toBeUndefined();
+      expect(kassusHome.planets[2]!.colonizedBy).toBe(horde.id);
+      expect(kassusHome.planets[3]!.colonizedBy).toBeUndefined();
+
+      // 2. Built for War: reduced base initiative on Interceptor (1), Cruiser (0), Starbase (3) + Dreadnought (0)
+      expect(horde.blueprints.interceptor!.baseInitiative).toBe(1);
+      expect(horde.blueprints.cruiser!.baseInitiative).toBe(0);
+      expect(horde.blueprints.dreadnought!.baseInitiative).toBe(0);
+      expect(horde.blueprints.starbase!.baseInitiative).toBe(3);
+      expect(calculateBlueprintStats(horde.blueprints.interceptor!).totalInitiative).toBe(2); // 1 base + 1 drive
+      expect(calculateBlueprintStats(horde.blueprints.cruiser!).totalInitiative).toBe(1); // 0 base + 1 drive
+      expect(calculateBlueprintStats(horde.blueprints.starbase!).totalInitiative).toBe(3); // 3 base
+
+      // 3. Alternative 4-slot Tech Board (0, -1, -3, -5 discounts; 1 VP on 4th slot)
+      for (const track of ['military', 'grid', 'nano'] as const) {
+        expect(getTechTrackMaxSlots(track, 'the_horde')).toBe(4);
+        expect(getTechTrackDiscountsForPlayer(track, 'the_horde')).toEqual([0, 1, 3, 5]);
+        expect(getTechTrackVPForPlayer(track, 3, 'the_horde')).toBe(0);
+        expect(getTechTrackVPForPlayer(track, 4, 'the_horde')).toBe(1);
+      }
+
+      // Researching a 4th military tech earns +1 VP, and a 5th is blocked by 4-slot cap
+      game.activePlayerIndex = game.players.findIndex((p) => p.id === horde.id);
+      horde.resources.science = 50;
+      const extraMilTechs = TECH_CATALOG.filter(
+        (t) => t.category === 'military' && t.id !== 'neutron_bombs'
+      ).slice(0, 4);
+      game.techSupply = [...extraMilTechs, ...game.techSupply];
+      let curState = game;
+      for (let i = 0; i < 3; i++) {
+        curState = executeAction(curState, {
+          type: 'RESEARCH',
+          playerId: horde.id,
+          techId: extraMilTechs[i]!.id,
+        }).newState;
+        curState.players.find((p) => p.id === horde.id)!.hasPassed = false;
+        curState.activePlayerIndex = curState.players.findIndex((p) => p.id === horde.id);
+      }
+      expect(curState.players.find((p) => p.id === horde.id)!.techTrack.militaryCount).toBe(4);
+      expect(computeCurrentScores(curState).scores[horde.id]!.techs).toBe(1);
+
+      const fifthMilRes = executeAction(curState, {
+        type: 'RESEARCH',
+        playerId: horde.id,
+        techId: extraMilTechs[3]!.id,
+      });
+      expect(fifthMilRes.success).toBe(false);
+
+      // 4. Battle Focus: UPG 3 activations must be spent on different ship classes
+      const rejectSameClass = executeAction(curState, {
+        type: 'UPGRADE',
+        playerId: horde.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 0, partId: 'hull' },
+          { shipType: 'interceptor', slotIndex: 3, partId: 'electron_computer' },
+        ],
+      });
+      expect(rejectSameClass.success).toBe(false);
+      expect(rejectSameClass.error).toContain('Battle Focus');
+
+      const validThreeClassUpg = executeAction(curState, {
+        type: 'UPGRADE',
+        playerId: horde.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 3, partId: 'electron_computer' },
+          { shipType: 'cruiser', slotIndex: 5, partId: 'hull' },
+          { shipType: 'dreadnought', slotIndex: 7, partId: 'electron_computer' },
+        ],
+      });
+      expect(validThreeClassUpg.success).toBe(true);
+      curState = validThreeClassUpg.newState;
+      const upgradedHorde = curState.players.find((p) => p.id === horde.id)!;
+      expect(upgradedHorde.blueprints.interceptor!.slots[3]?.id).toBe('electron_computer');
+      expect(upgradedHorde.blueprints.cruiser!.slots[5]?.id).toBe('hull');
+      expect(upgradedHorde.blueprints.dreadnought!.slots[7]?.id).toBe('electron_computer');
+
+      // 5. Raid: Move actions include a Build 1 activation
+      const destSectorId = 'horde_raid_adj';
+      curState = {
+        ...curState,
+        sectors: [
+          ...curState.sectors,
+          {
+            id: destSectorId,
+            sectorNumber: 204,
+            ring: 2,
+            coord: { q: kassusHome.coord.q + 1, r: kassusHome.coord.r },
+            rotation: 0,
+            wormholes: [true, true, true, true, true, true],
+            planets: [],
+            victoryPoints: 1,
+            hasArtifact: false,
+            hasDiscovery: false,
+            ancientsCount: 0,
+            ships: [],
+          },
+        ],
+        activePlayerIndex: curState.players.findIndex((p) => p.id === horde.id),
+      };
+      const hordeStartShip = curState.sectors.find((s) => s.id === kassusHome.id)!.ships.find((sh) => sh.ownerId === horde.id)!;
+      curState.players.find((p) => p.id === horde.id)!.resources.materials = 5;
+
+      // Test Raid Build preview + moving the newly built ship + REVERT_TURN_ACTION reverting both build & move
+      const stagedRaidBuild = {
+        sectorId: kassusHome.id,
+        itemType: 'interceptor' as const,
+        createdShipId: 'raid_built_int_1',
+      };
+      const raidPreviewState = applyRaidBuildToPreviewState(curState, horde.id, stagedRaidBuild);
+      expect(raidPreviewState.players.find((p) => p.id === horde.id)!.resources.materials).toBe(2);
+      expect(raidPreviewState.sectors.find((s) => s.id === kassusHome.id)!.ships.some((sh) => sh.id === 'raid_built_int_1')).toBe(true);
+      expect(curState.players.find((p) => p.id === horde.id)!.resources.materials).toBe(5);
+
+      const atomicRaidMove = executeAction(curState, {
+        type: 'MOVE',
+        playerId: horde.id,
+        moves: [
+          {
+            shipId: 'raid_built_int_1',
+            fromSectorId: kassusHome.id,
+            toSectorId: destSectorId,
+            activationIndex: 0,
+          },
+        ],
+        raidBuild: stagedRaidBuild,
+        requireConfirmation: true,
+      });
+      expect(atomicRaidMove.success).toBe(true);
+      expect(atomicRaidMove.newState.pendingActionConfirmation).toBeDefined();
+      expect(atomicRaidMove.newState.pendingActionConfirmation!.description).toContain('Raid Build (INTERCEPTOR)');
+      expect(atomicRaidMove.newState.sectors.find((s) => s.id === destSectorId)!.ships.some((sh) => sh.id === 'raid_built_int_1')).toBe(true);
+      expect(atomicRaidMove.newState.players.find((p) => p.id === horde.id)!.resources.materials).toBe(2);
+
+      const revertedRaid = executeAction(atomicRaidMove.newState, {
+        type: 'REVERT_TURN_ACTION',
+        playerId: horde.id,
+      });
+      expect(revertedRaid.success).toBe(true);
+      expect(revertedRaid.newState.players.find((p) => p.id === horde.id)!.resources.materials).toBe(5);
+      expect(revertedRaid.newState.sectors.find((s) => s.id === kassusHome.id)!.ships.some((sh) => sh.id === 'raid_built_int_1')).toBe(false);
+      expect(revertedRaid.newState.sectors.find((s) => s.id === destSectorId)!.ships.some((sh) => sh.id === 'raid_built_int_1')).toBe(false);
+
+      const raidMoveRes = executeAction(curState, {
+        type: 'MOVE',
+        playerId: horde.id,
+        moves: [
+          {
+            shipId: hordeStartShip.id,
+            fromSectorId: kassusHome.id,
+            toSectorId: destSectorId,
+            activationIndex: 0,
+          },
+        ],
+        raidBuild: {
+          sectorId: kassusHome.id,
+          itemType: 'interceptor',
+        },
+      });
+      expect(raidMoveRes.success).toBe(true);
+      const afterRaid = raidMoveRes.newState;
+      expect(afterRaid.players.find((p) => p.id === horde.id)!.resources.materials).toBe(2); // 5 - 3 for Interceptor
+      expect(afterRaid.sectors.find((s) => s.id === kassusHome.id)!.ships.some((sh) => sh.ownerId === horde.id && sh.type === 'interceptor')).toBe(true);
+      expect(afterRaid.sectors.find((s) => s.id === destSectorId)!.ships.some((sh) => sh.id === hordeStartShip.id)).toBe(true);
+
+      // 6. Built for War burst damage on unmodified '6' (excluding purple Rift dice)
+      expect(getEffectiveWeaponHitDamage('yellow', 6, 1, true)).toBe(2);
+      expect(getEffectiveWeaponHitDamage('red', 6, 4, true)).toBe(5);
+      expect(getEffectiveWeaponHitDamage('yellow', 5, 1, true)).toBe(1);
+      expect(getEffectiveWeaponHitDamage('purple', 6, 3, true)).toBe(3);
+
+      const combatUnits = buildCombatUnitsForSector(
+        afterRaid.sectors.find((s) => s.id === destSectorId)!,
+        afterRaid.players
+      );
+      expect(combatUnits.every((u) => u.hasUnmodifiedSixBurstDamage === true)).toBe(true);
+
+      // 7. Call to Arms: Gain 1/2/3 Materials when INT/CRU/DRE destroyed in an uncontrolled sector (0 in controlled sector)
+      const matsBeforeCall = afterRaid.players.find((p) => p.id === horde.id)!.resources.materials;
+      applyHordeCallToArmsSalvage(
+        afterRaid,
+        afterRaid.sectors.find((s) => s.id === destSectorId)!, // Uncontrolled
+        [
+          { type: 'interceptor', ownerId: horde.id },
+          { type: 'cruiser', ownerId: horde.id },
+          { type: 'dreadnought', ownerId: horde.id },
+        ]
+      );
+      expect(afterRaid.players.find((p) => p.id === horde.id)!.resources.materials).toBe(matsBeforeCall + 6);
+
+      // Destruction inside controlled Home Sector 299 grants +0 Materials
+      applyHordeCallToArmsSalvage(
+        afterRaid,
+        afterRaid.sectors.find((s) => s.id === kassusHome.id)!,
+        [{ type: 'dreadnought', ownerId: horde.id }]
+      );
+      expect(afterRaid.players.find((p) => p.id === horde.id)!.resources.materials).toBe(matsBeforeCall + 6);
+
+      // 8. UI SSR checks: FactionSheetCard, MoveModal (Raid panel), ShipBlueprintEditor (Battle Focus), PhysicalPlayerBoardModal (4-slot tech board)
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FactionSheetCard, { faction: hordeFaction })
+        )
+      );
+      expect(sheetHtml).toContain('The Horde');
+      expect(sheetHtml).toContain('Community Factions');
+      expect(sheetHtml).toContain('/factions/the_horde.jpg');
+      expect(sheetHtml).toContain('Sector 299');
+      expect(sheetHtml).toContain('+1 BUI');
+      expect(sheetHtml).toContain('-1 Init');
+      expect(sheetHtml).toContain('Built for War');
+      expect(sheetHtml).toContain('Call to Arms');
+      expect(sheetHtml).toContain('Battle Focus');
+      expect(sheetHtml).toContain('2 Rep / Ambassador · 3 Reputation Only');
+
+      const raidBuildModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(BuildModal, {
+            player: curState.players.find((p) => p.id === horde.id)!,
+            sectors: curState.sectors,
+            eligibleSectors: [curState.sectors.find((s) => s.id === kassusHome.id)!],
+            slots: [{ sectorId: kassusHome.id, itemType: 'interceptor' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+            isRaidBuild: true,
+            onSkipRaidBuild: () => {},
+          })
+        )
+      );
+      expect(raidBuildModalHtml).toContain('data-testid="horde-raid-build-banner"');
+      expect(raidBuildModalHtml).toContain('data-testid="raid-skip-build-btn"');
+      expect(raidBuildModalHtml).toContain('1 / 1');
+
+      const hordeStatePlayer = afterRaid.players.find((p) => p.id === horde.id)!;
+      const raidMoveModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MoveModal, {
+            player: hordeStatePlayer,
+            sectors: afterRaid.sectors,
+            playerShips: [
+              { ship: hordeStartShip, initialSector: afterRaid.sectors.find((s) => s.id === destSectorId)! },
+            ],
+            simulatedShipSector: new Map([
+              [hordeStartShip.id, afterRaid.sectors.find((s) => s.id === destSectorId)!],
+            ]),
+            connectedDestinations: [],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 1,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: hordeStartShip.id,
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+            raidBuildLabel: 'INTERCEPTOR in Sector 299',
+          })
+        )
+      );
+      expect(raidMoveModalHtml).toContain('Raid Build Queued:');
+      expect(raidMoveModalHtml).toContain('INTERCEPTOR in Sector 299');
+      expect(raidMoveModalHtml).not.toContain('data-testid="horde-raid-build-panel"');
+
+      const editorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ShipBlueprintEditor, {
+            player: hordeStatePlayer,
+            initialShipType: 'interceptor',
+            onSaveBlueprint: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(editorHtml).toContain('data-testid="horde-battle-focus-banner"');
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: hordeStatePlayer,
+            players: afterRaid.players,
+            activePlayerId: horde.id,
+            sectors: afterRaid.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('The Horde');
+      expect(boardHtml).toContain('sm:grid-cols-4');
+      expect(boardHtml).toContain('-5 Sci');
+
+      const hordeTechHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(TechMarketModal, {
+            player: hordeStatePlayer,
+            techSupply: afterRaid.techSupply,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(hordeTechHtml).toContain('Military: 4/4 Researched');
+      expect(hordeTechHtml).toContain('Grid: 0/4 Researched');
+      expect(hordeTechHtml).toContain('Nano: 1/4 Researched');
+      expect(hordeTechHtml).not.toContain('/7 Researched');
     });
   });
 });

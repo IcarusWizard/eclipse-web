@@ -25,6 +25,7 @@ import {
   getCombatShipTypeGroups,
   applyRiftSelfDamage,
   isAntimatterSplitterRoll,
+  getEffectiveWeaponHitDamage,
 } from './combatEngine';
 
 export const SIMULATOR_TARGET_PRIORITY: Record<string, number> = {
@@ -266,6 +267,7 @@ export function buildSimulatorUnits(
     const hasMorphShield =
       Boolean(stats.hasMorphShield) ||
       allParts.some((p) => p?.id === 'morph_shield' || p?.morphShield);
+    const hasUnmodifiedSixBurstDamage = sideConfig.factionId === 'the_horde';
 
     for (let i = 0; i < count; i++) {
       units.push({
@@ -279,6 +281,7 @@ export function buildSimulatorUnits(
         shieldBonus: stats.shieldBonus,
         weapons: weapons.map((w) => ({ ...w })),
         hasMorphShield,
+        hasUnmodifiedSixBurstDamage,
       });
     }
   }
@@ -444,7 +447,7 @@ export function simulateEngagement(
             const isHit = raw === 6 || (raw !== 1 && canHitAny);
             rolls.push({
               rawRoll: raw,
-              damage: w.damage,
+              damage: getEffectiveWeaponHitDamage(w.color, raw, w.damage, group.hasUnmodifiedSixBurstDamage),
               dieColor: w.color,
               isHit,
               isMissile: true,
@@ -573,7 +576,7 @@ export function simulateEngagement(
               const isHit = raw === 6 || (raw !== 1 && canHitAny);
               rolls.push({
                 rawRoll: raw,
-                damage: w.damage,
+                damage: getEffectiveWeaponHitDamage(w.color, raw, w.damage, group.hasUnmodifiedSixBurstDamage),
                 dieColor: w.color,
                 isHit,
                 isMissile: false,

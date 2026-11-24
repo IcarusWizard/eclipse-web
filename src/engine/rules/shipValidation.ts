@@ -701,6 +701,17 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
         },
       };
 
+    case 'the_horde': {
+      const base = createDefaultHumanBlueprints();
+      return {
+        ...base,
+        interceptor: { ...base.interceptor!, baseInitiative: 1 },
+        cruiser: { ...base.cruiser!, baseInitiative: 0 },
+        dreadnought: { ...base.dreadnought!, baseInitiative: 0 },
+        starbase: { ...base.starbase!, baseInitiative: 3 },
+      };
+    }
+
     case 'wardens_of_magellan':
     case 'enlightened_of_lyra':
     case 'atlantians':

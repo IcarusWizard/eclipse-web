@@ -65,6 +65,7 @@ export interface MoveModalProps {
   onClose: () => void;
   pulsarSectorId?: string;
   warpConduits?: WarpConduit[];
+  raidBuildLabel?: string | null;
 }
 
 export const MoveModal: React.FC<MoveModalProps> = ({
@@ -89,6 +90,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   onClose,
   pulsarSectorId,
   warpConduits,
+  raidBuildLabel,
 }) => {
   const { language, l } = useLanguage();
   const isPulsarActive = Boolean(pulsarSectorId);
@@ -584,6 +586,17 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 <span>{l(`All ${maxMoves} Move activations planned (${plannedMoves.length} steps)! Ready to execute maneuvers.`, `全部 ${maxMoves} 次移动激活已规划完成（共 ${plannedMoves.length} 步）！可以执行机动。`)}</span>
               </div>
             )}
+          </div>
+        )}
+
+        {raidBuildLabel && (
+          <div className="p-2 px-3 rounded-xl bg-lime-950/50 border border-lime-500/70 text-lime-200 text-xs flex items-center justify-between gap-2">
+            <span>
+              ⚔️ <strong>{l('Raid Build Queued:', '已排入突袭建造：')}</strong> {raidBuildLabel}
+            </span>
+            <span className="text-[10.5px] text-lime-300/80">
+              {l('Will apply together on Execute (Revert reverses both)', '执行移动时一并结算（撤回可同时还原）')}
+            </span>
           </div>
         )}
 

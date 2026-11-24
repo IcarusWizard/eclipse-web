@@ -136,6 +136,12 @@ export interface MoveAction extends BaseAction {
   type: 'MOVE';
   moves: MoveStep[];
   pulsarSectorId?: string;
+  raidBuild?: {
+    sectorId: string;
+    itemType: ShipType | 'orbital' | 'monolith';
+    upgradeFromShipId?: string;
+    createdShipId?: string;
+  };
 }
 
 export interface InfluenceAction extends BaseAction {

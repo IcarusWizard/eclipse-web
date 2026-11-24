@@ -279,6 +279,10 @@ const FACTION_ZH: Record<string, { name: string; trait?: string }> = {
     name: '拉之余晖 (Remnants of Ra)',
     trait: '先祖力场（Power of the Ancients）：在所有带遗物钥匙（Artifact）的受控星区（含母星 255 号奥西里斯赛特）额外获得 1 个可放置任意种类人口方块的万能槽位；先祖秘辛（Secrets of the Ancients）：终局每个受控遗物星区额外 +1 VP。开局自带等离子加农炮与标准蓝图，4:1 贸易，影响力每次仅翻正 1 艘殖民船。',
   },
+  the_horde: {
+    name: '战吼部落 (The Horde)',
+    trait: '生而好战：骰出自然 6 命中时额外 +1 伤害（裂缝武器除外），拦截舰/巡洋舰/星际基地先攻各 -1；突袭掠夺：移动行动额外附带 1 次建造激活；全军备战：在未控制星区损失拦截舰/巡洋舰/无畏舰时分别获得 1/2/3 材料；专注备战：每次升级 3 次必须分配给不同船型，替代科技轨每行仅 4 格（0/-1/-3/-5，满行 1 VP）。自带中子炸弹与纳米机器人、4 艘殖民船、5 声望轨（仅 2 格兼放大使）。',
+  },
 };
 
 const EXPANSION_ZH: Record<string, { name: string; shortName: string }> = {

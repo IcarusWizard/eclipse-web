@@ -362,6 +362,17 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     });
   };
 
+  const isBattleFocusFaction = player.faction.id === 'the_horde';
+
+  const wouldViolateBattleFocus = (shipType: ShipType, slotIndex: number, isExternal?: boolean): boolean => {
+    if (!isBattleFocusFaction) return false;
+    const alreadyModifiedSameSlot = isExternal
+      ? modifiedSlots.some((m) => m.shipType === shipType && m.isExternal)
+      : isSlotModified(shipType, slotIndex);
+    if (alreadyModifiedSameSlot) return false;
+    return modifiedSlots.some((m) => m.shipType === shipType);
+  };
+
   const handleInstallPart = (part: ShipPart) => {
     if (part.id === 'muon_source') {
       handleAttachExternalPart(part);
@@ -369,6 +380,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     }
     if (readOnly) return;
     if (selectedSlotIndex === null) return;
+    if (wouldViolateBattleFocus(activeShipType, selectedSlotIndex)) return;
     if (slotRejectsDrives(activeShipType, selectedSlotIndex) && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       return;
     }
@@ -380,6 +392,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   const handleClearSlot = (index: number, shipTypeOverride?: ShipType) => {
     const targetShip = shipTypeOverride ?? activeShipType;
     if (readOnly) return;
+    if (wouldViolateBattleFocus(targetShip, index)) return;
     if (!isSlotModified(targetShip, index) && remainingActivations <= 0) return;
 
     applyDraftSlotUpdate(targetShip, index, null);
@@ -397,6 +410,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
   const handleAttachExternalPart = (part: ShipPart, modularGroupOverride?: MegaWarModularGroupId) => {
     if (readOnly) return;
+    if (wouldViolateBattleFocus(activeShipType, -1, true)) return;
     const isCurrentlyModified = isModularFaction
       ? modifiedSlots.some((m) => m.isExternal)
       : modifiedSlots.some((m) => m.shipType === activeShipType && m.isExternal);
@@ -593,6 +607,25 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
         </div>
 
         {/* Main Content Area */}
+        {isBattleFocusFaction && (
+          <div
+            data-testid="horde-battle-focus-banner"
+            className="mx-6 mt-4 px-3 py-2 rounded-xl bg-lime-950/40 border border-lime-500/50 text-lime-200 text-xs flex items-center justify-between gap-2"
+          >
+            <span>
+              <strong>{l('Battle Focus (The Horde):', '专注备战（战吼部落）：')}</strong>{' '}
+              {l(
+                'Each Upgrade activation (UPG 3) must be spent on a different ship class (Interceptor, Cruiser, Dreadnought, Starbase).',
+                '每次升级行动的 3 次升级激活必须分别用于不同船型（拦截舰 / 巡洋舰 / 无畏舰 / 星际基地）。'
+              )}
+            </span>
+            {selectedSlotIndex !== null && wouldViolateBattleFocus(activeShipType, selectedSlotIndex) && (
+              <span className="px-2 py-0.5 rounded bg-rose-950 border border-rose-500/70 text-rose-200 font-bold text-[10px] shrink-0">
+                {l('Class already upgraded', '该船型本轮已升级')}
+              </span>
+            )}
+          </div>
+        )}
         <div className="p-6 grid grid-cols-1 lg:grid-cols-12 gap-6 overflow-y-auto">
           {/* Left: Ship Blueprint Grid & Live Stats */}
           <div className="lg:col-span-7 space-y-6">

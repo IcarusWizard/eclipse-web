@@ -16,6 +16,8 @@ import {
   getPlayerDisplayName,
   getFactionDisplayColor,
   hasPendingPreGameCubeSetup,
+  validateBuildItems,
+  applyRaidBuildToPreviewState,
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
@@ -179,6 +181,8 @@ const AppContent: React.FC = () => {
   const [isTableSessionOpen, setIsTableSessionOpen] = useState<boolean>(false);
   const [isManageSeatsOpen, setIsManageSeatsOpen] = useState<boolean>(false);
   const [isBuildOpen, setIsBuildOpen] = useState<boolean>(false);
+  const [isRaidBuildStep, setIsRaidBuildStep] = useState<boolean>(false);
+  const [stagedRaidBuild, setStagedRaidBuild] = useState<(BuildItemPayload & { createdShipId?: string }) | null>(null);
   const [isMoveOpen, setIsMoveOpen] = useState<boolean>(false);
   const [isInfluenceOpen, setIsInfluenceOpen] = useState<boolean>(false);
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
@@ -2061,9 +2065,17 @@ const AppContent: React.FC = () => {
   };
 
   // --- MOVE FLOW STATE & HANDLERS ---
+  const movePlanningState = useMemo(
+    () =>
+      isMoveOpen && stagedRaidBuild
+        ? applyRaidBuildToPreviewState(state, activePlayer.id, stagedRaidBuild)
+        : state,
+    [isMoveOpen, stagedRaidBuild, state, activePlayer.id]
+  );
+
   const playerShips = useMemo(() => {
     const list: { ship: SectorShip; initialSector: SectorTile }[] = [];
-    for (const s of state.sectors) {
+    for (const s of movePlanningState.sectors) {
       for (const sh of s.ships) {
         if (sh.ownerId === activePlayer.id) {
           list.push({ ship: sh, initialSector: s });
@@ -2071,7 +2083,7 @@ const AppContent: React.FC = () => {
       }
     }
     return list;
-  }, [state.sectors, activePlayer.id]);
+  }, [movePlanningState.sectors, activePlayer.id]);
 
   const movableShips = useMemo(() => {
     return playerShips.filter((p) => {
@@ -2103,18 +2115,18 @@ const AppContent: React.FC = () => {
       map.set(ps.ship.id, ps.initialSector);
     }
     for (const m of plannedMoves) {
-      const destSec = state.sectors.find((s) => s.id === m.toSectorId);
+      const destSec = movePlanningState.sectors.find((s) => s.id === m.toSectorId);
       if (destSec) {
         map.set(m.shipId, destSec);
       }
     }
     return map;
-  }, [playerShips, plannedMoves, state.sectors]);
+  }, [playerShips, plannedMoves, movePlanningState.sectors]);
 
   // Compute 1:1 pinning state taking into account hostiles, Draco ancient immunity, and step progression (Bugs 58, 62, 63)
   const pinningState = useMemo(() => {
-    return computePinningState(state, activePlayer.id, plannedMoves);
-  }, [state, activePlayer.id, plannedMoves]);
+    return computePinningState(movePlanningState, activePlayer.id, plannedMoves);
+  }, [movePlanningState, activePlayer.id, plannedMoves]);
 
   const isShipPinned = (shipId: string): boolean => {
     return pinningState.isShipPinned(shipId);
@@ -2155,13 +2167,13 @@ const AppContent: React.FC = () => {
     if (!currentMoveShip || !currentSimSector) return [];
     if (activeActivationIndex >= maxMoves) return [];
     return computeReachableMoveDestinations(
-      state,
+      movePlanningState,
       activePlayer.id,
       currentMoveShip.id,
       plannedMoves,
       activeActivationIndex
     );
-  }, [state, activePlayer.id, currentMoveShip, currentSimSector, activeActivationIndex, maxMoves, plannedMoves]);
+  }, [movePlanningState, activePlayer.id, currentMoveShip, currentSimSector, activeActivationIndex, maxMoves, plannedMoves]);
 
   const reachableExternalBySectorId = useMemo(() => {
     const map = new Map<string, ReachableMoveOption>();
@@ -2183,9 +2195,9 @@ const AppContent: React.FC = () => {
   // Destinations reachable from the ship's current simulated sector via 1 or more steps
   const connectedDestinations = useMemo(() => {
     return Array.from(reachableExternalBySectorId.keys())
-      .map((id) => state.sectors.find((s) => s.id === id))
+      .map((id) => movePlanningState.sectors.find((s) => s.id === id))
       .filter((s): s is SectorTile => Boolean(s));
-  }, [reachableExternalBySectorId, state.sectors]);
+  }, [reachableExternalBySectorId, movePlanningState.sectors]);
 
   const handleAddMoveDestination = (destSectorId: string, targetSubsector?: 1 | 2 | 3) => {
     if (!currentMoveShip || !currentSimSector) return;
@@ -2207,8 +2219,8 @@ const AppContent: React.FC = () => {
     const baseStepNumber = currentActivationMoves.length;
     const timestamp = Date.now();
     const newMoves: PlannedMove[] = chosenOption.steps.map((step, idx) => {
-      const fromSec = state.sectors.find((s) => s.id === step.fromSectorId);
-      const toSec = state.sectors.find((s) => s.id === step.toSectorId);
+      const fromSec = movePlanningState.sectors.find((s) => s.id === step.fromSectorId);
+      const toSec = movePlanningState.sectors.find((s) => s.id === step.toSectorId);
       const prevSub =
         idx === 0
           ? (currentSimSector.isNebula ? currentSimSubsector : undefined)
@@ -2234,10 +2246,10 @@ const AppContent: React.FC = () => {
     setPlannedMoves(nextPlannedMoves);
 
     // Pinning, Black Hole, or speed limit check at final destination
-    const nextPinningState = computePinningState(state, activePlayer.id, nextPlannedMoves);
+    const nextPinningState = computePinningState(movePlanningState, activePlayer.id, nextPlannedMoves);
     const isPinnedInDest = nextPinningState.isShipPinned(currentMoveShip.id);
     const finalStep = newMoves[newMoves.length - 1]!;
-    const finalDestSec = state.sectors.find((s) => s.id === finalStep.toSectorId);
+    const finalDestSec = movePlanningState.sectors.find((s) => s.id === finalStep.toSectorId);
     const isBlackHoleTerminated = Boolean(finalDestSec?.isBlackHole && finalDestSec.id !== finalStep.fromSectorId);
     const totalStepsUsed = baseStepNumber + newMoves.length;
 
@@ -2332,6 +2344,29 @@ const AppContent: React.FC = () => {
       showToast('Spectators cannot perform actions.');
       return;
     }
+    if (isRaidBuildStep) {
+      if (items.length !== 1) {
+        showToast('Select 1 item to build or skip Raid Build to proceed to Move.');
+        return;
+      }
+      const item = items[0]!;
+      const raidCheck = validateBuildItems(state, activePlayer, [item]);
+      if (!raidCheck.valid) {
+        showToast(raidCheck.error || 'Raid build selection is invalid.');
+        return;
+      }
+      const createdShipId =
+        !item.upgradeFromShipId && item.itemType !== 'orbital' && item.itemType !== 'monolith'
+          ? `ship_${activePlayer.id}_raid_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`
+          : item.itemType === 'orbital' && activePlayer.faction.id === 'the_exiles'
+            ? `ship_${activePlayer.id}_orbital_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`
+            : undefined;
+      setStagedRaidBuild({ ...item, createdShipId });
+      setIsBuildOpen(false);
+      setIsRaidBuildStep(false);
+      setIsMoveOpen(true);
+      return;
+    }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const res = executeAction(state, {
       type: 'BUILD',
@@ -2349,23 +2384,37 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleSkipRaidBuild = () => {
+    setStagedRaidBuild(null);
+    setIsBuildOpen(false);
+    setIsRaidBuildStep(false);
+    setIsMoveOpen(true);
+  };
+
   // Move flow
-  const handleMove = (moves: MoveStepPayload[], pulsarSectorId?: string) => {
+  const handleMove = (
+    moves: MoveStepPayload[],
+    pulsarSectorId?: string,
+    raidBuild?: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string; createdShipId?: string }
+  ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
       return;
     }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
+    const effectiveRaidBuild = raidBuild ?? stagedRaidBuild ?? undefined;
     const res = executeAction(state, {
       type: 'MOVE',
       playerId: activePlayer.id,
       moves,
       pulsarSectorId: effectivePulsarId,
+      raidBuild: effectiveRaidBuild,
       requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
       setIsMoveOpen(false);
+      setStagedRaidBuild(null);
       setActivePulsarSectorId(null);
     } else {
       showToast(res.error || 'Movement maneuver failed.');
@@ -3676,7 +3725,7 @@ const AppContent: React.FC = () => {
       <div className="relative flex-1 w-full h-full overflow-hidden">
         {/* Galaxy Hex Map */}
         <HexGalaxyMap
-          state={state}
+          state={isMoveOpen && stagedRaidBuild ? movePlanningState : state}
           selectedSectorId={selectedSector?.id || null}
           onSelectSector={(s) => setSelectedSector(s)}
           isExploreMode={effectiveExploreMode}
@@ -3858,8 +3907,24 @@ const AppContent: React.FC = () => {
             onToggleExplore={handleToggleExplore}
             onOpenResearch={() => setIsTechMarketOpen(true)}
             onOpenUpgrade={() => setIsBlueprintOpen(true)}
-            onOpenBuild={() => setIsBuildOpen(true)}
-            onOpenMove={() => setIsMoveOpen(true)}
+            onOpenBuild={() => {
+              setIsRaidBuildStep(false);
+              setStagedRaidBuild(null);
+              setIsBuildOpen(true);
+            }}
+            onOpenMove={() => {
+              if (activePlayer.faction.id === 'the_horde' && !activePlayer.hasPassed && !activePulsarSectorId) {
+                setStagedRaidBuild(null);
+                setIsRaidBuildStep(true);
+                setBuildSlots([{ sectorId: eligibleBuildSectors[0]?.id || '', itemType: 'interceptor' }]);
+                setActiveBuildSlotIndex(0);
+                setIsBuildOpen(true);
+              } else {
+                setIsRaidBuildStep(false);
+                setStagedRaidBuild(null);
+                setIsMoveOpen(true);
+              }
+            }}
             onOpenInfluence={() => setIsInfluenceOpen(true)}
             onPass={handlePass}
             isTurnGated={isActionsLocked}
@@ -4129,8 +4194,12 @@ const AppContent: React.FC = () => {
           onSelectSlotIndex={setActiveBuildSlotIndex}
           onBuild={handleBuild}
           pulsarSectorId={activePulsarSectorId ?? undefined}
+          isRaidBuild={isRaidBuildStep}
+          onSkipRaidBuild={handleSkipRaidBuild}
           onClose={() => {
             setIsBuildOpen(false);
+            setIsRaidBuildStep(false);
+            setStagedRaidBuild(null);
             setActivePulsarSectorId(null);
           }}
         />
@@ -4139,7 +4208,7 @@ const AppContent: React.FC = () => {
       {isMoveOpen && (
         <MoveModal
           player={activePlayer}
-          sectors={state.sectors}
+          sectors={movePlanningState.sectors}
           playerShips={playerShips}
           simulatedShipSector={simulatedShipSector}
           connectedDestinations={connectedDestinations}
@@ -4157,9 +4226,15 @@ const AppContent: React.FC = () => {
           onFinishActivation={handleFinishCurrentActivation}
           onMove={handleMove}
           pulsarSectorId={activePulsarSectorId ?? undefined}
+          raidBuildLabel={
+            stagedRaidBuild
+              ? `${stagedRaidBuild.upgradeFromShipId ? 'Field-Upgrade → ' : ''}${stagedRaidBuild.itemType.toUpperCase()} in Sector ${state.sectors.find((s) => s.id === stagedRaidBuild.sectorId)?.sectorNumber ?? stagedRaidBuild.sectorId}`
+              : null
+          }
           warpConduits={state.warpedUniverse?.conduits}
           onClose={() => {
             setIsMoveOpen(false);
+            setStagedRaidBuild(null);
             setActivePulsarSectorId(null);
           }}
         />

@@ -996,7 +996,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   </div>
 
                   {/* Military Slots */}
-                  <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
+                  <div className={`grid grid-cols-2 ${getTechTrackMaxSlots('military', player.faction.id) === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-7'} gap-2`}>
                     {Array.from({ length: getTechTrackMaxSlots('military', player.faction.id) }).map((_, sIdx) => {
                       const tech = techRows.military.techs[sIdx];
                       const discounts = getTechTrackDiscountsForPlayer('military', player.faction.id);
@@ -1078,7 +1078,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   </div>
 
                   {/* Grid Slots */}
-                  <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
+                  <div className={`grid grid-cols-2 ${getTechTrackMaxSlots('grid', player.faction.id) === 4 ? 'sm:grid-cols-4' : 'sm:grid-cols-7'} gap-2`}>
                     {Array.from({ length: getTechTrackMaxSlots('grid', player.faction.id) }).map((_, sIdx) => {
                       const tech = techRows.grid.techs[sIdx];
                       const discounts = getTechTrackDiscountsForPlayer('grid', player.faction.id);
@@ -1160,7 +1160,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   </div>
 
                   {/* Nano Slots */}
-                  <div className={`grid grid-cols-2 ${getTechTrackMaxSlots('nano', player.faction.id) === 6 ? 'sm:grid-cols-6' : 'sm:grid-cols-7'} gap-2`}>
+                  <div className={`grid grid-cols-2 ${getTechTrackMaxSlots('nano', player.faction.id) === 4 ? 'sm:grid-cols-4' : getTechTrackMaxSlots('nano', player.faction.id) === 6 ? 'sm:grid-cols-6' : 'sm:grid-cols-7'} gap-2`}>
                     {Array.from({ length: getTechTrackMaxSlots('nano', player.faction.id) }).map((_, sIdx) => {
                       const tech = techRows.nano.techs[sIdx];
                       const discounts = getTechTrackDiscountsForPlayer('nano', player.faction.id);

@@ -501,12 +501,17 @@ const MEGA_WAR_TECH_VP: Record<'military' | 'grid' | 'nano', Record<number, numb
   nano: { 4: 1, 5: 2, 6: 4 },
 };
 
+const THE_HORDE_TECH_DISCOUNTS: readonly number[] = [0, 1, 3, 5];
+
 export function getTechTrackDiscountsForPlayer(
   track: 'military' | 'grid' | 'nano',
   factionId?: string
 ): readonly number[] {
   if (factionId === 'mega_war_inc') {
     return MEGA_WAR_TECH_DISCOUNTS[track];
+  }
+  if (factionId === 'the_horde') {
+    return THE_HORDE_TECH_DISCOUNTS;
   }
   return OFFICIAL_TECH_DISCOUNTS;
 }
@@ -515,6 +520,9 @@ export function getTechTrackMaxSlots(
   track: 'military' | 'grid' | 'nano',
   factionId?: string
 ): number {
+  if (factionId === 'the_horde') {
+    return 4;
+  }
   if (factionId === 'mega_war_inc' && track === 'nano') {
     return 6;
   }
@@ -526,6 +534,9 @@ export function getTechTrackVPForPlayer(
   count: number,
   factionId?: string
 ): number {
+  if (factionId === 'the_horde') {
+    return count >= 4 ? 1 : 0;
+  }
   if (factionId === 'mega_war_inc') {
     const table = MEGA_WAR_TECH_VP[track];
     if (track === 'nano') {

@@ -25,6 +25,7 @@ export interface CombatUnit {
   }[];
   hasMorphShield?: boolean;
   hasAntimatterSplitter?: boolean;
+  hasUnmodifiedSixBurstDamage?: boolean;
 }
 
 export function buildCombatUnitsForSector(
@@ -82,6 +83,7 @@ export function buildCombatUnitsForSector(
       const hasAntimatterSplitter = Boolean(
         player.techTrack?.researched?.some((t) => t.id === 'antimatter_splitter')
       );
+      const hasUnmodifiedSixBurstDamage = player.faction?.id === 'the_horde';
 
       units.push({
         id: ship.id,
@@ -95,6 +97,7 @@ export function buildCombatUnitsForSector(
         weapons,
         hasMorphShield,
         hasAntimatterSplitter,
+        hasUnmodifiedSixBurstDamage,
       });
     }
   }
@@ -304,6 +307,22 @@ export interface CombatShipGroup {
   weapons: CombatUnit['weapons'];
   hasMorphShield?: boolean;
   hasAntimatterSplitter?: boolean;
+  hasUnmodifiedSixBurstDamage?: boolean;
+}
+
+/**
+ * Built for War (The Horde): Natural unmodified '6' rolls on non-Rift weapons deal +1 damage.
+ */
+export function getEffectiveWeaponHitDamage(
+  dieColor: string,
+  rawRoll: number,
+  baseDamage: number,
+  hasUnmodifiedSixBurstDamage?: boolean
+): number {
+  if (hasUnmodifiedSixBurstDamage && dieColor !== 'purple' && rawRoll === 6 && baseDamage > 0) {
+    return baseDamage + 1;
+  }
+  return baseDamage;
 }
 
 export function getCombatShipTypeGroups(
@@ -328,6 +347,7 @@ export function getCombatShipTypeGroups(
         weapons: u.weapons.map((w) => ({ ...w })),
         hasMorphShield: u.hasMorphShield,
         hasAntimatterSplitter: u.hasAntimatterSplitter,
+        hasUnmodifiedSixBurstDamage: u.hasUnmodifiedSixBurstDamage,
       });
     } else {
       const g = groupMap.get(key)!;
@@ -338,6 +358,7 @@ export function getCombatShipTypeGroups(
       }
       if (u.hasMorphShield) g.hasMorphShield = true;
       if (u.hasAntimatterSplitter) g.hasAntimatterSplitter = true;
+      if (u.hasUnmodifiedSixBurstDamage) g.hasUnmodifiedSixBurstDamage = true;
     }
   }
 
@@ -850,7 +871,12 @@ export function executeCombatStep(
                 roll: raw,
                 modifiedRoll: raw + activeGroup.computerBonus,
                 isHit,
-                damage: weapon.damage,
+                damage: getEffectiveWeaponHitDamage(
+                  weapon.color,
+                  raw,
+                  weapon.damage,
+                  activeGroup.hasUnmodifiedSixBurstDamage
+                ),
                 isMissile: true,
               });
             }
@@ -1079,7 +1105,12 @@ export function executeCombatStep(
             roll: raw,
             modifiedRoll: raw + activeGroup.computerBonus,
             isHit,
-            damage: weapon.damage,
+            damage: getEffectiveWeaponHitDamage(
+              weapon.color,
+              raw,
+              weapon.damage,
+              activeGroup.hasUnmodifiedSixBurstDamage
+            ),
             isMissile: false,
           });
         }

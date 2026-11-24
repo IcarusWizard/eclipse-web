@@ -84,6 +84,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   rho_indi_syndicate: '/factions/rho_indi_syndicate.jpg',
   atlantians: '/factions/atlantians.jpg',
   mega_war_inc: '/factions/mega_war_inc.jpg',
+  the_horde: '/factions/the_horde.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -457,6 +458,40 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
         icon: 'vp',
         en: 'Secrets of the Ancients: Score +1 bonus VP at game end for each controlled sector containing an Artifact key (including your homeworld).',
         zh: '先祖秘辛（Secrets of the Ancients）：终局计分时，每个带遗物钥匙的己方控制星区（含母星）额外奖励 +1 VP。',
+      },
+    ],
+  },
+  the_horde: {
+    historyEn:
+      'Descending upon unsuspecting sectors via volatile spatial rifts, The Horde have swarmed and conquered every realm in their path. Having consumed their home galaxy, rival clans now raise their banners together at Kassus Gar Rift (Sector 299) to take this galaxy through sheer ferocity and relentless conquest.',
+    historyZh:
+      '从剧烈震荡的空间裂隙降临未知星域，战吼部落以蛮横狂暴之姿席卷并征服沿途每一个星区。在耗尽母星系的资源后，各路氏族于卡苏斯裂隙（299 号星区）再度升起战旗，誓要以铁血与掠夺统治这片新银河。',
+    portraitUrl: '/factions/the_horde.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'horde_built_for_war',
+        icon: 'ship',
+        en: "Built for War: +1 damage when you hit with an unmodified '6' (burst; does not apply to Rift weapons). Interceptors, Cruisers & Starbases have -1 base initiative (1 / 0 / 3).",
+        zh: '生而好战：非裂缝武器骰出自然 6 命中时伤害 +1；拦截舰、巡洋舰与星际基地基础先攻降低（1 / 0 / 3）。',
+      },
+      {
+        id: 'horde_raid',
+        icon: 'explore',
+        en: 'Raid: Move actions include a free Build 1 activation.',
+        zh: '突袭掠夺：每次执行移动行动（MOV 2）额外附带 1 次建造激活。',
+      },
+      {
+        id: 'horde_call_to_arms',
+        icon: 'colony',
+        en: 'Call to Arms: Gain Materials when your ships are destroyed in a sector you do not control — Interceptor = +1, Cruiser = +2, Dreadnought = +3.',
+        zh: '全军备战：当你的战舰在你未控制的星区被摧毁时获得材料补偿（拦截舰 +1、巡洋舰 +2、无畏舰 +3）。',
+      },
+      {
+        id: 'horde_battle_focus',
+        icon: 'tech',
+        en: 'Battle Focus & Alternative Tech Board: UPG 3 activations must be spent on different ship classes. Each tech row has 4 slots (0, -1, -3, -5 discounts; 1 VP on completion).',
+        zh: '专注备战与紧凑科技轨：每次 3 次升级激活必须用于不同船型；每条科技轨仅 4 格（0 / -1 / -3 / -5 减免，满格 1 VP）。',
       },
     ],
   },
