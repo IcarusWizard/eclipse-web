@@ -3,9 +3,9 @@
  * Supports 1-6 players with prioritized Human Factions.
  */
 
-import { GameState } from '../types/state';
+import { GameState, PendingDiscovery } from '../types/state';
 import { FactionInfo, PlayerState, ReputationSlotType, ShrineBoardState } from '../types/player';
-import { SectorTile, HexCoord, SectorShip } from '../types/galaxy';
+import { SectorTile, HexCoord, SectorShip, DiscoveryTile } from '../types/galaxy';
 import { CENTER_SECTOR, HUMAN_HOME_SECTORS, ALL_HOME_SECTORS, DISCOVERY_TILES, RIFT_CONDUCTOR_DISCOVERY, REMNANTS_DISCOVERY_TILES, GUARDIAN_SECTORS, generateSectorDecks } from './sectorData';
 import { TECH_CATALOG, createInitialTechBag, drawTechTilesForSetup, drawTechTilesForRound } from './techData';
 import { createDefaultHumanBlueprints, createFactionBlueprints } from './shipValidation';
@@ -38,9 +38,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   orange: '#ea580c', // legacy fallback
   teal: '#0d9488', // The Exiles
   amber: '#d97706', // Rho Indi Syndicate
+  cyan: '#06b6d4', // Atlantians
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -67,6 +68,8 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Outcasts
   the_exiles: 'teal',
   rho_indi_syndicate: 'amber',
+  // Community Factions
+  atlantians: 'cyan',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -86,6 +89,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   enlightened_of_lyra: ECLIPSE_COLOR_PALETTE.orange,
   the_exiles: ECLIPSE_COLOR_PALETTE.teal,
   rho_indi_syndicate: ECLIPSE_COLOR_PALETTE.amber,
+  atlantians: ECLIPSE_COLOR_PALETTE.cyan,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -491,6 +495,28 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 2,
     reputationSlotTypes: ['both', 'both', 'rep_only', 'rep_only', 'rep_only'],
   },
+  {
+    id: 'atlantians',
+    name: 'Atlantians',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.cyan,
+    startingSectorNumber: 241,
+    startingResources: { money: 3, science: 3, materials: 3 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: ['ancient_labs'],
+    traitDescription: 'Ancient Spirit (draw 2 discovery tiles & choose 1, discarding +6 Materials or Ancient Cruiser), start with Ancient Labs, Research grants optional Upgrade 1 with researched tech, +1 VP per discovery tile on ships, and +1 Material ship cost per extra discovery tile.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    reputationSlots: 4,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -503,6 +529,7 @@ export const ALL_FACTIONS: FactionInfo[] = [
  * Base game factions (6 Human, 6 Alien) are always available.
  * Seekers factions (Wardens of Magellan, Enlightened of Lyra) require 'seekers'.
  * Outcasts factions (The Exiles, Rho Indi Syndicate) require 'outcasts'.
+ * Community factions (Atlantians) require 'community_factions'.
  */
 export function isFactionAvailable(factionId: string, expansions: string[] = []): boolean {
   if (factionId === 'wardens_of_magellan' || factionId === 'enlightened_of_lyra') {
@@ -510,6 +537,9 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   }
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
+  }
+  if (factionId === 'atlantians') {
+    return expansions.includes('community_factions');
   }
   return true;
 }
@@ -539,7 +569,8 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
     faction.id === 'mechanema' ||
     faction.id === 'descendants_of_draco' ||
     faction.id === 'wardens_of_magellan' ||
-    faction.id === 'enlightened_of_lyra'
+    faction.id === 'enlightened_of_lyra' ||
+    faction.id === 'atlantians'
   ) {
     return ['both', 'both', 'both', 'both'];
   }
@@ -854,6 +885,9 @@ export function buildPlayerAndHomeSector(
       if (faction.id === 'the_exiles' && t.id === 'cloaking_device') {
         return { ...t, placedTrack: 'military' as const };
       }
+      if (faction.id === 'atlantians' && t.id === 'ancient_labs') {
+        return { ...t, placedTrack: 'nano' as const };
+      }
       return { ...t };
     })
     .filter((t): t is (typeof TECH_CATALOG)[number] => Boolean(t));
@@ -918,6 +952,7 @@ export function buildPlayerAndHomeSector(
     magellanDiscoveryTile: faction.id === 'wardens_of_magellan' ? (discoveryBag.pop() || null) : undefined,
     magellanDiscoveryResolved: faction.id === 'wardens_of_magellan' ? false : undefined,
     discoveryTilesUsedAsShipPartsCount: faction.id === 'wardens_of_magellan' ? 0 : undefined,
+    startingAncientLabsResolved: faction.id === 'atlantians' ? false : undefined,
     shrineBoard: faction.id === 'enlightened_of_lyra' ? createInitialShrineBoard() : undefined,
     hasWormholeGeneratorAbility: false,
     lyraExtraDiscClaimed: false,
@@ -929,6 +964,122 @@ export function buildPlayerAndHomeSector(
   };
 
   return { player, homeSector };
+}
+
+/**
+ * Returns true if a Discovery Tile is disallowed by Atlantians' Ancient Spirit species rule
+ * ('+6 Materials' or 'Ancient Cruiser' must be discarded and redrawn).
+ */
+export function isAtlantiansForbiddenDiscoveryTile(tile: DiscoveryTile): boolean {
+  return (
+    tile.id.startsWith('disc_materials_6') ||
+    tile.name === '+6 Materials' ||
+    tile.id.startsWith('disc_ancient_cruiser') ||
+    tile.name === 'Ancient Cruiser' ||
+    tile.immediateReward?.grantShipType === 'cruiser'
+  );
+}
+
+/**
+ * Draws a single Discovery Tile from discoveryBag (with random base-tile fallback if exhausted).
+ * When forAtlantians is true, discards and redraws '+6 Materials' and 'Ancient Cruiser' tiles.
+ */
+export function drawDiscoveryTileForPlayer(
+  discoveryBag: DiscoveryTile[] | undefined,
+  forAtlantians: boolean,
+  excludeId?: string
+): DiscoveryTile {
+  if (discoveryBag && discoveryBag.length > 0) {
+    while (discoveryBag.length > 0) {
+      const randIdx = Math.floor(Math.random() * discoveryBag.length);
+      const tile = discoveryBag.splice(randIdx, 1)[0]!;
+      if (forAtlantians && isAtlantiansForbiddenDiscoveryTile(tile)) {
+        continue;
+      }
+      return tile;
+    }
+  }
+  const candidates = DISCOVERY_TILES.filter(
+    (t) => (!forAtlantians || !isAtlantiansForbiddenDiscoveryTile(t)) && t.id !== excludeId
+  );
+  const pool = candidates.length > 0 ? candidates : DISCOVERY_TILES;
+  return { ...pool[Math.floor(Math.random() * pool.length)]! };
+}
+
+/**
+ * Constructs a PendingDiscovery payload for a player, applying Atlantians' Ancient Spirit
+ * rule (draw an extra Discovery Tile, discard & redraw any '+6 Materials' or 'Ancient Cruiser',
+ * and let the player pick which of the 2 tiles to resolve).
+ */
+export function buildPendingDiscoveryForPlayer(
+  discoveryBag: DiscoveryTile[] | undefined,
+  player: Pick<PlayerState, 'id' | 'faction'>,
+  sectorId: string,
+  initialTile?: DiscoveryTile,
+  fromExplore?: boolean
+): PendingDiscovery {
+  const isAtlantians = player.faction.id === 'atlantians';
+  if (!isAtlantians) {
+    const tile = initialTile || drawDiscoveryTileForPlayer(discoveryBag, false);
+    return {
+      sectorId,
+      discovery: tile,
+      playerId: player.id,
+      ...(fromExplore ? { fromExplore: true } : {}),
+    };
+  }
+
+  let firstTile = initialTile;
+  if (!firstTile || isAtlantiansForbiddenDiscoveryTile(firstTile)) {
+    firstTile = drawDiscoveryTileForPlayer(discoveryBag, true);
+  }
+  const secondTile = drawDiscoveryTileForPlayer(discoveryBag, true, firstTile.id);
+
+  return {
+    sectorId,
+    discovery: firstTile,
+    discoveryOptions: [firstTile, secondTile],
+    playerId: player.id,
+    ...(fromExplore ? { fromExplore: true } : {}),
+  };
+}
+
+/**
+ * Triggers the starting Ancient Labs Discovery Tile draw (2 tiles via Ancient Spirit)
+ * for an Atlantians player once game setup / draft completes and no setup blocker is active.
+ */
+export function triggerPendingAtlantiansStartingLabsDiscovery(state: GameState): void {
+  if (state.phase === 'DRAFT_PHASE') return;
+  if (state.pendingExilesOrbitalSetup || state.pendingDiscovery) return;
+  const atlantians = state.players.find(
+    (p) => p.faction.id === 'atlantians' && p.startingAncientLabsResolved === false
+  );
+  if (!atlantians) return;
+
+  atlantians.startingAncientLabsResolved = true;
+  const homeSector = state.sectors.find(
+    (s) => s.id === `home_sector_${atlantians.id}` || s.sectorNumber === 241
+  );
+  const firstTile = drawDiscoveryTileForPlayer(state.discoveryBag, true);
+  state.pendingDiscovery = {
+    ...buildPendingDiscoveryForPlayer(
+      state.discoveryBag,
+      atlantians,
+      homeSector?.id || state.sectors[0]?.id || 'sec_1',
+      firstTile,
+      false
+    ),
+    isSetupDiscovery: true,
+  };
+  state.log.unshift({
+    id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+    timestamp: Date.now(),
+    round: state.round,
+    phase: state.phase,
+    playerId: atlantians.id,
+    message: `✨ ${atlantians.name} triggered starting Ancient Labs (Ancient Spirit) and drew 2 Discovery Tiles to choose 1!`,
+    type: 'system',
+  });
 }
 
 export function createInitialGame(
@@ -1190,7 +1341,9 @@ export function createInitialGame(
   });
 
   // Official Eclipse: Second Dawn Tech Bag & Tray Setup
-  const fullBag = createInitialTechBag(expansions);
+  const rawBag = createInitialTechBag(expansions);
+  const hasAtlantians = players.some((p) => p.faction.id === 'atlantians');
+  const fullBag = hasAtlantians ? rawBag.filter((t) => t.id !== 'ancient_labs') : rawBag;
   const { drawn: techSupply, remainingBag: techBag, regularDrawn, rareDrawn } =
     drawTechTilesForSetup(fullBag, players.length);
 
@@ -1267,6 +1420,8 @@ export function createInitialGame(
     ],
     chatMessages: [],
   };
+
+  triggerPendingAtlantiansStartingLabsDiscovery(initialState);
 
   commitReplayStep(
     initialState,

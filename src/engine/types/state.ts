@@ -108,8 +108,10 @@ export interface PendingExplore {
 export interface PendingDiscovery {
   sectorId: string;
   discovery: DiscoveryTile;
+  discoveryOptions?: DiscoveryTile[]; // When multiple tiles are drawn (e.g. Atlantians Ancient Spirit: pick 1 to resolve)
   playerId: string;
   fromExplore?: boolean;
+  isSetupDiscovery?: boolean;
 }
 
 export interface PendingExploreControl {

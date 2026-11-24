@@ -82,6 +82,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   enlightened_of_lyra: '/factions/enlightened_of_lyra.jpg',
   the_exiles: '/factions/the_exiles.jpg',
   rho_indi_syndicate: '/factions/rho_indi_syndicate.jpg',
+  atlantians: '/factions/atlantians.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -365,6 +366,40 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
         icon: 'rep',
         en: '5 Reputation Track slots, but only 2 accept Ambassadors (slots 3–5 are Reputation Tile only); 2 Colony Ships; 16 total Influence Discs.',
         zh: '声望轨 5 格，其中仅前 2 格可派驻大使（3-5 格仅限声望）；起始 2 艘殖民船，共 16 枚圆片。',
+      },
+    ],
+  },
+  atlantians: {
+    historyEn:
+      'The Atlantians were the first super-galactic empire, bringing trade and prosperity to their arm of the galaxy until an endless war with the Empire of Ra unleashed the Scrabs—an unstoppable swarm that shattered their civilization within a decade. Six centuries later, the Atlantians have resurfaced to reclaim their ancient secrets and enact vengeance.',
+    historyZh:
+      '亚特兰蒂斯人曾是银河最早的超级帝国，直到与拉之帝国漫长拉锯中“圣甲虫”灾难爆发，令帝国在十年内湮灭。历经六百载沉寂后，亚特兰蒂斯重返星海，誓要夺回远古秘宝并清算旧日血仇。',
+    portraitUrl: '/factions/atlantians.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'atlantians_spirit',
+        icon: 'explore',
+        en: "Ancient Spirit: When you get a discovery tile (including starting Ancient Labs), draw an additional tile and select which tile to resolve. Discard & redraw any '+6 Materials' or 'Ancient Cruiser' tile (repeat as necessary).",
+        zh: '远古之灵：每当获得探索发现板块（含起始远古实验室）时，额外多抽 1 张并选择其中 1 张结算；若抽到「+6 材料」或「远古巡洋舰」，则弃置并重抽直到不再出现。',
+      },
+      {
+        id: 'atlantians_instinct',
+        icon: 'tech',
+        en: 'Ancient Instinct: Whenever you perform a Research action, you may perform an Upgrade 1 action using the technology researched.',
+        zh: '远古本能：每当你执行研究行动时，可免费使用本次研发的科技执行 1 次「升级 1」行动。',
+      },
+      {
+        id: 'atlantians_power',
+        icon: 'vp',
+        en: 'Ancient Power: Score +1 VP at game end for each Discovery Tile placed on a ship blueprint.',
+        zh: '远古之力：终局时，舰船蓝图上每镶嵌 1 个发现板块配件额外获得 +1 VP。',
+      },
+      {
+        id: 'atlantians_price',
+        icon: 'warning',
+        en: 'Price of Power: +1 Material cost to build each ship class for each Discovery Tile beyond the first placed on that ship class (e.g., 2 tiles = +1 Mat, 3 tiles = +2 Mats).',
+        zh: '代价与力量：同一舰船蓝图上从第 2 件发现板块配件起，每多 1 件使该船型建造费用 +1 材料（例：2 件 +1 材料，3 件 +2 材料）。',
       },
     ],
   },

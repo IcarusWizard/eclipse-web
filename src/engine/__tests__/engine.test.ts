@@ -29724,7 +29724,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(rhoHtml).toContain('2 Rep / Ambassador · 3 Reputation Only');
       expect(rhoHtml).toContain('Cannot Build');
 
-      // Verify GalacticGalleryModal Factions tab renders all 16 full landscape FactionSheetCards
+      // Verify GalacticGalleryModal Factions tab renders all full landscape FactionSheetCards (including Community Factions)
       const galleryHtml = renderToStaticMarkup(
         React.createElement(GalacticGalleryModal, {
           isOpen: true,
@@ -29732,7 +29732,8 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           initialTab: 'factions',
         })
       );
-      expect(galleryHtml).toContain('Showing 16 species sheets');
+      expect(galleryHtml).toContain(`Showing ${ALL_FACTIONS.length} species sheets`);
+      expect(galleryHtml).toContain('Community Factions');
       for (const f of ALL_FACTIONS) {
         expect(galleryHtml).toContain(`data-testid="faction-sheet-${f.id}"`);
       }
@@ -29831,6 +29832,181 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(previewHtmlZh).toContain('每次行动激活次数');
       expect(previewHtmlZh).toContain('取消（返回选族）');
       expect(previewHtmlZh).toContain('确认选择 (埃里达尼帝国)');
+    });
+
+    it('297. verifies Community Factions expansion and Atlantians full ruleset, Ancient Spirit, Ancient Instinct, Ancient Power, and Price of Power', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { AVAILABLE_EXPANSIONS, getExpansionForItem } = await import('../rules/expansions');
+      const {
+        ALL_FACTIONS,
+        isFactionAvailable,
+        buildPendingDiscoveryForPlayer,
+        isAtlantiansForbiddenDiscoveryTile,
+      } = await import('../rules/setup');
+      const { getBaseBuildItemCost, getPlayerDiscoveryShipPartsCount } = await import('../rules/shipValidation');
+      const { SHIP_PARTS } = await import('../rules/partData');
+      const { DISCOVERY_TILES } = await import('../rules/sectorData');
+      const { TECH_CATALOG } = await import('../rules/techData');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+      const { BuildModal } = await import('../../components/actions/BuildModal');
+
+      // 1. Expansion gating & registration
+      expect(AVAILABLE_EXPANSIONS.some((e) => e.id === 'community_factions')).toBe(true);
+      expect(getExpansionForItem('atlantians')?.id).toBe('community_factions');
+      expect(isFactionAvailable('atlantians', [])).toBe(false);
+      expect(isFactionAvailable('atlantians', ['community_factions'])).toBe(true);
+
+      const atlantiansFaction = ALL_FACTIONS.find((f) => f.id === 'atlantians')!;
+      expect(atlantiansFaction.startingResources).toEqual({ money: 3, science: 3, materials: 3 });
+      expect(atlantiansFaction.startingColonyShips).toBe(3);
+      expect(atlantiansFaction.startingTechIds).toEqual(['ancient_labs']);
+      expect(atlantiansFaction.tradeRatio).toBe(3);
+      expect(atlantiansFaction.reputationSlots).toBe(4);
+      expect(atlantiansFaction.ambassadorSlots).toBe(4);
+
+      // 2. Game setup with Atlantians triggers starting Ancient Labs + Ancient Spirit 2-tile draw
+      const game = createInitialGame(2, ['atlantians', 'terran_federation'], ['community_factions']);
+      const atl = game.players.find((p) => p.faction.id === 'atlantians')!;
+      const home = game.sectors.find((s) => s.id === `home_sector_${atl.id}`)!;
+
+      expect(home.sectorNumber).toBe(241);
+      expect(home.hasArtifact).toBe(true);
+      expect(home.planets.map((p) => `${p.resource}:${Boolean(p.isAdvanced)}`)).toEqual([
+        'science:false',
+        'science:true',
+        'money:false',
+      ]);
+      expect(atl.techTrack.researched.some((t) => t.id === 'ancient_labs')).toBe(true);
+      expect(atl.techTrack.nanoCount).toBe(1);
+      expect(game.techSupply.some((t) => t.id === 'ancient_labs')).toBe(false);
+      expect(game.techBag.some((t) => t.id === 'ancient_labs')).toBe(false);
+
+      // Ancient Spirit starting discovery draw gives 2 options, neither being +6 Materials or Ancient Cruiser
+      expect(game.pendingDiscovery).not.toBeNull();
+      expect(game.pendingDiscovery?.playerId).toBe(atl.id);
+      expect(game.pendingDiscovery?.discoveryOptions?.length).toBe(2);
+      for (const opt of game.pendingDiscovery!.discoveryOptions!) {
+        expect(isAtlantiansForbiddenDiscoveryTile(opt)).toBe(false);
+      }
+
+      // Render DiscoveryChoiceModal with 2 Ancient Spirit options and resolve option #2
+      const discModalHtml = renderToStaticMarkup(
+        React.createElement(DiscoveryChoiceModal, {
+          discovery: game.pendingDiscovery!.discovery,
+          discoveryOptions: game.pendingDiscovery!.discoveryOptions,
+          player: atl,
+          onChoice: () => {},
+        })
+      );
+      expect(discModalHtml).toContain('Ancient Spirit');
+      expect(discModalHtml).toContain(`data-testid="discovery-option-${game.pendingDiscovery!.discoveryOptions![0]!.id}"`);
+      expect(discModalHtml).toContain(`data-testid="discovery-option-${game.pendingDiscovery!.discoveryOptions![1]!.id}"`);
+
+      const pickSecondRes = executeAction(game, {
+        type: 'DISCOVERY_CHOICE',
+        playerId: atl.id,
+        sectorId: game.pendingDiscovery!.sectorId,
+        keepForVictoryPoints: true,
+        chosenDiscoveryId: game.pendingDiscovery!.discoveryOptions![1]!.id,
+      });
+      expect(pickSecondRes.success).toBe(true);
+      const afterStartDisc = pickSecondRes.newState;
+      expect(afterStartDisc.pendingDiscovery).toBeNull();
+      expect(afterStartDisc.players[0]!.keptDiscoveryTiles[0]?.id).toBe(
+        game.pendingDiscovery!.discoveryOptions![1]!.id
+      );
+
+      // Verify forbidden tiles (+6 Materials / Ancient Cruiser) are discarded & replaced automatically
+      const forbiddenMat = DISCOVERY_TILES.find((d) => d.id === 'disc_materials_6_1')!;
+      const safeScience = DISCOVERY_TILES.find((d) => d.id === 'disc_science_5_1')!;
+      const safeMoney = DISCOVERY_TILES.find((d) => d.id === 'disc_money_8_1')!;
+      const forbiddenCruiser = DISCOVERY_TILES.find((d) => d.id === 'disc_ancient_cruiser_1')!;
+      const syntheticBag = [forbiddenCruiser, safeScience, safeMoney];
+      const spiritPd = buildPendingDiscoveryForPlayer(syntheticBag, atl, home.id, forbiddenMat, true);
+      expect(spiritPd.discoveryOptions?.length).toBe(2);
+      for (const opt of spiritPd.discoveryOptions!) {
+        expect(isAtlantiansForbiddenDiscoveryTile(opt)).toBe(false);
+      }
+
+      // 3. Ancient Instinct: Research action allows optional Upgrade 1 using the researched tech's unlocked part
+      const gaussTech = TECH_CATALOG.find((t) => t.id === 'gauss_shield')!;
+      afterStartDisc.techSupply = [gaussTech, ...afterStartDisc.techSupply];
+      afterStartDisc.players[0]!.resources.science = 10;
+      const researchWithUpgrade = executeAction(afterStartDisc, {
+        type: 'RESEARCH',
+        playerId: atl.id,
+        researches: [{ techId: 'gauss_shield', targetTrack: 'grid' }],
+        ancientInstinctUpgrade: {
+          shipType: 'cruiser',
+          slotIndex: 5, // empty 6th slot on default cruiser
+          partId: 'gauss_shield',
+        },
+      });
+      expect(researchWithUpgrade.success).toBe(true);
+      expect(researchWithUpgrade.newState.players[0]!.blueprints.cruiser?.slots[5]?.id).toBe('gauss_shield');
+
+      // 4. Ancient Power (+1 VP per discovery tile on a ship) & Price of Power (+1 Mat build surcharge per extra tile)
+      const bpState = researchWithUpgrade.newState;
+      const atlBpPlayer = bpState.players[0]!;
+      expect(getBaseBuildItemCost(atlBpPlayer, 'cruiser')).toBe(5); // 0 discovery tiles -> 5
+
+      atlBpPlayer.blueprints.cruiser!.slots[2] = SHIP_PARTS.shard_hull!;
+      expect(getPlayerDiscoveryShipPartsCount(atlBpPlayer)).toBe(1);
+      expect(getBaseBuildItemCost(atlBpPlayer, 'cruiser')).toBe(5); // 1 discovery tile -> still 5 (beyond the first)
+
+      atlBpPlayer.blueprints.cruiser!.slots[0] = SHIP_PARTS.soliton_charger!;
+      expect(getPlayerDiscoveryShipPartsCount(atlBpPlayer)).toBe(2);
+      expect(getBaseBuildItemCost(atlBpPlayer, 'cruiser')).toBe(6); // 2 discovery tiles -> +1 Mat = 6
+
+      atlBpPlayer.blueprints.cruiser!.externalParts = [SHIP_PARTS.muon_source!];
+      expect(getPlayerDiscoveryShipPartsCount(atlBpPlayer)).toBe(3);
+      expect(getBaseBuildItemCost(atlBpPlayer, 'cruiser')).toBe(7); // 3 discovery tiles -> +2 Mats = 7
+
+      // Verify BUILD deducts Price of Power surcharge (7 Mats) and computeCurrentScores awards Ancient Power (+3 VP)
+      bpState.activePlayerIndex = 0;
+      atlBpPlayer.resources.materials = 7;
+      const buildRes = executeAction(bpState, {
+        type: 'BUILD',
+        playerId: atl.id,
+        items: [{ sectorId: home.id, itemType: 'cruiser' }],
+      });
+      expect(buildRes.success).toBe(true);
+      expect(buildRes.newState.players[0]!.resources.materials).toBe(0);
+
+      const scoreRes = computeCurrentScores(buildRes.newState);
+      expect(scoreRes.scores[atl.id]!.speciesBonus).toBe(3);
+
+      // Verify BuildModal & FactionSheetCard render Atlantians authentic rules and costs
+      const buildModalHtml = renderToStaticMarkup(
+        React.createElement(BuildModal, {
+          player: atlBpPlayer,
+          sectors: bpState.sectors,
+          eligibleSectors: [home],
+          slots: [{ sectorId: home.id, itemType: 'cruiser' }],
+          onChangeSlots: () => {},
+          activeSlotIndex: 0,
+          onSelectSlotIndex: () => {},
+          onBuild: () => {},
+          onClose: () => {},
+        })
+      );
+      expect(buildModalHtml).toContain('Price of Power +2');
+
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(FactionSheetCard, { faction: atlantiansFaction })
+      );
+      expect(sheetHtml).toContain('Atlantians');
+      expect(sheetHtml).toContain('Community Factions');
+      expect(sheetHtml).toContain('/factions/atlantians.jpg');
+      expect(sheetHtml).toContain('+1 UPG');
+      expect(sheetHtml).toContain('data-testid="starting-tech-icon-ancient_labs"');
+      expect(sheetHtml).toContain('Sector 241');
+      expect(sheetHtml).toContain('Ancient Spirit');
+      expect(sheetHtml).toContain('Ancient Instinct');
+      expect(sheetHtml).toContain('Ancient Power');
+      expect(sheetHtml).toContain('Price of Power');
     });
   });
 });

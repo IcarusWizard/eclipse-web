@@ -267,6 +267,10 @@ const FACTION_ZH: Record<string, { name: string; trait?: string }> = {
   enlightened_of_lyra: { name: '天琴座悟道者', trait: '起始带神社建筑，探索或外交后可建神社获取大量终局 VP。' },
   the_exiles: { name: '流亡者', trait: '不可建造星际基地，以带武装的强化轨道站替代星际基地防卫领地。' },
   rho_indi_syndicate: { name: '罗印第辛迪加', trait: '不可建造无畏舰，自带闪避护盾，大使位更少但机动灵活。' },
+  atlantians: {
+    name: '亚特兰蒂斯人 (Atlantians)',
+    trait: '起始拥有远古实验室科技，获取探索发现板块时双抽选一（排除+6材料与远古巡洋舰），研发后可免费升级 1 个该科技解锁配件；舰船上每件发现配件终局 +1 VP，且同船型第 2 件起建造多耗 +1 材料。',
+  },
 };
 
 const EXPANSION_ZH: Record<string, { name: string; shortName: string }> = {
@@ -279,6 +283,7 @@ const EXPANSION_ZH: Record<string, { name: string; shortName: string }> = {
   warped_universe: { name: '曲率宇宙图板', shortName: '曲率宇宙' },
   galactic_events: { name: '银河事件', shortName: '银河事件' },
   community_balance: { name: '社区平衡补丁', shortName: '平衡补丁' },
+  community_factions: { name: '社区扩展种族 (Community Factions)', shortName: '社区种族' },
 };
 
 const MINOR_SPECIES_ZH: Record<string, string> = {

@@ -9,6 +9,9 @@ import {
   calculateTechCost,
 } from '../../engine/rules/techData';
 import { getMinorSpeciesTechDiscount } from '../../engine/rules/minorSpecies';
+import { SHIP_PARTS } from '../../engine/rules/partData';
+import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
+import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { TechTileIconography } from '../common/PhysicalTileIconography';
 import {
   Cpu,
@@ -27,7 +30,7 @@ import {
   AlertTriangle,
 } from 'lucide-react';
 
-import { SectorTile } from '../../engine/types/galaxy';
+import { SectorTile, ShipType } from '../../engine/types/galaxy';
 import { useLanguage } from '../../i18n/LanguageContext';
 import {
   translateTechName,
@@ -35,6 +38,8 @@ import {
   translateTechCategory,
   translateGamePhase,
   translateResourceType,
+  translateShipType,
+  translatePartName,
 } from '../../i18n/catalogTranslations';
 
 interface TechMarketModalProps {
@@ -50,7 +55,8 @@ interface TechMarketModalProps {
     researches: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
     targetTrack?: 'military' | 'grid' | 'nano',
     warpPortalSectorId?: string,
-    shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string }
+    shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string },
+    ancientInstinctUpgrade?: { shipType: ShipType; slotIndex: number; partId: string }
   ) => void;
   onClose: () => void;
 }
@@ -104,6 +110,31 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   // Lyra Shrine Placement State (Optional with Research action)
   const [selectedShrineSlot, setSelectedShrineSlot] = useState<{ row: number; col: number } | null>(null);
   const [selectedPlanetTarget, setSelectedPlanetTarget] = useState<{ sectorId: string; planetId: string } | null>(null);
+
+  // Atlantians Ancient Instinct State (Optional Upgrade 1 with the researched technology)
+  const [ancientInstinctPending, setAncientInstinctPending] = useState<{
+    tech: Technology;
+    chosenTrack: 'military' | 'grid' | 'nano';
+    warpPortalSectorId?: string;
+  } | null>(null);
+  const [instinctShipType, setInstinctShipType] = useState<ShipType>('cruiser');
+  const [instinctSlotIndex, setInstinctSlotIndex] = useState<number>(0);
+
+  const instinctPart = ancientInstinctPending?.tech.unlocksPartId
+    ? SHIP_PARTS[ancientInstinctPending.tech.unlocksPartId] || null
+    : null;
+  const instinctBlueprint = commander.blueprints[instinctShipType];
+  const instinctTestStats = React.useMemo(() => {
+    if (!instinctBlueprint || !instinctPart) return null;
+    if (instinctSlotIndex < 0 || instinctSlotIndex >= instinctBlueprint.maxSlots) return null;
+    const simBp = {
+      ...instinctBlueprint,
+      slots: [...instinctBlueprint.slots],
+      externalParts: instinctBlueprint.externalParts ? [...instinctBlueprint.externalParts] : undefined,
+    };
+    simBp.slots[instinctSlotIndex] = instinctPart;
+    return calculateBlueprintStats(simBp);
+  }, [instinctBlueprint, instinctPart, instinctSlotIndex]);
 
   const selectedShrine = React.useMemo(() => {
     if (!selectedShrineSlot || !commander.shrineBoard) return null;
@@ -551,7 +582,27 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               ) : (
                 <button
                   type="button"
-                  onClick={() => onResearchTech(tech.id, chosenTrack, tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined, shrinePlacement)}
+                  onClick={() => {
+                    const portalSec = tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined;
+                    if (
+                      commander.faction.id === 'atlantians' &&
+                      tech.unlocksPartId &&
+                      SHIP_PARTS[tech.unlocksPartId]
+                    ) {
+                      const defaultShipType: ShipType = commander.blueprints.cruiser ? 'cruiser' : 'interceptor';
+                      const bp = commander.blueprints[defaultShipType];
+                      const emptyIdx = bp ? bp.slots.findIndex((s) => s === null) : 0;
+                      setInstinctShipType(defaultShipType);
+                      setInstinctSlotIndex(emptyIdx >= 0 ? emptyIdx : 0);
+                      setAncientInstinctPending({
+                        tech,
+                        chosenTrack: chosenTrack || 'nano',
+                        warpPortalSectorId: portalSec,
+                      });
+                      return;
+                    }
+                    onResearchTech(tech.id, chosenTrack, portalSec, shrinePlacement);
+                  }}
                   disabled={isShrinePartiallySelected}
                   className="w-full py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-md shadow-pink-950/50 transition-all font-sans disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1"
                   title={isShrinePartiallySelected ? l('Select target planet for Shrine or deselect Shrine', '请为神殿选择目标星球，或取消选择神殿') : l('Research technology', '研发科技')}
@@ -813,6 +864,123 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             </div>
           )}
         </div>
+
+        {/* Atlantians Ancient Instinct Upgrade 1 Panel */}
+        {commander.faction.id === 'atlantians' && ancientInstinctPending && instinctPart && isCommanderTurn && (
+          <div className="px-5 py-3.5 bg-cyan-950/25 border-t border-cyan-500/50 shrink-0 relative z-20 space-y-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-2">
+                <Sparkles className="w-4 h-4 text-cyan-400" />
+                <h4 className="text-xs font-bold text-cyan-200 uppercase tracking-wider font-display">
+                  {l(
+                    `Ancient Instinct — Upgrade 1 with ${translatePartName(instinctPart.id, instinctPart.name, language)}`,
+                    `远古本能 — 研发并免费升级 1 次（${translatePartName(instinctPart.id, instinctPart.name, language)}）`
+                  )}
+                </h4>
+              </div>
+              <button
+                type="button"
+                onClick={() => setAncientInstinctPending(null)}
+                className="text-[11px] text-slate-400 hover:text-white underline cursor-pointer"
+              >
+                {l('Back to Tech Tray', '返回科技盘')}
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2">
+              {(['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).map((st) => {
+                const bp = commander.blueprints[st];
+                if (!bp) return null;
+                return (
+                  <button
+                    key={st}
+                    type="button"
+                    onClick={() => {
+                      setInstinctShipType(st);
+                      const emptyIdx = bp.slots.findIndex((s) => s === null);
+                      setInstinctSlotIndex(emptyIdx >= 0 ? emptyIdx : 0);
+                    }}
+                    className={`px-3 py-1 rounded-lg text-xs font-bold uppercase transition cursor-pointer ${
+                      instinctShipType === st
+                        ? 'bg-cyan-500 text-slate-950 shadow'
+                        : 'bg-slate-900 text-slate-300 border border-slate-700 hover:border-slate-500'
+                    }`}
+                  >
+                    {translateShipType(st, language)}
+                  </button>
+                );
+              })}
+            </div>
+
+            {instinctBlueprint && (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-3 p-3 rounded-xl bg-slate-950/80 border border-slate-800">
+                <div className="overflow-x-auto">
+                  <ShipBlueprintSlotsLayout
+                    shipType={instinctShipType}
+                    factionId={commander.faction.id}
+                    slots={instinctBlueprint.slots}
+                    maxSlots={instinctBlueprint.maxSlots}
+                    preprintedPower={instinctBlueprint.preprintedPower}
+                    preprintedComputer={instinctBlueprint.preprintedComputer}
+                    preprintedShield={instinctBlueprint.preprintedShield}
+                    preprintedHull={instinctBlueprint.preprintedHull}
+                    externalParts={instinctBlueprint.externalParts}
+                    interactive={true}
+                    canModify={true}
+                    selectedSlotIndex={instinctSlotIndex}
+                    onSelectSlot={(sIdx) => setInstinctSlotIndex(sIdx)}
+                    size="sm"
+                  />
+                </div>
+                <div className="flex flex-col gap-2 shrink-0 min-w-[220px]">
+                  <div className="text-[11px] font-mono text-slate-300">
+                    {l(`Target: ${instinctShipType.toUpperCase()} Slot ${instinctSlotIndex + 1}`, `目标：${translateShipType(instinctShipType, language)} 槽位 ${instinctSlotIndex + 1}`)}
+                    {instinctTestStats && !instinctTestStats.isValid && (
+                      <div className="text-rose-400 font-semibold mt-1 text-[10.5px]">
+                        {instinctTestStats.errors[0]}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <button
+                      type="button"
+                      disabled={!instinctTestStats?.isValid}
+                      onClick={() => {
+                        const pending = ancientInstinctPending;
+                        setAncientInstinctPending(null);
+                        onResearchTech(
+                          [{ techId: pending.tech.id, targetTrack: pending.chosenTrack }],
+                          pending.chosenTrack,
+                          pending.warpPortalSectorId,
+                          undefined,
+                          { shipType: instinctShipType, slotIndex: instinctSlotIndex, partId: instinctPart.id }
+                        );
+                      }}
+                      className="px-3.5 py-1.5 rounded-lg bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-40 disabled:cursor-not-allowed text-slate-950 font-black text-xs cursor-pointer"
+                    >
+                      {l('Research & Upgrade 1', '研发并免费升级 1 次')}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const pending = ancientInstinctPending;
+                        setAncientInstinctPending(null);
+                        onResearchTech(
+                          [{ techId: pending.tech.id, targetTrack: pending.chosenTrack }],
+                          pending.chosenTrack,
+                          pending.warpPortalSectorId
+                        );
+                      }}
+                      className="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 border border-slate-600 text-slate-200 font-bold text-xs cursor-pointer"
+                    >
+                      {l('Research Only', '仅研发不升级')}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Enlightened of Lyra Shrine Placement Panel */}
         {commander.faction.id === 'enlightened_of_lyra' && commander.shrineBoard && isCommanderTurn && (

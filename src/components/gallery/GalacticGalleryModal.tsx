@@ -367,7 +367,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
   const [partCategory, setPartCategory] = useState<string>('all');
   const [sectorCategory, setSectorCategory] = useState<string>('all');
   const [discoveryCategory, setDiscoveryCategory] = useState<string>('all');
-  const [factionCategory, setFactionCategory] = useState<'all' | 'alien' | 'human'>('all');
+  const [factionCategory, setFactionCategory] = useState<'all' | 'alien' | 'human' | 'community'>('all');
   const [iconCategory, setIconCategory] = useState<string>('all');
   const [iconViewMode, setIconViewMode] = useState<'tile' | 'slot'>('tile');
   const combatDiceSpecs = useMemo(() => getCombatDiceSpecs(language), [language]);
@@ -535,9 +535,14 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
   const filteredFactions = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
     return ALL_FACTIONS.filter((f) => {
+      const exp = getExpansionForItem(f.id);
       const matchesCat =
         factionCategory === 'all' ||
-        (factionCategory === 'alien' ? !f.isHuman : f.isHuman);
+        (factionCategory === 'community'
+          ? exp?.id === 'community_factions'
+          : factionCategory === 'alien'
+          ? !f.isHuman
+          : f.isHuman);
       const matchesSearch =
         !q ||
         f.name.toLowerCase().includes(q) ||
@@ -1874,6 +1879,13 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                       { id: 'all', label: l(`All Factions (${ALL_FACTIONS.length})`, `全部势力 (${ALL_FACTIONS.length})`) },
                       { id: 'alien', label: l(`Alien Species (${ALL_FACTIONS.filter((f) => !f.isHuman).length})`, `外星种族 (${ALL_FACTIONS.filter((f) => !f.isHuman).length})`) },
                       { id: 'human', label: l(`Terran / Human (${ALL_FACTIONS.filter((f) => f.isHuman).length})`, `人类文明 (${ALL_FACTIONS.filter((f) => f.isHuman).length})`) },
+                      {
+                        id: 'community',
+                        label: l(
+                          `Community Factions (${ALL_FACTIONS.filter((f) => getExpansionForItem(f.id)?.id === 'community_factions').length})`,
+                          `社区种族 (${ALL_FACTIONS.filter((f) => getExpansionForItem(f.id)?.id === 'community_factions').length})`
+                        ),
+                      },
                     ] as const
                   ).map((opt) => (
                     <button

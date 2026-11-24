@@ -91,6 +91,12 @@ export interface ResearchAction extends BaseAction {
     sectorId: string;
     planetId: string;
   };
+  /** Atlantians Ancient Instinct: optional Upgrade 1 using a Ship Part unlocked by a tech researched in this action. */
+  ancientInstinctUpgrade?: {
+    shipType: ShipType;
+    slotIndex: number;
+    partId: string;
+  };
 }
 
 export interface UpgradeAction extends BaseAction {
@@ -159,6 +165,7 @@ export interface DiscoveryChoiceAction extends BaseAction {
   type: 'DISCOVERY_CHOICE';
   sectorId: string;
   keepForVictoryPoints: boolean; // Keep for 2 VP or take immediate reward/ship part
+  chosenDiscoveryId?: string; // When resolving one of multiple drawn Discovery Tiles (Atlantians Ancient Spirit)
   equipShipType?: ShipType;
   equipSlotIndex?: number;
   chosenTechId?: string; // For Ancient Tech discovery when multiple lowest-cost regular techs available

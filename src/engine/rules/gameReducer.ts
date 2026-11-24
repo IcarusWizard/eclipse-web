@@ -34,7 +34,13 @@ import {
 import { areCoordsEqual, areCoordsAdjacent, areSectorsConnected, getEdgeBetween, getRingFromCoord, hasWormholeOnEdge, isLegallyConnectedToPlayerSectors, getExplorableHexes } from './hexMath';
 import { mergeChatMessages } from './persistence';
 import { calculateTechCost, drawTechTilesForRound } from './techData';
-import { calculateBlueprintStats, SHIP_LIMITS, countPlayerShips } from './shipValidation';
+import {
+  calculateBlueprintStats,
+  SHIP_LIMITS,
+  countPlayerShips,
+  getBaseBuildItemCost,
+  getPlayerDiscoveryShipPartsCount,
+} from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet } from './economyEngine';
 import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './combatEngine';
@@ -47,6 +53,9 @@ import {
   STARTING_COORDS_BY_COUNT,
   ALL_FACTIONS,
   areFactionsConflictingColor,
+  drawDiscoveryTileForPlayer,
+  buildPendingDiscoveryForPlayer,
+  triggerPendingAtlantiansStartingLabsDiscovery,
 } from './setup';
 import { DISCOVERY_TILES } from './sectorData';
 import {
@@ -1285,6 +1294,45 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         }
       }
 
+      if (action.ancientInstinctUpgrade) {
+        if (player.faction.id !== 'atlantians') {
+          return { valid: false, error: 'Only Atlantians can perform an Ancient Instinct Upgrade 1 during Research.' };
+        }
+        const up = action.ancientInstinctUpgrade;
+        const researchedTechObjs = researches
+          .map((item) => state.techSupply.find((t) => t.id === item.techId))
+          .filter((t): t is NonNullable<typeof t> => Boolean(t));
+        const unlocksPart = researchedTechObjs.some(
+          (t) => t.unlocksPartId === up.partId || t.id === up.partId
+        );
+        if (!unlocksPart || !SHIP_PARTS[up.partId]) {
+          return {
+            valid: false,
+            error: 'Ancient Instinct upgrade must install a ship part unlocked by a technology researched in this action.',
+          };
+        }
+        const bp = player.blueprints[up.shipType];
+        if (!bp) {
+          return { valid: false, error: `Unknown ship type ${up.shipType}.` };
+        }
+        if (up.slotIndex < 0 || up.slotIndex >= bp.maxSlots) {
+          return { valid: false, error: `Invalid slot index ${up.slotIndex} for ${up.shipType}.` };
+        }
+        const simBp: ShipBlueprint = {
+          ...bp,
+          slots: [...bp.slots],
+          externalParts: bp.externalParts ? [...bp.externalParts] : undefined,
+        };
+        simBp.slots[up.slotIndex] = SHIP_PARTS[up.partId]!;
+        const stats = calculateBlueprintStats(simBp, state.expansions);
+        if (!stats.isValid) {
+          return {
+            valid: false,
+            error: `Invalid Ancient Instinct upgrade for ${up.shipType.toUpperCase()}: ${stats.errors.join(' ')}`,
+          };
+        }
+      }
+
       return { valid: true };
     }
 
@@ -1531,18 +1579,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           queuedMonolithSectors.add(sector.id);
         }
 
-        const isMechanema = player.faction.id === 'mechanema';
-        const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
-        const isExiles = player.faction.id === 'the_exiles';
-        let cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
-        if (item.itemType === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
-        else if (item.itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
-        else if (item.itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
-        else if (item.itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
-        else if (item.itemType === 'monolith') cost = isMechanema ? 8 : 10;
-
+        const baseBuildCost = getBaseBuildItemCost(player, item.itemType);
         const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
-        cost = Math.max(0, cost - msBuildDiscount);
+        const cost = Math.max(0, baseBuildCost - msBuildDiscount);
 
         totalMaterialsCost += cost;
       }
@@ -2129,10 +2168,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (state.pendingDiscovery.playerId !== action.playerId) {
         return { valid: false, error: 'Only the discovering player can make this choice.' };
       }
+      const pd = state.pendingDiscovery;
+      const disc =
+        (action.chosenDiscoveryId && pd.discoveryOptions?.find((d) => d.id === action.chosenDiscoveryId)) ||
+        pd.discovery;
       if (action.equipShipType) {
         const bp = player.blueprints[action.equipShipType];
         if (!bp) return { valid: false, error: `Invalid ship type ${action.equipShipType}.` };
-        const disc = state.pendingDiscovery.discovery;
         const isMuonSource = disc.shipPartId === 'muon_source';
         if (!isMuonSource) {
           if (action.equipSlotIndex === undefined || action.equipSlotIndex < 0 || action.equipSlotIndex >= bp.maxSlots) {
@@ -2690,17 +2732,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             return { valid: false, error: 'Must research Starbase tech before building Starbases.' };
           }
         }
-        const isMechanema = player.faction.id === 'mechanema';
-        const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
-        const isExiles = player.faction.id === 'the_exiles';
-        let cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
-        if (action.build.itemType === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
-        else if (action.build.itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
-        else if (action.build.itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
-        else if (action.build.itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
-        else if (action.build.itemType === 'monolith') cost = isMechanema ? 8 : 10;
+        const basePulsarCost = getBaseBuildItemCost(player, action.build.itemType);
         const discount = getMinorSpeciesBuildDiscount(player, action.build.itemType);
-        cost = Math.max(0, cost - discount);
+        const cost = Math.max(0, basePulsarCost - discount);
         if (player.resources.materials < cost) {
           return { valid: false, error: `Insufficient materials for Pulsar build. Required: ${cost}, Available: ${player.resources.materials}.` };
         }
@@ -2826,7 +2860,7 @@ export function applyShrinePlacement(
         type: 'tech',
       });
     } else if (row === 1) {
-      const disc = state.discoveryBag && state.discoveryBag.length > 0 ? state.discoveryBag.pop()! : { ...DISCOVERY_TILES[0]! };
+      const disc = drawDiscoveryTileForPlayer(state.discoveryBag, player.faction.id === 'atlantians');
       const startingSector = state.sectors.find((s) => s.sectorNumber === 238 || s.id === `home_sector_${player.id}`);
       const controlsStart = Boolean(startingSector && startingSector.discOwner === player.id);
 
@@ -2837,7 +2871,7 @@ export function applyShrinePlacement(
         disc.immediateReward?.warpPortal
       );
 
-      if (placesInSector && !controlsStart) {
+      if (placesInSector && !controlsStart && player.faction.id !== 'atlantians') {
         player.keptDiscoveryTiles = player.keptDiscoveryTiles || [];
         player.keptDiscoveryTiles.push(disc);
         state.log.unshift({
@@ -2850,11 +2884,13 @@ export function applyShrinePlacement(
           type: 'tech',
         });
       } else {
-        state.pendingDiscovery = {
-          sectorId: startingSector?.id || state.sectors[0]?.id || 'sec_1',
-          playerId: player.id,
-          discovery: disc,
-        };
+        state.pendingDiscovery = buildPendingDiscoveryForPlayer(
+          state.discoveryBag,
+          player,
+          startingSector?.id || state.sectors[0]?.id || 'sec_1',
+          disc,
+          false
+        );
         state.log.unshift({
           id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
           timestamp: Date.now(),
@@ -2910,7 +2946,7 @@ export function checkMagellanFourthTechDiscovery(state: GameState, player: Playe
         tile.immediateReward?.warpPortal
       );
 
-      if (placesInSector && !controlsStart) {
+      if (placesInSector && !controlsStart && player.faction.id !== 'atlantians') {
         player.keptDiscoveryTiles = player.keptDiscoveryTiles || [];
         player.keptDiscoveryTiles.push(tile);
         state.log.unshift({
@@ -2923,11 +2959,13 @@ export function checkMagellanFourthTechDiscovery(state: GameState, player: Playe
           type: 'tech',
         });
       } else {
-        state.pendingDiscovery = {
-          sectorId: startingSector?.id || state.sectors[0]?.id || 'sec_1',
-          playerId: player.id,
-          discovery: tile,
-        };
+        state.pendingDiscovery = buildPendingDiscoveryForPlayer(
+          state.discoveryBag,
+          player,
+          startingSector?.id || state.sectors[0]?.id || 'sec_1',
+          tile,
+          false
+        );
         state.log.unshift({
           id: `log_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
           timestamp: Date.now(),
@@ -3342,13 +3380,16 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             drawnTile.discoveryTile = disc;
             drawnTile.discoveryClaimed = false;
             if (drawnTile.ancientsCount === 0) {
-              newState.pendingDiscovery = {
-                sectorId: drawnTile.id,
-                discovery: disc,
-                playerId: player.id,
-                fromExplore: true,
-              };
-              addLog(`${player.name} discovered Ancient artifact "${disc.name}" in Sector ${drawnTile.sectorNumber}! Awaiting commander's decision...`);
+              const pd = buildPendingDiscoveryForPlayer(
+                newState.discoveryBag,
+                player,
+                drawnTile.id,
+                disc,
+                true
+              );
+              drawnTile.discoveryTile = pd.discovery;
+              newState.pendingDiscovery = pd;
+              addLog(`${player.name} discovered Ancient artifact "${pd.discovery.name}"${pd.discoveryOptions && pd.discoveryOptions.length > 1 ? ` (+ "${pd.discoveryOptions[1]!.name}" via Ancient Spirit)` : ''} in Sector ${drawnTile.sectorNumber}! Awaiting commander's decision...`);
             } else {
               addLog(`${player.name} revealed Sector ${drawnTile.sectorNumber} containing a Discovery Tile, guarded by ${drawnTile.ancientsCount} Ancient ship(s)!`);
             }
@@ -3453,23 +3494,19 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           player.influenceTrack.discsOnTrack += 1;
           addLog(`${player.name} gained 1 bonus Influence Disc from Advanced Robotics.`);
         } else if (tech.id === 'ancient_labs') {
-          let disc: DiscoveryTile | undefined;
-          if (newState.discoveryBag && newState.discoveryBag.length > 0) {
-            const randIdx = Math.floor(Math.random() * newState.discoveryBag.length);
-            disc = newState.discoveryBag.splice(randIdx, 1)[0];
-          } else {
-            const randIdx = Math.floor(Math.random() * DISCOVERY_TILES.length);
-            disc = { ...DISCOVERY_TILES[randIdx]! };
-          }
+          const disc = drawDiscoveryTileForPlayer(newState.discoveryBag, player.faction.id === 'atlantians');
           if (disc) {
             const homeSector = newState.sectors.find((s) => s.discOwner === player.id);
-            newState.pendingDiscovery = {
-              sectorId: homeSector?.id || newState.sectors[0]?.id || 'sec_1',
-              playerId: player.id,
-              discovery: disc,
-            };
+            const pd = buildPendingDiscoveryForPlayer(
+              newState.discoveryBag,
+              player,
+              homeSector?.id || newState.sectors[0]?.id || 'sec_1',
+              disc,
+              false
+            );
+            newState.pendingDiscovery = pd;
             addLog(
-              `${player.name} researched Ancient Labs and drew Discovery Tile "${disc.name}"! Must decide whether to claim reward or keep for 2 VP.`,
+              `${player.name} researched Ancient Labs and drew Discovery Tile "${pd.discovery.name}"${pd.discoveryOptions && pd.discoveryOptions.length > 1 ? ` & "${pd.discoveryOptions[1]!.name}"` : ''}! Must decide whether to claim reward or keep for 2 VP.`,
               'tech'
             );
           }
@@ -3512,6 +3549,19 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       if (action.shrinePlacement && player.faction.id === 'enlightened_of_lyra') {
         applyShrinePlacement(newState, player, action.shrinePlacement);
+      }
+      if (action.ancientInstinctUpgrade && player.faction.id === 'atlantians') {
+        const up = action.ancientInstinctUpgrade;
+        const bp = player.blueprints[up.shipType];
+        const part = SHIP_PARTS[up.partId];
+        if (bp && part && up.slotIndex >= 0 && up.slotIndex < bp.maxSlots) {
+          const oldPart = bp.slots[up.slotIndex];
+          bp.slots[up.slotIndex] = part;
+          addLog(
+            `🛠️ Ancient Instinct: ${player.name} performed a free Upgrade 1 on ${up.shipType.toUpperCase()} (Slot ${up.slotIndex + 1}: installed ${part.name}${oldPart ? `, replacing ${oldPart.name}` : ''}).`,
+            'action'
+          );
+        }
       }
       checkMagellanFourthTechDiscovery(newState, player);
       break;
@@ -3604,18 +3654,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       for (const item of action.items) {
         const sector = newState.sectors.find((s) => s.id === item.sectorId)!;
-        const isMechanema = player.faction.id === 'mechanema';
-        const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
         const isExiles = player.faction.id === 'the_exiles';
-        let cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
-        if (item.itemType === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
-        else if (item.itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
-        else if (item.itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
-        else if (item.itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
-        else if (item.itemType === 'monolith') cost = isMechanema ? 8 : 10;
-
+        const baseBuildCost = getBaseBuildItemCost(player, item.itemType);
         const msBuildDiscount = getMinorSpeciesBuildDiscount(player, item.itemType);
-        cost = Math.max(0, cost - msBuildDiscount);
+        const cost = Math.max(0, baseBuildCost - msBuildDiscount);
 
         player.resources.materials -= cost;
 
@@ -3701,11 +3743,13 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
                 // Black hole entry: ends move activation & leaves board
                 if (toSector.hasDiscovery && toSector.discoveryTile && !toSector.discoveryClaimed) {
                   toSector.discoveryClaimed = true;
-                  newState.pendingDiscovery = {
-                    sectorId: toSector.id,
-                    discovery: toSector.discoveryTile,
-                    playerId: player.id,
-                  };
+                  newState.pendingDiscovery = buildPendingDiscoveryForPlayer(
+                    newState.discoveryBag,
+                    player,
+                    toSector.id,
+                    toSector.discoveryTile,
+                    false
+                  );
                   addLog(`${player.name}'s ${movedShip.type.toUpperCase()} entered Black Hole Sector ${toSector.sectorNumber} (${toSector.name}) and claimed the Discovery Tile!`);
                 }
 
@@ -4040,12 +4084,14 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             }
             addLog(`${player.name} claimed control of Sector ${sec.sectorNumber} with an Influence Disc!`);
             if (sec.discoveryTile && !sec.discoveryClaimed && (!sec.ancientsCount || sec.ancientsCount === 0) && !newState.pendingDiscovery) {
-              newState.pendingDiscovery = {
-                sectorId: sec.id,
-                discovery: sec.discoveryTile,
-                playerId: player.id,
-              };
-              addLog(`${player.name} discovered Ancient artifact "${sec.discoveryTile.name}" in Sector ${sec.sectorNumber}! Awaiting commander's decision...`);
+              newState.pendingDiscovery = buildPendingDiscoveryForPlayer(
+                newState.discoveryBag,
+                player,
+                sec.id,
+                sec.discoveryTile,
+                false
+              );
+              addLog(`${player.name} discovered Ancient artifact "${newState.pendingDiscovery.discovery.name}" in Sector ${sec.sectorNumber}! Awaiting commander's decision...`);
             }
           }
         }
@@ -4217,7 +4263,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       if (!newState.pendingDiscovery || newState.pendingDiscovery.playerId !== player.id) {
         return { success: false, newState: state, error: 'No pending discovery choice for this player.' };
       }
-      const disc = newState.pendingDiscovery.discovery;
+      const pd = newState.pendingDiscovery;
+      const disc =
+        (action.chosenDiscoveryId && pd.discoveryOptions?.find((d) => d.id === action.chosenDiscoveryId)) ||
+        pd.discovery;
       const grantShip = disc.immediateReward?.grantShipType || (disc.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
       if (!action.keepForVictoryPoints && grantShip) {
         const currentShips = countPlayerShips(newState.sectors, player.id);
@@ -4229,7 +4278,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           };
         }
       }
-      const wasFromExplore = Boolean(state.pendingDiscovery.fromExplore);
+      const wasFromExplore = Boolean(newState.pendingDiscovery.fromExplore);
+      const wasSetupDiscovery = Boolean(newState.pendingDiscovery.isSetupDiscovery);
       const sector = newState.sectors.find((s) => s.id === newState.pendingDiscovery!.sectorId);
       if (sector) {
         sector.discoveryClaimed = true;
@@ -4457,17 +4507,22 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         (s) => s.discOwner === player.id && s.discoveryTile && !s.discoveryClaimed && (!s.ancientsCount || s.ancientsCount === 0)
       );
       if (nextUnclaimedSec && nextUnclaimedSec.discoveryTile) {
-        newState.pendingDiscovery = {
-          sectorId: nextUnclaimedSec.id,
-          discovery: nextUnclaimedSec.discoveryTile,
-          playerId: player.id,
-        };
-        addLog(`${player.name} uncovered another Ancient artifact "${nextUnclaimedSec.discoveryTile.name}" in Sector ${nextUnclaimedSec.sectorNumber}! Awaiting commander's decision...`);
+        newState.pendingDiscovery = buildPendingDiscoveryForPlayer(
+          newState.discoveryBag,
+          player,
+          nextUnclaimedSec.id,
+          nextUnclaimedSec.discoveryTile,
+          false
+        );
+        addLog(`${player.name} uncovered another Ancient artifact "${newState.pendingDiscovery.discovery.name}" in Sector ${nextUnclaimedSec.sectorNumber}! Awaiting commander's decision...`);
       }
       if (newState.phase === 'COMBAT_PHASE') {
         if (!newState.pendingCombatConquest && !newState.activeCombat) {
           checkAndTriggerCombat(newState);
         }
+        return { success: true, newState };
+      }
+      if (wasSetupDiscovery) {
         return { success: true, newState };
       }
       break;
@@ -4603,12 +4658,14 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       // 4. Reveal guarded discovery tile if present
       if (conquestInfo.discoveryToClaim) {
-        newState.pendingDiscovery = {
-          sectorId: sector.id,
-          discovery: conquestInfo.discoveryToClaim,
-          playerId: player.id,
-        };
-        addLog(`${player.name} secured Sector ${sector.sectorNumber} and uncovered Ancient Discovery Cache "${conquestInfo.discoveryToClaim.name}"! Awaiting commander's decision...`, 'system');
+        newState.pendingDiscovery = buildPendingDiscoveryForPlayer(
+          newState.discoveryBag,
+          player,
+          sector.id,
+          conquestInfo.discoveryToClaim,
+          false
+        );
+        addLog(`${player.name} secured Sector ${sector.sectorNumber} and uncovered Ancient Discovery Cache "${newState.pendingDiscovery.discovery.name}"! Awaiting commander's decision...`, 'system');
       } else if (newState.phase === 'COMBAT_PHASE' && !newState.activeCombat) {
         checkAndTriggerCombat(newState);
       }
@@ -5489,6 +5546,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       }
       newState.pendingExilesOrbitalSetup = null;
       addLog(`🛰️ ${player.name} placed a ${action.resource.toUpperCase()} population cube on starting Orbital in Sector ${sector?.sectorNumber || 234}.`, 'action');
+      triggerPendingAtlantiansStartingLabsDiscovery(newState);
       return { success: true, newState };
     }
 
@@ -5540,17 +5598,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         }
       } else if (action.targetSlot === 'build' && action.build) {
         const bSec = newState.sectors.find((s) => s.id === action.build!.sectorId)!;
-        const isMechanema = player.faction.id === 'mechanema';
-        const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
         const isExiles = player.faction.id === 'the_exiles';
-        let cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
-        if (action.build.itemType === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
-        else if (action.build.itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
-        else if (action.build.itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
-        else if (action.build.itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
-        else if (action.build.itemType === 'monolith') cost = isMechanema ? 8 : 10;
+        const basePulsarCost = getBaseBuildItemCost(player, action.build.itemType);
         const discount = getMinorSpeciesBuildDiscount(player, action.build.itemType);
-        cost = Math.max(0, cost - discount);
+        const cost = Math.max(0, basePulsarCost - discount);
         player.resources.materials -= cost;
 
         if (action.build.itemType === 'monolith') {
@@ -5637,6 +5688,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         return { newState, error: 'Unknown faction.' };
       }
 
+      if (action.factionId === 'atlantians') {
+        newState.techSupply = newState.techSupply.filter((t) => t.id !== 'ancient_labs');
+        newState.techBag = newState.techBag.filter((t) => t.id !== 'ancient_labs');
+      }
+
       const pos = draft.assignedPositions[action.playerId]!;
       const startingCoords = newState.expansions?.includes('warped_universe')
         ? getWarpedUniverseStartingCoords(newState.players.length)
@@ -5701,6 +5757,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             };
           }
         }
+
+        triggerPendingAtlantiansStartingLabsDiscovery(newState);
 
         addLog(
           `⚔️ Faction Draft complete! Round 1 begins with ${newState.players[newState.activePlayerIndex]?.name}.`,
@@ -7431,35 +7489,39 @@ export function checkAndTriggerCombat(state: GameState): void {
       const isDracoControlled = controller && controller.faction.id === 'descendants_of_draco';
 
       if (isDracoControlled && !hasHostiles) {
-        state.pendingDiscovery = {
-          sectorId: sec.id,
-          discovery: sec.discoveryTile,
-          playerId: sec.discOwner!,
-        };
+        state.pendingDiscovery = buildPendingDiscoveryForPlayer(
+          state.discoveryBag,
+          controller,
+          sec.id,
+          sec.discoveryTile,
+          false
+        );
         state.log.unshift({
           id: `log_${Date.now()}_claim_draco_${sec.sectorNumber}`,
           timestamp: Date.now(),
           round: state.round,
           phase: 'COMBAT_PHASE',
-          message: `✨ Descendants of Draco (${controller.name}) retained control of Sector ${sec.sectorNumber} and claimed Discovery Tile "${sec.discoveryTile.name}" now that the guarding Ancients have been destroyed!`,
+          message: `✨ Descendants of Draco (${controller.name}) retained control of Sector ${sec.sectorNumber} and claimed Discovery Tile "${state.pendingDiscovery.discovery.name}" now that the guarding Ancients have been destroyed!`,
           type: 'system',
         });
         return;
       }
 
       if (shipOwners.length === 1 && !hasHostiles) {
-        state.pendingDiscovery = {
-          sectorId: sec.id,
-          discovery: sec.discoveryTile,
-          playerId: shipOwners[0]!,
-        };
         const pClaimant = state.players.find((p) => p.id === shipOwners[0]!);
+        state.pendingDiscovery = pClaimant
+          ? buildPendingDiscoveryForPlayer(state.discoveryBag, pClaimant, sec.id, sec.discoveryTile, false)
+          : {
+              sectorId: sec.id,
+              discovery: sec.discoveryTile,
+              playerId: shipOwners[0]!,
+            };
         state.log.unshift({
           id: `log_${Date.now()}_claim_${sec.sectorNumber}`,
           timestamp: Date.now(),
           round: state.round,
           phase: 'COMBAT_PHASE',
-          message: `✨ ${pClaimant?.name || shipOwners[0]} uncovered Ancient Discovery Cache "${sec.discoveryTile.name}" in Sector ${sec.sectorNumber}! Awaiting commander's decision...`,
+          message: `✨ ${pClaimant?.name || shipOwners[0]} uncovered Ancient Discovery Cache "${state.pendingDiscovery.discovery.name}" in Sector ${sec.sectorNumber}! Awaiting commander's decision...`,
           type: 'system',
         });
         return;
@@ -7537,13 +7599,16 @@ export function checkAndTriggerCombat(state: GameState): void {
           const hasHostiles = shipsInSub.some((s) => s.ownerId === 'ancient' || s.ownerId === 'gcds' || s.ownerId === 'guardian') || friendlyOwners.length > 1;
           if (friendlyOwners.length === 1 && !hasHostiles) {
             const claimantId = friendlyOwners[0]!;
+            const pClaimant = state.players.find((p) => p.id === claimantId);
             const disc = sub.discoveryTile;
             sub.discoveryTile = null;
-            state.pendingDiscovery = {
-              sectorId: sec.id,
-              discovery: disc,
-              playerId: claimantId,
-            };
+            state.pendingDiscovery = pClaimant
+              ? buildPendingDiscoveryForPlayer(state.discoveryBag, pClaimant, sec.id, disc, false)
+              : {
+                  sectorId: sec.id,
+                  discovery: disc,
+                  playerId: claimantId,
+                };
             state.log.unshift({
               id: `log_${Date.now()}_nebula_claim_${sec.sectorNumber}_sub${sub.subsectorIndex}`,
               timestamp: Date.now(),
@@ -8147,6 +8212,9 @@ export function computeCurrentScores(state: GameState): {
         }
       }
       speciesBonus += orbitalsWithCube;
+    } else if (p.faction.id === 'atlantians') {
+      // Ancient Power: +1 VP for each discovery tile placed on a ship blueprint
+      speciesBonus += getPlayerDiscoveryShipPartsCount(p);
     }
 
     // 9. Traitor Tile Penalty (-2 VP)

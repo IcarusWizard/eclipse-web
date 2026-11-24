@@ -1822,12 +1822,13 @@ const AppContent: React.FC = () => {
     setIsExploreMode((prev) => !prev);
   };
 
-  // Research flow (supports single tech or array of technologies for Hydran double research, and Lyra shrine placement)
+  // Research flow (supports single tech or array of technologies for Hydran double research, Lyra shrine placement, and Atlantians Ancient Instinct Upgrade 1)
   const handleResearchTech = (
     researchesOrId: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
     targetTrack?: 'military' | 'grid' | 'nano',
     warpPortalSectorId?: string,
-    shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string }
+    shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string },
+    ancientInstinctUpgrade?: { shipType: ShipType; slotIndex: number; partId: string }
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
@@ -1846,6 +1847,7 @@ const AppContent: React.FC = () => {
       researches,
       warpPortalSectorId,
       shrinePlacement,
+      ancientInstinctUpgrade,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -2822,7 +2824,8 @@ const AppContent: React.FC = () => {
     equipSlotIndex?: number,
     chosenTechId?: string,
     colonizeOrbitalResource?: 'money' | 'science',
-    chosenResource?: 'money' | 'science' | 'material'
+    chosenResource?: 'money' | 'science' | 'material',
+    chosenDiscoveryId?: string
   ) => {
     if (!state.pendingDiscovery) return;
     if (!canActForPlayer(state.pendingDiscovery.playerId)) {
@@ -2834,6 +2837,7 @@ const AppContent: React.FC = () => {
       playerId: state.pendingDiscovery.playerId,
       sectorId: state.pendingDiscovery.sectorId,
       keepForVictoryPoints,
+      chosenDiscoveryId,
       equipShipType,
       equipSlotIndex,
       chosenTechId,
@@ -4271,6 +4275,7 @@ const AppContent: React.FC = () => {
         canActForPlayer(state.pendingDiscovery.playerId) ? (
           <DiscoveryChoiceModal
             discovery={state.pendingDiscovery.discovery}
+            discoveryOptions={state.pendingDiscovery.discoveryOptions}
             player={
               state.players.find((p) => p.id === state.pendingDiscovery!.playerId) ||
               activePlayer

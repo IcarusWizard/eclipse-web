@@ -3,8 +3,9 @@
  */
 
 import { ShipBlueprint, BlueprintValidationResult } from '../types/blueprints';
-import { SHIP_PARTS, getEffectiveShipPart } from './partData';
+import { SHIP_PARTS, ALL_ANCIENT_PART_IDS, getEffectiveShipPart } from './partData';
 import { SectorTile, ShipType } from '../types/galaxy';
+import type { PlayerState } from '../types/player';
 
 export const SHIP_LIMITS: Record<ShipType, number> = {
   interceptor: 8,
@@ -641,7 +642,77 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
 
     case 'wardens_of_magellan':
     case 'enlightened_of_lyra':
+    case 'atlantians':
     default:
       return createDefaultHumanBlueprints();
   }
+}
+
+/**
+ * Counts Discovery Tile ship parts (ancient parts) currently placed on a ship blueprint
+ * across both interior slots and external parts (e.g. Muon Source).
+ */
+export function countDiscoveryPartsOnBlueprint(blueprint?: ShipBlueprint | null): number {
+  if (!blueprint) return 0;
+  let count = 0;
+  for (const part of blueprint.slots) {
+    if (part && ALL_ANCIENT_PART_IDS.has(part.id)) {
+      count += 1;
+    }
+  }
+  if (blueprint.externalParts) {
+    for (const part of blueprint.externalParts) {
+      if (part && ALL_ANCIENT_PART_IDS.has(part.id)) {
+        count += 1;
+      }
+    }
+  }
+  return count;
+}
+
+/**
+ * Counts all Discovery Tile ship parts currently placed across all of a player's ship blueprints.
+ */
+export function getPlayerDiscoveryShipPartsCount(player: Pick<PlayerState, 'blueprints'>): number {
+  let total = 0;
+  for (const bp of Object.values(player.blueprints || {})) {
+    total += countDiscoveryPartsOnBlueprint(bp);
+  }
+  return total;
+}
+
+/**
+ * Computes base Material build cost for a ship or structure before Minor Species discounts.
+ * Applies faction build modifiers (Mechanema, Rho Indi Syndicate, The Exiles) and
+ * Atlantians' Price of Power (+1 Material per Discovery Tile beyond the first on that ship class).
+ */
+export function getBaseBuildItemCost(
+  player: Pick<PlayerState, 'faction' | 'blueprints'>,
+  itemType: ShipType | 'orbital' | 'monolith'
+): number {
+  const factionId = player.faction.id;
+  const isMechanema = factionId === 'mechanema';
+  const isRhoIndi = factionId === 'rho_indi_syndicate';
+  const isExiles = factionId === 'the_exiles';
+
+  let cost = 3;
+  if (itemType === 'interceptor') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
+  else if (itemType === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
+  else if (itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
+  else if (itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
+  else if (itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);
+  else if (itemType === 'monolith') cost = isMechanema ? 8 : 10;
+
+  if (
+    factionId === 'atlantians' &&
+    (itemType === 'interceptor' || itemType === 'cruiser' || itemType === 'dreadnought' || itemType === 'starbase')
+  ) {
+    const bp = player.blueprints?.[itemType];
+    const discCount = countDiscoveryPartsOnBlueprint(bp);
+    if (discCount > 1) {
+      cost += discCount - 1;
+    }
+  }
+
+  return cost;
 }

@@ -18,6 +18,7 @@ import {
 
 interface DiscoveryChoiceModalProps {
   discovery: DiscoveryTile;
+  discoveryOptions?: DiscoveryTile[];
   player: PlayerState;
   techSupply?: Technology[];
   sectors?: SectorTile[];
@@ -29,12 +30,14 @@ interface DiscoveryChoiceModalProps {
     equipSlotIndex?: number,
     chosenTechId?: string,
     colonizeOrbitalResource?: 'money' | 'science',
-    chosenResource?: 'money' | 'science' | 'material'
+    chosenResource?: 'money' | 'science' | 'material',
+    chosenDiscoveryId?: string
   ) => void;
 }
 
 export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   discovery,
+  discoveryOptions,
   player,
   techSupply,
   sectors,
@@ -43,7 +46,14 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   onChoice,
 }) => {
   const { language, l } = useLanguage();
-  const part = discovery.shipPartId ? SHIP_PARTS[discovery.shipPartId] : null;
+  const options = discoveryOptions && discoveryOptions.length > 0 ? discoveryOptions : [discovery];
+  const [chosenDiscoveryId, setChosenDiscoveryId] = React.useState<string>(discovery.id);
+  React.useEffect(() => {
+    setChosenDiscoveryId(discovery.id);
+  }, [discovery.id, discoveryOptions]);
+
+  const activeDiscovery = options.find((o) => o.id === chosenDiscoveryId) || discovery;
+  const part = activeDiscovery.shipPartId ? SHIP_PARTS[activeDiscovery.shipPartId] : null;
 
   const sector = sectors?.find((s) => s.id === sectorId);
   const isSectorAlreadyControlled = sector ? sector.discOwner === player.id : false;
@@ -104,12 +114,12 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
   // Bug 56: Ancient Technology discovery tile eligible regular techs
   const eligibleTechs = React.useMemo(() => {
-    if (!discovery.immediateReward?.ancientTech || !techSupply) return [];
+    if (!activeDiscovery.immediateReward?.ancientTech || !techSupply) return [];
     const owned = new Set(player.techTrack.researched.map((t) => t.id));
     return techSupply
       .filter((t) => ['military', 'grid', 'nano'].includes(t.category) && !owned.has(t.id))
       .sort((a, b) => a.baseCost - b.baseCost);
-  }, [discovery, techSupply, player.techTrack.researched]);
+  }, [activeDiscovery, techSupply, player.techTrack.researched]);
 
   const minTechCost = eligibleTechs.length > 0 ? eligibleTechs[0].baseCost : 0;
   const tiedTechs = React.useMemo(() => {
@@ -122,7 +132,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
     }
   }, [tiedTechs, selectedTechId]);
 
-  const grantShipType = discovery.immediateReward?.grantShipType || (discovery.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
+  const grantShipType = activeDiscovery.immediateReward?.grantShipType || (activeDiscovery.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
   const isShipSupplyDepleted = Boolean(
     grantShipType &&
     sectors &&
@@ -142,7 +152,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
             <Trophy className="w-4 h-4 text-amber-400" />
           )}
           <span className="font-bold text-xs sm:text-sm tracking-wide text-amber-300 font-display">
-            {l(`ANCIENT DISCOVERY: ${discovery.name} (${player.name})`, `远古探索发现：${discovery.name}（${player.name}）`)}
+            {l(`ANCIENT DISCOVERY: ${activeDiscovery.name} (${player.name})`, `远古探索发现：${activeDiscovery.name}（${player.name}）`)}
           </span>
           <div className="h-4 w-px bg-slate-800" />
           <button
@@ -182,16 +192,61 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
         </div>
 
         <h2 className="text-2xl font-black text-white tracking-wide mb-1 font-display">
-          {discovery.name}
+          {activeDiscovery.name}
         </h2>
         <div className="text-xs text-slate-400 mb-3 font-medium">
           {l('Commander', '指挥官')} <span className="font-bold text-slate-200">{player.name}</span> {l('must decide how to utilize this ancient artifact.', '必须决定如何利用此远古发现。')}
         </div>
 
+        {/* Atlantians Ancient Spirit Dual-Discovery Selector */}
+        {options.length > 1 && (
+          <div className="w-full mb-3 p-3 rounded-xl bg-cyan-950/40 border border-cyan-500/50 text-left">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-cyan-300 mb-2 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-cyan-400" />
+              <span>{l(`Ancient Spirit — Select 1 of ${options.length} Discovery Tiles to Resolve:`, `远古之灵 — 从 ${options.length} 张发现板块中选择 1 张结算：`)}</span>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              {options.map((opt, idx) => {
+                const isPicked = activeDiscovery.id === opt.id;
+                const optPart = opt.shipPartId ? SHIP_PARTS[opt.shipPartId] : null;
+                return (
+                  <button
+                    key={opt.id}
+                    type="button"
+                    data-testid={`discovery-option-${opt.id}`}
+                    onClick={() => setChosenDiscoveryId(opt.id)}
+                    className={`p-2 rounded-lg border text-left flex items-center gap-2.5 transition cursor-pointer ${
+                      isPicked
+                        ? 'bg-cyan-500/25 border-cyan-400 text-white shadow-md ring-1 ring-cyan-400/60'
+                        : 'bg-slate-950/80 border-slate-700 text-slate-300 hover:border-slate-500'
+                    }`}
+                  >
+                    {optPart ? (
+                      <ShipPartTileIconography part={optPart} size="sm" className="w-10 h-10 shrink-0" />
+                    ) : (
+                      <div className="w-10 h-10 rounded-lg bg-amber-950/60 border border-amber-500/40 flex items-center justify-center shrink-0">
+                        <Trophy className="w-4 h-4 text-amber-400" />
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="text-xs font-bold truncate">
+                        #{idx + 1}: {opt.name}
+                      </div>
+                      <div className="text-[10px] text-slate-400 line-clamp-2 leading-tight">
+                        {opt.description}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
         {/* Tile Details Card */}
         <div className="w-full bg-slate-950/80 border border-slate-800 rounded-xl p-3.5 mb-4 text-left">
           <p className="text-xs text-slate-300 leading-relaxed mb-2.5">
-            {discovery.description}
+            {activeDiscovery.description}
           </p>
 
           {part && (
@@ -255,33 +310,33 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
             </div>
           )}
 
-          {discovery.immediateReward && (
+          {activeDiscovery.immediateReward && (
             <div className="flex flex-wrap gap-2 mt-2">
-              {discovery.immediateReward.money && (
+              {activeDiscovery.immediateReward.money && (
                 <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />
-                  +{discovery.immediateReward.money} {l('Credits', '金钱')}
+                  +{activeDiscovery.immediateReward.money} {l('Credits', '金钱')}
                 </span>
               )}
-              {discovery.immediateReward.science && (
+              {activeDiscovery.immediateReward.science && (
                 <span className="px-2.5 py-1 bg-pink-500/20 border border-pink-500/40 text-pink-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <FlaskConical className="w-3.5 h-3.5 text-pink-400 shrink-0" />
-                  +{discovery.immediateReward.science} {l('Science', '科研')}
+                  +{activeDiscovery.immediateReward.science} {l('Science', '科研')}
                 </span>
               )}
-              {discovery.immediateReward.materials && (
+              {activeDiscovery.immediateReward.materials && (
                 <span className="px-2.5 py-1 bg-amber-700/20 border border-amber-700/40 text-amber-500 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <span className="w-2 h-2 rounded-full bg-amber-600 inline-block" />
-                  +{discovery.immediateReward.materials} {l('Materials', '材料')}
+                  +{activeDiscovery.immediateReward.materials} {l('Materials', '材料')}
                 </span>
               )}
-              {discovery.immediateReward.grantShipType && (
+              {activeDiscovery.immediateReward.grantShipType && (
                 <span className="px-2.5 py-1 bg-purple-500/20 border border-purple-500/40 text-purple-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Rocket className="w-3.5 h-3.5 text-purple-400" />
-                  +1 {l(`Free ${discovery.immediateReward.grantShipType.toUpperCase()}`, `免费${translateShipType(discovery.immediateReward.grantShipType, language)}`)}
+                  +1 {l(`Free ${activeDiscovery.immediateReward.grantShipType.toUpperCase()}`, `免费${translateShipType(activeDiscovery.immediateReward.grantShipType, language)}`)}
                 </span>
               )}
-              {discovery.immediateReward.ancientTech && (
+              {activeDiscovery.immediateReward.ancientTech && (
                 <div className="w-full mt-2 p-2.5 rounded-lg bg-cyan-950/60 border border-cyan-500/40 text-left">
                   <div className="text-xs font-bold text-cyan-300 flex items-center gap-1.5 mb-1.5">
                     <Cpu className="w-4 h-4 text-cyan-400 shrink-0" />
@@ -334,7 +389,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   )}
                 </div>
               )}
-              {discovery.immediateReward.grantStructure === 'orbital' && (
+              {activeDiscovery.immediateReward.grantStructure === 'orbital' && (
                 <div className="w-full mt-2 p-2.5 rounded-lg bg-blue-950/60 border border-blue-500/40 text-left">
                   <div className="text-xs font-bold text-blue-300 flex items-center justify-between mb-1.5">
                     <span className="flex items-center gap-1.5">
@@ -403,31 +458,31 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   )}
                 </div>
               )}
-              {discovery.immediateReward.grantStructure === 'monolith' && (
+              {activeDiscovery.immediateReward.grantStructure === 'monolith' && (
                 <span className="px-2.5 py-1 bg-yellow-500/20 border border-yellow-500/40 text-yellow-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Trophy className="w-3.5 h-3.5 text-yellow-400" />
                   {l('+1 Ancient Monolith (3 VP)', '+1 远古方尖碑（3 分）')}
                 </span>
               )}
-              {discovery.immediateReward.warpPortal && (
+              {activeDiscovery.immediateReward.warpPortal && (
                 <span className="px-2.5 py-1 bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Rocket className="w-3.5 h-3.5 text-emerald-400" />
                   {l('Ancient Warp Portal (Connects all Warp Portals, 2 VP)', '远古曲速传送门（连接所有传送门，2 分）')}
                 </span>
               )}
-              {discovery.immediateReward.artifactCodex && (
+              {activeDiscovery.immediateReward.artifactCodex && (
                 <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Trophy className="w-3.5 h-3.5 text-amber-400" />
                   {l('Artifact Codex (+1 VP per Controlled Artifact at Game End)', '遗迹法典（终局每控制 1 个遗迹 +1 分）')}
                 </span>
               )}
-              {discovery.immediateReward.ancientMight && (
+              {activeDiscovery.immediateReward.ancientMight && (
                 <span className="px-2.5 py-1 bg-amber-500/20 border border-amber-500/40 text-amber-300 rounded-md text-xs font-bold flex items-center gap-1.5">
                   <Trophy className="w-3.5 h-3.5 text-amber-400" />
                   {l('Ancient Might (+1 VP per 3 VP in Reputation Tiles at Game End)', '远古之力（终局声望板块每满 3 分额外 +1 分）')}
                 </span>
               )}
-              {discovery.immediateReward.choose3Resource && (
+              {activeDiscovery.immediateReward.choose3Resource && (
                 <div className="w-full mt-2 p-2.5 rounded-lg bg-amber-950/60 border border-amber-500/40 text-left">
                   <div className="text-xs font-bold text-amber-300 mb-1.5 flex items-center gap-1.5">
                     <Zap className="w-3.5 h-3.5 text-amber-400" />
@@ -631,7 +686,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
             <button
               type="button"
               disabled={isPowerDeficit}
-              onClick={() => onChoice(false, selectedShipType, isMuonSource ? -1 : selectedSlotIndex)}
+              onClick={() => onChoice(false, selectedShipType, isMuonSource ? -1 : selectedSlotIndex, undefined, undefined, undefined, activeDiscovery.id)}
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-cyan-500/60 bg-cyan-600/20 hover:bg-cyan-600/35 disabled:opacity-30 disabled:cursor-not-allowed transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-cyan-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
@@ -648,7 +703,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
             <button
               type="button"
-              onClick={() => onChoice(false)}
+              onClick={() => onChoice(false, undefined, undefined, undefined, undefined, undefined, activeDiscovery.id)}
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-slate-700 bg-slate-800/40 hover:bg-slate-800 transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-slate-300 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
@@ -661,7 +716,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
             <button
               type="button"
-              onClick={() => onChoice(true)}
+              onClick={() => onChoice(true, undefined, undefined, undefined, undefined, undefined, activeDiscovery.id)}
               className="flex flex-col items-center justify-center p-3 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
             >
               <div className="flex items-center gap-1.5 text-amber-400 font-bold text-xs mb-0.5 group-hover:scale-105 transition-transform">
@@ -687,7 +742,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
             <div className="w-full grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button
                 type="button"
-                onClick={() => onChoice(true)}
+                onClick={() => onChoice(true, undefined, undefined, undefined, undefined, undefined, activeDiscovery.id)}
                 className="flex flex-col items-center justify-center p-3.5 rounded-xl border border-amber-500/50 bg-amber-500/10 hover:bg-amber-500/25 transition group cursor-pointer"
               >
                 <div className="flex items-center gap-1.5 text-amber-400 font-bold text-sm mb-1 group-hover:scale-105 transition-transform">
@@ -710,7 +765,8 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                     undefined,
                     selectedTechId || tiedTechs[0]?.id,
                     isControlledOrStandalone ? (colonizeOrbitalResource || undefined) : undefined,
-                    chosenBonusResource
+                    chosenBonusResource,
+                    activeDiscovery.id
                   )
                 }
                 className={`flex flex-col items-center justify-center p-3.5 rounded-xl border transition group cursor-pointer ${
@@ -726,18 +782,18 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                 <span className="text-xs text-slate-400">
                   {isShipSupplyDepleted
                     ? l(`Max supply reached (${SHIP_LIMITS[grantShipType!]} deployed)`, `已达供应上限（已部署 ${SHIP_LIMITS[grantShipType!]} 艘）`)
-                    : discovery.immediateReward?.grantShipType
-                    ? l(`Deploy free ${discovery.immediateReward.grantShipType} to sector`, `向该星区免费部署 1 艘${translateShipType(discovery.immediateReward.grantShipType, language)}`)
-                    : discovery.immediateReward?.ancientTech
+                    : activeDiscovery.immediateReward?.grantShipType
+                    ? l(`Deploy free ${activeDiscovery.immediateReward.grantShipType} to sector`, `向该星区免费部署 1 艘${translateShipType(activeDiscovery.immediateReward.grantShipType, language)}`)
+                    : activeDiscovery.immediateReward?.ancientTech
                     ? (() => {
                         const chosenT = (selectedTechId && tiedTechs.find((t) => t.id === selectedTechId)) || tiedTechs[0];
                         return l(`Claim ${chosenT?.name || 'Tech'}`, `获得 ${chosenT ? translateTechName(chosenT.id, chosenT.name, language) : '科技'}`);
                       })()
-                    : discovery.immediateReward?.artifactCodex
+                    : activeDiscovery.immediateReward?.artifactCodex
                     ? l('Activate Artifact Codex (+1 VP per Artifact)', '激活遗迹法典（每个遗迹 +1 分）')
-                    : discovery.immediateReward?.ancientMight
+                    : activeDiscovery.immediateReward?.ancientMight
                     ? l('Activate Ancient Might (+1 VP per 3 VP Reputation)', '激活远古之力（每 3 分声望 +1 分）')
-                    : discovery.immediateReward?.choose3Resource
+                    : activeDiscovery.immediateReward?.choose3Resource
                     ? l(`Collect +3 Money and +3 ${chosenBonusResource.toUpperCase()}`, `获得 +3 金钱与 +3 ${translateResourceType(chosenBonusResource, language)}`)
                     : l('Collect resources immediately', '立即收集资源')}
                 </span>

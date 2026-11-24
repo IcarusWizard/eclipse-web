@@ -325,6 +325,19 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'ri_p4', resource: 'money', isAdvanced: true },
     ],
   },
+  atlantians: {
+    sectorNumber: 241,
+    name: 'Sector 241 (Atlantis)',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'at_p1', resource: 'science', isAdvanced: false },
+      { id: 'at_p2', resource: 'science', isAdvanced: true },
+      { id: 'at_p3', resource: 'money', isAdvanced: false },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

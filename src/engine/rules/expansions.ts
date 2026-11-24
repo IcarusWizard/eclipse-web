@@ -2,7 +2,7 @@
  * Official Expansion Modules & Configuration for Eclipse: Second Dawn
  */
 
-export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species' | 'warped_universe' | 'galactic_events' | 'community_balance';
+export type ExpansionId = 'rift_cannon' | 'remnants_of_worlds_afar' | 'turn_order' | 'seekers' | 'outcasts' | 'minor_species' | 'warped_universe' | 'galactic_events' | 'community_balance' | 'community_factions';
 
 export interface ExpansionDefinition {
   readonly id: ExpansionId;
@@ -132,6 +132,19 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'Battle Reputation Draw: can only draw Reputation tiles with VP <= number of tiles drawn (e.g. draw 1 = 1 VP only; draw 3 = 1, 2, or 3 VP; draw 4-5 = 4 VP eligible)',
     ],
   },
+  {
+    id: 'community_factions',
+    name: 'Community Factions',
+    shortName: 'Community',
+    badge: 'Community Species',
+    description: 'Introduces fan-created and community-curated Alien Species factions, beginning with the resurgent Atlantians.',
+    features: [
+      'Atlantians (Sector 241): Start with Ancient Labs, 3/3/3 resources, and 4 Rep/Ambassador slots.',
+      'Ancient Spirit: Draw an extra Discovery Tile and pick 1 to resolve (discard & redraw +6 Materials or Ancient Cruiser).',
+      'Ancient Instinct: After researching a tech, optionally perform an Upgrade 1 action using that researched technology.',
+      'Ancient Power & Price of Power: Score +1 VP per Discovery Tile on ships; +1 Material build cost surcharge per extra Discovery Tile beyond the first on each ship class.',
+    ],
+  },
 ];
 
 export function isExpansionActive(expansions: string[] | undefined, id: ExpansionId): boolean {
@@ -230,6 +243,9 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
   }
   if (norm === 'community_balance' || norm === 'community balance' || norm === 'community_rebalance' || norm === 'balance') {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_balance') || null;
+  }
+  if (norm === 'community_factions' || norm === 'community factions' || norm === 'atlantians' || norm === 'atlantian') {
+    return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }
   return null;
 }

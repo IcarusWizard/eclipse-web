@@ -22,7 +22,8 @@ export type FactionId =
   | 'wardens_of_magellan'
   | 'enlightened_of_lyra'
   | 'the_exiles'
-  | 'rho_indi_syndicate';
+  | 'rho_indi_syndicate'
+  | 'atlantians';
 
 export interface FactionInfo {
   readonly id: FactionId;
@@ -119,6 +120,7 @@ export interface PlayerState {
   magellanDiscoveryTile?: DiscoveryTile | null; // Facedown Discovery Tile on top Tech Track
   magellanDiscoveryResolved?: boolean;
   discoveryTilesUsedAsShipPartsCount?: number; // Magellan: +1 VP per Discovery Tile used as a Ship Part
+  startingAncientLabsResolved?: boolean; // Atlantians: tracks whether starting Ancient Labs discovery has been triggered
   shrineBoard?: ShrineBoardState; // Lyra: 3x3 Shrine Board
   hasWormholeGeneratorAbility?: boolean; // Lyra: Row 1 bonus
   lyraExtraDiscClaimed?: boolean; // Lyra: Row 3 bonus (+1 disc)

@@ -329,6 +329,11 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
                     >
                       {act.count}
                     </span>
+                    {faction.id === 'atlantians' && act.key === 'RES' && (
+                      <span className="text-[9px] font-black font-mono text-cyan-300 bg-cyan-950/80 border border-cyan-500/40 px-1 rounded leading-tight">
+                        +1 UPG
+                      </span>
+                    )}
                   </div>
                 );
               })}

@@ -2,7 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile, ShipType } from '../../engine/types/galaxy';
 import { getMaxBuildActivations } from '../../engine/rules/gameReducer';
-import { SHIP_LIMITS, countPlayerShips } from '../../engine/rules/shipValidation';
+import {
+  SHIP_LIMITS,
+  countPlayerShips,
+  getBaseBuildItemCost,
+  countDiscoveryPartsOnBlueprint,
+} from '../../engine/rules/shipValidation';
 import { getMinorSpeciesBuildDiscount } from '../../engine/rules/minorSpecies';
 import {
   Hammer,
@@ -90,7 +95,6 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     otherSlotHasOrbitalInSector
   );
 
-  const isMechanema = player.faction.id === 'mechanema';
   const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
   const isExiles = player.faction.id === 'the_exiles';
 
@@ -101,37 +105,15 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   };
 
   const getItemCost = (type: ShipType | 'orbital' | 'monolith') => {
-    let base = 0;
-    switch (type) {
-      case 'interceptor':
-        if (isMechanema) base = 2;
-        else if (isRhoIndi) base = 4;
-        else base = 3;
-        break;
-      case 'cruiser':
-        if (isMechanema) base = 4;
-        else if (isRhoIndi) base = 6;
-        else base = 5;
-        break;
-      case 'dreadnought':
-        base = isMechanema ? 7 : 8;
-        break;
-      case 'starbase':
-        if (isMechanema) base = 2;
-        else if (isRhoIndi) base = 4;
-        else base = 3;
-        break;
-      case 'orbital':
-        if (isMechanema) base = 3;
-        else if (isExiles) base = 5;
-        else base = 4;
-        break;
-      case 'monolith':
-        base = isMechanema ? 8 : 10;
-        break;
-    }
+    const base = getBaseBuildItemCost(player, type);
     const discount = getMinorSpeciesBuildDiscount(player, type);
     return Math.max(0, base - discount);
+  };
+
+  const getPriceOfPowerNote = (type: ShipType) => {
+    if (player.faction.id !== 'atlantians') return '';
+    const extra = Math.max(0, countDiscoveryPartsOnBlueprint(player.blueprints[type]) - 1);
+    return extra > 0 ? l(` • Price of Power +${extra}`, ` • 额外发现+${extra}材料`) : '';
   };
 
   const buildItems: {
@@ -152,7 +134,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       supplyLeft: getAvailableSupply('interceptor'),
       unlocked: getAvailableSupply('interceptor') > 0,
       disabledReason: getAvailableSupply('interceptor') <= 0 ? l(`Max limit of ${SHIP_LIMITS.interceptor} reached`, `已达上限 ${SHIP_LIMITS.interceptor} 艘`) : undefined,
-      description: l(`Fast, agile light fighter with high base initiative (Limit 8, Cost ${getItemCost('interceptor')} Mats).`, `高速敏捷的轻型战机，拥有高基础先攻（上限 8，费用 ${getItemCost('interceptor')} 材料）。`),
+      description: l(`Fast, agile light fighter with high base initiative (Limit 8, Cost ${getItemCost('interceptor')} Mats${getPriceOfPowerNote('interceptor')}).`, `高速敏捷的轻型战机，拥有高基础先攻（上限 8，费用 ${getItemCost('interceptor')} 材料${getPriceOfPowerNote('interceptor')}）。`),
     },
     {
       type: 'cruiser',
@@ -162,7 +144,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       supplyLeft: getAvailableSupply('cruiser'),
       unlocked: getAvailableSupply('cruiser') > 0,
       disabledReason: getAvailableSupply('cruiser') <= 0 ? l(`Max limit of ${SHIP_LIMITS.cruiser} reached`, `已达上限 ${SHIP_LIMITS.cruiser} 艘`) : undefined,
-      description: l(`Medium combat warship with balanced shielding and firepower (Limit 4, Cost ${getItemCost('cruiser')} Mats).`, `均衡防御与火力的中型主力战舰（上限 4，费用 ${getItemCost('cruiser')} 材料）。`),
+      description: l(`Medium combat warship with balanced shielding and firepower (Limit 4, Cost ${getItemCost('cruiser')} Mats${getPriceOfPowerNote('cruiser')}).`, `均衡防御与火力的中型主力战舰（上限 4，费用 ${getItemCost('cruiser')} 材料${getPriceOfPowerNote('cruiser')}）。`),
     },
     {
       type: 'dreadnought',
@@ -176,7 +158,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         : getAvailableSupply('dreadnought') <= 0
         ? l(`Max limit of ${SHIP_LIMITS.dreadnought} reached`, `已达上限 ${SHIP_LIMITS.dreadnought} 艘`)
         : undefined,
-      description: l(`Heavily armored capital flagship capable of carrying superweapons (Limit 2, Cost ${getItemCost('dreadnought')} Mats).`, `重装甲主力旗舰，可搭载重型武器（上限 2，费用 ${getItemCost('dreadnought')} 材料）。`),
+      description: l(`Heavily armored capital flagship capable of carrying superweapons (Limit 2, Cost ${getItemCost('dreadnought')} Mats${getPriceOfPowerNote('dreadnought')}).`, `重装甲主力旗舰，可搭载重型武器（上限 2，费用 ${getItemCost('dreadnought')} 材料${getPriceOfPowerNote('dreadnought')}）。`),
     },
     {
       type: 'starbase',
@@ -192,7 +174,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         : getAvailableSupply('starbase') <= 0
         ? l(`Max limit of ${SHIP_LIMITS.starbase} reached`, `已达上限 ${SHIP_LIMITS.starbase} 座`)
         : undefined,
-      description: l(`Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats, requires Starbase tech).`, `固定轨道防御要塞（上限 4，费用 ${getItemCost('starbase')} 材料，需要星际基地科技）。`),
+      description: l(`Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats${getPriceOfPowerNote('starbase')}, requires Starbase tech).`, `固定轨道防御要塞（上限 4，费用 ${getItemCost('starbase')} 材料${getPriceOfPowerNote('starbase')}，需要星际基地科技）。`),
     },
     {
       type: 'orbital',
