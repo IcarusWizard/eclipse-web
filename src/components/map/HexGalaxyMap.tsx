@@ -1556,15 +1556,18 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   </g>
                 )}
 
-                {/* Artifact Icon */}
+                {/* Artifact Icon (+ Remnants of Ra Power of the Ancients paired slot when controlled by Ra) */}
                 {sector.hasArtifact && (() => {
                   const hasDiscovery = sector.discoveryTile || (sector.hasDiscovery && !sector.discoveryClaimed);
                   const hasWarp = sector.hasWarpPortal || sector.structures?.warpPortal || sector.hasRareWarpPortal || sector.hasDiscoveryWarpPortal;
                   const hasMono = sector.structures?.monolith || sector.hasMonolith;
                   const hasOther = sector.hasGCDS || sector.ancientsCount > 0 || hasDiscovery;
-                  const isMultiPlanet = sector.planets && sector.planets.length >= 4;
+                  const nativePlanetsCount = (sector.planets || []).filter((p) => !p.isRaArtifactSlot).length;
+                  const isMultiPlanet = nativePlanetsCount >= 4;
+                  const raSlotIndex = (sector.planets || []).findIndex((p) => p.isRaArtifactSlot);
+                  const raPlanet = raSlotIndex >= 0 ? sector.planets[raSlotIndex] : undefined;
 
-                  const posX = (hasWarp && hasMono)
+                  const basePosX = (hasWarp && hasMono)
                     ? x
                     : isMultiPlanet
                     ? x - 26
@@ -1587,27 +1590,142 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     ? y - 18
                     : y - 18;
 
+                  const artX = raPlanet && (!hasOther || (hasWarp && hasMono)) ? basePosX - 8 : basePosX;
+                  const raSlotX = artX + 15;
+                  const raColonizer = raPlanet ? state.players.find((p) => p.id === raPlanet.colonizedBy) : undefined;
+                  const isRaColonizableNow =
+                    Boolean(raPlanet && !raPlanet.colonizedBy) &&
+                    sector.discOwner === colonizingPlayer?.id &&
+                    Boolean(colonizingPlayer && colonizingPlayer.colonyShips && colonizingPlayer.colonyShips.ready > 0);
+                  const raResColor =
+                    raPlanet?.colonizedResource === 'money'
+                      ? '#facc15'
+                      : raPlanet?.colonizedResource === 'science'
+                      ? '#ec4899'
+                      : raPlanet?.colonizedResource === 'material'
+                      ? '#b45309'
+                      : undefined;
+
                   return (
-                    <g
-                      transform={`translate(${posX}, ${posY})`}
-                      className="pointer-events-none"
-                    >
-                      <polygon
-                        points="0,-6 6,0 0,6 -6,0"
-                        fill="#0284c7"
-                        stroke="#38bdf8"
-                        strokeWidth="1.2"
-                      />
-                      <text
-                        x="0"
-                        y="2.5"
-                        textAnchor="middle"
-                        fill="#f0f9ff"
-                        fontSize="6.5"
-                        fontWeight="bold"
+                    <g>
+                      <g
+                        transform={`translate(${artX}, ${posY})`}
+                        className="pointer-events-none"
                       >
-                        A
-                      </text>
+                        <polygon
+                          points="0,-6 6,0 0,6 -6,0"
+                          fill="#0284c7"
+                          stroke="#38bdf8"
+                          strokeWidth="1.2"
+                        />
+                        <text
+                          x="0"
+                          y="2.5"
+                          textAnchor="middle"
+                          fill="#f0f9ff"
+                          fontSize="6.5"
+                          fontWeight="bold"
+                        >
+                          A
+                        </text>
+                      </g>
+
+                      {raPlanet && (
+                        <>
+                          <line
+                            x1={artX + 6}
+                            y1={posY}
+                            x2={raSlotX - 6.5}
+                            y2={posY}
+                            stroke="#fbbf24"
+                            strokeWidth="1.3"
+                            strokeDasharray="2 1"
+                            className="pointer-events-none"
+                          />
+                          <g
+                            data-testid={`ra-artifact-slot-${sector.sectorNumber}`}
+                            transform={`translate(${raSlotX}, ${posY})`}
+                            onClick={(e) => {
+                              if (!raPlanet.colonizedBy && sector.discOwner === colonizingPlayer?.id) {
+                                e.stopPropagation();
+                                onSelectSector(sector);
+                              }
+                            }}
+                            className={!raPlanet.colonizedBy && sector.discOwner === colonizingPlayer?.id ? 'cursor-pointer' : undefined}
+                          >
+                            <title>
+                              {l(
+                                'Power of the Ancients: Extra Artifact-key population cube slot (disappears if control is lost)',
+                                '先祖力场：遗物钥匙附加人口格位（失去该星区控制权时消失）'
+                              )}
+                            </title>
+                            {state.phase === 'UPKEEP_PHASE' && isRaColonizableNow && (
+                              <circle
+                                r="9"
+                                fill="none"
+                                stroke="#22d3ee"
+                                strokeWidth="1.8"
+                                strokeDasharray="3 1.5"
+                                className="animate-pulse"
+                              />
+                            )}
+                            {/* Sky + Gold octagonal Artifact frame separating it visually from physical planets */}
+                            <polygon
+                              points="-4,-7 4,-7 7,-4 7,4 4,7 -4,7 -7,4 -7,-4"
+                              fill="rgba(12, 74, 110, 0.92)"
+                              stroke="#38bdf8"
+                              strokeWidth="1.3"
+                              strokeDasharray={raPlanet.colonizedBy ? 'none' : '2.5 1.2'}
+                            />
+                            <rect
+                              x="-5"
+                              y="-5"
+                              width="10"
+                              height="10"
+                              rx="2"
+                              fill="rgba(15, 23, 42, 0.9)"
+                              stroke="#fbbf24"
+                              strokeWidth="1.1"
+                            />
+                            {raPlanet.colonizedBy ? (
+                              <>
+                                <rect
+                                  x="-3.6"
+                                  y="-3.6"
+                                  width="7.2"
+                                  height="7.2"
+                                  rx="1.2"
+                                  fill={raColonizer?.color || '#ec4899'}
+                                  stroke="#ffffff"
+                                  strokeWidth="1"
+                                />
+                                {raResColor && (
+                                  <circle
+                                    cx="4.5"
+                                    cy="-4.5"
+                                    r="2.2"
+                                    fill={raResColor}
+                                    stroke="#0f172a"
+                                    strokeWidth="0.7"
+                                  />
+                                )}
+                              </>
+                            ) : (
+                              <text
+                                x="0"
+                                y="2.6"
+                                textAnchor="middle"
+                                fill="#fde68a"
+                                fontSize="7"
+                                fontWeight="900"
+                                className="pointer-events-none select-none"
+                              >
+                                ✦
+                              </text>
+                            )}
+                          </g>
+                        </>
+                      )}
                     </g>
                   );
                 })()}
@@ -1825,11 +1943,15 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   );
                 })()}
 
-                {/* Planets Display */}
-                {!sector.isSupernovaExploded && (
+                {/* Planets Display (native physical planets keep fixed layout; Ra Power of the Ancients slot renders next to Artifact [A]) */}
+                {!sector.isSupernovaExploded && (() => {
+                  const nativePlanets = sector.planets
+                    .map((planet, pIdx) => ({ planet, pIdx }))
+                    .filter((entry) => !entry.planet.isRaArtifactSlot);
+                  return (
                   <g transform={`translate(${x}, ${y + (isCenter ? 10 : 6)})`}>
-                    {sector.planets.map((planet, pIdx) => {
-                    const { offsetX, offsetY } = getPlanetSlotOffset(pIdx, sector.planets.length);
+                    {nativePlanets.map(({ planet, pIdx }, nativeIdx) => {
+                    const { offsetX, offsetY } = getPlanetSlotOffset(nativeIdx, nativePlanets.length);
 
                     const planetColor =
                       planet.resource === 'money'
@@ -2002,7 +2124,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     );
                   })}
                 </g>
-                )}
+                  );
+                })()}
 
                 {/* Ships and Fleet Badges: Grouped by Owner with Ship Class and Counts */}
                 {sector.ships.length > 0 && (() => {

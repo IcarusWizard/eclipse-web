@@ -40,9 +40,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   amber: '#d97706', // Rho Indi Syndicate
   cyan: '#06b6d4', // Atlantians
   indigo: '#6366f1', // Mega War Inc.
+  magenta: '#ec4899', // Remnants of Ra
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -72,6 +73,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Community Factions
   atlantians: 'cyan',
   mega_war_inc: 'indigo',
+  remnants_of_ra: 'magenta',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -93,6 +95,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   rho_indi_syndicate: ECLIPSE_COLOR_PALETTE.amber,
   atlantians: ECLIPSE_COLOR_PALETTE.cyan,
   mega_war_inc: ECLIPSE_COLOR_PALETTE.indigo,
+  remnants_of_ra: ECLIPSE_COLOR_PALETTE.magenta,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -503,7 +506,7 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     name: 'Atlantians',
     isHuman: false,
     defaultColor: ECLIPSE_COLOR_PALETTE.cyan,
-    startingSectorNumber: 241,
+    startingSectorNumber: 266,
     startingResources: { money: 3, science: 3, materials: 3 },
     startingDiscs: 13,
     startingColonyShips: 3,
@@ -542,6 +545,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 5,
     reputationSlotTypes: ['amb_only', 'both', 'both', 'both', 'both'],
   },
+  {
+    id: 'remnants_of_ra',
+    name: 'Remnants of Ra',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.magenta,
+    startingSectorNumber: 255,
+    startingResources: { money: 2, science: 3, materials: 3 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: ['plasma_cannon'],
+    traitDescription: 'Ancient sun-worshippers of Osiris Seth (Sector 255): start with Plasma Cannon, 4:1 Trade, INF 2 (1 Colony Ship refresh); Power of the Ancients grants an extra Wild population slot in every controlled Artifact sector (including homeworld); Secrets of the Ancients awards +1 VP per controlled Artifact sector.',
+    tradeRatio: 4,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 1,
+    reputationSlots: 4,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -554,7 +580,7 @@ export const ALL_FACTIONS: FactionInfo[] = [
  * Base game factions (6 Human, 6 Alien) are always available.
  * Seekers factions (Wardens of Magellan, Enlightened of Lyra) require 'seekers'.
  * Outcasts factions (The Exiles, Rho Indi Syndicate) require 'outcasts'.
- * Community factions (Atlantians, Mega War Inc.) require 'community_factions'.
+ * Community factions (Atlantians, Mega War Inc., Remnants of Ra) require 'community_factions'.
  */
 export function isFactionAvailable(factionId: string, expansions: string[] = []): boolean {
   if (factionId === 'wardens_of_magellan' || factionId === 'enlightened_of_lyra') {
@@ -563,7 +589,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -595,7 +621,8 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
     faction.id === 'descendants_of_draco' ||
     faction.id === 'wardens_of_magellan' ||
     faction.id === 'enlightened_of_lyra' ||
-    faction.id === 'atlantians'
+    faction.id === 'atlantians' ||
+    faction.id === 'remnants_of_ra'
   ) {
     return ['both', 'both', 'both', 'both'];
   }
@@ -904,6 +931,15 @@ export function buildPlayerAndHomeSector(
     ships: startShips,
   };
 
+  if (faction.id === 'remnants_of_ra' && homeSector.hasArtifact && !homeSector.planets.some((p) => p.isRaArtifactSlot)) {
+    homeSector.planets.push({
+      id: `${homeSector.id}_ra_artifact_wild`,
+      resource: 'any',
+      isAdvanced: false,
+      isRaArtifactSlot: true,
+    });
+  }
+
   // Starting technologies
   const startingTechs = (faction.startingTechIds || [])
     .map((tId) => {
@@ -1077,7 +1113,7 @@ export function buildPendingDiscoveryForPlayer(
  */
 export function triggerPendingAtlantiansStartingLabsDiscovery(state: GameState): void {
   if (state.phase === 'DRAFT_PHASE') return;
-  if (state.pendingExilesOrbitalSetup || state.pendingDiscovery) return;
+  if (state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingDiscovery) return;
   const atlantians = state.players.find(
     (p) => p.faction.id === 'atlantians' && p.startingAncientLabsResolved === false
   );
@@ -1085,7 +1121,7 @@ export function triggerPendingAtlantiansStartingLabsDiscovery(state: GameState):
 
   atlantians.startingAncientLabsResolved = true;
   const homeSector = state.sectors.find(
-    (s) => s.id === `home_sector_${atlantians.id}` || s.sectorNumber === 241
+    (s) => s.id === `home_sector_${atlantians.id}` || s.sectorNumber === 266
   );
   const firstTile = drawDiscoveryTileForPlayer(state.discoveryBag, true);
   state.pendingDiscovery = {
@@ -1434,6 +1470,20 @@ export function createInitialGame(
     }
   }
 
+  const raPlayer = players.find((p) => p.faction.id === 'remnants_of_ra');
+  let pendingRaArtifactSetup: { playerId: string; sectorId: string; planetId: string } | null = null;
+  if (raPlayer) {
+    const homeSector = sectors.find((s) => s.id === `home_sector_${raPlayer.id}` || s.sectorNumber === 255);
+    const raPlanet = homeSector?.planets.find((p) => p.isRaArtifactSlot && !p.colonizedBy);
+    if (raPlanet && homeSector) {
+      pendingRaArtifactSetup = {
+        playerId: raPlayer.id,
+        sectorId: homeSector.id,
+        planetId: raPlanet.id,
+      };
+    }
+  }
+
   const enabledExpansions = expansions || [];
   for (const p of players) {
     if (p.blueprints) {
@@ -1475,6 +1525,7 @@ export function createInitialGame(
     pendingDiscovery: null,
     pendingCombatConquest: null,
     pendingExilesOrbitalSetup,
+    pendingRaArtifactSetup,
     resolvedCombatSectorIds: [],
     replaySteps: [],
     log: [

@@ -336,6 +336,13 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
                         +1 UPG
                       </span>
                     )}
+                    {(faction.influenceColonyShipRefreshes ??
+                      (faction.id === 'wardens_of_magellan' ? 1 : 2)) === 1 &&
+                      act.key === 'INF' && (
+                        <span className="text-[8.5px] font-black font-mono text-amber-300 bg-amber-950/80 border border-amber-500/40 px-1 rounded leading-tight text-center">
+                          {l('1 Colony Ship', '1 殖民船')}
+                        </span>
+                      )}
                   </div>
                 );
               })}
@@ -468,6 +475,14 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
                   <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/60 text-amber-300 text-[10.5px] font-black font-mono">
                     {sheet.homeSector.victoryPoints ?? 3} ◆
                   </span>
+                  {sheet.homeSector.hasArtifact && (
+                    <span
+                      title={l('Artifact Sector', '遗物星区')}
+                      className="px-1.5 py-0.5 rounded bg-indigo-500/20 border border-indigo-400/60 text-indigo-200 text-[10.5px] font-black font-mono"
+                    >
+                      ✦
+                    </span>
+                  )}
                   {(sheet.homeSector.planets || []).map((pl, idx) => (
                     <PlanetStripIcon key={pl.id || idx} planet={pl} lang={language} />
                   ))}

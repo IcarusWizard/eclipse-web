@@ -315,6 +315,11 @@ export interface ChooseExilesOrbitalCubeAction extends BaseAction {
   resource: 'money' | 'science';
 }
 
+export interface ChooseRaArtifactCubeAction extends BaseAction {
+  type: 'CHOOSE_RA_ARTIFACT_CUBE';
+  resource: 'money' | 'science' | 'material';
+}
+
 export interface ClaimMinorSpeciesAction extends BaseAction {
   type: 'CLAIM_MINOR_SPECIES';
   speciesId: MinorSpeciesId;
@@ -405,6 +410,7 @@ export type GameAction =
   | SelectBombardmentTargetsAction
   | ChoosePopulationReturnTrackAction
   | ChooseExilesOrbitalCubeAction
+  | ChooseRaArtifactCubeAction
   | ClaimMinorSpeciesAction
   | ActivatePulsarAction
   | ReturnBlackHoleShipAction

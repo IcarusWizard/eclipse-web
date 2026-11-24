@@ -438,6 +438,28 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
       },
     ],
   },
+  remnants_of_ra: {
+    historyEn:
+      'In a long-forgotten past, the undying godlike ruler Ra and his empire spread across the galaxy before vanishing into wasteland after the fall of Aten and the rise of the Scrabs. Now, reformed from their hidden sanctuary of Osiris Seth (Sector 255), the Remnants of Ra have returned to claim their rightful place as masters and shepherds of the cosmos.',
+    historyZh:
+      '在远古尘封的时代，不死神王拉的帝国曾横跨银河，却在阿顿崩毁与圣甲虫崛起后化作焦土。历经漫长隐匿，拉的后裔于奥西里斯赛特（255 号星区）重整旗鼓，自称“拉之余晖”重返星海，誓要重夺宇宙主宰之位。',
+    portraitUrl: '/factions/remnants_of_ra.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'ra_power_of_ancients',
+        icon: 'colony',
+        en: 'Power of the Ancients: Gain an additional Wild population slot (any resource: Money, Science, or Materials) in every controlled sector with an Artifact key — including your home Sector 255.',
+        zh: '先祖力场（Power of the Ancients）：在所有带遗物钥匙（Artifact）的己方控制星区（包括母星 255 号星区）额外获得 1 个可放任意资源方块的万能人口槽位。',
+      },
+      {
+        id: 'ra_secrets_of_ancients',
+        icon: 'vp',
+        en: 'Secrets of the Ancients: Score +1 bonus VP at game end for each controlled sector containing an Artifact key (including your homeworld).',
+        zh: '先祖秘辛（Secrets of the Ancients）：终局计分时，每个带遗物钥匙的己方控制星区（含母星）额外奖励 +1 VP。',
+      },
+    ],
+  },
 };
 
 function buildTerranHistory(faction: FactionInfo): { en: string; zh: string } {

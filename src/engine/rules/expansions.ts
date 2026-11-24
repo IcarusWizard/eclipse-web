@@ -137,13 +137,14 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
     name: 'Community Factions',
     shortName: 'Community',
     badge: 'Community Species',
-    description: 'Introduces fan-created and community-curated Alien Species factions, beginning with the resurgent Atlantians and corporate-militarist Mega War Inc.',
+    description: 'Introduces fan-created and community-curated Alien Species factions: Atlantians, Mega War Inc., and Remnants of Ra.',
     features: [
-      'Atlantians (Sector 241): Start with Ancient Labs, 3/3/3 resources, and 4 Rep/Ambassador slots.',
+      'Atlantians (Sector 266): Start with Ancient Labs, 3/3/3 resources, and 4 Rep/Ambassador slots.',
       'Ancient Spirit: Draw an extra Discovery Tile and pick 1 to resolve (discard & redraw +6 Materials or Ancient Cruiser).',
       'Ancient Instinct: After researching a tech, optionally perform an Upgrade 1 action using that researched technology.',
       'Ancient Power & Price of Power: Score +1 VP per Discovery Tile on ships; +1 Material build cost surcharge per extra Discovery Tile beyond the first on each ship class.',
       'Mega War Inc. (Unused Terran Sector): Starts with 3 Mat / 3 Sci / 2 Money, 1 Upgrade activation, modular linked ship blueprints (Interceptor→Cruiser→Dreadnought←→Starbase), Build ship-class upgrades anywhere (3 Mats), custom Military (-1..6 VP) & 6-slot Nano (4 VP) tech tracks, no Monoliths, and no immediate Ancient part equips.',
+      'Remnants of Ra (Sector 255 Osiris Seth): Starts with Plasma Cannon, 3 Mat / 3 Sci / 2 Money, 4:1 Trade, INF 2 (1 Colony Ship refresh); Power of the Ancients grants an extra Wild population slot in every controlled Artifact sector (including homeworld); Secrets of the Ancients awards +1 VP per controlled Artifact sector.',
     ],
   },
 ];
@@ -252,7 +253,10 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'atlantian' ||
     norm === 'mega_war_inc' ||
     norm === 'mega war inc' ||
-    norm === 'mega war inc.'
+    norm === 'mega war inc.' ||
+    norm === 'remnants_of_ra' ||
+    norm === 'remnants of ra' ||
+    norm === 'osiris seth'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }

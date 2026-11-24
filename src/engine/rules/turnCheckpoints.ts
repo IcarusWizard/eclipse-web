@@ -279,6 +279,10 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
     const idx = seatOfPlayerId(stateObj.pendingExilesOrbitalSetup.playerId);
     if (idx >= 0) return idx;
   }
+  if (stateObj.pendingRaArtifactSetup?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingRaArtifactSetup.playerId);
+    if (idx >= 0) return idx;
+  }
 
   // 2. Draft Phase
   if (stateObj.phase === 'DRAFT_PHASE' && stateObj.factionDraft) {

@@ -24,7 +24,8 @@ export type FactionId =
   | 'the_exiles'
   | 'rho_indi_syndicate'
   | 'atlantians'
-  | 'mega_war_inc';
+  | 'mega_war_inc'
+  | 'remnants_of_ra';
 
 export interface FactionInfo {
   readonly id: FactionId;

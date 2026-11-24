@@ -620,14 +620,30 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                       '必须先放置影响力圆片控制该星区，才能派遣殖民船进驻其中的居住位。'
                     )}
                   </div>
-                ) : sector.planets.length === 0 ? (
-                  <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs">
-                    {l(`There are no planetary habitats in Sector ${sector.sectorNumber}.`, `星区 ${sector.sectorNumber} 没有行星居住位。`)}
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                      {sector.planets.map((planet, pIdx) => {
+                ) : (() => {
+                  const conquestPlanets =
+                    winner.faction.id === 'remnants_of_ra' &&
+                    sector.hasArtifact &&
+                    willControl &&
+                    !sector.planets.some((p) => p.isRaArtifactSlot)
+                      ? [
+                          ...sector.planets,
+                          {
+                            id: `${sector.id}_ra_artifact_wild`,
+                            resource: 'any' as const,
+                            isAdvanced: false,
+                            isRaArtifactSlot: true,
+                          },
+                        ]
+                      : sector.planets;
+                  return conquestPlanets.length === 0 ? (
+                    <div className="p-3 rounded-lg bg-slate-900 border border-slate-800 text-slate-400 text-xs">
+                      {l(`There are no planetary habitats in Sector ${sector.sectorNumber}.`, `星区 ${sector.sectorNumber} 没有行星居住位。`)}
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                        {conquestPlanets.map((planet, pIdx) => {
                         const isColonized = !!planet.colonizedBy;
                         const isSelected = selectedPlanetIndices.includes(pIdx);
                         const check = canColonizePlanetSlot(winner, planet);
@@ -687,8 +703,10 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                               </div>
 
                               <div className="flex flex-col text-left min-w-0">
-                                <span className="font-bold text-xs capitalize text-slate-200 flex items-center gap-1.5">
-                                  {isOrb
+                                <span className="font-bold text-xs capitalize text-slate-200 flex items-center gap-1.5 flex-wrap">
+                                  {planet.isRaArtifactSlot
+                                    ? l('[A] Power of the Ancients', '[A] 先祖力场遗物格位')
+                                    : isOrb
                                     ? l('Orbital Station', '轨道站')
                                     : isWild
                                     ? l('Wild Habitat', '全能居住位')
@@ -808,7 +826,8 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                       })}
                     </div>
                   </div>
-                )}
+                  );
+                })()}
               </div>
             </>
           )}

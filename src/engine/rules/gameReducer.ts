@@ -52,7 +52,7 @@ import {
   MEGA_WAR_EXTERNAL_GROUPS,
 } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
-import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet } from './economyEngine';
+import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet, syncRemnantsOfRaArtifactWildSlots } from './economyEngine';
 import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } from '../types/galaxy';
 import { PlayerState } from '../types/player';
@@ -850,6 +850,16 @@ export function advanceTurnOrAutoPass(state: GameState, checkCurrentPlayerFirst:
   }
 }
 
+/**
+ * Returns true while any faction still needs to complete pre-game starting cube placement
+ * (The Exiles home Orbital or Remnants of Ra home Artifact [A] slot).
+ */
+export function hasPendingPreGameCubeSetup(
+  state: Pick<GameState, 'pendingExilesOrbitalSetup' | 'pendingRaArtifactSetup'>
+): boolean {
+  return Boolean(state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup);
+}
+
 export function validateAction(state: GameState, action: GameAction): { valid: boolean; error?: string } {
   if (action.type === 'SEND_CHAT') {
     const chatAct = action as SendChatAction;
@@ -868,11 +878,25 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return { valid: false, error: 'Player not found.' };
   }
 
-  // Pending Exiles orbital starting setup must be chosen before taking normal actions
-  if (state.pendingExilesOrbitalSetup && action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE') {
+  // Pending Exiles / Remnants of Ra starting setup choices must complete before taking normal actions
+  if (
+    state.pendingExilesOrbitalSetup &&
+    action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
+    action.type !== 'CHOOSE_RA_ARTIFACT_CUBE'
+  ) {
     return {
       valid: false,
       error: 'The Exiles commander must select their starting Orbital population cube before taking actions.',
+    };
+  }
+  if (
+    state.pendingRaArtifactSetup &&
+    action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
+    action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE'
+  ) {
+    return {
+      valid: false,
+      error: 'Remnants of Ra commander must select their starting Artifact [A] population cube before taking actions.',
     };
   }
 
@@ -912,6 +936,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'SELECT_BOMBARDMENT_TARGETS' &&
       action.type !== 'CHOOSE_POPULATION_RETURN_TRACK' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
+      action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'RETURN_AMBASSADOR_CUBE' &&
@@ -952,6 +977,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'SELECT_BOMBARDMENT_TARGETS' &&
       action.type !== 'CHOOSE_POPULATION_RETURN_TRACK' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
+      action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'RETURN_AMBASSADOR_CUBE' &&
@@ -1712,7 +1738,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
 
       const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
-      const maxMoveActivations = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxMoveActivations(player));
+      const maxMoveActivations = getEffectiveMoveActivationLimit(player, action.pulsarSectorId, isPassed);
       const hasWormholeGen = playerHasWormholeGenerator(player);
 
       // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed and Jump Drive
@@ -2345,8 +2371,22 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             error: `Cannot colonize ${action.colonizePlanetIndices.length} planets: only ${player.colonyShips.ready} colony ships ready.`,
           };
         }
+        const hasRaPreviewWild =
+          player.faction.id === 'remnants_of_ra' &&
+          Boolean(sector.hasArtifact) &&
+          willControl &&
+          !sector.planets.some((p) => p.isRaArtifactSlot);
         for (const pIdx of action.colonizePlanetIndices) {
-          const planet = sector.planets[pIdx];
+          const planet =
+            sector.planets[pIdx] ||
+            (hasRaPreviewWild && pIdx === sector.planets.length
+              ? {
+                  id: `${sector.id}_ra_artifact_wild`,
+                  resource: 'any' as const,
+                  isAdvanced: false,
+                  isRaArtifactSlot: true,
+                }
+              : undefined);
           if (!planet) return { valid: false, error: `Invalid planet index ${pIdx}.` };
           const check = canColonizePlanetSlot(player, planet);
           if (!check.canColonize) {
@@ -2741,6 +2781,22 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
       if (action.resource !== 'money' && action.resource !== 'science') {
         return { valid: false, error: 'Must choose either money or science cube.' };
+      }
+      return { valid: true };
+    }
+
+    case 'CHOOSE_RA_ARTIFACT_CUBE': {
+      if (!state.pendingRaArtifactSetup) {
+        return { valid: false, error: 'No pending Remnants of Ra Artifact setup.' };
+      }
+      if (state.pendingRaArtifactSetup.playerId !== action.playerId) {
+        return { valid: false, error: 'Only the Remnants of Ra commander can make this choice.' };
+      }
+      if (action.resource !== 'money' && action.resource !== 'science' && action.resource !== 'material') {
+        return { valid: false, error: 'Must choose a money, science, or material population cube.' };
+      }
+      if (player.population[action.resource].cubesOnBoard <= 0) {
+        return { valid: false, error: `No ${action.resource} population cubes remaining on track.` };
       }
       return { valid: true };
     }
@@ -3251,6 +3307,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     action.type !== 'SELECT_BOMBARDMENT_TARGETS' &&
     action.type !== 'CHOOSE_POPULATION_RETURN_TRACK' &&
     action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
+    action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
     action.type !== 'CLAIM_MINOR_SPECIES' &&
     action.type !== 'BETRAY_ALLIANCE' &&
     action.type !== 'RETURN_AMBASSADOR_CUBE'
@@ -4751,6 +4808,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         }
       }
 
+      // Power of the Ancients: ensure newly conquered Artifact sector exposes Ra's Wild slot before Step 2 colonization
+      syncRemnantsOfRaArtifactWildSlots([sector], newState.players);
+
       // 2. Colonization decision (only if player controls the sector)
       if (action.colonizePlanetIndices && action.colonizePlanetIndices.length > 0 && sector.discOwner === player.id) {
         for (const pIdx of action.colonizePlanetIndices) {
@@ -5684,6 +5744,35 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       return { success: true, newState };
     }
 
+    case 'CHOOSE_RA_ARTIFACT_CUBE': {
+      if (!newState.pendingRaArtifactSetup) {
+        return { success: false, newState: state, error: 'No pending Remnants of Ra Artifact setup.' };
+      }
+      const sector = newState.sectors.find((s) => s.id === newState.pendingRaArtifactSetup!.sectorId);
+      const planet = sector?.planets.find((p) => p.id === newState.pendingRaArtifactSetup!.planetId);
+      if (planet) {
+        const oldRes = planet.colonizedBy === player.id ? planet.colonizedResource : undefined;
+        if (oldRes && oldRes !== action.resource && (oldRes === 'money' || oldRes === 'science' || oldRes === 'material')) {
+          player.population[oldRes].cubesOnBoard = Math.min(11, player.population[oldRes].cubesOnBoard + 1);
+        }
+        if (oldRes !== action.resource) {
+          player.population[action.resource].cubesOnBoard = Math.max(
+            0,
+            player.population[action.resource].cubesOnBoard - 1
+          );
+        }
+        planet.colonizedBy = player.id;
+        planet.colonizedResource = action.resource;
+      }
+      newState.pendingRaArtifactSetup = null;
+      addLog(
+        `☀️ ${player.name} placed a ${action.resource.toUpperCase()} population cube on Osiris Seth’s [A] Artifact slot in Sector ${sector?.sectorNumber || 255} (Power of the Ancients).`,
+        'action'
+      );
+      triggerPendingAtlantiansStartingLabsDiscovery(newState);
+      return { success: true, newState };
+    }
+
     case 'CLAIM_MINOR_SPECIES': {
       const tileIndex = (newState.minorSpeciesSupply || []).findIndex((t) => t.id === action.speciesId);
       if (tileIndex === -1) {
@@ -5901,6 +5990,21 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
               playerId: exilePlayer.id,
               sectorId: homeSector.id,
               planetId: orbitalPlanet.id,
+            };
+          }
+        }
+
+        const raPlayer = newState.players.find((p) => p.faction.id === 'remnants_of_ra');
+        if (raPlayer) {
+          const homeSector = newState.sectors.find(
+            (s) => s.id === `home_sector_${raPlayer.id}` || s.sectorNumber === 255
+          );
+          const raPlanet = homeSector?.planets.find((p) => p.isRaArtifactSlot && !p.colonizedBy);
+          if (raPlanet && homeSector) {
+            newState.pendingRaArtifactSetup = {
+              playerId: raPlayer.id,
+              sectorId: homeSector.id,
+              planetId: raPlanet.id,
             };
           }
         }
@@ -6250,6 +6354,7 @@ export function executeAction(
   if (!result.success) return result;
 
   const newState = result.newState;
+  syncRemnantsOfRaArtifactWildSlots(newState.sectors, newState.players);
   if (state.members && (!newState.members || newState.members.length === 0)) {
     newState.members = state.members;
   }
@@ -8357,6 +8462,9 @@ export function computeCurrentScores(state: GameState): {
     } else if (p.faction.id === 'atlantians') {
       // Ancient Power: +1 VP for each discovery tile placed on a ship blueprint
       speciesBonus += getPlayerDiscoveryShipPartsCount(p);
+    } else if (p.faction.id === 'remnants_of_ra') {
+      // Secrets of the Ancients: +1 VP for each controlled sector with an artifact key
+      speciesBonus += controlledSectors.filter((s) => s.hasArtifact).length;
     }
 
     // 9. Traitor Tile Penalty (-2 VP)
@@ -8416,6 +8524,21 @@ export function getMaxMoveActivations(player: PlayerState): number {
   const base = player.faction.moveActivations ?? (player.faction.isHuman ? 3 : 2);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
   return base + (hasImprovedLogistics ? 1 : 0);
+}
+
+/**
+ * Computes effective Move activation count for the current UI/action context:
+ * Pulsar anomaly free Move and Reaction Move (when passed) allow only 1 ship activation.
+ */
+export function getEffectiveMoveActivationLimit(
+  player: PlayerState,
+  pulsarSectorId?: string | null,
+  isPassedOverride?: boolean
+): number {
+  if (pulsarSectorId || isPassedOverride || player.hasPassed) {
+    return 1;
+  }
+  return getMaxMoveActivations(player);
 }
 
 export function getMaxInfluenceActivations(player: PlayerState): number {

@@ -178,6 +178,9 @@ export function getPriorityActorId(state: GameState): string | null {
   if (state.pendingExilesOrbitalSetup) {
     return state.pendingExilesOrbitalSetup.playerId;
   }
+  if (state.pendingRaArtifactSetup) {
+    return state.pendingRaArtifactSetup.playerId;
+  }
   if (state.phase === 'DRAFT_PHASE' && state.factionDraft) {
     return state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] || null;
   }
@@ -342,6 +345,19 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
       resource: player.population.science.cubesOnBoard > 6 ? 'science' : 'money',
     };
   }
+  if (state.pendingRaArtifactSetup?.playerId === player.id) {
+    const tracks: ('science' | 'money' | 'material')[] = ['science', 'money', 'material'];
+    const bestTrack = tracks.reduce(
+      (best, cur) =>
+        player.population[cur].cubesOnBoard > player.population[best].cubesOnBoard ? cur : best,
+      'science'
+    );
+    return {
+      type: 'CHOOSE_RA_ARTIFACT_CUBE',
+      playerId: player.id,
+      resource: bestTrack,
+    };
+  }
   if (state.phase === 'DRAFT_PHASE' && state.factionDraft) {
     return handleDraftFaction(state, player);
   }
@@ -358,6 +374,9 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
 }
 
 function buildSafeFallbackAction(state: GameState, player: PlayerState): GameAction | null {
+  if (state.pendingRaArtifactSetup?.playerId === player.id) {
+    return { type: 'CHOOSE_RA_ARTIFACT_CUBE', playerId: player.id, resource: 'money' };
+  }
   if (state.pendingActionConfirmation?.playerId === player.id) {
     return { type: 'CONFIRM_TURN_ACTION', playerId: player.id };
   }

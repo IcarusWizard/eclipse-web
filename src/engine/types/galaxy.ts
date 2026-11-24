@@ -25,6 +25,7 @@ export interface PlanetSlot {
   readonly resource: PlanetResourceType;
   readonly isAdvanced: boolean; // Gray slot requiring Advanced Economy / Mining / Labs
   readonly isOrbital?: boolean; // Orbital structure slot
+  readonly isRaArtifactSlot?: boolean; // Power of the Ancients: Remnants of Ra bonus wild slot on controlled Artifact sectors
   colonizedBy?: string; // Player ID who has a population cube here
   colonizedResource?: 'money' | 'science' | 'material'; // Type of cube placed on this slot
   shrineOwner?: string; // Player ID who built a shrine next to this planet (Enlightened of Lyra)

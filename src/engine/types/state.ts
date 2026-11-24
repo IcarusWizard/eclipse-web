@@ -296,6 +296,7 @@ export interface GameState {
   pendingAmbassadorCubeReturns?: PendingAmbassadorCubeReturn[] | null;
   pendingPopulationReturnChoices?: PendingPopulationReturnChoice[] | null;
   pendingExilesOrbitalSetup?: { playerId: string; sectorId: string; planetId: string } | null;
+  pendingRaArtifactSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];
   sectorCombatRecords?: Record<string, {

@@ -275,6 +275,10 @@ const FACTION_ZH: Record<string, { name: string; trait?: string }> = {
     name: '巨战公司 (Mega War Inc.)',
     trait: '人类起源商业军工巨头：3 材料/3 科研/2 金钱开局；模块化联动蓝图（每次升级 1 格同步影响联动船型）；建造时可用 3 材料将任意星区（含敌方/牵制星区）的拦截舰升巡洋舰或巡洋舰升无畏舰；定制军事与 6 格纳米科技轨；禁用方尖碑且不可立即装配发现配件。',
   },
+  remnants_of_ra: {
+    name: '拉之余晖 (Remnants of Ra)',
+    trait: '先祖力场（Power of the Ancients）：在所有带遗物钥匙（Artifact）的受控星区（含母星 255 号奥西里斯赛特）额外获得 1 个可放置任意种类人口方块的万能槽位；先祖秘辛（Secrets of the Ancients）：终局每个受控遗物星区额外 +1 VP。开局自带等离子加农炮与标准蓝图，4:1 贸易，影响力每次仅翻正 1 艘殖民船。',
+  },
 };
 
 const EXPANSION_ZH: Record<string, { name: string; shortName: string }> = {

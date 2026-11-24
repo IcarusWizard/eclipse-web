@@ -643,6 +643,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
 
                 const isWild = planet.resource === 'any';
                 const isOrb = !!planet.isOrbital;
+                const isRaArt = Boolean(planet.isRaArtifactSlot);
 
                 const reqTechName = isWild
                   ? l('Adv Economy / Labs / Mining', '进阶经济 / 实验室 / 采矿')
@@ -669,7 +670,15 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                   sector.discOwner === activePlayer.id &&
                   activePlayer.colonyShips.ready > 0;
 
-                const resourceTheme = isOrb
+                const resourceTheme = isRaArt
+                  ? {
+                      name: l('Power of the Ancients ([A] Artifact Slot)', '先祖力场（[A] 遗物附加位）'),
+                      badge: 'bg-sky-400 text-slate-950 font-black',
+                      border: 'border-sky-500/70 bg-gradient-to-r from-sky-950/45 to-amber-950/25 ring-1 ring-amber-400/35',
+                      text: 'text-sky-200',
+                      icon: <span className="font-mono text-[11px] font-black text-sky-300">[A]</span>,
+                    }
+                  : isOrb
                   ? {
                       name: l('Orbital Habitat (Money or Science)', '轨道站栖息地（信用点或科研）'),
                       badge: 'bg-cyan-500 text-slate-950 font-extrabold',
@@ -739,6 +748,10 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                                 <Lock className="w-2.5 h-2.5 text-rose-400" /> {l(`Need ${reqTechName}`, `需要 ${reqTechName}`)}
                               </span>
                             )
+                          ) : isRaArt ? (
+                            <span className="text-[9px] px-1.5 py-0.2 rounded bg-sky-950/90 border border-sky-400/60 text-sky-200 uppercase font-mono">
+                              {l('Ra Artifact Bonus (Lost on Takeover)', 'Ra 遗物加成（易主失效）')}
+                            </span>
                           ) : (
                             <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800/80 text-slate-400 uppercase font-mono">
                               {isOrb ? l('Orbital', '轨道站') : isWild ? l('Wild', '任意') : l('Standard', '标准')}

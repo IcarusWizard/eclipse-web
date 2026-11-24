@@ -29977,7 +29977,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       const atl = game.players.find((p) => p.faction.id === 'atlantians')!;
       const home = game.sectors.find((s) => s.id === `home_sector_${atl.id}`)!;
 
-      expect(home.sectorNumber).toBe(241);
+      expect(home.sectorNumber).toBe(266);
       expect(home.hasArtifact).toBe(true);
       expect(home.planets.map((p) => `${p.resource}:${Boolean(p.isAdvanced)}`)).toEqual([
         'science:false',
@@ -30108,7 +30108,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(sheetHtml).toContain('/factions/atlantians.jpg');
       expect(sheetHtml).toContain('+1 UPG');
       expect(sheetHtml).toContain('data-testid="starting-tech-icon-ancient_labs"');
-      expect(sheetHtml).toContain('Sector 241');
+      expect(sheetHtml).toContain('Sector 266');
       expect(sheetHtml).toContain('Ancient Spirit');
       expect(sheetHtml).toContain('Ancient Instinct');
       expect(sheetHtml).toContain('Ancient Power');
@@ -30668,6 +30668,596 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       mwSimSide.blueprints.starbase!.slots[0] = SHIP_PARTS.nuclear_drive!;
       const simVal = validateSimulatorSide(mwSimSide, true);
       expect(simVal.isValid).toBe(false);
+    });
+
+    it('299. verifies Remnants of Ra community faction, Power of the Ancients extra wild planet in Artifact sectors, and Secrets of the Ancients scoring', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const {
+        ALL_FACTIONS,
+        isFactionAvailable,
+        getFactionReputationSlotTypes,
+      } = await import('../rules/setup');
+      const { syncRemnantsOfRaArtifactWildSlots } = await import('../rules/economyEngine');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { SectorInspector } = await import('../../components/map/SectorInspector');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+      const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+      const { RaArtifactSetupModal } = await import('../../components/setup/RaArtifactSetupModal');
+      const { computeBotAction } = await import('../ai/terranBot');
+
+      // 1. Expansion registration, stats, reputation slots, and activations
+      expect(getExpansionForItem('remnants_of_ra')?.id).toBe('community_factions');
+      expect(isFactionAvailable('remnants_of_ra', [])).toBe(false);
+      expect(isFactionAvailable('remnants_of_ra', ['community_factions'])).toBe(true);
+
+      const raFaction = ALL_FACTIONS.find((f) => f.id === 'remnants_of_ra')!;
+      expect(raFaction).toBeDefined();
+      expect(raFaction.startingSectorNumber).toBe(255);
+      expect(raFaction.startingResources).toEqual({ money: 2, science: 3, materials: 3 });
+      expect(raFaction.startingColonyShips).toBe(3);
+      expect(raFaction.startingTechIds).toEqual(['plasma_cannon']);
+      expect(raFaction.tradeRatio).toBe(4);
+      expect(raFaction.influenceColonyShipRefreshes).toBe(1);
+      expect(raFaction.exploreActivations).toBe(1);
+      expect(raFaction.researchActivations).toBe(1);
+      expect(raFaction.upgradeActivations).toBe(2);
+      expect(raFaction.buildActivations).toBe(2);
+      expect(raFaction.moveActivations).toBe(2);
+      expect(raFaction.influenceActivations).toBe(2);
+      expect(getFactionReputationSlotTypes(raFaction)).toEqual(['both', 'both', 'both', 'both']);
+
+      // 2. Game setup: Osiris Seth (Sector 255) has Artifact key, base 3 planets + Power of the Ancients bonus Wild planet
+      const game = createInitialGame(2, ['remnants_of_ra', 'terran_federation'], ['community_factions']);
+      const ra = game.players.find((p) => p.faction.id === 'remnants_of_ra')!;
+      const terran = game.players.find((p) => p.faction.id === 'terran_federation')!;
+      expect(ra).toBeDefined();
+      expect(terran).toBeDefined();
+      expect(ra.colonyShips).toEqual({ total: 3, ready: 3 });
+      expect(ra.techTrack.researched.map((t) => t.id)).toEqual(['plasma_cannon']);
+      expect(getInfluenceColonyShipRefreshes(ra)).toBe(1);
+
+      const osirisHome = game.sectors.find((s) => s.sectorNumber === 255)!;
+      expect(osirisHome).toBeDefined();
+      expect(osirisHome.name).toBe('Osiris Seth');
+      expect(osirisHome.hasArtifact).toBe(true);
+      expect(osirisHome.discOwner).toBe(ra.id);
+      expect(osirisHome.planets.length).toBe(4);
+      // Money planet starts colonized; material★, science★, and Ra artifact wild start uncolonized
+      expect(osirisHome.planets[2]!.resource).toBe('money');
+      expect(osirisHome.planets[2]!.colonizedBy).toBe(ra.id);
+      const homeWildIndex = osirisHome.planets.findIndex((p) => p.isRaArtifactSlot);
+      expect(homeWildIndex).toBe(3);
+      expect(osirisHome.planets[homeWildIndex]!.resource).toBe('any');
+      expect(osirisHome.planets[homeWildIndex]!.isAdvanced).toBe(false);
+      expect(osirisHome.planets[homeWildIndex]!.colonizedBy).toBeUndefined();
+
+      // 3. Before game start, Remnants of Ra must choose which initial cube to place on Sector 255's [A] slot (no Colony Ship spent)
+      expect(game.pendingRaArtifactSetup).toEqual({
+        playerId: ra.id,
+        sectorId: osirisHome.id,
+        planetId: osirisHome.planets[homeWildIndex]!.id,
+      });
+
+      // Bot helper picks CHOOSE_RA_ARTIFACT_CUBE when pendingRaArtifactSetup is set
+      const botRa = { ...ra, isBot: true };
+      const botChoice = computeBotAction({
+        ...game,
+        players: game.players.map((p) => (p.id === ra.id ? botRa : p)),
+      });
+      expect(botChoice?.type).toBe('CHOOSE_RA_ARTIFACT_CUBE');
+
+      // Normal actions blocked until starting [A] cube is selected
+      const blockedPass = executeAction(game, { type: 'PASS', playerId: ra.id });
+      expect(blockedPass.success).toBe(false);
+
+      // Render RaArtifactSetupModal SSR
+      const raSetupModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(RaArtifactSetupModal, {
+            player: ra,
+            onChooseCube: () => {},
+          })
+        )
+      );
+      expect(raSetupModalHtml).toContain('data-testid="ra-artifact-setup-modal"');
+      expect(raSetupModalHtml).toContain('data-testid="ra-setup-choose-money"');
+      expect(raSetupModalHtml).toContain('data-testid="ra-setup-choose-science"');
+      expect(raSetupModalHtml).toContain('data-testid="ra-setup-choose-material"');
+      expect(raSetupModalHtml).toContain('data-testid="ra-setup-confirm-btn"');
+
+      // Choose 'science' for the free starting Power of the Ancients cube
+      const chooseRaCube = executeAction(game, {
+        type: 'CHOOSE_RA_ARTIFACT_CUBE',
+        playerId: ra.id,
+        resource: 'science',
+      });
+      expect(chooseRaCube.success).toBe(true);
+      const afterHomeCol = chooseRaCube.newState;
+      expect(afterHomeCol.pendingRaArtifactSetup).toBeNull();
+      expect(
+        afterHomeCol.sectors.find((s) => s.id === osirisHome.id)!.planets[homeWildIndex]!.colonizedBy
+      ).toBe(ra.id);
+      expect(
+        afterHomeCol.sectors.find((s) => s.id === osirisHome.id)!.planets[homeWildIndex]!.colonizedResource
+      ).toBe('science');
+      expect(afterHomeCol.players.find((p) => p.id === ra.id)!.population.science.cubesOnBoard).toBe(10);
+      expect(afterHomeCol.players.find((p) => p.id === ra.id)!.colonyShips.ready).toBe(3);
+
+      // Draft completion also sets pendingRaArtifactSetup for Remnants of Ra
+      let draftState = createInitialGame(2, undefined, ['community_factions'], undefined, true);
+      const firstDrafterId = draftState.factionDraft!.draftOrder[0]!;
+      const secondDrafterId = draftState.factionDraft!.draftOrder[1]!;
+      draftState = executeAction(draftState, {
+        type: 'DRAFT_FACTION',
+        playerId: firstDrafterId,
+        factionId: 'remnants_of_ra',
+      }).newState;
+      draftState = executeAction(draftState, {
+        type: 'DRAFT_FACTION',
+        playerId: secondDrafterId,
+        factionId: 'terran_federation',
+      }).newState;
+      expect(draftState.pendingRaArtifactSetup?.playerId).toBe(firstDrafterId);
+
+      // Simultaneous Exiles + Remnants of Ra setup keeps action bar / actions blocked until BOTH choose
+      const { hasPendingPreGameCubeSetup } = await import('../rules/gameReducer');
+      const jointSetupState = createInitialGame(
+        2,
+        ['the_exiles', 'remnants_of_ra'],
+        ['outcasts', 'community_factions']
+      );
+      const jExiles = jointSetupState.players.find((p) => p.faction.id === 'the_exiles')!;
+      const jRa = jointSetupState.players.find((p) => p.faction.id === 'remnants_of_ra')!;
+      expect(hasPendingPreGameCubeSetup(jointSetupState)).toBe(true);
+      expect(executeAction(jointSetupState, { type: 'PASS', playerId: jExiles.id }).success).toBe(false);
+
+      // Exiles chooses first -> Ra still pending -> action bar / actions still blocked
+      const afterExilesChoice = executeAction(jointSetupState, {
+        type: 'CHOOSE_EXILES_ORBITAL_CUBE',
+        playerId: jExiles.id,
+        resource: 'money',
+      });
+      expect(afterExilesChoice.success).toBe(true);
+      expect(hasPendingPreGameCubeSetup(afterExilesChoice.newState)).toBe(true);
+      expect(executeAction(afterExilesChoice.newState, { type: 'PASS', playerId: jExiles.id }).success).toBe(false);
+
+      // Once Ra chooses too, pre-game setup gating clears cleanly
+      const afterBothChoices = executeAction(afterExilesChoice.newState, {
+        type: 'CHOOSE_RA_ARTIFACT_CUBE',
+        playerId: jRa.id,
+        resource: 'material',
+      });
+      expect(afterBothChoices.success).toBe(true);
+      expect(hasPendingPreGameCubeSetup(afterBothChoices.newState)).toBe(false);
+
+      // 4. Claiming an outer Artifact sector via INFLUENCE spawns its extra Wild planet & refreshes only 1 Colony Ship
+      const artSectorId = 'ra_test_art_sector';
+      const nonArtSectorId = 'ra_test_non_art_sector';
+      const stateWithTestSectors: GameState = {
+        ...afterHomeCol,
+        sectors: [
+          ...afterHomeCol.sectors,
+          {
+            id: artSectorId,
+            sectorNumber: 201,
+            ring: 2,
+            coord: { q: 2, r: 0 },
+            rotation: 0,
+            wormholes: [true, true, true, true, true, true],
+            planets: [{ id: 'art_p1', resource: 'material', isAdvanced: false }],
+            victoryPoints: 2,
+            hasArtifact: true,
+            hasDiscovery: false,
+            ancientsCount: 0,
+            ships: [{ id: 'ra_probe_1', type: 'interceptor', ownerId: ra.id, damage: 0 }],
+          },
+          {
+            id: nonArtSectorId,
+            sectorNumber: 202,
+            ring: 2,
+            coord: { q: 2, r: -1 },
+            rotation: 0,
+            wormholes: [true, true, true, true, true, true],
+            planets: [{ id: 'non_art_p1', resource: 'money', isAdvanced: false }],
+            victoryPoints: 1,
+            hasArtifact: false,
+            hasDiscovery: false,
+            ancientsCount: 0,
+            ships: [{ id: 'ra_probe_2', type: 'interceptor', ownerId: ra.id, damage: 0 }],
+          },
+        ],
+        players: afterHomeCol.players.map((p) =>
+          p.id === ra.id
+            ? { ...p, hasPassed: false, colonyShips: { total: 3, ready: 1 } }
+            : p
+        ),
+        activePlayerIndex: afterHomeCol.players.findIndex((p) => p.id === ra.id),
+      };
+
+      const claimRes = executeAction(stateWithTestSectors, {
+        type: 'INFLUENCE',
+        playerId: ra.id,
+        claimSectors: [artSectorId, nonArtSectorId],
+        refreshColonyShips: true,
+      });
+      expect(claimRes.success).toBe(true);
+      const afterClaim = claimRes.newState;
+      const claimedArt = afterClaim.sectors.find((s) => s.id === artSectorId)!;
+      const claimedNonArt = afterClaim.sectors.find((s) => s.id === nonArtSectorId)!;
+      expect(claimedArt.discOwner).toBe(ra.id);
+      expect(claimedArt.planets.some((p) => p.isRaArtifactSlot)).toBe(true);
+      expect(claimedArt.planets.length).toBe(2);
+      // Non-artifact sector must NOT receive extra wild planet
+      expect(claimedNonArt.discOwner).toBe(ra.id);
+      expect(claimedNonArt.planets.some((p) => p.isRaArtifactSlot)).toBe(false);
+      expect(claimedNonArt.planets.length).toBe(1);
+      // Remnants of Ra refreshes only 1 colony ship (1 -> 2, NOT 3)
+      expect(afterClaim.players.find((p) => p.id === ra.id)!.colonyShips.ready).toBe(2);
+
+      // 5. Colonize the Artifact sector's Ra Wild slot, verify Secrets of the Ancients scoring (+1 VP per controlled Artifact sector), then abandon
+      const artWildIdx = claimedArt.planets.findIndex((p) => p.isRaArtifactSlot);
+      afterClaim.activePlayerIndex = afterClaim.players.findIndex((p) => p.id === ra.id);
+      const colArtWild = executeAction(afterClaim, {
+        type: 'COLONIZE',
+        playerId: ra.id,
+        sectorId: artSectorId,
+        planetIndex: artWildIdx,
+        chosenResource: 'material',
+      });
+      expect(colArtWild.success).toBe(true);
+      const afterColArtWild = colArtWild.newState;
+
+      // Controls 2 Artifact sectors (Sector 255 Osiris Seth + Sector 201) -> Secrets of the Ancients +2 speciesBonus VP
+      const score2Art = computeCurrentScores(afterColArtWild);
+      expect(score2Art.scores[ra.id]!.speciesBonus).toBe(2);
+
+      // Abandon Artifact sector: Wild cube returns to chosen 'material' track & isRaArtifactSlot is stripped cleanly
+      const matCubesBeforeAbandon = afterColArtWild.players.find((p) => p.id === ra.id)!.population.material.cubesOnBoard;
+      const wildPlanetId = afterColArtWild.sectors.find((s) => s.id === artSectorId)!.planets[artWildIdx]!.id;
+      afterColArtWild.activePlayerIndex = afterColArtWild.players.findIndex((p) => p.id === ra.id);
+      const abandonArt = executeAction(afterColArtWild, {
+        type: 'INFLUENCE',
+        playerId: ra.id,
+        abandonSectors: [artSectorId],
+        abandonReturnTrack: { [wildPlanetId]: 'material' },
+      });
+      expect(abandonArt.success).toBe(true);
+      const afterAbandon = abandonArt.newState;
+      const abandonedArtSector = afterAbandon.sectors.find((s) => s.id === artSectorId)!;
+      expect(abandonedArtSector.discOwner).toBeUndefined();
+      expect(abandonedArtSector.planets.some((p) => p.isRaArtifactSlot)).toBe(false);
+      expect(abandonedArtSector.planets.length).toBe(1);
+      expect(afterAbandon.players.find((p) => p.id === ra.id)!.population.material.cubesOnBoard).toBe(
+        matCubesBeforeAbandon + 1
+      );
+      expect(computeCurrentScores(afterAbandon).scores[ra.id]!.speciesBonus).toBe(1);
+
+      // Non-Ra player (Terran) controlling an Artifact sector does NOT get isRaArtifactSlot
+      const terranSectors = [
+        {
+          ...abandonedArtSector,
+          discOwner: terran.id,
+          planets: [
+            ...abandonedArtSector.planets.map((p) => ({ ...p })),
+            { id: `${abandonedArtSector.id}_ra_artifact_wild`, resource: 'any' as const, isAdvanced: false, isRaArtifactSlot: true },
+          ],
+        },
+      ];
+      syncRemnantsOfRaArtifactWildSlots(terranSectors, afterAbandon.players);
+      expect(terranSectors[0]!.planets.some((p) => p.isRaArtifactSlot)).toBe(false);
+
+      // 6. COMBAT_CONQUEST claiming an Artifact sector with immediate colonization onto the newly spawned isRaArtifactSlot
+      const conquestArtId = 'ra_conquest_art_sector';
+      const conquestState: GameState = {
+        ...afterAbandon,
+        phase: 'COMBAT_PHASE',
+        sectors: [
+          ...afterAbandon.sectors,
+          {
+            id: conquestArtId,
+            sectorNumber: 205,
+            ring: 2,
+            coord: { q: 1, r: 1 },
+            rotation: 0,
+            wormholes: [true, true, true, true, true, true],
+            planets: [{ id: 'conq_p1', resource: 'money', isAdvanced: false }],
+            victoryPoints: 2,
+            hasArtifact: true,
+            hasDiscovery: false,
+            ancientsCount: 0,
+            ships: [{ id: 'ra_conq_cru_1', type: 'cruiser', ownerId: ra.id, damage: 0 }],
+          },
+        ],
+        pendingCombatConquest: {
+          sectorId: conquestArtId,
+          winnerPlayerId: ra.id,
+        },
+        players: afterAbandon.players.map((p) =>
+          p.id === ra.id ? { ...p, colonyShips: { total: 3, ready: 2 } } : p
+        ),
+        activePlayerIndex: afterAbandon.players.findIndex((p) => p.id === ra.id),
+      };
+      const conquestRes = executeAction(conquestState, {
+        type: 'COMBAT_CONQUEST',
+        playerId: ra.id,
+        sectorId: conquestArtId,
+        claimInfluence: true,
+        colonizePlanetIndices: [1], // Newly created isRaArtifactSlot at index 1
+        planetResourceChoices: { 1: 'money' },
+      });
+      expect(conquestRes.success).toBe(true);
+      const conqueredSec = conquestRes.newState.sectors.find((s) => s.id === conquestArtId)!;
+      expect(conqueredSec.discOwner).toBe(ra.id);
+      expect(conqueredSec.planets.length).toBe(2);
+      expect(conqueredSec.planets[1]!.isRaArtifactSlot).toBe(true);
+      expect(conqueredSec.planets[1]!.colonizedBy).toBe(ra.id);
+      expect(conqueredSec.planets[1]!.colonizedResource).toBe('money');
+      expect(computeCurrentScores(conquestRes.newState).scores[ra.id]!.speciesBonus).toBe(2);
+
+      // 7. UI SSR verification: FactionSheetCard, SectorInspector, and PhysicalPlayerBoardModal
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FactionSheetCard, { faction: raFaction })
+        )
+      );
+      expect(sheetHtml).toContain('Remnants of Ra');
+      expect(sheetHtml).toContain('Community Factions');
+      expect(sheetHtml).toContain('/factions/remnants_of_ra.jpg');
+      expect(sheetHtml).toContain('Sector 255');
+      expect(sheetHtml).toContain('1 Colony Ship');
+      expect(sheetHtml).toContain('title="Artifact Sector"');
+      expect(sheetHtml).toContain('Power of the Ancients');
+      expect(sheetHtml).toContain('Secrets of the Ancients');
+      expect(sheetHtml).not.toContain('Setup &amp; Tech:');
+      expect(sheetHtml).not.toContain('Imperial Logistics:');
+      expect(sheetHtml).toContain('data-testid="starting-tech-icon-plasma_cannon"');
+
+      const inspectorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(SectorInspector, {
+            sector: conqueredSec,
+            players: conquestRes.newState.players,
+            activePlayer: conquestRes.newState.players.find((p) => p.id === ra.id)!,
+            onClose: () => {},
+          })
+        )
+      );
+      expect(inspectorHtml).toContain('Power of the Ancients');
+      expect(inspectorHtml).toContain('Ra Artifact Bonus (Lost on Takeover)');
+
+      const mapHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(HexGalaxyMap, {
+            state: conquestRes.newState,
+            selectedSectorId: null,
+            onSelectSector: () => {},
+          })
+        )
+      );
+      expect(mapHtml).toContain('data-testid="ra-artifact-slot-255"');
+      expect(mapHtml).toContain('data-testid="ra-artifact-slot-205"');
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: conquestRes.newState.players.find((p) => p.id === ra.id)!,
+            players: conquestRes.newState.players,
+            activePlayerId: ra.id,
+            sectors: conquestRes.newState.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('Remnants of Ra');
+    });
+
+    it('300. restricts Pulsar free Move activation strictly to 1 ship activation in App/MoveModal and engine', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { getEffectiveMoveActivationLimit } = await import('../rules/gameReducer');
+      const { MoveModal } = await import('../../components/actions/MoveModal');
+
+      const game = createInitialGame(2, ['terran_federation', 'eridani_empire'], ['galactic_events']);
+      const p1 = game.players[0]!;
+      const p1Home = game.sectors.find((s) => s.id === `home_sector_${p1.id}`)!;
+
+      // Even a Terran player (normally 3 Move activations) is capped to 1 during Pulsar Move or Reaction
+      expect(getEffectiveMoveActivationLimit(p1)).toBe(3);
+      expect(getEffectiveMoveActivationLimit(p1, 'pulsar_sec_1')).toBe(1);
+      expect(getEffectiveMoveActivationLimit({ ...p1, hasPassed: true })).toBe(1);
+
+      const pulsarId = 'pulsar_test_move_cap';
+      const adjId = 'pulsar_adj_dest';
+      const testState: GameState = {
+        ...game,
+        sectors: [
+          ...game.sectors,
+          {
+            id: pulsarId,
+            sectorNumber: 310,
+            ring: 1,
+            coord: { q: 1, r: 0 },
+            rotation: 0,
+            wormholes: [true, true, true, true, true, true],
+            planets: [],
+            victoryPoints: 1,
+            hasArtifact: false,
+            hasDiscovery: false,
+            ancientsCount: 0,
+            isPulsar: true,
+            pulsarSlot: 'build',
+            discOwner: p1.id,
+            ships: [
+              { id: 'pm_ship_1', type: 'interceptor', ownerId: p1.id, damage: 0 },
+              { id: 'pm_ship_2', type: 'interceptor', ownerId: p1.id, damage: 0 },
+            ],
+          },
+          {
+            id: adjId,
+            sectorNumber: 101,
+            ring: 1,
+            coord: { q: 1, r: -1 },
+            rotation: 0,
+            wormholes: [true, true, true, true, true, true],
+            planets: [],
+            victoryPoints: 1,
+            hasArtifact: false,
+            hasDiscovery: false,
+            ancientsCount: 0,
+            ships: [],
+          },
+        ],
+        galacticEvents: {
+          ...game.galacticEvents!,
+          pulsars: {
+            [pulsarId]: { currentSlot: 'build', activatedThisRound: false },
+          },
+        },
+        activePlayerIndex: 0,
+      };
+
+      // Engine rejects attempting to move 2 ships on a Pulsar free Move activation
+      const twoShipPulsarMove = executeAction(testState, {
+        type: 'MOVE',
+        playerId: p1.id,
+        pulsarSectorId: pulsarId,
+        moves: [
+          { shipId: 'pm_ship_1', fromSectorId: pulsarId, toSectorId: adjId, activationIndex: 0 },
+          { shipId: 'pm_ship_2', fromSectorId: pulsarId, toSectorId: adjId, activationIndex: 1 },
+        ],
+      });
+      expect(twoShipPulsarMove.success).toBe(false);
+      expect(twoShipPulsarMove.error).toContain('more than 1');
+
+      // Moving 1 ship succeeds and deducts 0 influence discs
+      const discsBefore = testState.players[0]!.influenceTrack.discsOnTrack;
+      const oneShipPulsarMove = executeAction(testState, {
+        type: 'MOVE',
+        playerId: p1.id,
+        pulsarSectorId: pulsarId,
+        moves: [
+          { shipId: 'pm_ship_1', fromSectorId: pulsarId, toSectorId: adjId, activationIndex: 0 },
+        ],
+      });
+      expect(oneShipPulsarMove.success).toBe(true);
+      expect(oneShipPulsarMove.newState.players[0]!.influenceTrack.discsOnTrack).toBe(discsBefore);
+      expect(oneShipPulsarMove.newState.galacticEvents?.pulsars[pulsarId]?.activatedThisRound).toBe(true);
+
+      // MoveModal with pulsarSectorId locks out 2nd ship selection once activation 1 is used
+      const pulsarSec = testState.sectors.find((s) => s.id === pulsarId)!;
+      const adjSec = testState.sectors.find((s) => s.id === adjId)!;
+      const modalDoneHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MoveModal, {
+            player: p1,
+            sectors: testState.sectors,
+            playerShips: [
+              { ship: { id: 'pm_ship_1', type: 'interceptor', ownerId: p1.id, damage: 0 }, initialSector: pulsarSec },
+              { ship: { id: 'pm_ship_2', type: 'interceptor', ownerId: p1.id, damage: 0 }, initialSector: p1Home },
+            ],
+            simulatedShipSector: new Map([
+              ['pm_ship_1', adjSec],
+              ['pm_ship_2', p1Home],
+            ]),
+            connectedDestinations: [pulsarSec],
+            plannedMoves: [
+              {
+                id: 'm1',
+                shipId: 'pm_ship_1',
+                shipType: 'interceptor',
+                fromSectorId: pulsarId,
+                fromSectorNumber: 310,
+                toSectorId: adjId,
+                toSectorNumber: 101,
+                activationIndex: 0,
+                driveSpeed: 1,
+              },
+            ],
+            activeActivationIndex: 1,
+            currentShipDriveSpeed: 1,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: 'pm_ship_1',
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+            pulsarSectorId: pulsarId,
+          })
+        )
+      );
+      expect(modalDoneHtml).toContain('1 Ship Limit');
+      expect(modalDoneHtml).toContain('1 / 1 Activations');
+      expect(modalDoneHtml).toContain('All 1 Move activations planned');
+
+      // When Ship 1 has started moving (step 1 of multi-step activationIndex 0) under Pulsar, Ship 2 is disabled in Fleet switcher
+      const modalMidActHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MoveModal, {
+            player: p1,
+            sectors: testState.sectors,
+            playerShips: [
+              { ship: { id: 'pm_ship_1', type: 'interceptor', ownerId: p1.id, damage: 0 }, initialSector: pulsarSec },
+              { ship: { id: 'pm_ship_2', type: 'interceptor', ownerId: p1.id, damage: 0 }, initialSector: pulsarSec },
+            ],
+            simulatedShipSector: new Map([
+              ['pm_ship_1', adjSec],
+              ['pm_ship_2', pulsarSec],
+            ]),
+            connectedDestinations: [pulsarSec],
+            plannedMoves: [
+              {
+                id: 'm1',
+                shipId: 'pm_ship_1',
+                shipType: 'interceptor',
+                fromSectorId: pulsarId,
+                fromSectorNumber: 310,
+                toSectorId: adjId,
+                toSectorNumber: 101,
+                activationIndex: 0,
+                driveSpeed: 2,
+              },
+            ],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 2,
+            movePointsUsedInCurrentActivation: 1,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: 'pm_ship_1',
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+            pulsarSectorId: pulsarId,
+          })
+        )
+      );
+      expect(modalMidActHtml).toContain('1-activation Move locked to the ship already moving');
     });
   });
 });

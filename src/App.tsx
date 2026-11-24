@@ -6,6 +6,7 @@ import { createInitialGame } from './engine/rules/setup';
 import {
   executeAction,
   getMaxMoveActivations,
+  getEffectiveMoveActivationLimit,
   computePinningState,
   computeReachableMoveDestinations,
   ReachableMoveOption,
@@ -14,6 +15,7 @@ import {
   getPlayerHumanName,
   getPlayerDisplayName,
   getFactionDisplayColor,
+  hasPendingPreGameCubeSetup,
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
@@ -46,6 +48,7 @@ import { NewGameModal } from './components/setup/NewGameModal';
 import { FactionDraftModal } from './components/setup/FactionDraftModal';
 import { PulsarModal } from './components/actions/PulsarModal';
 import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupModal';
+import { RaArtifactSetupModal } from './components/setup/RaArtifactSetupModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { ExploreSectorControlModal } from './components/actions/ExploreSectorControlModal';
 import { BlackHoleReturnModal } from './components/actions/BlackHoleReturnModal';
@@ -308,6 +311,8 @@ const AppContent: React.FC = () => {
     state.pendingReputationDraw,
     state.pendingDiplomacyProposal,
     state.pendingActionConfirmation,
+    state.pendingExilesOrbitalSetup,
+    state.pendingRaArtifactSetup,
     isBuildOpen,
     isMoveOpen,
     isInfluenceOpen,
@@ -718,9 +723,11 @@ const AppContent: React.FC = () => {
     state.pendingExplore && canActForPlayer(state.pendingExplore.playerId)
   );
 
-  // Block side-panel/map actions & diplomacy while waiting on a proposal or resolving a mid-action modal step (Explore preview, Discovery, Sector Control, etc.)
+  // Block side-panel/map actions & diplomacy while waiting on a proposal, pre-game setup cube choice, or mid-action modal step
+  const hasPendingPreGameSetup = hasPendingPreGameCubeSetup(state);
   const isActionsLocked =
     isTurnGated ||
+    hasPendingPreGameSetup ||
     Boolean(state.pendingDiplomacyProposal) ||
     Boolean(state.pendingExplore) ||
     Boolean(state.pendingDiscovery) ||
@@ -828,6 +835,10 @@ const AppContent: React.FC = () => {
       offTurnDecisionKey = `rep_draw:${state.pendingReputationDraw?.sectorId || state.pendingReputationDrawQueue?.[0]?.sectorId || 'rep'}`;
     } else if (state.pendingBankruptcy && (currentSeat === 'all' || state.pendingBankruptcy.playerId === myId)) {
       offTurnDecisionKey = `bankruptcy:${state.pendingBankruptcy.playerId}`;
+    } else if (state.pendingExilesOrbitalSetup && (currentSeat === 'all' || state.pendingExilesOrbitalSetup.playerId === myId)) {
+      offTurnDecisionKey = `exiles_setup:${state.pendingExilesOrbitalSetup.playerId}`;
+    } else if (state.pendingRaArtifactSetup && (currentSeat === 'all' || state.pendingRaArtifactSetup.playerId === myId)) {
+      offTurnDecisionKey = `ra_setup:${state.pendingRaArtifactSetup.playerId}`;
     } else if (state.isDraftMode && state.factionDraft && (currentSeat === 'all' || state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] === myId)) {
       offTurnDecisionKey = `draft:${state.factionDraft.currentDraftIndex}`;
     }
@@ -866,6 +877,8 @@ const AppContent: React.FC = () => {
     state.pendingReputationDraw,
     state.pendingReputationDrawQueue,
     state.pendingBankruptcy,
+    state.pendingExilesOrbitalSetup,
+    state.pendingRaArtifactSetup,
     state.isDraftMode,
     state.factionDraft,
   ]);
@@ -2107,7 +2120,7 @@ const AppContent: React.FC = () => {
     return pinningState.isShipPinned(shipId);
   };
 
-  const maxMoves = getMaxMoveActivations(activePlayer);
+  const maxMoves = getEffectiveMoveActivationLimit(activePlayer, activePulsarSectorId);
 
   const currentMoveShip = playerShips.find((p) => p.ship.id === selectedMoveShipId)?.ship;
   const currentSimSector = simulatedShipSector.get(selectedMoveShipId);
@@ -2229,18 +2242,21 @@ const AppContent: React.FC = () => {
     const totalStepsUsed = baseStepNumber + newMoves.length;
 
     if (isPinnedInDest || isBlackHoleTerminated || totalStepsUsed >= currentShipMaxSteps) {
-      setActiveActivationIndex((prev) => prev + 1);
-      // Auto-select next unpinned movable ship if available for next activation
-      const nextMovable = playerShips.find((ps) => {
-        if (ps.ship.id === currentMoveShip.id) return false;
-        if (nextPinningState.isShipPinned(ps.ship.id)) return false;
-        const bp = activePlayer.blueprints[ps.ship.type];
-        const stats = bp ? calculateBlueprintStats(bp) : null;
-        const spd = (stats ? stats.totalDriveSpeed : 1) + (stats?.hasJumpDrive ? 1 : 0);
-        return spd > 0;
-      });
-      if (nextMovable) {
-        setSelectedMoveShipId(nextMovable.ship.id);
+      const nextActIdx = activeActivationIndex + 1;
+      setActiveActivationIndex(nextActIdx);
+      // Auto-select next unpinned movable ship only if additional activations remain
+      if (nextActIdx < maxMoves) {
+        const nextMovable = playerShips.find((ps) => {
+          if (ps.ship.id === currentMoveShip.id) return false;
+          if (nextPinningState.isShipPinned(ps.ship.id)) return false;
+          const bp = activePlayer.blueprints[ps.ship.type];
+          const stats = bp ? calculateBlueprintStats(bp) : null;
+          const spd = (stats ? stats.totalDriveSpeed : 1) + (stats?.hasJumpDrive ? 1 : 0);
+          return spd > 0;
+        });
+        if (nextMovable) {
+          setSelectedMoveShipId(nextMovable.ship.id);
+        }
       }
     }
   };
@@ -2253,7 +2269,11 @@ const AppContent: React.FC = () => {
 
   const handleSelectMoveShipId = (shipId: string) => {
     if (shipId === selectedMoveShipId) return;
+    if (activeActivationIndex >= maxMoves) return;
     if (currentActivationMoves.length > 0) {
+      if (activeActivationIndex + 1 >= maxMoves) {
+        return;
+      }
       // Switching ships completes the in-progress activation early
       setActiveActivationIndex((prev) => prev + 1);
     }
@@ -3089,6 +3109,26 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // Remnants of Ra Starting Artifact [A] Population Cube Selection (Power of the Ancients)
+  const handleChooseRaArtifactCube = (resource: 'money' | 'science' | 'material') => {
+    if (!state.pendingRaArtifactSetup) return;
+    if (!canActForPlayer(state.pendingRaArtifactSetup.playerId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'CHOOSE_RA_ARTIFACT_CUBE',
+      playerId: state.pendingRaArtifactSetup.playerId,
+      resource,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(`Osiris Seth [A] Artifact slot populated with a ${resource.toUpperCase()} cube.`);
+    } else {
+      showToast(res.error || 'Failed to place starting Artifact population cube.');
+    }
+  };
+
   // Auto-Resolve Combat (per-player opt-in; finishes full battle when PvE or when all human combatants enable it)
   const handleAutoResolveCombat = (targetPlayerId?: string) => {
     if (isSpectator) {
@@ -3798,8 +3838,9 @@ const AppContent: React.FC = () => {
           </div>
         )}
 
-        {/* Action Bar (Bottom-Center) - Hidden during exploration, building, moving, influence, or pending diplomacy so command dock/waiting state takes focus */}
+        {/* Action Bar (Bottom-Center) - Hidden during pre-game Exiles/Ra setup choices, exploration, building, moving, influence, or pending diplomacy */}
         {state.phase === 'ACTION_PHASE' &&
+          !hasPendingPreGameSetup &&
           !pendingExploreCoords &&
           !state.pendingDiscovery &&
           !state.pendingExploreControl &&
@@ -4193,6 +4234,34 @@ const AppContent: React.FC = () => {
                 {state.players.find((p) => p.id === state.pendingExilesOrbitalSetup!.playerId)?.name || 'The Exiles'}
               </strong>{' '}
               is choosing starting Orbital population cube...
+            </span>
+          </div>
+        )
+      )}
+
+      {state.pendingRaArtifactSetup &&
+        !(
+          state.pendingExilesOrbitalSetup &&
+          canActForPlayer(state.pendingExilesOrbitalSetup.playerId) &&
+          canActForPlayer(state.pendingRaArtifactSetup.playerId)
+        ) && (
+        canActForPlayer(state.pendingRaArtifactSetup.playerId) ? (
+          <RaArtifactSetupModal
+            player={
+              state.players.find((p) => p.id === state.pendingRaArtifactSetup!.playerId) ||
+              activePlayer
+            }
+            onChooseCube={handleChooseRaArtifactCube}
+          />
+        ) : (
+          <div className={`fixed ${state.pendingExilesOrbitalSetup && !canActForPlayer(state.pendingExilesOrbitalSetup.playerId) ? 'bottom-32' : 'bottom-20'} left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-pink-700/80 px-4 py-2 rounded-xl text-xs text-slate-300 shadow-xl backdrop-blur-md flex items-center gap-2`}>
+            <span className="w-2 h-2 rounded-full bg-pink-400 animate-pulse" />
+            <span>
+              Commander{' '}
+              <strong className="text-pink-300">
+                {state.players.find((p) => p.id === state.pendingRaArtifactSetup!.playerId)?.name || 'Remnants of Ra'}
+              </strong>{' '}
+              is choosing starting [A] Artifact population cube...
             </span>
           </div>
         )

@@ -227,6 +227,11 @@ export function abandonSectorForUpkeep(
     }
   }
 
+  // Power of the Ancients: remove Remnants of Ra bonus wild slot upon losing control
+  if (sector.planets.some((p) => p.isRaArtifactSlot)) {
+    sector.planets = sector.planets.filter((p) => !p.isRaArtifactSlot);
+  }
+
   if (updatedPlayer.faction.id === 'the_exiles') {
     sector.ships = sector.ships.filter((s) => !(s.ownerId === updatedPlayer.id && s.type === 'orbital'));
   }
@@ -489,6 +494,40 @@ export function getPlayerTechRows(player: PlayerState): PlayerTechRows {
     nano: getRowStats('nano', nanoTechs),
     rare: rareTechs,
   };
+}
+
+/**
+ * Power of the Ancients (Remnants of Ra):
+ * Synchronizes every sector so that any Artifact sector controlled by a Remnants of Ra player
+ * exposes an extra standard Wild planet slot (`isRaArtifactSlot`), while sectors no longer controlled
+ * by Remnants of Ra remove any uncolonized `isRaArtifactSlot`.
+ */
+export function syncRemnantsOfRaArtifactWildSlots(
+  sectors: SectorTile[],
+  players: PlayerState[]
+): void {
+  const raPlayerIds = new Set(
+    players.filter((p) => p.faction?.id === 'remnants_of_ra').map((p) => p.id)
+  );
+
+  for (const sector of sectors) {
+    const ownedByRa = Boolean(
+      sector.hasArtifact && sector.discOwner && raPlayerIds.has(sector.discOwner)
+    );
+    const existingIdx = sector.planets.findIndex((p) => p.isRaArtifactSlot);
+
+    if (ownedByRa && existingIdx === -1) {
+      sector.planets.push({
+        id: `${sector.id}_ra_artifact_wild`,
+        resource: 'any',
+        isAdvanced: false,
+        isRaArtifactSlot: true,
+      });
+    } else if (!ownedByRa && existingIdx !== -1) {
+      // Remove orphan bonus wild slot when control leaves Remnants of Ra
+      sector.planets = sector.planets.filter((p) => !p.isRaArtifactSlot || Boolean(p.colonizedBy));
+    }
+  }
 }
 
 export interface IncomeForecast {

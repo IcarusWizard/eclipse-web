@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
-import { getMaxMoveActivations, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
+import { getEffectiveMoveActivationLimit, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { areSectorsConnected, getEdgeBetween } from '../../engine/rules/hexMath';
 import { getNebulaSubsectorForOuterEdge } from '../../engine/rules/galacticEvents';
@@ -92,7 +92,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
 }) => {
   const { language, l } = useLanguage();
   const isPulsarActive = Boolean(pulsarSectorId);
-  const maxMoves = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxMoveActivations(player));
+  const maxMoves = getEffectiveMoveActivationLimit(player, pulsarSectorId);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
   const hasWormholeGen = playerHasWormholeGenerator(player);
 
@@ -429,19 +429,22 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                       const shipSpeed = shipStats ? shipStats.totalDriveSpeed : 0;
                       const pinned = isShipPinned(item.ship.id);
                       const isStarbase = item.ship.type === 'starbase' || shipSpeed <= 0;
+                      const activeActHasMoves =
+                        (activationGroups.find(([idx]) => idx === activeActivationIndex)?.[1].length ?? 0) > 0;
+                      const lockedToMovingShip = !isSel && activeActHasMoves && activeActivationIndex + 1 >= maxMoves;
 
                       return (
                         <button
                           key={item.ship.id}
                           type="button"
-                          disabled={pinned || isStarbase}
+                          disabled={pinned || isStarbase || lockedToMovingShip}
                           onClick={() => onSelectShipId(item.ship.id)}
                           className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 ${
                             isSel
                               ? 'bg-cyan-500 text-slate-950 shadow-sm'
                               : pinned
                               ? 'bg-rose-950/50 border border-rose-900/60 text-rose-400 opacity-60 cursor-not-allowed'
-                              : isStarbase
+                              : isStarbase || lockedToMovingShip
                               ? 'bg-slate-900 border border-slate-800 text-slate-500 opacity-50 cursor-not-allowed'
                               : 'bg-slate-900 border border-slate-700 text-slate-300 hover:border-slate-500'
                           }`}
@@ -450,6 +453,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                               ? l('Ship is pinned by hostile forces and cannot move', '飞船被敌方牵制，无法移动')
                               : isStarbase
                               ? l('Starbases have Drive Speed 0 and cannot move', '星际基地航速为 0，无法移动')
+                              : lockedToMovingShip
+                              ? l('1-activation Move locked to the ship already moving — undo move to pick another ship', '单次移动激活已锁定当前移动飞船 — 请先撤销后再选其他飞船')
                               : l(`Select ${item.ship.type} (Speed ${shipSpeed})`, `选择${translateShipType(item.ship.type, language)}（航速 ${shipSpeed}）`)
                           }
                         >
