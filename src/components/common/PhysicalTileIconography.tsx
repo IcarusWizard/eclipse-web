@@ -49,48 +49,53 @@ export const LightningPip: React.FC<{
 );
 
 // ============================================================================
-// 3. INITIATIVE CHEVRONS BADGE (Physical ^ / ^^ / ^^^ + numeric indicator)
-// Compact horizontal corner badge so it never covers numbers in square slots
+// 3. INITIATIVE CHEVRONS BADGE (Physical vertically stacked ^ / ^^ / ^^^)
+// Pure stacked chevrons without numeric text so corner badges never overlap
 // ============================================================================
 export const InitiativeBadge: React.FC<{
   init: number;
-  size?: 'sm' | 'md';
+  size?: 'xs' | 'sm' | 'md';
   className?: string;
 }> = ({ init, size = 'md', className = '' }) => {
   if (init === 0) return null;
   const absInit = Math.abs(init);
   const isPositive = init > 0;
+  const chevronCount = Math.min(absInit, 3);
+  const paddingClass =
+    size === 'xs'
+      ? 'px-0.5 py-[1px] -space-y-[2px]'
+      : size === 'sm'
+      ? 'px-[3px] py-0.5 -space-y-[2px]'
+      : 'px-1 py-0.5 -space-y-0.5';
+  const svgW = size === 'xs' ? 7 : size === 'sm' ? 8 : 11;
+  const svgH = size === 'xs' ? 4.5 : size === 'sm' ? 5 : 6.5;
 
   return (
     <div
       title={`${isPositive ? `+${init}` : init} Initiative`}
-      className={`inline-flex items-center gap-0.5 px-1 py-0.5 rounded-[3px] bg-slate-950/95 border ${
+      data-initiative-arrows={chevronCount}
+      className={`inline-flex flex-col items-center justify-center ${paddingClass} rounded-[3px] bg-slate-950/95 border ${
         isPositive ? 'border-amber-400/80 text-amber-300' : 'border-rose-500/80 text-rose-400'
       } shadow-xs select-none shrink-0 ${className}`}
       style={{ lineHeight: 1 }}
     >
-      <div className="flex -space-x-0.5 items-center">
-        {Array.from({ length: Math.min(absInit, 3) }).map((_, i) => (
-          <svg
-            key={i}
-            width={size === 'sm' ? 6 : 7.5}
-            height={size === 'sm' ? 5 : 6}
-            viewBox="0 0 12 7"
-            fill="none"
-          >
-            <path
-              d={isPositive ? 'M1 6L6 1.5L11 6' : 'M1 1L6 5.5L11 1'}
-              stroke="currentColor"
-              strokeWidth="2.4"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            />
-          </svg>
-        ))}
-      </div>
-      <span className={`${size === 'sm' ? 'text-[8.5px]' : 'text-[10.5px]'} font-mono font-black leading-none`}>
-        {isPositive ? `+${init}` : init}
-      </span>
+      {Array.from({ length: chevronCount }).map((_, i) => (
+        <svg
+          key={i}
+          width={svgW}
+          height={svgH}
+          viewBox="0 0 12 7"
+          fill="none"
+        >
+          <path
+            d={isPositive ? 'M1.5 5.8L6 1.4L10.5 5.8' : 'M1.5 1.2L6 5.6L10.5 1.2'}
+            stroke="currentColor"
+            strokeWidth="2.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      ))}
     </div>
   );
 };
@@ -102,25 +107,29 @@ export const InitiativeBadge: React.FC<{
 export const PowerCostBadge: React.FC<{
   cost: number;
   position?: 'top-right' | 'bottom-right' | 'inline';
-  size?: 'sm' | 'md';
+  size?: 'xs' | 'sm' | 'md';
   className?: string;
 }> = ({ cost, position = 'inline', size = 'md', className = '' }) => {
   if (cost <= 0) return null;
 
+  const isXs = size === 'xs';
   const positionClasses =
     position === 'top-right'
-      ? 'absolute top-1.5 right-1.5 z-10'
+      ? isXs || size === 'sm'
+        ? 'absolute top-0.5 right-0.5 z-20'
+        : 'absolute top-1.5 right-1.5 z-10'
       : position === 'bottom-right'
       ? 'absolute bottom-1.5 right-1.5 z-10'
       : '';
 
-  const boltSize = size === 'sm' ? 10 : 12;
-  const numSize = size === 'sm' ? 'text-[9.5px]' : 'text-[11px]';
+  const paddingClasses = isXs ? 'px-1 py-[1px] gap-[1px]' : size === 'sm' ? 'px-1 py-0.5 gap-0.5' : 'px-1.5 py-0.5 gap-0.5';
+  const boltSize = isXs ? 8 : size === 'sm' ? 10 : 12;
+  const numSize = isXs ? 'text-[8px]' : size === 'sm' ? 'text-[9.5px]' : 'text-[11px]';
 
   return (
     <div
       title={`Consumes ${cost} Energy`}
-      className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-slate-950/95 border border-amber-500/80 shadow-lg shadow-black/80 backdrop-blur-xs select-none ${positionClasses} ${className}`}
+      className={`flex items-center ${paddingClasses} rounded-full bg-slate-950/95 border border-amber-500/80 shadow-lg shadow-black/80 backdrop-blur-xs select-none ${positionClasses} ${className}`}
     >
       {cost === 1 ? (
         <LightningPip size={boltSize} color="#fbbf24" />
@@ -501,10 +510,10 @@ export const DriveGraphic: React.FC<{
 }> = ({ speed, init = 0, powerProduced = 0, isJump = false, size = 'md', className = '' }) => {
   const isDual = powerProduced > 0;
   const hexDim = isDual
-    ? size === 'sm' ? 14 : size === 'lg' ? 26 : 18
+    ? size === 'sm' ? 13 : size === 'lg' ? 26 : 18
     : size === 'sm' ? 17 : size === 'lg' ? 26 : 21;
   const boltDim = isDual
-    ? size === 'sm' ? 14 : size === 'lg' ? 26 : 18
+    ? size === 'sm' ? 13 : size === 'lg' ? 26 : 18
     : 0;
   const numClass = isDual
     ? size === 'sm' ? 'text-xs font-black' : size === 'lg' ? 'text-lg font-black' : 'text-sm font-black'
@@ -584,7 +593,13 @@ export const DriveGraphic: React.FC<{
           </svg>
         </div>
       ) : (
-        <div className="flex items-center gap-1.5 sm:gap-2">
+        <div
+          className={
+            isDual
+              ? `flex flex-col items-center justify-center ${size === 'lg' ? 'gap-1' : 'gap-0.5'}`
+              : 'flex items-center'
+          }
+        >
           {/* Speed Number + Hexagon */}
           <div className="flex items-center gap-1">
             <span
@@ -1715,22 +1730,18 @@ export const ShipPartTileIconography: React.FC<{
   size?: 'sm' | 'md' | 'lg';
   className?: string;
 }> = ({ part, compact = false, size, className = '' }) => {
-  const isReactor =
-    part.category === 'reactor' ||
-    (part.powerProduced > 0 && part.category !== 'drive' && part.category !== 'shield');
-
   const effectiveSize: 'sm' | 'md' | 'lg' = size || (compact ? 'sm' : 'md');
   const sizeDims =
     effectiveSize === 'sm'
-      ? 'w-14 h-14 p-1'
+      ? 'w-14 h-14'
       : effectiveSize === 'lg'
-      ? 'w-24 h-24 sm:w-28 sm:h-28 p-2.5'
-      : 'w-18 h-18 sm:w-20 sm:h-20 p-2';
+      ? 'w-24 h-24 sm:w-28 sm:h-28'
+      : 'w-16 h-16 sm:w-[72px] sm:h-[72px]';
 
   return (
     <div
       title={getPartTooltip(part)}
-      className={`relative aspect-square ${sizeDims} mx-auto rounded-xl bg-gradient-to-b from-slate-800/90 via-slate-900 to-slate-950 border border-slate-700/90 flex items-center justify-center overflow-hidden shadow-md shadow-black/60 select-none ${className}`}
+      className={`relative aspect-square ${sizeDims} mx-auto rounded-xl bg-gradient-to-b from-slate-800/90 via-slate-900 to-slate-950 border border-slate-700/90 overflow-hidden shadow-md shadow-black/60 select-none ${className}`}
     >
       {/* Subtle Horizontal Scanline Texture matching physical tiles */}
       <div
@@ -1740,88 +1751,13 @@ export const ShipPartTileIconography: React.FC<{
         }}
       />
 
-      {/* Top-Left: Initiative Badge for ship parts granting Initiative */}
-      {part.initiativeBonus !== 0 && (
-        <div className="absolute top-0.5 left-0.5 z-20 select-none pointer-events-none">
-          <InitiativeBadge init={part.initiativeBonus} size={effectiveSize === 'lg' ? 'md' : 'sm'} />
-        </div>
-      )}
-
-      {/* Centered Wordless Graphic Body */}
-      <div className="relative z-10 flex items-center justify-center w-full">
-        {isReactor ? (
-          <ReactorPowerGraphic
-            power={part.powerProduced}
-            init={0}
-            size={effectiveSize}
-          />
-        ) : part.category === 'drive' ? (
-          <DriveGraphic
-            speed={part.driveSpeed || 0}
-            init={0}
-            powerProduced={part.powerProduced}
-            isJump={Boolean(part.isJumpDrive)}
-            size={effectiveSize}
-          />
-        ) : part.category === 'computer' ? (
-          <ComputerGraphic
-            computerBonus={part.computerBonus}
-            init={0}
-            size={effectiveSize}
-          />
-        ) : part.category === 'shield' ? (
-          <ShieldGraphic
-            shieldBonus={part.shieldBonus}
-            init={0}
-            powerProduced={part.powerProduced}
-            isMorph={part.id === 'morph_shield'}
-            size={effectiveSize}
-          />
-        ) : part.category === 'hull' ? (
-          <HullGraphic
-            hullBonus={part.hullBonus}
-            compBonus={part.computerBonus}
-            init={0}
-            size={effectiveSize}
-          />
-        ) : part.category === 'missile' && part.dice ? (
-          <MissileGraphic
-            dice={part.dice}
-            init={0}
-            size={effectiveSize}
-          />
-        ) : part.dice ? (
-          <div className="flex items-center gap-1">
-            {part.dice.map((d, idx) => (
-              <DiceGraphic
-                key={idx}
-                color={d.color}
-                count={d.count}
-                layout={d.count === 3 ? 'triangle' : 'row'}
-                size={
-                  effectiveSize === 'sm' || d.count > 1 || part.dice!.length > 1 || part.hullBonus > 0
-                    ? 'sm'
-                    : effectiveSize
-                }
-              />
-            ))}
-            {part.hullBonus > 0 && (
-              <HullGraphic hullBonus={part.hullBonus} size={effectiveSize === 'lg' ? 'md' : 'sm'} />
-            )}
-          </div>
-        ) : (
-          <div className="w-6 h-6 rounded bg-slate-800" />
-        )}
-      </div>
-
-      {/* Energy Cost Badge in BOTTOM-RIGHT corner for Ship Parts */}
-      {part.powerConsumed > 0 && (
-        <PowerCostBadge
-          cost={part.powerConsumed}
-          position="bottom-right"
-          size={effectiveSize === 'lg' ? 'md' : 'sm'}
-        />
-      )}
+      {/* Unified layout & size ratio matching ShipPartSlotGraphic */}
+      <ShipPartSlotGraphic
+        part={part}
+        size={effectiveSize}
+        showInitiative={true}
+        className="z-10"
+      />
     </div>
   );
 };
@@ -1840,6 +1776,11 @@ export const TechTileIconography: React.FC<{
   const unlockedPart = tech.unlocksPartId ? SHIP_PARTS[tech.unlocksPartId] : null;
 
   const effectiveSize: 'sm' | 'md' | 'lg' = size || (compact ? 'sm' : 'md');
+  const cornerBadgeSize: 'xs' | 'sm' | 'md' =
+    effectiveSize === 'lg' ? 'md' : effectiveSize === 'sm' ? 'xs' : 'sm';
+  const hasTopCornerBadge = Boolean(
+    unlockedPart && (unlockedPart.initiativeBonus !== 0 || unlockedPart.powerConsumed > 0)
+  );
   const sizeDims =
     effectiveSize === 'sm'
       ? 'w-14 h-14 p-1'
@@ -1879,8 +1820,8 @@ export const TechTileIconography: React.FC<{
 
       {/* Top-Left: Initiative Badge for Tech tiles unlocking parts with Initiative */}
       {unlockedPart && unlockedPart.initiativeBonus !== 0 && (
-        <div className="absolute top-0.5 left-0.5 z-20 select-none pointer-events-none">
-          <InitiativeBadge init={unlockedPart.initiativeBonus} size={effectiveSize === 'lg' ? 'md' : 'sm'} />
+        <div className="absolute top-0.5 left-0.5 flex items-center z-20 select-none pointer-events-none">
+          <InitiativeBadge init={unlockedPart.initiativeBonus} size={cornerBadgeSize} />
         </div>
       )}
 
@@ -1888,7 +1829,7 @@ export const TechTileIconography: React.FC<{
       <CategoryWatermark category={tech.category} />
 
       {/* Centered Wordless Graphic Body */}
-      <div className="relative z-10 flex items-center justify-center w-full">
+      <div className={`relative z-10 flex items-center justify-center w-full ${effectiveSize === 'sm' && hasTopCornerBadge ? 'pt-2' : ''}`}>
         {unlockedPart ? (
           unlockedPart.category === 'reactor' ? (
             <ReactorPowerGraphic
@@ -1963,7 +1904,7 @@ export const TechTileIconography: React.FC<{
         <PowerCostBadge
           cost={unlockedPart.powerConsumed}
           position="top-right"
-          size={effectiveSize === 'lg' ? 'md' : 'sm'}
+          size={cornerBadgeSize}
         />
       )}
     </div>
@@ -1988,17 +1929,17 @@ export const ShipPartSlotGraphic: React.FC<{
   return (
     <div
       title={getPartTooltip(part)}
-      className={`relative w-full h-full flex flex-col justify-between overflow-hidden select-none p-0.5 ${className}`}
+      className={`relative w-full h-full flex items-center justify-center overflow-hidden select-none ${className}`}
     >
       {/* Top Left: Initiative Badge for ship parts granting Initiative */}
       {showInitiative && part.initiativeBonus !== 0 && (
-        <div className="absolute top-0.5 left-0.5 z-20 select-none pointer-events-none">
-          <InitiativeBadge init={part.initiativeBonus} size={size === 'lg' ? 'md' : 'sm'} />
+        <div className="absolute top-0.5 left-0.5 flex items-center z-20 select-none pointer-events-none">
+          <InitiativeBadge init={part.initiativeBonus} size={size === 'lg' ? 'sm' : 'xs'} />
         </div>
       )}
 
-      {/* Top Right: Power Production for dual-function parts (e.g. Nonlinear Drive +2⚡) */}
-      {part.powerProduced > 0 && !isReactor && part.category !== 'shield' && (
+      {/* Top Right: Power Production for dual-function parts (excluding reactors, shields, and drives which show power inside their main graphic) */}
+      {part.powerProduced > 0 && !isReactor && part.category !== 'shield' && part.category !== 'drive' && (
         <div className={`absolute top-0.5 right-0.5 z-10 flex items-center gap-0.5 bg-slate-950/95 ${size === 'lg' ? 'px-1.5 py-0.5' : 'px-1 py-0.2'} rounded-full border border-emerald-500/70 shadow select-none`}>
           <span className={`${size === 'lg' ? 'text-xs' : 'text-[8.5px]'} font-mono font-bold text-emerald-400 leading-none`}>
             +{part.powerProduced}
@@ -2015,6 +1956,7 @@ export const ShipPartSlotGraphic: React.FC<{
               {part.powerProduced}
             </span>
             <LightningPip size={size === 'sm' ? 10 : size === 'lg' ? 16 : 12} color="#fbbf24" />
+            <span className="sr-only">{`+${part.powerProduced} PWR`}</span>
           </div>
         ) : part.category === 'drive' ? (
           <DriveGraphic
@@ -2061,7 +2003,7 @@ export const ShipPartSlotGraphic: React.FC<{
                   color={d.color}
                   count={d.count}
                   layout={d.count === 3 ? 'triangle' : 'row'}
-                  size={isCrowded ? (size === 'sm' ? 'xs' : 'sm') : size}
+                  size={isCrowded ? (size === 'sm' ? 'xs' : size === 'lg' && d.count === 2 && !part.hullBonus ? 'md' : 'sm') : size}
                 />
               );
             })}

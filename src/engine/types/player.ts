@@ -50,6 +50,11 @@ export interface FactionInfo {
   readonly reputationSlots?: number; // Capacity of reputation track (4 for Eridani, Planta, Mechanema, Hydran, Draco; 5 for Orion and Terrans)
   readonly ambassadorSlots?: number; // Number of ambassador-eligible slots on reputation track (5 for Terrans, 4 for Orion/Hydran/Eridani/Planta/Draco/Mechanema, 3 for Exiles, 2 for Rho Indi)
   readonly reputationSlotTypes?: ReputationSlotType[];
+  readonly shortName?: string;
+  readonly portraitUrl?: string;
+  readonly historyEn?: string;
+  readonly historyZh?: string;
+  readonly expansionTag?: string;
 }
 
 export type ReputationSlotType = 'rep_only' | 'amb_only' | 'both';

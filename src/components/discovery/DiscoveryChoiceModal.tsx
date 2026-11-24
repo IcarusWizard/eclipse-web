@@ -197,7 +197,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           {part && (
             <div className="bg-slate-900/90 border border-cyan-500/40 rounded-xl p-3 flex items-center gap-3.5">
               <div className="shrink-0">
-                <ShipPartTileIconography part={part} size="md" className="w-18 h-18 sm:w-20 sm:h-20 shadow-md shadow-black/70" />
+                <ShipPartTileIconography part={part} size="md" className="w-16 h-16 sm:w-[72px] sm:h-[72px] shadow-md shadow-black/70" />
               </div>
               <div className="flex-1 min-w-0 text-left">
                 <div className="flex flex-wrap items-center gap-1.5 text-xs font-mono">

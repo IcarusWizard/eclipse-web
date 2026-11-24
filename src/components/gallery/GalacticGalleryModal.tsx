@@ -23,6 +23,7 @@ import {
   NeutralShipVariant,
 } from '../../engine/rules/neutralShips';
 import { NeutralShipBlueprintLayout } from '../blueprints/NeutralShipBlueprintLayout';
+import { FactionSheetCard } from '../common/FactionSheetCard';
 import { Technology } from '../../engine/types/tech';
 import { ShipPart } from '../../engine/types/blueprints';
 import { DiscoveryTile } from '../../engine/types/galaxy';
@@ -366,6 +367,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
   const [partCategory, setPartCategory] = useState<string>('all');
   const [sectorCategory, setSectorCategory] = useState<string>('all');
   const [discoveryCategory, setDiscoveryCategory] = useState<string>('all');
+  const [factionCategory, setFactionCategory] = useState<'all' | 'alien' | 'human'>('all');
   const [iconCategory, setIconCategory] = useState<string>('all');
   const [iconViewMode, setIconViewMode] = useState<'tile' | 'slot'>('tile');
   const combatDiceSpecs = useMemo(() => getCombatDiceSpecs(language), [language]);
@@ -532,15 +534,19 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
   // 5. Factions Catalog
   const filteredFactions = useMemo(() => {
     const q = searchQuery.toLowerCase().trim();
-    return ALL_FACTIONS.filter(
-      (f) =>
+    return ALL_FACTIONS.filter((f) => {
+      const matchesCat =
+        factionCategory === 'all' ||
+        (factionCategory === 'alien' ? !f.isHuman : f.isHuman);
+      const matchesSearch =
         !q ||
         f.name.toLowerCase().includes(q) ||
         translateFactionName(f.id, f.name, 'zh').toLowerCase().includes(q) ||
         f.traitDescription.toLowerCase().includes(q) ||
-        translateFactionTrait(f.id, f.traitDescription, 'zh').toLowerCase().includes(q)
-    );
-  }, [searchQuery]);
+        translateFactionTrait(f.id, f.traitDescription, 'zh').toLowerCase().includes(q);
+      return matchesCat && matchesSearch;
+    });
+  }, [factionCategory, searchQuery]);
 
   // 6. Minor Species Catalog
   const filteredMinorSpecies = useMemo(() => {
@@ -973,7 +979,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                             {iconViewMode === 'tile' ? (
                               <ShipPartTileIconography part={part} size="lg" />
                             ) : (
-                              <div className="w-24 h-24 sm:w-28 sm:h-28 aspect-square rounded-2xl bg-slate-900/90 border-2 border-slate-700 relative overflow-hidden flex items-center justify-center p-1 shadow-lg shadow-black/60">
+                              <div className="w-24 h-24 sm:w-28 sm:h-28 aspect-square rounded-2xl bg-slate-900/90 border-2 border-slate-700 relative overflow-hidden flex items-center justify-center p-0.5 shadow-lg shadow-black/60">
                                 <ShipPartSlotGraphic part={part} size="lg" />
                               </div>
                             )}
@@ -1303,7 +1309,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                         {/* Physical Square Component Tile */}
                         <div className="flex items-center gap-3 my-2">
                           <div className="shrink-0">
-                            <ShipPartTileIconography part={part} size="md" className="w-20 h-20 sm:w-22 sm:h-22" />
+                            <ShipPartTileIconography part={part} size="md" className="w-16 h-16 sm:w-[72px] sm:h-[72px]" />
                           </div>
                           <div className="text-[10px] text-slate-400 flex flex-col gap-1 flex-1 font-mono">
                             <div>{l('Category:', '类别：')} <span className="text-slate-200 font-bold uppercase">{part.category}</span></div>
@@ -1831,7 +1837,7 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
                               <div className="flex flex-col gap-1.5 p-2 rounded-lg bg-slate-900/90 border border-slate-800">
                                 <div className="flex items-center gap-2.5">
                                   <div className="shrink-0">
-                                    <ShipPartTileIconography part={part} size="md" className="w-18 h-18 sm:w-20 sm:h-20" />
+                                    <ShipPartTileIconography part={part} size="md" className="w-16 h-16 sm:w-[72px] sm:h-[72px]" />
                                   </div>
                                   <div>
                                     <span className="text-xs text-amber-300 font-sans font-bold block">
@@ -1859,114 +1865,42 @@ export const GalacticGalleryModal: React.FC<GalacticGalleryModalProps> = ({
 
           {/* ===================== TAB 5: FACTIONS ===================== */}
           {activeTab === 'factions' && (
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-              {filteredFactions.map((f: FactionInfo) => {
-                const exp = getExpansionForItem(f.id);
-                const factionName = translateFactionName(f.id, f.name, language);
-                const factionTrait = translateFactionTrait(f.id, f.traitDescription, language);
-                const expName = exp ? translateExpansionName(exp.id, exp.name, language) : '';
-                return (
-                  <div
-                    key={f.id}
-                    className={`p-5 rounded-xl border flex flex-col justify-between transition-all ${
-                      exp
-                        ? 'border-purple-500/50 bg-purple-950/20 shadow-md shadow-purple-950/20 hover:border-purple-400/80'
-                        : 'border-slate-800 bg-slate-950/90 hover:border-slate-600'
-                    }`}
-                  >
-                    <div>
-                      <div className="flex items-center justify-between mb-3">
-                        <div className="flex items-center gap-2.5">
-                          <div
-                            className="w-4 h-4 rounded-full border border-white/20 shadow shrink-0"
-                            style={{ backgroundColor: f.defaultColor }}
-                          />
-                          <h3 className="text-base font-bold text-slate-100 font-display">
-                            {factionName}
-                          </h3>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          {exp && (
-                            <span className="text-[11px] px-2 py-0.5 rounded bg-purple-900/80 border border-purple-500/60 text-purple-200 font-mono font-semibold">
-                              {expName}
-                            </span>
-                          )}
-                          <span className="text-xs px-2.5 py-0.5 rounded bg-slate-800 text-slate-300 font-mono font-semibold">
-                            {f.isHuman ? l('Human Civilization', '人类文明') : l('Alien Species', '外星种族')}
-                          </span>
-                        </div>
-                      </div>
-
-                    <p className="text-xs text-slate-300 leading-relaxed mb-4 italic">
-                      "{factionTrait}"
-                    </p>
-
-                    <div className="grid grid-cols-2 sm:grid-cols-3 gap-2 text-xs font-mono mb-4">
-                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">{l('Starting Money', '初始信用点')}</span>
-                        <span className="text-amber-300 font-bold text-sm">
-                          {f.startingResources.money}
-                        </span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">{l('Starting Science', '初始科研')}</span>
-                        <span className="text-cyan-300 font-bold text-sm">
-                          {f.startingResources.science}
-                        </span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">{l('Starting Materials', '初始材料')}</span>
-                        <span className="text-orange-300 font-bold text-sm">
-                          {f.startingResources.materials}
-                        </span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">{l('Starting Discs', '初始影响力圆片')}</span>
-                        <span className="text-slate-200 font-bold text-sm">
-                          {l(`${f.startingDiscs} Discs`, `${f.startingDiscs} 枚`)}
-                        </span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">{l('Colony Ships', '殖民船')}</span>
-                        <span className="text-slate-200 font-bold text-sm">
-                          {l(`${f.startingColonyShips} Ships`, `${f.startingColonyShips} 艘`)}
-                        </span>
-                      </div>
-                      <div className="p-2 rounded-lg bg-slate-900 border border-slate-800">
-                        <span className="text-[10px] text-slate-400 block">{l('Trade Ratio', '贸易比率')}</span>
-                        <span className="text-slate-200 font-bold text-sm">{f.tradeRatio}:1</span>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="pt-3 border-t border-slate-800/80 text-xs space-y-1.5">
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">{l('Reputation Track Capacity:', '声望轨容量：')}</span>
-                      <span className="font-mono font-bold text-amber-400">
-                        {l(`${f.reputationSlots} slots`, `${f.reputationSlots} 格`)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between">
-                      <span className="text-slate-400">{l('Action Activations:', '行动激活数：')}</span>
-                      <span className="font-mono text-slate-200">
-                        {l(
-                          `Explore ${f.exploreActivations}, Research ${f.researchActivations}, Upgrade ${f.upgradeActivations}, Build ${f.buildActivations}, Move ${f.moveActivations}`,
-                          `探索 ${f.exploreActivations} / 研究 ${f.researchActivations} / 升级 ${f.upgradeActivations} / 建造 ${f.buildActivations} / 移动 ${f.moveActivations}`
-                        )}
-                      </span>
-                    </div>
-                    {f.startingTechIds.length > 0 && (
-                      <div className="flex justify-between">
-                        <span className="text-slate-400">{l('Starting Technologies:', '初始科技：')}</span>
-                        <span className="font-mono text-cyan-300">
-                          {f.startingTechIds.map((tid) => translateTechName(tid, tid, language)).join(', ')}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+            <div className="space-y-4">
+              {/* Filter Bar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-slate-800/80">
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {(
+                    [
+                      { id: 'all', label: l(`All Factions (${ALL_FACTIONS.length})`, `全部势力 (${ALL_FACTIONS.length})`) },
+                      { id: 'alien', label: l(`Alien Species (${ALL_FACTIONS.filter((f) => !f.isHuman).length})`, `外星种族 (${ALL_FACTIONS.filter((f) => !f.isHuman).length})`) },
+                      { id: 'human', label: l(`Terran / Human (${ALL_FACTIONS.filter((f) => f.isHuman).length})`, `人类文明 (${ALL_FACTIONS.filter((f) => f.isHuman).length})`) },
+                    ] as const
+                  ).map((opt) => (
+                    <button
+                      key={opt.id}
+                      type="button"
+                      onClick={() => setFactionCategory(opt.id)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition cursor-pointer ${
+                        factionCategory === opt.id
+                          ? 'bg-cyan-500 text-slate-950 shadow-sm'
+                          : 'bg-slate-950 text-slate-300 border border-slate-800 hover:border-slate-600'
+                      }`}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
                 </div>
-              );
-            })}
+                <span className="text-[11px] font-mono text-slate-400">
+                  {l(`Showing ${filteredFactions.length} species sheets`, `显示 ${filteredFactions.length} 份势力面板`)}
+                </span>
+              </div>
+
+              {/* Full Landscape Faction Sheets */}
+              <div className="space-y-5">
+                {filteredFactions.map((f: FactionInfo) => (
+                  <FactionSheetCard key={f.id} faction={f} />
+                ))}
+              </div>
             </div>
           )}
 

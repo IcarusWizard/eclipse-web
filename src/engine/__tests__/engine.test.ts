@@ -22781,10 +22781,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(slotJumpHtml).not.toContain('stroke="#38bdf8"');
         expect(slotJumpHtml).toContain('bottom-0.5 right-0.5');
 
-        // Nonlinear Drive in slot has power production at top-right and speed 2 in center
+        // Nonlinear Drive in slot renders vertically stacked 2 <hex> + 2 <lightning> inside center with no upper-right energy gain chip
         const slotNonlinearHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: nonlinearDrive, size: 'md' }));
-        expect(slotNonlinearHtml).toContain('top-0.5 right-0.5');
-        expect(slotNonlinearHtml).toContain('+2');
+        expect(slotNonlinearHtml).not.toContain('top-0.5 right-0.5');
+        expect(slotNonlinearHtml).toContain('flex-col');
+        expect(slotNonlinearHtml).toContain('title="+2 Energy Produced"');
         expect(slotNonlinearHtml).toContain('>2<');
 
         // 3. Verify TechTileIconography for Fusion Drive matches physical tile
@@ -23029,8 +23030,24 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const nlPartTileLgHtml = renderToString(
           React.createElement(ShipPartTileIconography, { part: nonlinearDrivePart, size: 'lg' })
         );
-        expect(nlPartTileLgHtml).toContain('w-24 h-24 sm:w-28 sm:h-28 p-2.5');
+        expect(nlPartTileLgHtml).toContain('w-24 h-24 sm:w-28 sm:h-28');
         expect(nlPartTileLgHtml).toContain('width="26"'); // size="lg" hexDim
+
+        const fusionPartTileMdHtml = renderToString(
+          React.createElement(ShipPartTileIconography, { part: SHIP_PARTS.fusion_drive!, size: 'md' })
+        );
+        expect(fusionPartTileMdHtml).toContain('bottom-0.5 right-0.5');
+        expect(fusionPartTileMdHtml).toContain('top-0.5 left-0.5 flex items-center');
+        expect(fusionPartTileMdHtml).toContain('width="21"');
+
+        // Tachyon Drive ShipPartTileIconography renders compact xs stacked chevrons pinned strictly at top-left
+        const tachyonPartTileMdHtml = renderToString(
+          React.createElement(ShipPartTileIconography, { part: SHIP_PARTS.tachyon_drive!, size: 'md' })
+        );
+        expect(tachyonPartTileMdHtml).toContain('top-0.5 left-0.5 flex items-center');
+        expect(tachyonPartTileMdHtml).toContain('data-initiative-arrows="3"');
+        expect(tachyonPartTileMdHtml).toContain('width="7"');
+        expect(tachyonPartTileMdHtml).not.toContain('flex-col justify-between overflow-hidden select-none p-0.5');
 
         // 5. Verify GalacticGalleryModal All Icons view renders larger square cards:
         const galleryIconsHtml = renderToString(
@@ -23043,18 +23060,24 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(galleryIconsHtml).toContain('grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-4');
         expect(galleryIconsHtml).toContain('w-24 h-24 sm:w-28 sm:h-28'); // Larger square cards
 
-        // 6. Verify ShipPartSlotGraphic for Nonlinear Drive scales cleanly in size="lg" and size="sm":
+        // 6. Verify ShipPartSlotGraphic for Nonlinear Drive stacks vertically and omits top-right gain chip in size="lg" and size="sm":
         const slotNlLgHtml = renderToString(
           React.createElement(ShipPartSlotGraphic, { part: nonlinearDrivePart, size: 'lg' })
         );
-        expect(slotNlLgHtml).toContain('+2'); // Top-right power produced
-        expect(slotNlLgHtml).toContain('text-xs');
+        expect(slotNlLgHtml).not.toContain('top-0.5 right-0.5');
+        expect(slotNlLgHtml).toContain('flex-col');
+        expect(slotNlLgHtml).toContain('title="+2 Energy Produced"');
+        expect(slotNlLgHtml).toContain('width="26"');
+        expect(slotNlLgHtml).toContain('text-lg');
 
         const slotNlSmHtml = renderToString(
           React.createElement(ShipPartSlotGraphic, { part: nonlinearDrivePart, size: 'sm' })
         );
-        expect(slotNlSmHtml).toContain('+2');
-        expect(slotNlSmHtml).toContain('text-[8.5px]');
+        expect(slotNlSmHtml).not.toContain('top-0.5 right-0.5');
+        expect(slotNlSmHtml).toContain('flex-col');
+        expect(slotNlSmHtml).toContain('title="+2 Energy Produced"');
+        expect(slotNlSmHtml).toContain('width="13"');
+        expect(slotNlSmHtml).toContain('text-xs');
       });
 
       test('155. verifies authentic iconography enhancements: larger initiative font, top missile with middle dice, 6 combat dice faces in gallery, discovery star, metasynthesis colors, orbital yellow, pico wrench, morph shield crossed damage, jump drive honeycomb, nanorobot hammer, advanced resources, monolith foundation, and wormhole generator', async () => {
@@ -23074,11 +23097,18 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         const { SHIP_PARTS } = await import('../rules/partData');
         const { TECH_CATALOG, ALL_RARE_TECHS } = await import('../rules/techData');
 
-        // 1. Initiative badge font size is larger
+        // 1. Initiative badge stacks chevron arrows vertically with no numeric text on the badge
         const initSm = renderToString(React.createElement(InitiativeBadge, { init: 2, size: 'sm' }));
-        expect(initSm).toContain('text-[8.5px]');
+        expect(initSm).toContain('flex-col');
+        expect(initSm).toContain('data-initiative-arrows="2"');
+        expect(initSm).toContain('width="8"');
+        expect(initSm).toContain('title="+2 Initiative"');
+        expect(initSm).not.toContain('>+2<');
         const initMd = renderToString(React.createElement(InitiativeBadge, { init: 2, size: 'md' }));
-        expect(initMd).toContain('text-[10.5px]');
+        expect(initMd).toContain('flex-col');
+        expect(initMd).toContain('data-initiative-arrows="2"');
+        expect(initMd).toContain('width="11"');
+        expect(initMd).not.toContain('>+2<');
 
         // 2. Missile layout: colored missile symbol on top, colored dice in middle
         const plasmaMissilePart = SHIP_PARTS.plasma_missile!;
@@ -23389,13 +23419,15 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(nlDriveHtml).toContain('title="+2 Energy Produced"');
         expect(nlDriveHtml).not.toContain('+2</span>'); // No separate green chip with plus
 
-        // ShipPartSlotGraphic for Nonlinear Drive passes powerProduced to DriveGraphic and avoids duplicate top-right chip
+        // ShipPartSlotGraphic for Nonlinear Drive passes powerProduced to DriveGraphic and omits top-right gain chip
         const nlSlotHtml = renderToString(React.createElement(ShipPartSlotGraphic, { part: SHIP_PARTS.nonlinear_drive!, size: 'lg' }));
         expect(nlSlotHtml).toContain('title="+2 Energy Produced"');
+        expect(nlSlotHtml).not.toContain('top-0.5 right-0.5');
 
-        // 4. Upgrade page available parts matching installed parts size (72px) and auto-fill responsive grid
+        // 4. Upgrade page available parts matching Combat Simulator md ratio inside 72px slots
         const editorSource = fs.readFileSync(path.join(process.cwd(), 'src', 'components', 'blueprints', 'ShipBlueprintEditor.tsx'), 'utf-8');
         expect(editorSource).toContain('w-[72px] h-[72px]');
+        expect(editorSource).toContain('<ShipPartSlotGraphic part={part} size="md" className="w-full h-full" />');
         expect(editorSource).toContain('grid-cols-[repeat(auto-fill,72px)]');
         expect(editorSource).toContain('max-w-5xl xl:max-w-6xl');
       });
@@ -29627,6 +29659,178 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(modalHtml).toContain('Jump ⚡');
       expect(modalHtml).not.toContain('Sector 214');
       expect(modalHtml).not.toContain('Sector 215');
+    });
+
+    it('295. renders comprehensive landscape FactionSheetCard pages across all factions in GalacticGalleryModal and supports extensible community faction metadata', async () => {
+      const fs = await import('fs');
+      const path = await import('path');
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { ALL_FACTIONS, HUMAN_FACTIONS } = await import('../rules/setup');
+      const { getFactionSheetData } = await import('../rules/factionSheets');
+      const { GalacticGalleryModal } = await import('../../components/gallery/GalacticGalleryModal');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+
+      // Verify all Terran factions share identical 4 Material, 3 Science, 3 Money starting resources
+      for (const tf of HUMAN_FACTIONS) {
+        expect(tf.startingResources).toEqual({ money: 3, science: 3, materials: 4 });
+      }
+
+      // Verify every existing faction builds complete sheet data & portrait image exists in public/factions
+      for (const f of ALL_FACTIONS) {
+        const sheet = getFactionSheetData(f);
+        expect(sheet.historyEn.length).toBeGreaterThan(30);
+        expect(sheet.historyZh.length).toBeGreaterThan(15);
+        expect(sheet.rules.length).toBeGreaterThan(0);
+        expect(sheet.reputationSlotTypes.length).toBe(f.reputationSlots ?? 4);
+        expect(sheet.portraitUrl).toMatch(/^\/factions\/.+\.jpg$/);
+        const diskPath = path.join(process.cwd(), 'public', sheet.portraitUrl.replace(/^\//, ''));
+        expect(fs.existsSync(diskPath)).toBe(true);
+      }
+
+      // Check Eridani Empire landscape sheet details (resources, activations, techs, home sector, rep track, blueprint +1⚡, lore, trade 3:1)
+      const eridani = ALL_FACTIONS.find((f) => f.id === 'eridani_empire')!;
+      const eridaniHtml = renderToStaticMarkup(React.createElement(FactionSheetCard, { faction: eridani }));
+      expect(eridaniHtml).toContain('Eridani Empire');
+      expect(eridaniHtml).toContain('ACTIVATIONS PER ACTION');
+      expect(eridaniHtml).toContain('Excerpts from the Archive of History');
+      expect(eridaniHtml).toContain('/factions/eridani_empire.jpg');
+      expect(eridaniHtml).toContain('Sector 222');
+      expect(eridaniHtml).toContain('4 Rep / Ambassador');
+      expect(eridaniHtml).toContain('3 : 1');
+      expect(eridaniHtml).toContain('+1 ⚡');
+      expect(eridaniHtml).toContain('data-testid="starting-tech-icon-gauss_shield"');
+      expect(eridaniHtml).toContain('data-testid="starting-tech-icon-fusion_drive"');
+      expect(eridaniHtml).toContain('data-testid="starting-tech-icon-plasma_cannon"');
+      expect(eridaniHtml).toContain('w-16 h-16');
+      expect(eridaniHtml).toContain('data-initiative-arrows="2"');
+      expect(eridaniHtml).not.toContain('>+2<');
+      expect(eridaniHtml).toContain('top-0.5 right-0.5');
+      expect(eridaniHtml).toContain('role="tooltip"');
+      expect(eridaniHtml).toContain('Gauss Shield');
+      expect(eridaniHtml).toContain('Fusion Drive');
+      expect(eridaniHtml).toContain('Plasma Cannon');
+
+      // Check Orion & Rho Indi & Exiles reputation slot specificity and forbidden hulls
+      const orionHtml = renderToStaticMarkup(
+        React.createElement(FactionSheetCard, { faction: ALL_FACTIONS.find((f) => f.id === 'orion_hegemony')! })
+      );
+      expect(orionHtml).toContain('4 Rep / Ambassador · 1 Reputation Only');
+      expect(orionHtml).toContain('4 : 1');
+
+      const rhoHtml = renderToStaticMarkup(
+        React.createElement(FactionSheetCard, { faction: ALL_FACTIONS.find((f) => f.id === 'rho_indi_syndicate')! })
+      );
+      expect(rhoHtml).toContain('2 Rep / Ambassador · 3 Reputation Only');
+      expect(rhoHtml).toContain('Cannot Build');
+
+      // Verify GalacticGalleryModal Factions tab renders all 16 full landscape FactionSheetCards
+      const galleryHtml = renderToStaticMarkup(
+        React.createElement(GalacticGalleryModal, {
+          isOpen: true,
+          onClose: () => {},
+          initialTab: 'factions',
+        })
+      );
+      expect(galleryHtml).toContain('Showing 16 species sheets');
+      for (const f of ALL_FACTIONS) {
+        expect(galleryHtml).toContain(`data-testid="faction-sheet-${f.id}"`);
+      }
+
+      // Extensibility test: a community faction with inline custom lore/expansion metadata renders cleanly
+      const mockCommunityFaction: any = {
+        id: 'solaris_syndicate_custom',
+        name: 'Solaris Covenant',
+        isHuman: false,
+        defaultColor: '#ec4899',
+        startingSectorNumber: 299,
+        startingResources: { money: 4, science: 4, materials: 2 },
+        startingDiscs: 13,
+        startingColonyShips: 3,
+        startingTechIds: ['positron_computer'],
+        traitDescription: 'Photonic engineers channeling solar flare shields in battle.',
+        tradeRatio: 3,
+        exploreActivations: 1,
+        researchActivations: 1,
+        upgradeActivations: 2,
+        buildActivations: 2,
+        moveActivations: 2,
+        influenceActivations: 2,
+        reputationSlots: 4,
+        ambassadorSlots: 3,
+        reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+        expansionTag: 'Community Expansion',
+        historyEn: 'Born around unstable blue supergiants, the Solaris Covenant harvests stellar corona plasma.',
+        historyZh: '诞生于蓝色超巨星轨道上的索拉里斯圣约文明，擅长汲取日冕等离子能盾。',
+      };
+      const customHtml = renderToStaticMarkup(React.createElement(FactionSheetCard, { faction: mockCommunityFaction }));
+      expect(customHtml).toContain('Solaris Covenant');
+      expect(customHtml).toContain('Community Expansion');
+      expect(customHtml).toContain('Sol');
+      expect(customHtml).toContain('3 Rep / Ambassador · 1 Reputation Only');
+    });
+
+    it('296. FactionDraftModal supports click Select -> preview Landscape Faction Sheet -> Confirm Selection or Cancel back to draft page', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { FactionDraftModal } = await import('../../components/setup/FactionDraftModal');
+
+      const draftGame = createInitialGame(4, undefined, ['seekers', 'outcasts'], undefined, true);
+      expect(draftGame.phase).toBe('DRAFT_PHASE');
+
+      // 1. Draft Grid View exposes per-faction Select buttons instead of confirming blindly
+      const gridHtml = renderToStaticMarkup(
+        React.createElement(FactionDraftModal, {
+          state: draftGame,
+          onDraftFaction: () => {},
+        })
+      );
+      expect(gridHtml).toContain('data-testid="draft-select-eridani_empire"');
+      expect(gridHtml).toContain('Click Select on a faction to preview its full species sheet');
+      expect(gridHtml).not.toContain('data-testid="draft-preview-confirm"');
+
+      // 2. Preview View shows the full landscape FactionSheetCard + Cancel (Back to Draft) + Confirm Selection
+      const previewHtmlEn = renderToStaticMarkup(
+        React.createElement(FactionDraftModal, {
+          state: draftGame,
+          initialPreviewFactionId: 'eridani_empire',
+          onDraftFaction: () => {},
+        })
+      );
+      expect(previewHtmlEn).toContain('data-testid="faction-sheet-eridani_empire"');
+      expect(previewHtmlEn).toContain('data-testid="draft-preview-cancel"');
+      expect(previewHtmlEn).toContain('Cancel (Back to Draft)');
+      expect(previewHtmlEn).toContain('data-testid="draft-preview-confirm"');
+      expect(previewHtmlEn).toContain('Confirm Selection (Eridani Empire)');
+
+      // 3. Spectator preview disables confirmation cleanly while keeping Cancel / Return to Draft
+      const spectatorPreviewHtml = renderToStaticMarkup(
+        React.createElement(FactionDraftModal, {
+          state: draftGame,
+          currentSeat: 'spectator',
+          initialPreviewFactionId: 'eridani_empire',
+          onDraftFaction: () => {},
+        })
+      );
+      expect(spectatorPreviewHtml).toContain('data-testid="draft-preview-cancel"');
+      expect(spectatorPreviewHtml).toContain('disabled=""');
+
+      // 4. Chinese localization on preview page renders full localized sheet & Confirm/Cancel buttons
+      const previewHtmlZh = renderToStaticMarkup(
+        React.createElement(LanguageProvider, {
+          initialLanguage: 'zh',
+          children: React.createElement(FactionDraftModal, {
+            state: draftGame,
+            initialPreviewFactionId: 'eridani_empire',
+            onDraftFaction: () => {},
+          }),
+        })
+      );
+      expect(previewHtmlZh).toContain('埃里达尼帝国');
+      expect(previewHtmlZh).toContain('每次行动激活次数');
+      expect(previewHtmlZh).toContain('取消（返回选族）');
+      expect(previewHtmlZh).toContain('确认选择 (埃里达尼帝国)');
     });
   });
 });

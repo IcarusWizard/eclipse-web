@@ -361,11 +361,11 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
                 {/* Top-Left: Initiative Badge for ship parts granting Initiative (Symmetrical to Trash Bin on Top-Right) */}
                 {part.initiativeBonus !== 0 && (
                   <div className="absolute top-0.5 left-0.5 flex items-center z-20 select-none pointer-events-none">
-                    <InitiativeBadge init={part.initiativeBonus} size={size === 'lg' ? 'md' : 'sm'} />
+                    <InitiativeBadge init={part.initiativeBonus} size="xs" />
                   </div>
                 )}
 
-                <ShipPartSlotGraphic part={part} size={size} showInitiative={false} />
+                <ShipPartSlotGraphic part={part} size={size === 'lg' ? 'md' : size} showInitiative={false} />
 
                 {/* Interactive Controls in Editor (Top-Right: Revert & Trash Bin) */}
                 {interactive && (

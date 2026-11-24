@@ -1,17 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import { GameState } from '../../engine/types/state';
 import { ALL_FACTIONS, getAvailableFactions, areFactionsConflictingColor } from '../../engine/rules/setup';
-import { FactionInfo } from '../../engine/types/faction';
+import { FactionInfo } from '../../engine/types/player';
 import {
-  Sparkles,
   Users,
   Compass,
   ArrowRight,
+  ArrowLeft,
   CheckCircle2,
   Lock,
-  Layers,
-  Shield,
-  Zap,
+  Eye,
+  X,
   Minimize2,
   Maximize2,
 } from 'lucide-react';
@@ -20,17 +19,21 @@ import {
   translateFactionName,
   translateFactionTrait,
 } from '../../i18n/catalogTranslations';
+import { FactionSheetCard } from '../common/FactionSheetCard';
+import { getFactionSheetData } from '../../engine/rules/factionSheets';
 
 interface FactionDraftModalProps {
   state: GameState;
   currentSeat?: number | 'all' | 'spectator';
   onDraftFaction: (factionId: string) => void;
+  initialPreviewFactionId?: string | null;
 }
 
 export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
   state,
   currentSeat = 'all',
   onDraftFaction,
+  initialPreviewFactionId = null,
 }) => {
   const { language, l } = useLanguage();
   const draft = state.factionDraft;
@@ -46,17 +49,14 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
       (typeof currentSeat === 'number' && state.players[currentSeat]?.id === currentDrafterId));
 
   const availableFactions = getAvailableFactions(state.expansions || []);
-  const [selectedFactionId, setSelectedFactionId] = useState<string>(
-    draft.availableFactionIds[0] || availableFactions[0]?.id || ''
-  );
+  const [previewFactionId, setPreviewFactionId] = useState<string | null>(initialPreviewFactionId);
   const [categoryFilter, setCategoryFilter] = useState<'all' | 'alien' | 'human'>('all');
   const [isMinimized, setIsMinimized] = useState<boolean>(false);
 
+  // Clear preview if draft advances to a new pick or if an active drafter's preview becomes unavailable
   useEffect(() => {
-    if (!draft.availableFactionIds.includes(selectedFactionId)) {
-      setSelectedFactionId(draft.availableFactionIds[0] || '');
-    }
-  }, [draft.currentDraftIndex, draft.availableFactionIds, selectedFactionId]);
+    setPreviewFactionId(null);
+  }, [draft.currentDraftIndex]);
 
   const filteredFactions = availableFactions.filter((f) => {
     if (categoryFilter === 'alien') return !f.isHuman;
@@ -64,12 +64,17 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
     return true;
   });
 
-  const selectedFaction = ALL_FACTIONS.find((f) => f.id === selectedFactionId);
+  const previewFaction = previewFactionId
+    ? ALL_FACTIONS.find((f) => f.id === previewFactionId) || null
+    : null;
+  const isPreviewAvailable = Boolean(
+    previewFaction && draft.availableFactionIds.includes(previewFaction.id)
+  );
 
   const handleConfirmDraft = () => {
-    if (!isCurrentDrafter) return;
-    if (!selectedFactionId || !draft.availableFactionIds.includes(selectedFactionId)) return;
-    onDraftFaction(selectedFactionId);
+    if (!isCurrentDrafter || !previewFaction || !isPreviewAvailable) return;
+    onDraftFaction(previewFaction.id);
+    setPreviewFactionId(null);
   };
 
   if (isMinimized) {
@@ -110,7 +115,11 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex items-center justify-center p-3 sm:p-5">
-      <div className="bg-slate-900 border-2 border-indigo-500/80 rounded-2xl max-w-4xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[94vh] text-slate-100 animate-in fade-in zoom-in-95 duration-150">
+      <div
+        className={`bg-slate-900 border-2 border-indigo-500/80 rounded-2xl w-full shadow-2xl overflow-hidden flex flex-col max-h-[94vh] text-slate-100 animate-in fade-in zoom-in-95 duration-150 ${
+          previewFaction ? 'max-w-6xl' : 'max-w-4xl'
+        }`}
+      >
         {/* Header */}
         <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 border-b border-indigo-950 bg-slate-950">
           <div className="flex items-center gap-3 min-w-0">
@@ -164,6 +173,81 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           </div>
         </div>
 
+        {previewFaction ? (
+          <>
+            {/* Faction Landscape Page Preview */}
+            <div className="flex-1 min-h-0 overflow-y-auto scrollbar-thin p-4 space-y-4">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <button
+                  type="button"
+                  onClick={() => setPreviewFactionId(null)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-xs font-bold text-slate-200 transition cursor-pointer"
+                >
+                  <ArrowLeft className="w-3.5 h-3.5 text-indigo-400" />
+                  <span>{l('Back to Draft List', '返回轮抽列表')}</span>
+                </button>
+                <span className="text-xs text-slate-400 font-medium">
+                  {l(
+                    'Review full species sheet below before confirming your pick.',
+                    '请在下方确认该势力的完整规则面板，随后选择确认或取消。'
+                  )}
+                </span>
+              </div>
+
+              <FactionSheetCard faction={previewFaction} />
+            </div>
+
+            {/* Preview Footer: Cancel (Return to Draft) / Confirm Selection */}
+            <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 border-t border-slate-800 bg-slate-950">
+              <div className="text-xs text-slate-400">
+                {l('Previewing for', '当前轮抽玩家')} <strong className="text-white">{currentDrafter.name}</strong>:{' '}
+                <span className="text-indigo-300 font-bold ml-1">
+                  {translateFactionName(previewFaction.id, previewFaction.name, language)}
+                </span>
+              </div>
+
+              <div className="flex items-center gap-2.5 flex-wrap">
+                <button
+                  type="button"
+                  data-testid="draft-preview-cancel"
+                  onClick={() => setPreviewFactionId(null)}
+                  className="px-4 py-2 rounded-xl bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-200 font-bold text-xs flex items-center gap-1.5 transition cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5 text-slate-400" />
+                  <span>{l('Cancel (Back to Draft)', '取消（返回选族）')}</span>
+                </button>
+
+                <button
+                  type="button"
+                  data-testid="draft-preview-confirm"
+                  onClick={handleConfirmDraft}
+                  disabled={!isCurrentDrafter || !isPreviewAvailable}
+                  className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-bold text-xs tracking-wide shadow-lg shadow-indigo-950 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                >
+                  {isCurrentDrafter ? (
+                    isPreviewAvailable ? (
+                      <>
+                        <CheckCircle2 className="w-4 h-4" />
+                        <span>
+                          {l(
+                            `Confirm Selection (${previewFaction.shortName || previewFaction.name})`,
+                            `确认选择 (${translateFactionName(previewFaction.id, previewFaction.name, language)})`
+                          )}
+                        </span>
+                        <ArrowRight className="w-4 h-4" />
+                      </>
+                    ) : (
+                      <span>{l('Faction Already Drafted / Unavailable', '该势力已被选或不可选')}</span>
+                    )
+                  ) : (
+                    <span>{l(`Waiting for ${currentDrafter.name} to choose...`, `等待 ${currentDrafter.name} 做出选择...`)}</span>
+                  )}
+                </button>
+              </div>
+            </div>
+          </>
+        ) : (
+          <>
         <div className="flex-1 min-h-0 flex flex-col overflow-y-auto scrollbar-thin">
         {/* Seating & Draft Order Bar */}
         <div className="shrink-0 bg-slate-950/60 border-b border-slate-800 p-3">
@@ -309,7 +393,6 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
             {filteredFactions.map((f) => {
               const isAvailable = draft.availableFactionIds.includes(f.id);
-              const isSelected = selectedFactionId === f.id && isAvailable;
               const draftedByPlayer = !isAvailable
                 ? state.players.find((p) => p.faction?.id === f.id)
                 : null;
@@ -317,40 +400,39 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                 ? state.players.find(
                     (p) =>
                       p.faction?.id &&
-                      p.faction.id !== 'drafting' &&
+                      (p.faction.id as string) !== 'drafting' &&
                       areFactionsConflictingColor(p.faction.id, f.id)
                   )
                 : null;
 
               const fName = translateFactionName(f.id, f.name, language);
+              const portraitUrl = getFactionSheetData(f).portraitUrl;
 
               return (
                 <div
                   key={f.id}
                   onClick={() => {
-                    if (isAvailable && isCurrentDrafter) setSelectedFactionId(f.id);
+                    if (isAvailable) setPreviewFactionId(f.id);
                   }}
                   className={`p-3.5 rounded-2xl border transition flex flex-col justify-between ${
-                    isSelected
-                      ? 'bg-indigo-950/70 border-indigo-400 ring-2 ring-indigo-400/50 shadow-lg cursor-pointer'
-                      : isAvailable && isCurrentDrafter
-                      ? 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-900/60 cursor-pointer'
+                    isAvailable && isCurrentDrafter
+                      ? 'bg-slate-950/60 border-slate-800 hover:border-indigo-400/80 hover:bg-slate-900/70 cursor-pointer'
                       : isAvailable
-                      ? 'bg-slate-950/60 border-slate-800/80 cursor-default opacity-85'
-                      : 'bg-slate-950/30 border-slate-900 opacity-40 cursor-not-allowed'
+                      ? 'bg-slate-950/60 border-slate-800/80 hover:border-slate-700 cursor-pointer opacity-90'
+                      : 'bg-slate-950/30 border-slate-900 opacity-45 cursor-not-allowed'
                   }`}
                 >
                   <div>
                     <div className="flex items-center justify-between mb-2">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 min-w-0">
                         <span
                           className="w-3.5 h-3.5 rounded-full border border-white/30 shrink-0"
                           style={{ backgroundColor: f.defaultColor }}
                         />
-                        <h3 className="font-bold text-sm text-slate-100">{fName}</h3>
+                        <h3 className="font-bold text-sm text-slate-100 truncate">{fName}</h3>
                       </div>
                       <span
-                        className={`text-[9.5px] px-2 py-0.5 rounded font-mono font-bold uppercase border ${
+                        className={`text-[9.5px] px-2 py-0.5 rounded font-mono font-bold uppercase border shrink-0 ${
                           !f.isHuman
                             ? 'bg-purple-950/80 border-purple-700 text-purple-300'
                             : 'bg-sky-950/80 border-sky-700 text-sky-300'
@@ -359,6 +441,16 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                         {!f.isHuman ? l('Alien', '异星') : l('Terran', '人类')}
                       </span>
                     </div>
+
+                    {portraitUrl && (
+                      <div className="mb-2.5 aspect-[16/9] w-full rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
+                        <img
+                          src={portraitUrl}
+                          alt={fName}
+                          className="w-full h-full object-cover object-center"
+                        />
+                      </div>
+                    )}
 
                     <p className="text-[11px] text-slate-400 leading-snug mb-3">
                       {translateFactionTrait(f.id, f.traitDescription, language)}
@@ -393,29 +485,28 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                       isCurrentDrafter ? (
                         <button
                           type="button"
+                          data-testid={`draft-select-${f.id}`}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedFactionId(f.id);
+                            setPreviewFactionId(f.id);
                           }}
-                          className={`w-full py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 ${
-                            isSelected
-                              ? 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-sm'
-                              : 'bg-slate-800 hover:bg-slate-700 text-slate-300'
-                          }`}
+                          className="w-full py-1.5 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 bg-indigo-600/90 hover:bg-indigo-500 text-white shadow-sm cursor-pointer"
                         >
-                          {isSelected ? (
-                            <>
-                              <CheckCircle2 className="w-3.5 h-3.5" />
-                              <span>{l('Selected for Pick', '已预选')}</span>
-                            </>
-                          ) : (
-                            <span>{l(`Select ${f.shortName || f.name}`, `选择 ${fName}`)}</span>
-                          )}
+                          <Eye className="w-3.5 h-3.5" />
+                          <span>{l(`Select ${f.shortName || f.name}`, `选择 ${fName}`)}</span>
                         </button>
                       ) : (
-                        <span className="text-[11px] text-slate-500 font-medium italic flex items-center gap-1.5 w-full justify-center py-1">
-                          {l('Available to Draft', '可选中')}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPreviewFactionId(f.id);
+                          }}
+                          className="w-full py-1 px-2.5 rounded-xl text-[11px] font-medium text-slate-400 hover:text-slate-200 bg-slate-900/80 hover:bg-slate-800 border border-slate-800 transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Eye className="w-3 h-3" />
+                          <span>{l('Preview Sheet', '预览面板')}</span>
+                        </button>
                       )
                     ) : (
                       <span className="text-[11px] text-slate-500 font-medium italic flex items-center gap-1.5 w-full justify-center py-1">
@@ -442,37 +533,19 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
         {/* Footer */}
         <div className="shrink-0 flex flex-wrap items-center justify-between gap-3 p-3 sm:p-4 border-t border-slate-800 bg-slate-950">
           <div className="text-xs text-slate-400">
-            {l('Selected Pick for', '当前选择属于')} <strong className="text-white">{currentDrafter.name}</strong>:{' '}
-            {selectedFaction ? (
-              <span className="text-indigo-300 font-bold ml-1">
-                {translateFactionName(selectedFaction.id, selectedFaction.name, language)}
-              </span>
-            ) : (
-              <span className="text-amber-400 italic ml-1">{l('None selected', '尚未选择')}</span>
-            )}
+            {isCurrentDrafter
+              ? l(
+                  `Picking for ${currentDrafter.name} — Click Select on a faction to preview its full species sheet.`,
+                  `轮到 ${currentDrafter.name} 挑选势力 —— 点击「选择」预览完整势力面板并确认。`
+                )
+              : l(`Waiting for ${currentDrafter.name} to choose...`, `等待 ${currentDrafter.name} 做出选择...`)}
           </div>
-
-          <button
-            type="button"
-            onClick={handleConfirmDraft}
-            disabled={!isCurrentDrafter || !selectedFactionId || !draft.availableFactionIds.includes(selectedFactionId)}
-            className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-indigo-500 to-indigo-600 hover:from-indigo-400 hover:to-indigo-500 text-white font-bold text-xs tracking-wide shadow-lg shadow-indigo-950 flex items-center gap-1.5 transition cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            {isCurrentDrafter ? (
-              <>
-                <span>
-                  {l(
-                    `Confirm Draft Pick (${selectedFaction?.shortName || selectedFaction?.name})`,
-                    `确认选择 (${selectedFaction ? translateFactionName(selectedFaction.id, selectedFaction.name, language) : ''})`
-                  )}
-                </span>
-                <ArrowRight className="w-4 h-4" />
-              </>
-            ) : (
-              <span>{l(`Waiting for ${currentDrafter.name} to choose...`, `等待 ${currentDrafter.name} 做出选择...`)}</span>
-            )}
-          </button>
+          <span className="text-[11px] font-mono text-indigo-300 font-semibold">
+            {l(`${draft.availableFactionIds.length} Factions Available`, `剩余 ${draft.availableFactionIds.length} 个可选势力`)}
+          </span>
         </div>
+          </>
+        )}
       </div>
     </div>
   );

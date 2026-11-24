@@ -172,7 +172,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     isHuman: true,
     defaultColor: ECLIPSE_COLOR_PALETTE.green, // Green (Paired with Planta)
     startingSectorNumber: 224,
-    startingResources: { money: 4, science: 2, materials: 4 },
+    startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
     startingColonyShips: 3,
     startingTechIds: [],
@@ -194,7 +194,7 @@ export const HUMAN_FACTIONS: FactionInfo[] = [
     isHuman: true,
     defaultColor: ECLIPSE_COLOR_PALETTE.white, // White (Paired with Mechanema)
     startingSectorNumber: 225,
-    startingResources: { money: 3, science: 4, materials: 3 },
+    startingResources: { money: 3, science: 3, materials: 4 },
     startingDiscs: 13,
     startingColonyShips: 3,
     startingTechIds: [],

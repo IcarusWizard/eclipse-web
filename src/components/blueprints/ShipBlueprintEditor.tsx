@@ -741,8 +741,8 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                         </div>
                       ) : null}
 
-                      {/* Physical Square Component Tile matching installed slots size (72px) */}
-                      <ShipPartSlotGraphic part={part} size="lg" className="w-full h-full" />
+                      {/* Physical Square Component Tile matching Combat Simulator & Ship Designer icon ratio */}
+                      <ShipPartSlotGraphic part={part} size="md" className="w-full h-full" />
                     </button>
                   );
                 })
