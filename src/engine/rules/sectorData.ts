@@ -365,6 +365,20 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'ho_p4', resource: 'material', isAdvanced: true },
     ],
   },
+  the_spiral: {
+    sectorNumber: 255,
+    name: 'Spiralis',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'sp_p1', resource: 'material', isAdvanced: false },
+      { id: 'sp_p2', resource: 'science', isAdvanced: false },
+      { id: 'sp_p3', resource: 'money', isAdvanced: false },
+      { id: 'sp_p4', resource: 'science', isAdvanced: true },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

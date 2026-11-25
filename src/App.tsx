@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { GameState, CombatDamageAssignment } from './engine/types/state';
+import { GameState, CombatDamageAssignment, ShiftPortMode } from './engine/types/state';
 import { SectorTile, HexCoord, ShipType, SectorShip } from './engine/types/galaxy';
 import { ShipPart } from './engine/types/blueprints';
 import { createInitialGame } from './engine/rules/setup';
@@ -23,7 +23,7 @@ import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
-import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './engine/rules/combatEngine';
+import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId } from './engine/rules/combatEngine';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X, Sparkles, Coins, Rocket, CheckCircle2, Check } from 'lucide-react';
 
@@ -51,6 +51,7 @@ import { FactionDraftModal } from './components/setup/FactionDraftModal';
 import { PulsarModal } from './components/actions/PulsarModal';
 import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupModal';
 import { RaArtifactSetupModal } from './components/setup/RaArtifactSetupModal';
+import { SpiralStartingTechModal } from './components/setup/SpiralStartingTechModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { ExploreSectorControlModal } from './components/actions/ExploreSectorControlModal';
 import { BlackHoleReturnModal } from './components/actions/BlackHoleReturnModal';
@@ -317,6 +318,7 @@ const AppContent: React.FC = () => {
     state.pendingActionConfirmation,
     state.pendingExilesOrbitalSetup,
     state.pendingRaArtifactSetup,
+    state.pendingSpiralTechSetup,
     isBuildOpen,
     isMoveOpen,
     isInfluenceOpen,
@@ -795,11 +797,17 @@ const AppContent: React.FC = () => {
       } else if (state.activeCombat.stage !== 'resolved') {
         const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
         if (sec) {
+          const spiralShiftId = getPendingSpiralShiftPlayerId(state.players, sec, state.activeCombat);
+          if (spiralShiftId) {
+            combatDecisionPlayerId = spiralShiftId;
+          } else {
           const units = buildCombatUnitsForSector(
             sec,
             state.players,
             state.activeCombat.participatingPlayerIds,
-            state.neutralShipBlueprints
+            state.neutralShipBlueprints,
+            state.expansions,
+            state.activeCombat.spiralShiftModes
           );
           const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
           const aliveUnits = sortUnitsByInitiative(
@@ -810,6 +818,7 @@ const AppContent: React.FC = () => {
           const activeGroup = getActiveCombatGroup(state.activeCombat, groups);
           if (activeGroup && activeGroup.ownerId.startsWith('player_')) {
             combatDecisionPlayerId = activeGroup.ownerId;
+          }
           }
         }
       } else {
@@ -843,6 +852,8 @@ const AppContent: React.FC = () => {
       offTurnDecisionKey = `exiles_setup:${state.pendingExilesOrbitalSetup.playerId}`;
     } else if (state.pendingRaArtifactSetup && (currentSeat === 'all' || state.pendingRaArtifactSetup.playerId === myId)) {
       offTurnDecisionKey = `ra_setup:${state.pendingRaArtifactSetup.playerId}`;
+    } else if (state.pendingSpiralTechSetup && (currentSeat === 'all' || state.pendingSpiralTechSetup.playerId === myId)) {
+      offTurnDecisionKey = `spiral_setup:${state.pendingSpiralTechSetup.playerId}`;
     } else if (state.isDraftMode && state.factionDraft && (currentSeat === 'all' || state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] === myId)) {
       offTurnDecisionKey = `draft:${state.factionDraft.currentDraftIndex}`;
     }
@@ -883,6 +894,7 @@ const AppContent: React.FC = () => {
     state.pendingBankruptcy,
     state.pendingExilesOrbitalSetup,
     state.pendingRaArtifactSetup,
+    state.pendingSpiralTechSetup,
     state.isDraftMode,
     state.factionDraft,
   ]);
@@ -3062,7 +3074,8 @@ const AppContent: React.FC = () => {
           state.players,
           state.activeCombat.participatingPlayerIds,
           state.neutralShipBlueprints,
-          state.expansions
+          state.expansions,
+          state.activeCombat.spiralShiftModes
         );
         const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(scopedSec, state.players);
         const aliveUnits = sortUnitsByInitiative(
@@ -3178,6 +3191,52 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // The Spiral Starting Cheapest Tech Selection (Mind)
+  const handleChooseSpiralStartingTech = (techId: string) => {
+    if (!state.pendingSpiralTechSetup) return;
+    if (!canActForPlayer(state.pendingSpiralTechSetup.playerId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'CHOOSE_SPIRAL_STARTING_TECH',
+      playerId: state.pendingSpiralTechSetup.playerId,
+      techId,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast('Selected starting technology for The Spiral.');
+    } else {
+      showToast(res.error || 'Failed to select starting technology.');
+    }
+  };
+
+  // The Spiral Shift Port Pre-Combat Configuration (Body)
+  const handleConfigureSpiralShiftPort = (
+    sectorId: string,
+    choices: Partial<Record<ShipType, ShiftPortMode>>,
+    targetPlayerId?: string
+  ) => {
+    if (isSpectator || !state.activeCombat) return;
+    const playerId = targetPlayerId || getPendingSpiralShiftPlayerId(state.players, state.sectors.find((s) => s.id === sectorId)!, state.activeCombat);
+    if (!playerId) return;
+    if (!canActForPlayer(playerId)) {
+      showToast('Only The Spiral commander can configure Shift Ports.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'CONFIGURE_SPIRAL_SHIFT_PORT',
+      playerId,
+      sectorId,
+      choices,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to configure Shift Ports.');
+    }
+  };
+
   // Auto-Resolve Combat (per-player opt-in; finishes full battle when PvE or when all human combatants enable it)
   const handleAutoResolveCombat = (targetPlayerId?: string) => {
     if (isSpectator) {
@@ -3202,7 +3261,8 @@ const AppContent: React.FC = () => {
               state.players,
               state.activeCombat.participatingPlayerIds,
               state.neutralShipBlueprints,
-              state.expansions
+              state.expansions,
+              state.activeCombat.spiralShiftModes
             );
             const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
             const aliveUnits = sortUnitsByInitiative(
@@ -4266,6 +4326,7 @@ const AppContent: React.FC = () => {
           onStepCombat={handleStepCombat}
           onRerollDie={handleRerollCombatDie}
           onAutoResolve={handleAutoResolveCombat}
+          onConfigureSpiralShiftPort={handleConfigureSpiralShiftPort}
           currentSeat={currentSeat}
         />
       )}
@@ -4337,6 +4398,38 @@ const AppContent: React.FC = () => {
                 {state.players.find((p) => p.id === state.pendingRaArtifactSetup!.playerId)?.name || 'Remnants of Ra'}
               </strong>{' '}
               is choosing starting [A] Artifact population cube...
+            </span>
+          </div>
+        )
+      )}
+
+      {state.pendingSpiralTechSetup &&
+        !(
+          (state.pendingExilesOrbitalSetup &&
+            canActForPlayer(state.pendingExilesOrbitalSetup.playerId) &&
+            canActForPlayer(state.pendingSpiralTechSetup.playerId)) ||
+          (state.pendingRaArtifactSetup &&
+            canActForPlayer(state.pendingRaArtifactSetup.playerId) &&
+            canActForPlayer(state.pendingSpiralTechSetup.playerId))
+        ) && (
+        canActForPlayer(state.pendingSpiralTechSetup.playerId) ? (
+          <SpiralStartingTechModal
+            player={
+              state.players.find((p) => p.id === state.pendingSpiralTechSetup!.playerId) ||
+              activePlayer
+            }
+            techSupply={state.techSupply}
+            onChooseTech={handleChooseSpiralStartingTech}
+          />
+        ) : (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-sky-600/80 px-4 py-2 rounded-xl text-xs text-slate-300 shadow-xl backdrop-blur-md flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-sky-400 animate-pulse" />
+            <span>
+              Commander{' '}
+              <strong className="text-sky-300">
+                {state.players.find((p) => p.id === state.pendingSpiralTechSetup!.playerId)?.name || 'The Spiral'}
+              </strong>{' '}
+              is choosing starting cheapest Technology Tile...
             </span>
           </div>
         )

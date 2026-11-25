@@ -84,7 +84,9 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   rho_indi_syndicate: '/factions/rho_indi_syndicate.jpg',
   atlantians: '/factions/atlantians.jpg',
   mega_war_inc: '/factions/mega_war_inc.jpg',
+  remnants_of_ra: '/factions/remnants_of_ra.jpg',
   the_horde: '/factions/the_horde.jpg',
+  the_spiral: '/factions/the_spiral.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -495,6 +497,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
       },
     ],
   },
+  the_spiral: {
+    historyEn:
+      'Little is known of the true origin of The Spiral, save rumours that millennia ago they unlocked an energy that consumed much of their physical form and remade them as beings of both matter and light. Infinitely adaptable where rigid empires crumble, they now weave neighboring worlds of Spiralis toward a purpose known only to themselves.',
+    historyZh:
+      '很少有人知晓螺旋一族的真正起源——传闻数千年前他们释放了一种能量，吞噬了大半肉身并将自身重塑为兼具物质与能量的存有。面对僵化帝国的倾颓，小而精锐的螺旋以近乎无限的可塑性适应战局，正围绕螺旋母星逐步编织属于自己的星海蓝图。',
+    portraitUrl: '/factions/the_spiral.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'spiral_mind',
+        icon: 'tech',
+        en: 'Mind (Single Tech Line & Cheapest Tech): Single 7-slot tech line (0, -1, -2, -3 [1 VP], -4, -6 [2 VP], -8 [3/5 VP]) accepting any tray. At setup, take 1 lowest-printed-cost Tech Tile from the tray.',
+        zh: '心智（单一科技轨与最低费开局）：仅 1 条 7 格综合科技轨（减免 0/-1/-2/-3/-4/-6/-8，可置入任意色科技）。开局从科技盘免费选取 1 枚印刷费用最低的科技板块。',
+      },
+      {
+        id: 'spiral_body_shift_port',
+        icon: 'ship',
+        en: 'Body (Shift Port): Each class replaces a computer (Ion Cannon on Interceptor) with a Shift Port. Before combat in each sector, choose Ion Cannon / Basic Computer / Hull (upgrades to Plasma Cannon / Positron Computer / Improved Hull after 5th tech) if power permits. Bombard immediately after combat.',
+        zh: '躯体（转换接口 Shift Port）：每型战舰含 1 个不可替换的转换接口。每处星区开战前若能量充足可切换为离子炮/电子电脑/船体（第 5 项科技后升级为等离子炮/正电子电脑/改良船体），战后立即结算行星轰炸。',
+      },
+      {
+        id: 'spiral_trade',
+        icon: 'colony',
+        en: 'Asymmetric Trade & Homeworld: Trade 2 Science for 1 any resource (Materials / Money at 3:1). Sector 255 Spiralis provides Material, Science, Money, and Advanced Science.',
+        zh: '非对称贸易与母星：可用 2 科研兑换 1 任意资源（材料/金钱为 3:1）。255 号螺旋星拥有材料、科研、金钱与高级科研行星。',
+      },
+    ],
+  },
 };
 
 function buildTerranHistory(faction: FactionInfo): { en: string; zh: string } {
@@ -643,6 +673,9 @@ export function computeFactionBlueprintModifiers(factionId: string): FactionBlue
       shieldDelta === 0
     ) {
       badges.push({ en: 'Gauss Shield', zh: '配高斯护盾', tone: 'positive' });
+    }
+    if (factionId === 'the_spiral' && bp.slots.some((s) => s?.id === 'shift_port')) {
+      badges.push({ en: 'Shift Port', zh: '转换接口', tone: 'positive' });
     }
 
     if (badges.length > 0) {

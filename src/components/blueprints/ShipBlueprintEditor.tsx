@@ -380,6 +380,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     }
     if (readOnly) return;
     if (selectedSlotIndex === null) return;
+    if (player.blueprints[activeShipType]?.slots[selectedSlotIndex]?.id === 'shift_port') return;
     if (wouldViolateBattleFocus(activeShipType, selectedSlotIndex)) return;
     if (slotRejectsDrives(activeShipType, selectedSlotIndex) && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       return;
@@ -392,6 +393,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   const handleClearSlot = (index: number, shipTypeOverride?: ShipType) => {
     const targetShip = shipTypeOverride ?? activeShipType;
     if (readOnly) return;
+    if (player.blueprints[targetShip]?.slots[index]?.id === 'shift_port') return;
     if (wouldViolateBattleFocus(targetShip, index)) return;
     if (!isSlotModified(targetShip, index) && remainingActivations <= 0) return;
 

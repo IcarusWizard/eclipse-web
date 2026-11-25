@@ -1950,7 +1950,16 @@ export const ShipPartSlotGraphic: React.FC<{
 
       {/* Center Physical Iconography */}
       <div className="my-auto flex items-center justify-center">
-        {isReactor ? (
+        {part.id === 'shift_port' ? (
+          <div className="flex flex-col items-center justify-center gap-0.5 px-1 text-center">
+            <svg width={size === 'sm' ? 18 : size === 'lg' ? 28 : 22} height={size === 'sm' ? 18 : size === 'lg' ? 28 : 22} viewBox="0 0 24 24" fill="none">
+              <path d="M7 4L17 4L14 10H18L10 20L12 13H6L7 4Z" fill="#fecdd3" stroke="#ffffff" strokeWidth="1.5" strokeLinejoin="round" />
+            </svg>
+            <span className={`${size === 'sm' ? 'text-[7px]' : size === 'lg' ? 'text-[9.5px]' : 'text-[8px]'} font-display font-black uppercase tracking-tighter text-rose-100 leading-none`}>
+              SHIFT
+            </span>
+          </div>
+        ) : isReactor ? (
           <div className="flex items-center gap-1">
             <span className={`font-display font-black text-white ${size === 'sm' ? 'text-sm' : size === 'lg' ? 'text-2xl' : 'text-base sm:text-lg'} leading-none drop-shadow`}>
               {part.powerProduced}

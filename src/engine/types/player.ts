@@ -26,7 +26,8 @@ export type FactionId =
   | 'atlantians'
   | 'mega_war_inc'
   | 'remnants_of_ra'
-  | 'the_horde';
+  | 'the_horde'
+  | 'the_spiral';
 
 export interface FactionInfo {
   readonly id: FactionId;

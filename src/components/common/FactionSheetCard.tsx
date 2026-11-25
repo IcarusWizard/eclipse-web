@@ -458,6 +458,13 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
                     );
                   })}
                 </div>
+              ) : faction.id === 'the_spiral' ? (
+                <span
+                  data-testid="starting-tech-cheapest-badge"
+                  className="px-2 py-0.5 rounded bg-sky-950/70 border border-sky-500/60 text-sky-200 text-[11px] font-bold uppercase tracking-wide font-mono"
+                >
+                  {l('Cheapest Tech (Chosen at Setup)', '最低费科技（开局自选）')}
+                </span>
               ) : (
                 <span className="text-[11px] text-slate-500 italic">
                   {l('None (Flexible Terran Start)', '无初始科技')}
@@ -539,6 +546,11 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
                 {faction.id === 'rho_indi_syndicate' && (
                   <span className="text-[10px] px-1.5 py-0.5 rounded bg-amber-950 border border-amber-600/60 text-amber-200">
                     {l('3M ➔ 2', '3金换2')}
+                  </span>
+                )}
+                {faction.id === 'the_spiral' && (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded bg-pink-950 border border-pink-500/60 text-pink-200">
+                    {l('2 Sci ➔ 1', '2科研换1')}
                   </span>
                 )}
               </div>

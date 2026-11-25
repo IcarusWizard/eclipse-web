@@ -260,7 +260,10 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'osiris seth' ||
     norm === 'the_horde' ||
     norm === 'the horde' ||
-    norm === 'kassus gar rift'
+    norm === 'kassus gar rift' ||
+    norm === 'the_spiral' ||
+    norm === 'the spiral' ||
+    norm === 'spiralis'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }

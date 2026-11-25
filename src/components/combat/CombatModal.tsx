@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { GameState, CombatState, CombatDamageAssignment, CombatRoll, PlayerState } from '../../engine/types/state';
-import { SectorTile } from '../../engine/types/galaxy';
+import { GameState, CombatState, CombatDamageAssignment, CombatRoll, PlayerState, ShiftPortMode } from '../../engine/types/state';
+import { SectorTile, ShipType } from '../../engine/types/galaxy';
 import { Crosshair, Shield, Dices, Skull, Zap, CheckCircle2, X, Navigation, ArrowRight, Minimize2, Maximize2, RotateCcw, Swords } from 'lucide-react';
 import {
   buildCombatUnitsForSector,
@@ -11,7 +11,11 @@ import {
   isAntimatterSplitterRoll,
   SHIP_SIZE_RANK,
   CombatUnit,
+  getPendingSpiralShiftPlayerId,
+  getDefaultShiftPortMode,
 } from '../../engine/rules/combatEngine';
+import { canBlueprintPowerShiftMode, getShiftPortSlotIndex } from '../../engine/rules/shipValidation';
+import { getShiftPortResolvedPart, isSpiralPhase2 } from '../../engine/rules/partData';
 import { getEligibleRetreatSectors, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor } from '../../engine/rules/gameReducer';
 import { CombatDieFaceGraphic } from '../common/PhysicalTileIconography';
 import { getEffectiveShipPart } from '../../engine/rules/partData';
@@ -222,6 +226,11 @@ interface CombatModalProps {
   ) => void;
   onRerollDie?: (rollIndex: number) => void;
   onAutoResolve?: (playerId?: string) => void;
+  onConfigureSpiralShiftPort?: (
+    sectorId: string,
+    choices: Partial<Record<ShipType, ShiftPortMode>>,
+    playerId?: string
+  ) => void;
   currentSeat?: number | 'all' | 'spectator';
 }
 
@@ -231,20 +240,59 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   onStepCombat,
   onRerollDie,
   onAutoResolve,
+  onConfigureSpiralShiftPort,
   currentSeat = 'all',
 }) => {
   const { l, language } = useLanguage();
   const sector = state.sectors.find((s) => s.id === combat.sectorId);
-  if (!sector) return null;
+  const scopedSectorForCombat = React.useMemo(() => {
+    if (!sector) return null;
+    return sector.isNebula && combat.subsector
+      ? { ...sector, ships: sector.ships.filter((s) => (s.subsector ?? 1) === combat.subsector) }
+      : sector;
+  }, [sector, combat.subsector]);
+
+  const pendingSpiralShiftId = sector
+    ? getPendingSpiralShiftPlayerId(state.players, sector, combat)
+    : null;
+  const pendingSpiralPlayer = pendingSpiralShiftId
+    ? state.players.find((p) => p.id === pendingSpiralShiftId) || null
+    : null;
+  const spiralActiveShipClasses: ShipType[] = React.useMemo(() => {
+    if (!pendingSpiralPlayer || !scopedSectorForCombat) return [];
+    return (['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).filter(
+      (st) =>
+        getShiftPortSlotIndex(pendingSpiralPlayer.blueprints[st]) !== -1 &&
+        scopedSectorForCombat.ships.some((sh) => sh.ownerId === pendingSpiralPlayer.id && sh.type === st)
+    );
+  }, [pendingSpiralPlayer, scopedSectorForCombat]);
+
+  const [spiralDraftChoices, setSpiralDraftChoices] = useState<Partial<Record<ShipType, ShiftPortMode>>>({});
+  React.useEffect(() => {
+    if (!pendingSpiralPlayer) {
+      setSpiralDraftChoices({});
+      return;
+    }
+    const phase2 = isSpiralPhase2(pendingSpiralPlayer.techTrack.researched);
+    const defaults: Partial<Record<ShipType, ShiftPortMode>> = {};
+    for (const st of spiralActiveShipClasses) {
+      const bp = pendingSpiralPlayer.blueprints[st];
+      if (bp) {
+        defaults[st] = getDefaultShiftPortMode(bp, phase2, state.expansions);
+      }
+    }
+    setSpiralDraftChoices(defaults);
+  }, [combat.sectorId, combat.subsector, pendingSpiralShiftId, spiralActiveShipClasses.join(',')]);
+
+  if (!sector || !scopedSectorForCombat) return null;
 
   const units = buildCombatUnitsForSector(
-    sector.isNebula && combat.subsector
-      ? { ...sector, ships: sector.ships.filter((s) => (s.subsector ?? 1) === combat.subsector) }
-      : sector,
+    scopedSectorForCombat,
     state.players,
     combat.participatingPlayerIds,
     state.neutralShipBlueprints,
-    state.expansions
+    state.expansions,
+    combat.spiralShiftModes
   );
   const defenderOwnerId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector, state.players);
   const aliveUnits = sortUnitsByInitiative(
@@ -958,6 +1006,131 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             </div>
           )}
 
+          {/* Pre-Combat Shift Port Selection for The Spiral */}
+          {pendingSpiralPlayer && !isResolved && (
+            <div
+              data-testid="spiral-shift-port-panel"
+              className="p-4 rounded-xl bg-slate-950/90 border-2 border-sky-400/80 shadow-xl space-y-3"
+            >
+              {(() => {
+                const phase2 = isSpiralPhase2(pendingSpiralPlayer.techTrack.researched);
+                const canConfigure =
+                  !isSpectator &&
+                  (currentSeat === 'all' || (myPlayer && myPlayer.id === pendingSpiralPlayer.id));
+                const modes: { id: ShiftPortMode; label: string; labelZh: string }[] = [
+                  { id: 'cannon', label: phase2 ? 'Plasma Cannon (2💥)' : 'Ion Cannon (1💥)', labelZh: phase2 ? '等离子炮 (2💥)' : '离子炮 (1💥)' },
+                  { id: 'computer', label: phase2 ? 'Positron Computer (+2)' : 'Basic Computer (+1)', labelZh: phase2 ? '正电子电脑 (+2)' : '电子电脑 (+1)' },
+                  { id: 'hull', label: phase2 ? 'Improved Hull (+2 HP)' : 'Hull (+1 HP)', labelZh: phase2 ? '改良船体 (+2 HP)' : '船体 (+1 HP)' },
+                ];
+                return (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-sky-900/70 pb-2">
+                      <div>
+                        <h3 className="text-xs font-black text-sky-300 uppercase tracking-wider font-display flex items-center gap-1.5">
+                          <Zap className="w-4 h-4 text-sky-400" />
+                          {l(
+                            `Body — Configure Shift Ports Before Combat (${pendingSpiralPlayer.name})`,
+                            `躯体法则 — 战前配置转换接口 (${pendingSpiralPlayer.name})`
+                          )}
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {l(
+                            'Select one powerable module per active ship class for this sector engagement (and immediate post-combat planetary bombardment).',
+                            '在当前星区交火前为每种参战舰船选择 1 项有足够剩余能量的转换接口形态（同时作用于战后立即结算的行星轰炸）。'
+                          )}
+                        </p>
+                      </div>
+                      <span className={`px-2 py-0.5 rounded text-[10px] font-mono font-bold border ${phase2 ? 'bg-amber-950/70 border-amber-500/80 text-amber-200' : 'bg-sky-950/70 border-sky-600/70 text-sky-200'}`}>
+                        {phase2 ? l('Phase 2 (5+ Techs)', '第 2 阶段 (5+ 科技)') : l('Phase 1 (1–4 Techs)', '第 1 阶段 (1–4 科技)')}
+                      </span>
+                    </div>
+
+                    <div className="space-y-2">
+                      {spiralActiveShipClasses.map((st) => {
+                        const bp = pendingSpiralPlayer.blueprints[st]!;
+                        const shipCount = scopedSectorForCombat.ships.filter(
+                          (sh) => sh.ownerId === pendingSpiralPlayer.id && sh.type === st
+                        ).length;
+                        const firstCheck = canBlueprintPowerShiftMode(bp, 'hull', phase2, state.expansions);
+                        const activeMode = spiralDraftChoices[st] || 'hull';
+                        return (
+                          <div
+                            key={`shift_${st}`}
+                            className="p-2.5 rounded-lg bg-slate-900/80 border border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2"
+                          >
+                            <div className="text-xs font-bold text-slate-200 flex items-center gap-2">
+                              <span className="uppercase">{shipCount}× {translateShipType(st, language)}</span>
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded bg-slate-950 border border-slate-700 text-emerald-300">
+                                {l(`${firstCheck.sparePower}⚡ free`, `剩余 ${firstCheck.sparePower}⚡`)}
+                              </span>
+                            </div>
+                            <div className="grid grid-cols-3 gap-1.5">
+                              {modes.map((m) => {
+                                const check = canBlueprintPowerShiftMode(bp, m.id, phase2, state.expansions);
+                                const selected = activeMode === m.id && check.allowed;
+                                return (
+                                  <button
+                                    key={m.id}
+                                    type="button"
+                                    disabled={!canConfigure || !check.allowed}
+                                    data-testid={`spiral-shift-${st}-${m.id}`}
+                                    onClick={() =>
+                                      setSpiralDraftChoices((prev) => ({
+                                        ...prev,
+                                        [st]: m.id,
+                                      }))
+                                    }
+                                    className={`px-2 py-1.5 rounded-lg border text-[10.5px] font-bold transition ${
+                                      !check.allowed
+                                        ? 'bg-slate-950/60 border-slate-800 text-slate-600 opacity-50 cursor-not-allowed'
+                                        : selected
+                                        ? 'bg-sky-600 border-sky-400 text-white shadow'
+                                        : 'bg-slate-950 border-slate-700 text-slate-300 hover:border-sky-500/70 cursor-pointer'
+                                    }`}
+                                    title={
+                                      check.allowed
+                                        ? `${getShiftPortResolvedPart(m.id, phase2).name} (${check.requiredPower}⚡)`
+                                        : l(`Requires ${check.requiredPower}⚡ (only ${check.sparePower}⚡ free)`, `需消耗 ${check.requiredPower}⚡（当前仅剩 ${check.sparePower}⚡）`)
+                                    }
+                                  >
+                                    <div>{language === 'zh' ? m.labelZh : m.label}</div>
+                                    <div className="text-[9px] font-mono opacity-80">
+                                      {check.requiredPower}⚡
+                                    </div>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    <div className="flex items-center justify-end pt-1">
+                      {canConfigure && onConfigureSpiralShiftPort ? (
+                        <button
+                          type="button"
+                          data-testid="spiral-shift-confirm-btn"
+                          onClick={() =>
+                            onConfigureSpiralShiftPort(combat.sectorId, spiralDraftChoices, pendingSpiralPlayer.id)
+                          }
+                          className="flex items-center gap-2 px-5 py-2 rounded-lg bg-sky-500 hover:bg-sky-400 text-slate-950 font-black text-xs tracking-wider uppercase shadow-lg transition cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          {l('Lock Shift Ports & Begin Combat', '锁定转换接口并开始战斗')}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-sky-300 font-semibold">
+                          {l(`Waiting for ${pendingSpiralPlayer.name} to configure Shift Ports...`, `正在等待 ${pendingSpiralPlayer.name} 配置转换接口...`)}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Pending Damage Assignment Panel (Manual Dice Allocation) */}
           {pendingSalvo && (
             <div className="p-4 rounded-xl bg-slate-950 border-2 border-cyan-500/80 shadow-2xl space-y-4">
@@ -1446,6 +1619,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                   <CheckCircle2 className="w-4 h-4" /> {l('Conclude Engagement & Continue', '结束战斗并继续')}
                 </button>
               )
+            ) : pendingSpiralPlayer ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-xs text-sky-200">
+                <Zap className="w-3.5 h-3.5 text-sky-400" />
+                <span>{l(`Configure Shift Ports above for ${pendingSpiralPlayer.name} before firing.`, `开火前请先在上方为 ${pendingSpiralPlayer.name} 配置转换接口。`)}</span>
+              </div>
             ) : (
               <>
                 {autoResolvePlayerIds.length > 0 && (

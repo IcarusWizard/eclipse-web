@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile } from '../../engine/types/galaxy';
-import { UPKEEP_TABLE, abandonSectorForUpkeep, getAllowedReturnTracksForPlanet } from '../../engine/rules/economyEngine';
+import { UPKEEP_TABLE, abandonSectorForUpkeep, getAllowedReturnTracksForPlanet, getTradeRateForResource } from '../../engine/rules/economyEngine';
 import {
   AlertTriangle,
   Disc,
@@ -70,7 +70,8 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
   const stagedAbandonedSectorIds = propsStagedAbandonedSectorIds ?? localAbandoned;
 
   const controlledSectors = sectors.filter((s) => s.discOwner === player.id);
-  const tradeRatio = player.faction.tradeRatio || 2;
+  const matTradeRatio = getTradeRateForResource(player, 'material').spend;
+  const sciTradeRatio = getTradeRateForResource(player, 'science').spend;
 
   // Staged simulation using official upkeep and sector abandonment logic
   const simulation = React.useMemo(() => {
@@ -81,8 +82,8 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
     // Apply staged trades
     const matTraded = stagedTrades.materials;
     const sciTraded = stagedTrades.science;
-    simPlayer.resources.materials -= matTraded * tradeRatio;
-    simPlayer.resources.science -= sciTraded * tradeRatio;
+    simPlayer.resources.materials -= matTraded * matTradeRatio;
+    simPlayer.resources.science -= sciTraded * sciTradeRatio;
     simPlayer.resources.money += matTraded + sciTraded;
 
     // Apply staged sector abandonments in sequence
@@ -105,10 +106,10 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
       projectedDeficit,
       isSolvent,
     };
-  }, [player, sectors, stagedTrades, stagedAbandonedSectorIds, abandonReturnTrack, tradeRatio]);
+  }, [player, sectors, stagedTrades, stagedAbandonedSectorIds, abandonReturnTrack, matTradeRatio, sciTradeRatio]);
 
-  const canTradeMaterials = simulation.simPlayer.resources.materials >= tradeRatio;
-  const canTradeScience = simulation.simPlayer.resources.science >= tradeRatio;
+  const canTradeMaterials = simulation.simPlayer.resources.materials >= matTradeRatio;
+  const canTradeScience = simulation.simPlayer.resources.science >= sciTradeRatio;
   const hasStagedDecisions =
     stagedTrades.materials > 0 || stagedTrades.science > 0 || stagedAbandonedSectorIds.length > 0;
 
@@ -322,7 +323,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
           <div className="flex items-center justify-between text-xs">
             <span className="font-bold text-slate-300 flex items-center gap-1.5">
               <Coins className="w-4 h-4 text-amber-400" />
-              <span>{l(`Voluntary Emergency Resource Trade (${tradeRatio}:1)`, `自愿紧急资源交易 (${tradeRatio}:1)`)}</span>
+              <span>{l(`Voluntary Emergency Resource Trade (${matTradeRatio}:1${sciTradeRatio !== matTradeRatio ? ` • ${sciTradeRatio}:1 Sci` : ''})`, `自愿紧急资源交易 (${matTradeRatio}:1${sciTradeRatio !== matTradeRatio ? ` • ${sciTradeRatio}:1 科研` : ''})`)}</span>
             </span>
             <span className="text-[11px] text-slate-400">
               {l('Decide how many resources to trade into money.', '决定将多少资源兑换为信用点（金钱）。')}
@@ -334,7 +335,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
             <div className="flex items-center justify-between p-2 rounded-lg bg-orange-950/30 border border-orange-700/50 text-xs">
               <div>
                 <div className="text-orange-200 font-bold font-mono">
-                  {l(`${tradeRatio} Mat → +1 💰`, `${tradeRatio} 材料 → +1 💰`)}
+                  {l(`${matTradeRatio} Mat → +1 💰`, `${matTradeRatio} 材料 → +1 💰`)}
                 </div>
                 <div className="text-[10px] text-orange-400/80 font-mono">
                   {l(
@@ -369,7 +370,7 @@ export const BankruptcyModal: React.FC<BankruptcyModalProps> = ({
             <div className="flex items-center justify-between p-2 rounded-lg bg-cyan-950/30 border border-cyan-700/50 text-xs">
               <div>
                 <div className="text-cyan-200 font-bold font-mono">
-                  {l(`${tradeRatio} Sci → +1 💰`, `${tradeRatio} 科研 → +1 💰`)}
+                  {l(`${sciTradeRatio} Sci → +1 💰`, `${sciTradeRatio} 科研 → +1 💰`)}
                 </div>
                 <div className="text-[10px] text-cyan-400/80 font-mono">
                   {l(

@@ -268,18 +268,18 @@ export function applyUpkeepPhase(
       `${updatedPlayer.name} has a budget deficit of ${Math.abs(updatedPlayer.resources.money)} Credits and enters Bankruptcy!`
     );
 
-    const tradeRatio = updatedPlayer.faction.tradeRatio || 2;
+    const matRatio = getTradeRateForResource(updatedPlayer, 'material').spend;
 
     // Step 1: Emergency trade from materials to money
     if (updatedPlayer.resources.money < 0 && updatedPlayer.resources.materials > 0) {
       const neededMoney = Math.abs(updatedPlayer.resources.money);
       const matsToTrade = Math.min(
         updatedPlayer.resources.materials,
-        neededMoney * tradeRatio
+        neededMoney * matRatio
       );
-      const unitsTraded = Math.floor(matsToTrade / tradeRatio) * tradeRatio;
+      const unitsTraded = Math.floor(matsToTrade / matRatio) * matRatio;
       if (unitsTraded > 0) {
-        const gained = unitsTraded / tradeRatio;
+        const gained = unitsTraded / matRatio;
         updatedPlayer.resources.materials -= unitsTraded;
         updatedPlayer.resources.money += gained;
         log.push(
@@ -289,15 +289,16 @@ export function applyUpkeepPhase(
     }
 
     // Step 2: Emergency trade from science to money
+    const sciRatio = getTradeRateForResource(updatedPlayer, 'science').spend;
     if (updatedPlayer.resources.money < 0 && updatedPlayer.resources.science > 0) {
       const neededMoney = Math.abs(updatedPlayer.resources.money);
       const sciToTrade = Math.min(
         updatedPlayer.resources.science,
-        neededMoney * tradeRatio
+        neededMoney * sciRatio
       );
-      const unitsTraded = Math.floor(sciToTrade / tradeRatio) * tradeRatio;
+      const unitsTraded = Math.floor(sciToTrade / sciRatio) * sciRatio;
       if (unitsTraded > 0) {
-        const gained = unitsTraded / tradeRatio;
+        const gained = unitsTraded / sciRatio;
         updatedPlayer.resources.science -= unitsTraded;
         updatedPlayer.resources.money += gained;
         log.push(
@@ -461,6 +462,19 @@ export interface PlayerTechRows {
   rare: import('../types/tech').Technology[];
 }
 
+export function getTradeRateForResource(
+  player: Pick<PlayerState, 'faction'>,
+  fromResource: 'money' | 'science' | 'material'
+): { spend: number; receive: number } {
+  if (player.faction.id === 'rho_indi_syndicate') {
+    return { spend: 3, receive: fromResource === 'money' ? 2 : 1 };
+  }
+  if (player.faction.id === 'the_spiral') {
+    return { spend: fromResource === 'science' ? 2 : 3, receive: 1 };
+  }
+  return { spend: player.faction.tradeRatio || 2, receive: 1 };
+}
+
 export function getPlayerTechRows(player: PlayerState): PlayerTechRows {
   const militaryTechs: import('../types/tech').Technology[] = [];
   const gridTechs: import('../types/tech').Technology[] = [];
@@ -480,11 +494,19 @@ export function getPlayerTechRows(player: PlayerState): PlayerTechRows {
     }
   }
 
+  const isSingleLine = player.faction.id === 'the_spiral';
+  const totalSingleCount = player.techTrack.researched.length;
+
   const getRowStats = (track: 'military' | 'grid' | 'nano', techs: import('../types/tech').Technology[]) => {
     const count = techs.length;
     const maxSlots = getTechTrackMaxSlots(track, player.faction.id);
-    const nextDiscount = getTechDiscountForTrack(Math.min(maxSlots - 1, count), track, player.faction.id);
-    const victoryPoints = getTechTrackVPForPlayer(track, count, player.faction.id);
+    const effectiveDiscountCount = isSingleLine ? totalSingleCount : count;
+    const nextDiscount = getTechDiscountForTrack(Math.min(maxSlots - 1, effectiveDiscountCount), track, player.faction.id);
+    const victoryPoints = isSingleLine
+      ? track === 'military'
+        ? getTechTrackVPForPlayer('military', totalSingleCount, player.faction.id)
+        : 0
+      : getTechTrackVPForPlayer(track, count, player.faction.id);
     return { techs, count, nextDiscount, victoryPoints };
   };
 

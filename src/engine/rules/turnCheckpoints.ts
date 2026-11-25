@@ -4,6 +4,7 @@ import {
   sortUnitsByInitiative,
   getCombatShipTypeGroups,
   getActiveCombatGroup,
+  getPendingSpiralShiftPlayerId,
 } from './combatEngine';
 
 export interface AdminTurnCheckpointInfo {
@@ -283,6 +284,10 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
     const idx = seatOfPlayerId(stateObj.pendingRaArtifactSetup.playerId);
     if (idx >= 0) return idx;
   }
+  if (stateObj.pendingSpiralTechSetup?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingSpiralTechSetup.playerId);
+    if (idx >= 0) return idx;
+  }
 
   // 2. Draft Phase
   if (stateObj.phase === 'DRAFT_PHASE' && stateObj.factionDraft) {
@@ -313,6 +318,11 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
       const sec = stateObj.sectors.find((s: any) => s && s.id === combat.sectorId);
       if (sec) {
         try {
+          const spiralWaitId = getPendingSpiralShiftPlayerId(stateObj.players, sec, combat);
+          if (spiralWaitId) {
+            const spIdx = seatOfPlayerId(spiralWaitId);
+            if (spIdx >= 0) return spIdx;
+          }
           const scopedSec =
             sec.isNebula && combat.subsector
               ? { ...sec, ships: (sec.ships || []).filter((s: any) => (s.subsector ?? 1) === combat.subsector) }
@@ -322,7 +332,8 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
             stateObj.players,
             combat.participatingPlayerIds,
             stateObj.neutralShipBlueprints,
-            stateObj.expansions
+            stateObj.expansions,
+            combat.spiralShiftModes
           );
           const defenderId = combat.defenderOwnerId || getSectorDefenderOwnerId(scopedSec, stateObj.players);
           const aliveUnits = sortUnitsByInitiative(

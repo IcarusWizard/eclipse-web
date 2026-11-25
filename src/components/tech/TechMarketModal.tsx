@@ -8,7 +8,10 @@ import {
   ALL_RARE_TECHS,
   calculateTechCost,
   getTechTrackMaxSlots,
+  isSingleTechLineFaction,
+  getTotalTechSlotsMax,
 } from '../../engine/rules/techData';
+import { isSpiralPhase2 } from '../../engine/rules/partData';
 import { getMinorSpeciesTechDiscount } from '../../engine/rules/minorSpecies';
 import { SHIP_PARTS } from '../../engine/rules/partData';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
@@ -183,7 +186,9 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
   }
 
   // Progressive calculation of cost and discount for staged techs
+  const isSingleLine = isSingleTechLineFaction(commander.faction.id);
   const stagedResearches = React.useMemo(() => {
+    let totalSingleCount = commander.techTrack.researched.length;
     let mCount = commander.techTrack.militaryCount;
     let gCount = commander.techTrack.gridCount;
     let nCount = commander.techTrack.nanoCount;
@@ -193,7 +198,9 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
       const tech = techSupply.find((t) => t.id === item.techId);
       if (!tech) return { ...item, tech: null, cost: 0, discount: 0 };
       let countBefore = 0;
-      if (item.targetTrack === 'military') countBefore = mCount++;
+      if (isSingleLine) {
+        countBefore = totalSingleCount++;
+      } else if (item.targetTrack === 'military') countBefore = mCount++;
       else if (item.targetTrack === 'grid') countBefore = gCount++;
       else countBefore = nCount++;
 
@@ -206,7 +213,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     });
 
     return { items, totalScience };
-  }, [selectedForResearch, commander.techTrack, techSupply]);
+  }, [selectedForResearch, commander.techTrack, commander.faction.id, isSingleLine, techSupply]);
 
   // Rare techs in supply
   const rareTechsInSupply = ALL_RARE_TECHS.filter((t) => supplyCountMap.has(t.id));
@@ -242,8 +249,12 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     if (tech.category === 'rare') {
       chosenTrack = getRareBestTrack(tech);
     }
-    const trackCount = chosenTrack ? getTrackCount(chosenTrack) : 0;
-    const maxSlots = chosenTrack ? getTechTrackMaxSlots(chosenTrack, commander.faction.id) : 7;
+    const trackCount = isSingleLine
+      ? commander.techTrack.researched.length
+      : (chosenTrack ? getTrackCount(chosenTrack) : 0);
+    const maxSlots = isSingleLine
+      ? getTotalTechSlotsMax(commander.faction.id)
+      : (chosenTrack ? getTechTrackMaxSlots(chosenTrack, commander.faction.id) : 7);
     const isTrackFull = trackCount >= maxSlots;
     const isRestrictedForFaction = commander.faction.id === 'mega_war_inc' && tech.id === 'monolith';
     const msDiscount = getMinorSpeciesTechDiscount(commander);
@@ -477,8 +488,8 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             </div>
           )}
 
-          {/* Rare Tech Track Selector */}
-          {tech.category === 'rare' && stock > 0 && !isOwned && (
+          {/* Rare Tech Track Selector (omitted for single-line The Spiral) */}
+          {tech.category === 'rare' && !isSingleLine && stock > 0 && !isOwned && (
             <div className="mb-2.5 p-1.5 rounded-lg bg-slate-950/60 border border-purple-900/40 text-[10px]">
               <div className="text-slate-400 mb-1 font-semibold">{l('Place on Track:', '放置到科技轨：')}</div>
               <div className="grid grid-cols-3 gap-1">
@@ -753,25 +764,47 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             )}
           </div>
 
-          <div className="flex items-center gap-4 flex-wrap font-mono font-bold">
-            {/* Military Track Status */}
-            <div className="flex items-center gap-1.5 text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-900/60">
-              <span className="w-2 h-2 rounded-full bg-rose-500" />
-              <span>{l(`Military: ${commander.techTrack.militaryCount}/${getTechTrackMaxSlots('military', commander.faction.id)} Researched`, `军事：${commander.techTrack.militaryCount}/${getTechTrackMaxSlots('military', commander.faction.id)} 已研发`)}</span>
+          {isSingleLine ? (
+            <div className="flex items-center gap-3 flex-wrap font-mono font-bold">
+              <div
+                data-testid="spiral-single-tech-line-status"
+                className="flex items-center gap-1.5 text-sky-200 bg-sky-950/50 px-2.5 py-1 rounded-lg border border-sky-700/70"
+              >
+                <span className="w-2 h-2 rounded-full bg-sky-400" />
+                <span>
+                  {l(
+                    `Single Tech Line: ${commander.techTrack.researched.length}/${getTotalTechSlotsMax(commander.faction.id)} Researched`,
+                    `单一科技轨：${commander.techTrack.researched.length}/${getTotalTechSlotsMax(commander.faction.id)} 已研发`
+                  )}
+                </span>
+              </div>
+              <span className="px-2 py-1 rounded-lg bg-slate-950/80 border border-slate-700 text-[11px] text-amber-300">
+                {isSpiralPhase2(commander.techTrack.researched)
+                  ? l('Shift Port Phase 2 Active (5+ Techs)', '转换接口第 2 阶段激活 (5+ 科技)')
+                  : l('Shift Port Phase 1 (5th Tech Upgrades)', '转换接口第 1 阶段 (第 5 项升级)')}
+              </span>
             </div>
+          ) : (
+            <div className="flex items-center gap-4 flex-wrap font-mono font-bold">
+              {/* Military Track Status */}
+              <div className="flex items-center gap-1.5 text-rose-300 bg-rose-950/40 px-2.5 py-1 rounded-lg border border-rose-900/60">
+                <span className="w-2 h-2 rounded-full bg-rose-500" />
+                <span>{l(`Military: ${commander.techTrack.militaryCount}/${getTechTrackMaxSlots('military', commander.faction.id)} Researched`, `军事：${commander.techTrack.militaryCount}/${getTechTrackMaxSlots('military', commander.faction.id)} 已研发`)}</span>
+              </div>
 
-            {/* Grid Track Status */}
-            <div className="flex items-center gap-1.5 text-emerald-300 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-900/60">
-              <span className="w-2 h-2 rounded-full bg-emerald-500" />
-              <span>{l(`Grid: ${commander.techTrack.gridCount}/${getTechTrackMaxSlots('grid', commander.faction.id)} Researched`, `网络：${commander.techTrack.gridCount}/${getTechTrackMaxSlots('grid', commander.faction.id)} 已研发`)}</span>
-            </div>
+              {/* Grid Track Status */}
+              <div className="flex items-center gap-1.5 text-emerald-300 bg-emerald-950/40 px-2.5 py-1 rounded-lg border border-emerald-900/60">
+                <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                <span>{l(`Grid: ${commander.techTrack.gridCount}/${getTechTrackMaxSlots('grid', commander.faction.id)} Researched`, `网络：${commander.techTrack.gridCount}/${getTechTrackMaxSlots('grid', commander.faction.id)} 已研发`)}</span>
+              </div>
 
-            {/* Nano Track Status */}
-            <div className="flex items-center gap-1.5 text-sky-300 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-900/60">
-              <span className="w-2 h-2 rounded-full bg-sky-500" />
-              <span>{l(`Nano: ${commander.techTrack.nanoCount}/${getTechTrackMaxSlots('nano', commander.faction.id)} Researched`, `纳米：${commander.techTrack.nanoCount}/${getTechTrackMaxSlots('nano', commander.faction.id)} 已研发`)}</span>
+              {/* Nano Track Status */}
+              <div className="flex items-center gap-1.5 text-sky-300 bg-sky-950/40 px-2.5 py-1 rounded-lg border border-sky-900/60">
+                <span className="w-2 h-2 rounded-full bg-sky-500" />
+                <span>{l(`Nano: ${commander.techTrack.nanoCount}/${getTechTrackMaxSlots('nano', commander.faction.id)} Researched`, `纳米：${commander.techTrack.nanoCount}/${getTechTrackMaxSlots('nano', commander.faction.id)} 已研发`)}</span>
+              </div>
             </div>
-          </div>
+          )}
         </div>
 
         {/* View Mode Tabs */}

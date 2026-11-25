@@ -15,19 +15,21 @@ import { PlayerState } from '../types/player';
 import { SectorTile, HexEdge, ShipType, PlanetSlot } from '../types/galaxy';
 import { ShipBlueprint, ShipPart } from '../types/blueprints';
 import { Technology } from '../types/tech';
-import { SHIP_PARTS } from '../rules/partData';
-import { calculateTechCost } from '../rules/techData';
+import { SHIP_PARTS, isSpiralPhase2 } from '../rules/partData';
+import { calculateTechCost, getEligibleSpiralStartingTechs, isSingleTechLineFaction } from '../rules/techData';
 import {
   calculatePlayerRoundSummary,
   getIncomeForTrack,
   getUpkeepForDiscs,
   getAllowedReturnTracksForPlanet,
+  getTradeRateForResource,
 } from '../rules/economyEngine';
 import {
   countPlayerShips,
   SHIP_LIMITS,
   calculateBlueprintStats,
   getRemainingShipSupply,
+  getShiftPortSlotIndex,
 } from '../rules/shipValidation';
 import {
   areSectorsConnected,
@@ -44,6 +46,8 @@ import {
   sortUnitsByInitiative,
   getCombatShipTypeGroups,
   getActiveCombatGroup,
+  getPendingSpiralShiftPlayerId,
+  getDefaultShiftPortMode,
 } from '../rules/combatEngine';
 import {
   runCombatSimulation,
@@ -181,6 +185,9 @@ export function getPriorityActorId(state: GameState): string | null {
   if (state.pendingRaArtifactSetup) {
     return state.pendingRaArtifactSetup.playerId;
   }
+  if (state.pendingSpiralTechSetup) {
+    return state.pendingSpiralTechSetup.playerId;
+  }
   if (state.phase === 'DRAFT_PHASE' && state.factionDraft) {
     return state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] || null;
   }
@@ -211,6 +218,12 @@ export function getPriorityActorId(state: GameState): string | null {
     }
 
     if (sec) {
+      const pendingSpiralShiftId = getPendingSpiralShiftPlayerId(state.players, sec, combat);
+      if (pendingSpiralShiftId) {
+        const spiralPlayer = state.players.find((p) => p.id === pendingSpiralShiftId);
+        if (spiralPlayer?.isBot) return spiralPlayer.id;
+        return null;
+      }
       const scopedSec =
         sec.isNebula && activeSub
           ? { ...sec, ships: sec.ships.filter((s) => (s.subsector ?? 1) === activeSub) }
@@ -220,7 +233,8 @@ export function getPriorityActorId(state: GameState): string | null {
         state.players,
         combat.participatingPlayerIds,
         state.neutralShipBlueprints,
-        state.expansions
+        state.expansions,
+        combat.spiralShiftModes
       );
       const defenderId = combat.defenderOwnerId || getSectorDefenderOwnerId(scopedSec, state.players);
       const aliveUnits = sortUnitsByInitiative(
@@ -358,6 +372,16 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
       resource: bestTrack,
     };
   }
+  if (state.pendingSpiralTechSetup?.playerId === player.id) {
+    const eligible = getEligibleSpiralStartingTechs(state.techSupply);
+    if (eligible.length > 0) {
+      return {
+        type: 'CHOOSE_SPIRAL_STARTING_TECH',
+        playerId: player.id,
+        techId: eligible[0]!.id,
+      };
+    }
+  }
   if (state.phase === 'DRAFT_PHASE' && state.factionDraft) {
     return handleDraftFaction(state, player);
   }
@@ -376,6 +400,12 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
 function buildSafeFallbackAction(state: GameState, player: PlayerState): GameAction | null {
   if (state.pendingRaArtifactSetup?.playerId === player.id) {
     return { type: 'CHOOSE_RA_ARTIFACT_CUBE', playerId: player.id, resource: 'money' };
+  }
+  if (state.pendingSpiralTechSetup?.playerId === player.id) {
+    const eligible = getEligibleSpiralStartingTechs(state.techSupply);
+    if (eligible.length > 0) {
+      return { type: 'CHOOSE_SPIRAL_STARTING_TECH', playerId: player.id, techId: eligible[0]!.id };
+    }
   }
   if (state.pendingActionConfirmation?.playerId === player.id) {
     return { type: 'CONFIRM_TURN_ACTION', playerId: player.id };
@@ -437,8 +467,9 @@ function getTradeRatio(player: PlayerState): number {
 }
 
 function getTradeableMoneyReserve(player: PlayerState): number {
-  const ratio = getTradeRatio(player);
-  return Math.floor(player.resources.materials / ratio) + Math.floor(player.resources.science / ratio);
+  const matRatio = getTradeRateForResource(player, 'material').spend;
+  const sciRatio = getTradeRateForResource(player, 'science').spend;
+  return Math.floor(player.resources.materials / matRatio) + Math.floor(player.resources.science / sciRatio);
 }
 
 /**
@@ -1081,6 +1112,27 @@ function handleUpkeepPhase(state: GameState, player: PlayerState): GameAction {
 
 function handleActiveCombat(state: GameState, player: PlayerState): GameAction {
   const combat = state.activeCombat!;
+  const combatSec = state.sectors.find((s) => s.id === combat.sectorId);
+  if (combatSec && getPendingSpiralShiftPlayerId(state.players, combatSec, combat) === player.id) {
+    const phase2 = isSpiralPhase2(player.techTrack.researched);
+    const choices: Partial<Record<ShipType, import('../types/state').ShiftPortMode>> = {};
+    for (const st of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]) {
+      const bp = player.blueprints[st];
+      if (
+        bp &&
+        getShiftPortSlotIndex(bp) !== -1 &&
+        combatSec.ships.some((sh) => sh.ownerId === player.id && sh.type === st)
+      ) {
+        choices[st] = getDefaultShiftPortMode(bp, phase2, state.expansions);
+      }
+    }
+    return {
+      type: 'CONFIGURE_SPIRAL_SHIFT_PORT',
+      playerId: player.id,
+      sectorId: combat.sectorId,
+      choices,
+    };
+  }
   if (combat.stage === 'resolved') {
     return {
       type: 'RESOLVE_COMBAT_STEP',
@@ -1255,14 +1307,15 @@ function findBestResearchAction(state: GameState, player: PlayerState): { action
             ? 'grid'
             : 'nano')
         : tech.category;
-    const cost = calculateTechCost(
-      tech,
-      trackForCalc === 'military'
-        ? player.techTrack.militaryCount
-        : trackForCalc === 'grid'
-        ? player.techTrack.gridCount
-        : player.techTrack.nanoCount
-    );
+    const isSingleLine = isSingleTechLineFaction(player.faction.id);
+    const currentTrackLen = isSingleLine
+      ? player.techTrack.researched.length
+      : trackForCalc === 'military'
+      ? player.techTrack.militaryCount
+      : trackForCalc === 'grid'
+      ? player.techTrack.gridCount
+      : player.techTrack.nanoCount;
+    const cost = calculateTechCost(tech, currentTrackLen, trackForCalc, player.faction.id);
     if (cost > player.resources.science) continue;
 
     // Respect Warp Portal requirement if applicable
@@ -1276,12 +1329,6 @@ function findBestResearchAction(state: GameState, player: PlayerState): { action
       score += player.influenceTrack.discsOnTrack <= 4 ? 22 : 10;
     }
     // Slight bonus for hitting higher VP bracket on a track
-    const currentTrackLen =
-      trackForCalc === 'military'
-        ? player.techTrack.militaryCount
-        : trackForCalc === 'grid'
-        ? player.techTrack.gridCount
-        : player.techTrack.nanoCount;
     if (currentTrackLen === 3 || currentTrackLen === 4 || currentTrackLen === 5) score += 8;
 
     // Penalize spending 0 science on junk when better techs are affordable next round unless round 7-8 VP push
@@ -1420,6 +1467,7 @@ function findBestUpgradeAction(
 
     for (let slotIdx = 0; slotIdx < bp.maxSlots; slotIdx++) {
       const existing = bp.slots[slotIdx];
+      if (existing?.id === 'shift_port') continue;
       for (const part of unlockedParts) {
         if (part.id === 'muon_source') continue;
         if (existing?.id === part.id) continue;

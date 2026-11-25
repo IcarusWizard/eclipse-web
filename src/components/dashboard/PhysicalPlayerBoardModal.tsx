@@ -24,8 +24,9 @@ import {
   getTechTrackDiscountsForPlayer,
   getTechTrackMaxSlots,
   getTechTrackVPForPlayer,
+  isSingleTechLineFaction,
 } from '../../engine/rules/techData';
-import { ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
+import { ANCIENT_PART_IDS, getEffectiveShipPart, isSpiralPhase2 } from '../../engine/rules/partData';
 import { TechTileIconography, ShipPartSlotGraphic, getPartTooltip, TechHoverTooltip } from '../common/PhysicalTileIconography';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { MegaWarModularStrip } from '../blueprints/MegaWarModularStrip';
@@ -955,7 +956,124 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                 </div>
               </div>
 
-              {/* 3 Physical Horizontal Tech Rows */}
+              {/* Physical Horizontal Tech Row(s) */}
+              {isSingleTechLineFaction(player.faction.id) ? (
+                <div className="space-y-3">
+                  {(() => {
+                    const totalCount = player.techTrack.researched.length;
+                    const phase2Active = isSpiralPhase2(totalCount);
+                    const totalTrackVp = getTechTrackVPForPlayer('military', totalCount, 'the_spiral');
+                    const nextDiscount = OFFICIAL_TECH_DISCOUNTS[Math.min(6, totalCount)] ?? 8;
+                    const vpBySlot = [0, 0, 0, 1, 2, 3, 5];
+                    return (
+                      <div
+                        data-testid="spiral-single-tech-board"
+                        className="relative hover:z-40 focus-within:z-40 bg-slate-900/90 border border-sky-700/70 rounded-xl p-3.5 shadow-md space-y-3"
+                      >
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <div className="flex items-center gap-2">
+                            <div className="w-3 h-3 rounded bg-sky-400" />
+                            <h3 className="text-xs font-bold uppercase tracking-wider text-sky-200 font-display flex items-center gap-1.5">
+                              <Sparkles className="w-3.5 h-3.5 text-sky-300" />
+                              {l(
+                                `SINGLE TECH LINE — ANY TRAY (${totalCount}/7 Researched)`,
+                                `单一综合科技轨 — 任意颜色 (${totalCount}/7 已研发)`
+                              )}
+                            </h3>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs font-mono">
+                            <span className="text-slate-400">
+                              {l('Next Discount:', '下格减免:')}{' '}
+                              <strong className="text-sky-300">-{nextDiscount} {l('Science', '科研')}</strong>
+                            </span>
+                            <span className="text-amber-400 font-bold">
+                              {totalTrackVp > 0 ? `+${totalTrackVp} VP` : '0 VP'}
+                            </span>
+                          </div>
+                        </div>
+
+                        <div className="grid grid-cols-2 sm:grid-cols-7 gap-2">
+                          {Array.from({ length: 7 }).map((_, sIdx) => {
+                            const tech = player.techTrack.researched[sIdx];
+                            const discount = OFFICIAL_TECH_DISCOUNTS[sIdx] ?? 8;
+                            const vpEarned = vpBySlot[sIdx] ?? 0;
+                            const isPhase2Slot = sIdx >= 4;
+                            const colPlacement = sIdx <= 1 ? 'left-0' : sIdx >= 5 ? 'right-0' : 'left-1/2 -translate-x-1/2';
+                            const tName = tech ? translateTechName(tech.id, tech.name, language) : '';
+                            const tDesc = tech ? translateTechDesc(tech.id, tech.description, language) : '';
+
+                            return (
+                              <div
+                                key={`spiral_slot_${sIdx}`}
+                                onClick={() => tech && setSelectedTech(tech)}
+                                title={tech ? `${tName}: ${tDesc}` : undefined}
+                                className={`min-h-[82px] rounded-lg border p-2 flex flex-col justify-between transition-all relative ${
+                                  tech
+                                    ? isPhase2Slot
+                                      ? 'bg-amber-950/35 border-amber-400/80 shadow-md ring-1 ring-amber-400/30 cursor-pointer hover:border-amber-300 group hover:z-50'
+                                      : 'bg-sky-950/40 border-sky-400/80 shadow-md ring-1 ring-sky-400/30 cursor-pointer hover:border-sky-300 group hover:z-50'
+                                    : isPhase2Slot
+                                    ? 'bg-slate-950/60 border-amber-800/60 border-dashed opacity-70'
+                                    : 'bg-slate-950/60 border-slate-800 border-dashed opacity-70'
+                                }`}
+                              >
+                                {tech && (
+                                  <TechHoverTooltip
+                                    tech={tech}
+                                    horizontalPlacement={colPlacement}
+                                    verticalPlacement="top-[calc(100%+8px)]"
+                                  />
+                                )}
+                                <div className="flex items-center justify-between text-[10px]">
+                                  <span className={`font-mono font-bold ${isPhase2Slot ? 'text-amber-300' : 'text-slate-400'}`}>
+                                    {isPhase2Slot && sIdx === 4 ? l(`Slot 5 • P2`, `5格•P2`) : l(`Slot ${sIdx + 1}`, `槽位 ${sIdx + 1}`)}
+                                  </span>
+                                  {vpEarned > 0 && (
+                                    <span className="text-[9px] font-extrabold text-amber-400 bg-amber-950/60 px-1 rounded border border-amber-800">
+                                      {vpEarned} VP
+                                    </span>
+                                  )}
+                                </div>
+
+                                {tech ? (
+                                  <div className="flex flex-col justify-between h-full">
+                                    <span className="sr-only">
+                                      {tName}: {tDesc}
+                                    </span>
+                                    <div className="my-0.5">
+                                      <TechTileIconography tech={tech} compact />
+                                    </div>
+                                    <div className="text-[8.5px] text-slate-400 font-mono">
+                                      {l(`Base: ${tech.baseCost} sci`, `基础: ${tech.baseCost} 科研`)}
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="text-center py-1">
+                                    <span className="text-[11px] font-mono font-bold text-slate-500">
+                                      -{discount} {l('Sci', '科研')}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 text-[11px]">
+                          <div className={`px-3 py-2 rounded-lg border ${!phase2Active ? 'bg-sky-950/40 border-sky-400/70 text-sky-200' : 'bg-slate-950/60 border-slate-800 text-slate-400'}`}>
+                            <strong className="uppercase font-mono text-amber-300">{l('Phase 1 (Techs 1–4):', '第 1 阶段（1–4 项）：')}</strong>{' '}
+                            {l('Ion Cannon (1⚡) • +1 Computer (0⚡) • 1 Hull (0⚡)', '离子炮 (1⚡) • +1 电脑 (0⚡) • 1 船体 (0⚡)')}
+                          </div>
+                          <div className={`px-3 py-2 rounded-lg border ${phase2Active ? 'bg-amber-950/40 border-amber-400/80 text-amber-200' : 'bg-slate-950/60 border-slate-800 text-slate-400'}`}>
+                            <strong className="uppercase font-mono text-amber-300">{l('Phase 2 (5+ Techs):', '第 2 阶段（第 5 项起）：')}</strong>{' '}
+                            {l('Plasma Cannon (2⚡) • +2 Positron Comp (1⚡) • 2 Improved Hull (0⚡)', '等离子炮 (2⚡) • +2 正电子电脑 (1⚡) • 2 改良船体 (0⚡)')}
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : (
               <div className="space-y-3.5">
                 {/* 1. MILITARY ROW (RED) */}
                 <div className="relative hover:z-40 focus-within:z-40 bg-slate-900/90 border border-rose-950/80 rounded-xl p-3.5 shadow-md transition-[z-index]">
@@ -1262,6 +1380,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                   </div>
                 )}
               </div>
+              )}
 
               {/* Selected Tech Detail Floating Modal */}
               {selectedTech && (

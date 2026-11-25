@@ -42,9 +42,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   indigo: '#6366f1', // Mega War Inc.
   magenta: '#ec4899', // Remnants of Ra
   lime: '#84cc16', // The Horde
+  ice: '#7dd3fc', // The Spiral
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -76,6 +77,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   mega_war_inc: 'indigo',
   remnants_of_ra: 'magenta',
   the_horde: 'lime',
+  the_spiral: 'ice',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -99,6 +101,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   mega_war_inc: ECLIPSE_COLOR_PALETTE.indigo,
   remnants_of_ra: ECLIPSE_COLOR_PALETTE.magenta,
   the_horde: ECLIPSE_COLOR_PALETTE.lime,
+  the_spiral: ECLIPSE_COLOR_PALETTE.ice,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -593,6 +596,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 2,
     reputationSlotTypes: ['rep_only', 'rep_only', 'rep_only', 'both', 'both'],
   },
+  {
+    id: 'the_spiral',
+    name: 'The Spiral',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.ice,
+    startingSectorNumber: 255,
+    startingResources: { money: 2, science: 2, materials: 3 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: [],
+    traitDescription: 'Mind: Single 7-slot tech line (0..-8, any tray) & begin by taking a lowest-printed-cost Tech Tile. Body: Each ship has a Shift Port configuring Ion Cannon/Computer/Hull before combat (Phase 2 upgrades at 5th tech; bombard immediately after combat). Science trades 2:1 (others 3:1).',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 1,
+    reputationSlots: 4,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -614,7 +640,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -647,7 +673,8 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
     faction.id === 'wardens_of_magellan' ||
     faction.id === 'enlightened_of_lyra' ||
     faction.id === 'atlantians' ||
-    faction.id === 'remnants_of_ra'
+    faction.id === 'remnants_of_ra' ||
+    faction.id === 'the_spiral'
   ) {
     return ['both', 'both', 'both', 'both'];
   }
@@ -1141,7 +1168,7 @@ export function buildPendingDiscoveryForPlayer(
  */
 export function triggerPendingAtlantiansStartingLabsDiscovery(state: GameState): void {
   if (state.phase === 'DRAFT_PHASE') return;
-  if (state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingDiscovery) return;
+  if (state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingSpiralTechSetup || state.pendingDiscovery) return;
   const atlantians = state.players.find(
     (p) => p.faction.id === 'atlantians' && p.startingAncientLabsResolved === false
   );
@@ -1512,6 +1539,11 @@ export function createInitialGame(
     }
   }
 
+  const spiralPlayer = players.find((p) => p.faction.id === 'the_spiral');
+  const pendingSpiralTechSetup: { playerId: string } | null = spiralPlayer
+    ? { playerId: spiralPlayer.id }
+    : null;
+
   const enabledExpansions = expansions || [];
   for (const p of players) {
     if (p.blueprints) {
@@ -1554,6 +1586,7 @@ export function createInitialGame(
     pendingCombatConquest: null,
     pendingExilesOrbitalSetup,
     pendingRaArtifactSetup,
+    pendingSpiralTechSetup,
     resolvedCombatSectorIds: [],
     replaySteps: [],
     log: [

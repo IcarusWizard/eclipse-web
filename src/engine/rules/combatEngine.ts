@@ -2,10 +2,11 @@
  * Combat Engine: Initiative Queue, Missiles, Dice Rolls, Damage Allocation, and Reputation
  */
 
-import { CombatRoll, CombatState, CombatDamageAssignment, PendingDamageAssignment } from '../types/state';
-import { SectorShip, SectorTile } from '../types/galaxy';
+import { CombatRoll, CombatState, CombatDamageAssignment, PendingDamageAssignment, ShiftPortMode } from '../types/state';
+import { SectorShip, SectorTile, ShipType } from '../types/galaxy';
 import { PlayerState } from '../types/player';
-import { calculateBlueprintStats } from './shipValidation';
+import { calculateBlueprintStats, canBlueprintPowerShiftMode } from './shipValidation';
+import { getShiftPortResolvedPart, isSpiralPhase2 } from './partData';
 import { getNeutralShipBlueprint, NeutralShipConfig, NeutralShipType } from './neutralShips';
 
 export interface CombatUnit {
@@ -28,12 +29,80 @@ export interface CombatUnit {
   hasUnmodifiedSixBurstDamage?: boolean;
 }
 
+export function getDefaultShiftPortMode(
+  blueprint: import('../types/blueprints').ShipBlueprint,
+  phase2: boolean,
+  activeExpansions?: string[]
+): ShiftPortMode {
+  if (canBlueprintPowerShiftMode(blueprint, 'cannon', phase2, activeExpansions).allowed) {
+    return 'cannon';
+  }
+  if (canBlueprintPowerShiftMode(blueprint, 'computer', phase2, activeExpansions).allowed) {
+    return 'computer';
+  }
+  return 'hull';
+}
+
+/**
+ * Returns a resolved ShipBlueprint for combat/bombardment where any `shift_port` slot
+ * has been substituted with the selected Phase 1/Phase 2 part (if powerable).
+ */
+export function resolveBlueprintWithShiftPort(
+  blueprint: import('../types/blueprints').ShipBlueprint,
+  player: Pick<PlayerState, 'faction' | 'techTrack'>,
+  mode?: ShiftPortMode,
+  activeExpansions?: string[]
+): import('../types/blueprints').ShipBlueprint {
+  if (player.faction?.id !== 'the_spiral' || !blueprint.slots.some((s) => s?.id === 'shift_port')) {
+    return blueprint;
+  }
+  const phase2 = isSpiralPhase2(player.techTrack?.researched);
+  const chosenMode = mode || getDefaultShiftPortMode(blueprint, phase2, activeExpansions);
+  const effectiveMode = canBlueprintPowerShiftMode(blueprint, chosenMode, phase2, activeExpansions).allowed
+    ? chosenMode
+    : getDefaultShiftPortMode(blueprint, phase2, activeExpansions);
+  const resolvedPart = getShiftPortResolvedPart(effectiveMode, phase2);
+  return {
+    ...blueprint,
+    slots: blueprint.slots.map((s) => (s?.id === 'shift_port' ? resolvedPart : s)),
+  };
+}
+
+/**
+ * Returns the first Spiral participant playerId in `combat` who still needs to configure
+ * Shift Port modes before combat begins in this sector, or null if all are configured.
+ */
+export function getPendingSpiralShiftPlayerId(
+  players: PlayerState[],
+  sector: SectorTile,
+  combat: CombatState | null | undefined
+): string | null {
+  if (!combat || combat.stage === 'resolved') return null;
+  const activeSub = sector.isNebula ? combat.subsector : undefined;
+  const scopedShips = activeSub
+    ? sector.ships.filter((s) => (s.subsector ?? 1) === activeSub)
+    : sector.ships;
+  const configured = combat.spiralShiftConfiguredPlayerIds || [];
+  const participants = combat.participatingPlayerIds || [];
+  for (const pId of participants) {
+    if (configured.includes(pId)) continue;
+    const p = players.find((pl) => pl.id === pId);
+    if (p?.faction?.id !== 'the_spiral') continue;
+    const hasShiftPortShip = scopedShips.some(
+      (sh) => sh.ownerId === pId && p.blueprints[sh.type]?.slots.some((sl) => sl?.id === 'shift_port')
+    );
+    if (hasShiftPortShip) return pId;
+  }
+  return null;
+}
+
 export function buildCombatUnitsForSector(
   sector: SectorTile,
   players: PlayerState[],
   filterOwnerIds?: string[],
   neutralShipBlueprints?: Partial<NeutralShipConfig>,
-  activeExpansions?: string[]
+  activeExpansions?: string[],
+  spiralShiftModes?: Record<string, Partial<Record<ShipType, ShiftPortMode>>>
 ): CombatUnit[] {
   const units: CombatUnit[] = [];
 
@@ -60,9 +129,16 @@ export function buildCombatUnitsForSector(
     } else {
       const player = players.find((p) => p.id === ship.ownerId);
       if (!player) continue;
-      const bp = player.blueprints[ship.type];
-      if (!bp) continue;
-      const stats = calculateBlueprintStats(bp, activeExpansions || bp.activeExpansions);
+      const rawBp = player.blueprints[ship.type];
+      if (!rawBp) continue;
+      const exps = activeExpansions || rawBp.activeExpansions;
+      const bp = resolveBlueprintWithShiftPort(
+        rawBp,
+        player,
+        spiralShiftModes?.[player.id]?.[ship.type as ShipType],
+        exps
+      );
+      const stats = calculateBlueprintStats(bp, exps);
 
       const allParts = [...bp.slots, ...(bp.externalParts || [])];
       const weapons: CombatUnit['weapons'] = [];

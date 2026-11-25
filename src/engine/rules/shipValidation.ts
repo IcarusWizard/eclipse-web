@@ -3,7 +3,7 @@
  */
 
 import { ShipBlueprint, ShipPart, BlueprintValidationResult } from '../types/blueprints';
-import { SHIP_PARTS, ALL_ANCIENT_PART_IDS, getEffectiveShipPart } from './partData';
+import { SHIP_PARTS, ALL_ANCIENT_PART_IDS, getEffectiveShipPart, getShiftPortResolvedPart } from './partData';
 import { SectorTile, ShipType } from '../types/galaxy';
 import type { PlayerState } from '../types/player';
 
@@ -144,6 +144,28 @@ export function calculateBlueprintStats(
     hasJumpDrive,
     hasMorphShield,
     errors,
+  };
+}
+
+export function getShiftPortSlotIndex(blueprint?: ShipBlueprint | null): number {
+  if (!blueprint) return -1;
+  return blueprint.slots.findIndex((s) => s?.id === 'shift_port');
+}
+
+export function canBlueprintPowerShiftMode(
+  blueprint: ShipBlueprint,
+  mode: 'cannon' | 'computer' | 'hull',
+  phase2: boolean,
+  activeExpansions?: string[]
+): { allowed: boolean; sparePower: number; requiredPower: number; part: ShipPart } {
+  const stats = calculateBlueprintStats(blueprint, activeExpansions);
+  const sparePower = Math.max(0, stats.totalPowerProduced - stats.totalPowerConsumed);
+  const part = getShiftPortResolvedPart(mode, phase2);
+  return {
+    allowed: sparePower >= part.powerConsumed,
+    sparePower,
+    requiredPower: part.powerConsumed,
+    part,
   };
 }
 
@@ -711,6 +733,67 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
         starbase: { ...base.starbase!, baseInitiative: 3 },
       };
     }
+
+    case 'the_spiral':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 4,
+          baseInitiative: 2,
+          baseBuildCost: 3,
+          slots: [
+            SHIP_PARTS.shift_port,
+            SHIP_PARTS.nuclear_source,
+            null,
+            SHIP_PARTS.nuclear_drive,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 6,
+          baseInitiative: 1,
+          baseBuildCost: 5,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.shift_port,
+            null,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+          ],
+        },
+        dreadnought: {
+          type: 'dreadnought',
+          maxSlots: 8,
+          baseInitiative: 0,
+          baseBuildCost: 8,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.shift_port,
+            null,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+          ],
+        },
+        starbase: {
+          type: 'starbase',
+          maxSlots: 5,
+          baseInitiative: 4,
+          baseBuildCost: 3,
+          preprintedPower: 3,
+          noDrives: true,
+          slots: [
+            SHIP_PARTS.shift_port,
+            SHIP_PARTS.ion_cannon,
+            null,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.hull,
+          ],
+        },
+      };
 
     case 'wardens_of_magellan':
     case 'enlightened_of_lyra':

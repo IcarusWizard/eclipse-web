@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
+import { getTradeRateForResource } from '../../engine/rules/economyEngine';
 import { ArrowRightLeft, ArrowRight, Coins, FlaskConical, Hammer, X } from 'lucide-react';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateResourceType } from '../../i18n/catalogTranslations';
@@ -25,9 +26,10 @@ export const TradeModal: React.FC<TradeModalProps> = ({
 }) => {
   const { language, l } = useLanguage();
   const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
-  const ratio = isRhoIndi ? 3 : (player.faction.tradeRatio || 2);
+  const isSpiral = player.faction.id === 'the_spiral';
   const [fromResource, setFromResource] = useState<ResourceType>('material');
   const [toResource, setToResource] = useState<ResourceType>('money');
+  const { spend: ratio, receive } = getTradeRateForResource(player, fromResource);
   const [amount, setAmount] = useState<number>(ratio);
   const available =
     fromResource === 'money'
@@ -37,9 +39,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
       : player.resources.materials;
 
   const maxTrade = Math.floor(available / ratio) * ratio;
-  const gained = isRhoIndi && fromResource === 'money'
-    ? Math.floor(amount / ratio) * 2
-    : Math.floor(amount / ratio);
+  const gained = Math.floor(amount / ratio) * receive;
 
   const canTrade = amount > 0 && amount <= available && amount % ratio === 0 && fromResource !== toResource;
 
@@ -51,7 +51,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
       const alt = choices.find((c) => c !== res) || 'money';
       setToResource(alt);
     }
-    setAmount(ratio);
+    setAmount(getTradeRateForResource(player, res).spend);
   };
 
   const handleSelectTo = (res: ResourceType) => {
@@ -120,6 +120,18 @@ export const TradeModal: React.FC<TradeModalProps> = ({
                   Trade <strong>3 Money for 2</strong> Science or Materials (3:2), or trade <strong>3 Materials / Science for 1</strong> of any other resource (3:1).
                 </>
               )
+            ) : isSpiral ? (
+              language === 'zh' ? (
+                <>
+                  <span className="text-sky-300 font-bold">螺旋一族非对称贸易：</span>{' '}
+                  以 <strong>2 科研兑换 1</strong> 金钱或材料（2:1），以 <strong>3 材料/金钱兑换 1</strong> 任意其他资源（3:1）。
+                </>
+              ) : (
+                <>
+                  <span className="text-sky-300 font-bold">The Spiral Asymmetric Trade:</span>{' '}
+                  Trade <strong>2 Science for 1</strong> Money or Materials (2:1), or trade <strong>3 Materials / Money for 1</strong> of any other resource (3:1).
+                </>
+              )
             ) : (
               language === 'zh' ? (
                 <>
@@ -170,7 +182,7 @@ export const TradeModal: React.FC<TradeModalProps> = ({
           {/* Trade Destination */}
           <div>
             <label className="block text-slate-300 font-bold uppercase mb-2 text-[11px] tracking-wider">
-              {l(`2. Trade Target (Receive ${isRhoIndi && fromResource === 'money' ? '2 units' : '1 unit'})`, `2. 获得资源（每次获得 ${isRhoIndi && fromResource === 'money' ? '2 单位' : '1 单位'}）`)}
+              {l(`2. Trade Target (Receive ${receive} ${receive === 1 ? 'unit' : 'units'})`, `2. 获得资源（每次获得 ${receive} 单位）`)}
             </label>
             <div className="grid grid-cols-3 gap-2">
               {(['money', 'science', 'material'] as const).map((res) => {

@@ -6,8 +6,9 @@
  */
 
 import { ShipBlueprint, ShipPart } from '../types/blueprints';
-import { calculateBlueprintStats } from './shipValidation';
+import { calculateBlueprintStats, canBlueprintPowerShiftMode } from './shipValidation';
 import { createFactionBlueprints } from './shipValidation';
+import { getShiftPortResolvedPart } from './partData';
 import {
   getNeutralShipBlueprint,
   NeutralShipType,
@@ -15,8 +16,8 @@ import {
   NEUTRAL_SHIP_BLUEPRINTS,
 } from './neutralShips';
 import { ALL_FACTIONS } from './setup';
-import { GameState } from '../types/state';
-import { SectorTile } from '../types/galaxy';
+import { GameState, ShiftPortMode } from '../types/state';
+import { SectorTile, ShipType } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import {
   CombatUnit,
@@ -26,6 +27,7 @@ import {
   applyRiftSelfDamage,
   isAntimatterSplitterRoll,
   getEffectiveWeaponHitDamage,
+  getDefaultShiftPortMode,
 } from './combatEngine';
 
 export const SIMULATOR_TARGET_PRIORITY: Record<string, number> = {
@@ -47,6 +49,8 @@ export interface SimulatorSideConfig {
   shipCounts: Record<string, number>;
   blueprints: Record<string, ShipBlueprint>;
   hasAntimatterSplitter: boolean;
+  spiralShiftModes?: Partial<Record<ShipType, ShiftPortMode>>;
+  spiralPhase2?: boolean;
 }
 
 export interface SimulationSurvivingFleet {
@@ -244,10 +248,24 @@ export function buildSimulatorUnits(
   // Player faction ships
   for (const [shipType, count] of Object.entries(sideConfig.shipCounts)) {
     if (!count || count <= 0) continue;
-    const bp = sideConfig.blueprints[shipType];
-    if (!bp) continue;
+    const rawBp = sideConfig.blueprints[shipType];
+    if (!rawBp) continue;
 
-    const exps = activeExpansions || bp.activeExpansions;
+    const exps = activeExpansions || rawBp.activeExpansions;
+    let bp = rawBp;
+    if (sideConfig.factionId === 'the_spiral' && rawBp.slots.some((s) => s?.id === 'shift_port')) {
+      const phase2 = Boolean(sideConfig.spiralPhase2);
+      const requestedMode = sideConfig.spiralShiftModes?.[shipType as ShipType];
+      const mode =
+        requestedMode && canBlueprintPowerShiftMode(rawBp, requestedMode, phase2, exps).allowed
+          ? requestedMode
+          : getDefaultShiftPortMode(rawBp, phase2, exps);
+      const resolved = getShiftPortResolvedPart(mode, phase2);
+      bp = {
+        ...rawBp,
+        slots: rawBp.slots.map((s) => (s?.id === 'shift_port' ? resolved : s)),
+      };
+    }
     const stats = calculateBlueprintStats(bp, exps);
     const allParts = [...(bp.slots || []), ...(bp.externalParts || [])];
     const weapons: CombatUnit['weapons'] = [];

@@ -503,6 +503,41 @@ const MEGA_WAR_TECH_VP: Record<'military' | 'grid' | 'nano', Record<number, numb
 
 const THE_HORDE_TECH_DISCOUNTS: readonly number[] = [0, 1, 3, 5];
 
+export function isSingleTechLineFaction(factionId?: string): boolean {
+  return factionId === 'the_spiral';
+}
+
+export function getTotalTechSlotsMax(factionId?: string): number {
+  if (factionId === 'the_spiral') {
+    return 7;
+  }
+  if (factionId === 'the_horde') {
+    return 12;
+  }
+  if (factionId === 'mega_war_inc') {
+    return 20;
+  }
+  return 21;
+}
+
+/**
+ * Returns the distinct technologies currently in techSupply that tie for lowest printed baseCost
+ * (for The Spiral's "Cheapest Tech" setup rule).
+ */
+export function getEligibleSpiralStartingTechs(techSupply: Technology[]): Technology[] {
+  if (!techSupply || techSupply.length === 0) return [];
+  const minCost = Math.min(...techSupply.map((t) => t.baseCost));
+  const seenIds = new Set<string>();
+  const eligible: Technology[] = [];
+  for (const t of techSupply) {
+    if (t.baseCost === minCost && !seenIds.has(t.id)) {
+      seenIds.add(t.id);
+      eligible.push(t);
+    }
+  }
+  return eligible;
+}
+
 export function getTechTrackDiscountsForPlayer(
   track: 'military' | 'grid' | 'nano',
   factionId?: string

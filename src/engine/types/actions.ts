@@ -375,6 +375,17 @@ export interface SetCombatAutoResolveAction extends BaseAction {
   sectorId?: string;
 }
 
+export interface ChooseSpiralStartingTechAction extends BaseAction {
+  type: 'CHOOSE_SPIRAL_STARTING_TECH';
+  techId: string;
+}
+
+export interface ConfigureSpiralShiftPortAction extends BaseAction {
+  type: 'CONFIGURE_SPIRAL_SHIFT_PORT';
+  sectorId: string;
+  choices: Partial<Record<ShipType, 'cannon' | 'computer' | 'hull'>>;
+}
+
 export interface SendChatAction extends BaseAction {
   type: 'SEND_CHAT';
   message: string;
@@ -417,6 +428,8 @@ export type GameAction =
   | ChoosePopulationReturnTrackAction
   | ChooseExilesOrbitalCubeAction
   | ChooseRaArtifactCubeAction
+  | ChooseSpiralStartingTechAction
+  | ConfigureSpiralShiftPortAction
   | ClaimMinorSpeciesAction
   | ActivatePulsarAction
   | ReturnBlackHoleShipAction

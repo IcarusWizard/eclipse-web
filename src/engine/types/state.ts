@@ -56,6 +56,8 @@ export interface PendingDamageAssignment {
   hasAntimatterSplitter?: boolean;
 }
 
+export type ShiftPortMode = 'cannon' | 'computer' | 'hull';
+
 export interface CombatState {
   sectorId: string;
   subsector?: 1 | 2 | 3;
@@ -78,6 +80,8 @@ export interface CombatState {
   missileFiredShipIds?: string[];
   pendingDamageAssignment?: PendingDamageAssignment | null;
   autoResolvePlayerIds?: string[];
+  spiralShiftModes?: Record<string, Partial<Record<import('./galaxy').ShipType, ShiftPortMode>>>;
+  spiralShiftConfiguredPlayerIds?: string[];
 }
 
 export interface PendingReputationDraw {
@@ -297,6 +301,7 @@ export interface GameState {
   pendingPopulationReturnChoices?: PendingPopulationReturnChoice[] | null;
   pendingExilesOrbitalSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   pendingRaArtifactSetup?: { playerId: string; sectorId: string; planetId: string } | null;
+  pendingSpiralTechSetup?: { playerId: string } | null;
   lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];
   sectorCombatRecords?: Record<string, {

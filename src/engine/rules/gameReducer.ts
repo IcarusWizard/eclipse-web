@@ -38,6 +38,9 @@ import {
   drawTechTilesForRound,
   getTechTrackMaxSlots,
   getTechTrackVPForPlayer,
+  getEligibleSpiralStartingTechs,
+  getTotalTechSlotsMax,
+  isSingleTechLineFaction,
 } from './techData';
 import {
   calculateBlueprintStats,
@@ -50,10 +53,12 @@ import {
   getDefaultModularGroupForShip,
   inferModularExternalGroup,
   MEGA_WAR_EXTERNAL_GROUPS,
+  canBlueprintPowerShiftMode,
+  getShiftPortSlotIndex,
 } from './shipValidation';
-import { SHIP_PARTS, ANCIENT_PART_IDS } from './partData';
-import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet, syncRemnantsOfRaArtifactWildSlots } from './economyEngine';
-import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup } from './combatEngine';
+import { SHIP_PARTS, ANCIENT_PART_IDS, isSpiralPhase2, getShiftPortResolvedPart } from './partData';
+import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet, syncRemnantsOfRaArtifactWildSlots, getTradeRateForResource } from './economyEngine';
+import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId, resolveBlueprintWithShiftPort, getDefaultShiftPortMode } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import {
@@ -851,13 +856,13 @@ export function advanceTurnOrAutoPass(state: GameState, checkCurrentPlayerFirst:
 }
 
 /**
- * Returns true while any faction still needs to complete pre-game starting cube placement
- * (The Exiles home Orbital or Remnants of Ra home Artifact [A] slot).
+ * Returns true while any faction still needs to complete pre-game starting placement/selection
+ * (The Exiles home Orbital, Remnants of Ra home Artifact [A] slot, or The Spiral Cheapest Tech).
  */
 export function hasPendingPreGameCubeSetup(
-  state: Pick<GameState, 'pendingExilesOrbitalSetup' | 'pendingRaArtifactSetup'>
+  state: Pick<GameState, 'pendingExilesOrbitalSetup' | 'pendingRaArtifactSetup' | 'pendingSpiralTechSetup'>
 ): boolean {
-  return Boolean(state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup);
+  return Boolean(state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingSpiralTechSetup);
 }
 
 export function validateBuildItems(
@@ -1171,25 +1176,27 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return { valid: false, error: 'Player not found.' };
   }
 
-  // Pending Exiles / Remnants of Ra starting setup choices must complete before taking normal actions
-  if (
-    state.pendingExilesOrbitalSetup &&
-    action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
-    action.type !== 'CHOOSE_RA_ARTIFACT_CUBE'
-  ) {
+  // Pending Exiles / Remnants of Ra / The Spiral starting setup choices must complete before taking normal actions
+  const isPreGameSetupAction =
+    action.type === 'CHOOSE_EXILES_ORBITAL_CUBE' ||
+    action.type === 'CHOOSE_RA_ARTIFACT_CUBE' ||
+    action.type === 'CHOOSE_SPIRAL_STARTING_TECH';
+  if (state.pendingExilesOrbitalSetup && !isPreGameSetupAction) {
     return {
       valid: false,
       error: 'The Exiles commander must select their starting Orbital population cube before taking actions.',
     };
   }
-  if (
-    state.pendingRaArtifactSetup &&
-    action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
-    action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE'
-  ) {
+  if (state.pendingRaArtifactSetup && !isPreGameSetupAction) {
     return {
       valid: false,
       error: 'Remnants of Ra commander must select their starting Artifact [A] population cube before taking actions.',
+    };
+  }
+  if (state.pendingSpiralTechSetup && !isPreGameSetupAction) {
+    return {
+      valid: false,
+      error: 'The Spiral commander must select their starting cheapest technology before taking actions.',
     };
   }
 
@@ -1217,6 +1224,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'DISCOVERY_CHOICE' &&
       action.type !== 'COMBAT_CONQUEST' &&
       action.type !== 'RESOLVE_COMBAT_STEP' &&
+      action.type !== 'CONFIGURE_SPIRAL_SHIFT_PORT' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'COLONIZE' &&
@@ -1230,6 +1238,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_POPULATION_RETURN_TRACK' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
+      action.type !== 'CHOOSE_SPIRAL_STARTING_TECH' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'RETURN_AMBASSADOR_CUBE' &&
@@ -1255,6 +1264,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'DISCOVERY_CHOICE' &&
       action.type !== 'COMBAT_CONQUEST' &&
       action.type !== 'RESOLVE_COMBAT_STEP' &&
+      action.type !== 'CONFIGURE_SPIRAL_SHIFT_PORT' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'ABANDON_SECTOR_BANKRUPTCY' &&
@@ -1271,6 +1281,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_POPULATION_RETURN_TRACK' &&
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
+      action.type !== 'CHOOSE_SPIRAL_STARTING_TECH' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'RETURN_AMBASSADOR_CUBE' &&
@@ -1473,6 +1484,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
       // Clone researched list & track counts to accurately compute progressive discounts
       const simResearched = new Set(player.techTrack.researched.map((t) => t.id));
+      const isSingleLine = isSingleTechLineFaction(player.faction.id);
+      const maxTotalTechs = getTotalTechSlotsMax(player.faction.id);
+      let simTotalSingle = player.techTrack.researched.length;
       let simMilitary = player.techTrack.militaryCount;
       let simGrid = player.techTrack.gridCount;
       let simNano = player.techTrack.nanoCount;
@@ -1500,12 +1514,24 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (player.faction.id === 'mega_war_inc' && tech.id === 'monolith') {
           return { valid: false, error: 'Mega War Inc. may not research Monoliths.' };
         }
+        if (isSingleLine && simTotalSingle >= maxTotalTechs) {
+          return { valid: false, error: `Single tech line is full (maximum ${maxTotalTechs} technologies).` };
+        }
         const maxMil = getTechTrackMaxSlots('military', player.faction.id);
         const maxGrid = getTechTrackMaxSlots('grid', player.faction.id);
         const maxNano = getTechTrackMaxSlots('nano', player.faction.id);
         let count = 0;
         let resolvedTrack: 'military' | 'grid' | 'nano' = 'nano';
-        if (tech.category === 'military') {
+        if (isSingleLine) {
+          resolvedTrack =
+            tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano'
+              ? tech.category
+              : (item.targetTrack || 'military');
+          count = simTotalSingle++;
+          if (resolvedTrack === 'military') simMilitary++;
+          else if (resolvedTrack === 'grid') simGrid++;
+          else simNano++;
+        } else if (tech.category === 'military') {
           if (simMilitary >= maxMil) {
             return { valid: false, error: `Military tech track is full (maximum ${maxMil} technologies).` };
           }
@@ -1740,6 +1766,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           }
         } else {
           const currentPartId = bp.slots[up.slotIndex]?.id || null;
+          if (currentPartId === 'shift_port' && up.partId !== 'shift_port') {
+            return {
+              valid: false,
+              error: `Shift Port slot on ${up.shipType.toUpperCase()} is an innate system component and cannot be removed or overwritten.`,
+            };
+          }
           if (currentPartId !== up.partId) {
             modifiedCount += 1;
             didModify = true;
@@ -2360,8 +2392,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
 
     case 'TRADE': {
-      const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
-      const ratio = isRhoIndi ? 3 : (player.faction.tradeRatio || 2);
+      const { spend: ratio } = getTradeRateForResource(player, action.fromResource);
       const toRes = action.toResource || 'money';
       if (action.fromResource === toRes) {
         return { valid: false, error: 'Cannot trade a resource for itself.' };
@@ -2481,6 +2512,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (!isMuonSource) {
           if (action.equipSlotIndex === undefined || action.equipSlotIndex < 0 || action.equipSlotIndex >= bp.maxSlots) {
             return { valid: false, error: `Invalid slot index for ${action.equipShipType}.` };
+          }
+          if (bp.slots[action.equipSlotIndex]?.id === 'shift_port') {
+            return {
+              valid: false,
+              error: `Cannot install an Ancient Ship Part over ${action.equipShipType.toUpperCase()}'s innate Shift Port slot.`,
+            };
           }
         }
         if (disc.shipPartId) {
@@ -2650,7 +2687,17 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           };
         }
       }
-      if (state.activeCombat.stage === 'resolved' || (action as any).concludeCombat || (action as any).autoAssign) {
+      if (state.activeCombat.stage === 'resolved' || (action as any).concludeCombat) {
+        return { valid: true };
+      }
+      const pendingSpiralShiftId = getPendingSpiralShiftPlayerId(state.players, sector, state.activeCombat);
+      if (pendingSpiralShiftId) {
+        return {
+          valid: false,
+          error: 'The Spiral must configure Shift Port modes for its ships before combat begins in this sector.',
+        };
+      }
+      if ((action as any).autoAssign) {
         return { valid: true };
       }
 
@@ -2664,7 +2711,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: true };
       }
 
-      const units = buildCombatUnitsForSector(sector, state.players, undefined, state.neutralShipBlueprints, state.expansions);
+      const units = buildCombatUnitsForSector(
+        sector,
+        state.players,
+        undefined,
+        state.neutralShipBlueprints,
+        state.expansions,
+        state.activeCombat.spiralShiftModes
+      );
       const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector, state.players);
       const aliveUnits = sortUnitsByInitiative(
         units.filter((u) => u.currentDamage < u.maxHull),
@@ -2980,6 +3034,57 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
       if (player.population[action.resource].cubesOnBoard <= 0) {
         return { valid: false, error: `No ${action.resource} population cubes remaining on track.` };
+      }
+      return { valid: true };
+    }
+
+    case 'CHOOSE_SPIRAL_STARTING_TECH': {
+      if (!state.pendingSpiralTechSetup) {
+        return { valid: false, error: 'No pending The Spiral starting tech setup.' };
+      }
+      if (state.pendingSpiralTechSetup.playerId !== action.playerId) {
+        return { valid: false, error: 'Only The Spiral commander can select the starting tech tile.' };
+      }
+      const eligible = getEligibleSpiralStartingTechs(state.techSupply);
+      if (!eligible.some((t) => t.id === action.techId)) {
+        return {
+          valid: false,
+          error: 'Selected technology must be available and tied for lowest printed cost in the Tech Tray.',
+        };
+      }
+      return { valid: true };
+    }
+
+    case 'CONFIGURE_SPIRAL_SHIFT_PORT': {
+      if (state.phase !== 'COMBAT_PHASE' || !state.activeCombat) {
+        return { valid: false, error: 'No active combat in progress for Shift Port configuration.' };
+      }
+      if (state.activeCombat.sectorId !== action.sectorId) {
+        return { valid: false, error: 'Shift Port configuration sector does not match active combat sector.' };
+      }
+      if (player.faction.id !== 'the_spiral') {
+        return { valid: false, error: 'Only The Spiral possesses Shift Ports.' };
+      }
+      const isParticipant = state.activeCombat.participatingPlayerIds?.includes(player.id);
+      if (!isParticipant) {
+        return { valid: false, error: 'You are not a participant in this sector engagement.' };
+      }
+      const phase2 = isSpiralPhase2(player.techTrack.researched);
+      for (const [shipType, mode] of Object.entries(action.choices || {})) {
+        if (mode !== 'cannon' && mode !== 'computer' && mode !== 'hull') {
+          return { valid: false, error: `Invalid Shift Port mode: ${mode}.` };
+        }
+        const bp = player.blueprints[shipType as ShipType];
+        if (!bp || getShiftPortSlotIndex(bp) === -1) {
+          return { valid: false, error: `${shipType.toUpperCase()} does not have a Shift Port.` };
+        }
+        const check = canBlueprintPowerShiftMode(bp, mode, phase2, state.expansions);
+        if (!check.allowed) {
+          return {
+            valid: false,
+            error: `${shipType.toUpperCase()} cannot power ${check.part.name} (requires ${check.requiredPower}⚡, only ${check.sparePower}⚡ spare power available).`,
+          };
+        }
       }
       return { valid: true };
     }
@@ -3794,12 +3899,14 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           }
         }
 
-        const count =
-          targetTrack === 'military'
-            ? player.techTrack.militaryCount
-            : targetTrack === 'grid'
-            ? player.techTrack.gridCount
-            : player.techTrack.nanoCount;
+        const isSingleLine = isSingleTechLineFaction(player.faction.id);
+        const count = isSingleLine
+          ? player.techTrack.researched.length
+          : targetTrack === 'military'
+          ? player.techTrack.militaryCount
+          : targetTrack === 'grid'
+          ? player.techTrack.gridCount
+          : player.techTrack.nanoCount;
 
         const baseCost = calculateTechCost(tech, count, targetTrack, player.faction.id);
         const msTechDiscount = getMinorSpeciesTechDiscount(player);
@@ -3810,6 +3917,13 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         if (targetTrack === 'military') player.techTrack.militaryCount += 1;
         else if (targetTrack === 'grid') player.techTrack.gridCount += 1;
         else if (targetTrack === 'nano') player.techTrack.nanoCount += 1;
+
+        if (isSingleLine && player.techTrack.researched.length === 5) {
+          addLog(
+            `🌀 ${player.name} researched their 5th technology — Shift Ports permanently upgraded to Phase 2 (Plasma Cannon / Positron Computer / Improved Hull)!`,
+            'action'
+          );
+        }
 
         // Special instantaneous tech abilities
         if (tech.id === 'warp_portal') {
@@ -4497,12 +4611,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     }
 
     case 'TRADE': {
-      const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
-      const ratio = isRhoIndi ? 3 : (player.faction.tradeRatio || 2);
+      const { spend: ratio, receive } = getTradeRateForResource(player, action.fromResource);
       const toRes = action.toResource || 'money';
-      const gained = isRhoIndi && action.fromResource === 'money'
-        ? (action.amount / 3) * 2
-        : action.amount / ratio;
+      const gained = (action.amount / ratio) * receive;
 
       if (action.fromResource === 'money') {
         player.resources.money -= action.amount;
@@ -5131,7 +5242,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             // Ships carry combat damage into Attacking Population (for Rift Cannon self-damage checks)
             // and surviving ships repair immediately once Attacking Population completes (or here for Nebula).
             if (!sector.isNebula) {
-              resolveAttackingPopulationAndConquest(newState, sector, winnerId);
+              const winnerShiftModes = winnerId ? newState.activeCombat?.spiralShiftModes?.[winnerId] : undefined;
+              resolveAttackingPopulationAndConquest(newState, sector, winnerId, winnerShiftModes);
             } else {
               for (const ship of relevantShips) {
                 ship.damage = 0;
@@ -5235,7 +5347,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             newState.players,
             newState.activeCombat.participatingPlayerIds,
             newState.neutralShipBlueprints,
-            newState.expansions
+            newState.expansions,
+            newState.activeCombat.spiralShiftModes
           );
 
           // If combat is already in 'resolved' stage or explicitly flagged to conclude:
@@ -5902,6 +6015,54 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       return { success: true, newState };
     }
 
+    case 'CHOOSE_SPIRAL_STARTING_TECH': {
+      const idx = newState.techSupply.findIndex((t) => t.id === action.techId);
+      if (idx >= 0) {
+        const [tech] = newState.techSupply.splice(idx, 1);
+        const placedTrack: 'military' | 'grid' | 'nano' =
+          tech!.category === 'military' || tech!.category === 'grid' || tech!.category === 'nano'
+            ? tech!.category
+            : 'military';
+        player.techTrack.researched.push({ ...tech!, placedTrack });
+        if (placedTrack === 'military') player.techTrack.militaryCount += 1;
+        else if (placedTrack === 'grid') player.techTrack.gridCount += 1;
+        else player.techTrack.nanoCount += 1;
+        addLog(
+          `🌀 ${player.name} began with cheapest Tech Tile "${tech!.name}" (printed cost ${tech!.baseCost}) on Slot 1 of their single tech line (Mind).`,
+          'action'
+        );
+      }
+      newState.pendingSpiralTechSetup = null;
+      triggerPendingAtlantiansStartingLabsDiscovery(newState);
+      return { success: true, newState };
+    }
+
+    case 'CONFIGURE_SPIRAL_SHIFT_PORT': {
+      if (newState.activeCombat && newState.activeCombat.sectorId === action.sectorId) {
+        newState.activeCombat.spiralShiftModes = newState.activeCombat.spiralShiftModes || {};
+        newState.activeCombat.spiralShiftModes[player.id] = { ...action.choices };
+        newState.activeCombat.spiralShiftConfiguredPlayerIds =
+          newState.activeCombat.spiralShiftConfiguredPlayerIds || [];
+        if (!newState.activeCombat.spiralShiftConfiguredPlayerIds.includes(player.id)) {
+          newState.activeCombat.spiralShiftConfiguredPlayerIds.push(player.id);
+        }
+        const phase2 = isSpiralPhase2(player.techTrack.researched);
+        const summaryParts = Object.entries(action.choices).map(([st, mode]) => {
+          const partName = mode ? getShiftPortResolvedPart(mode, phase2).name : 'Default';
+          return `${st.toUpperCase()}: ${partName}`;
+        });
+        const secNum = newState.sectors.find((s) => s.id === action.sectorId)?.sectorNumber || action.sectorId;
+        addLog(
+          `🌀 ${player.name} configured Shift Ports for combat in Sector ${secNum} (${summaryParts.join(', ') || 'No ships'}).`,
+          'combat'
+        );
+        if ((newState.activeCombat.autoResolvePlayerIds?.length || 0) > 0) {
+          return { success: true, newState: advanceAutoResolveCombatSteps(newState) };
+        }
+      }
+      return { success: true, newState };
+    }
+
     case 'CLAIM_MINOR_SPECIES': {
       const tileIndex = (newState.minorSpeciesSupply || []).findIndex((t) => t.id === action.speciesId);
       if (tileIndex === -1) {
@@ -6136,6 +6297,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
               planetId: raPlanet.id,
             };
           }
+        }
+
+        const spiralPlayer = newState.players.find((p) => p.faction.id === 'the_spiral');
+        if (spiralPlayer) {
+          newState.pendingSpiralTechSetup = { playerId: spiralPlayer.id };
         }
 
         triggerPendingAtlantiansStartingLabsDiscovery(newState);
@@ -6373,12 +6539,42 @@ function advanceAutoResolveCombatSteps(initialState: GameState): GameState {
     const sector = current.sectors.find((s) => s.id === combat.sectorId);
     if (!sector) break;
 
+    const pendingSpiralId = getPendingSpiralShiftPlayerId(current.players, sector, combat);
+    if (pendingSpiralId) {
+      if (!autoIds.includes(pendingSpiralId)) break;
+      const spiralPl = current.players.find((p) => p.id === pendingSpiralId);
+      if (spiralPl) {
+        const phase2 = isSpiralPhase2(spiralPl.techTrack.researched);
+        const choices: Partial<Record<ShipType, import('../types/state').ShiftPortMode>> = {};
+        for (const st of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]) {
+          const bp = spiralPl.blueprints[st];
+          if (bp && getShiftPortSlotIndex(bp) !== -1 && sector.ships.some((sh) => sh.ownerId === spiralPl.id && sh.type === st)) {
+            choices[st] = getDefaultShiftPortMode(bp, phase2, current.expansions);
+          }
+        }
+        const cfgRes = executeAction(
+          current,
+          {
+            type: 'CONFIGURE_SPIRAL_SHIFT_PORT',
+            playerId: pendingSpiralId,
+            sectorId: combat.sectorId,
+            choices,
+          },
+          true
+        );
+        if (!cfgRes.success) break;
+        current = cfgRes.newState;
+        continue;
+      }
+    }
+
     const units = buildCombatUnitsForSector(
       sector,
       current.players,
       combat.participatingPlayerIds,
       current.neutralShipBlueprints,
-      current.expansions
+      current.expansions,
+      combat.spiralShiftModes
     );
     const activeHumanParticipants = Array.from(
       new Set([
@@ -6957,7 +7153,8 @@ export function finalizePendingBombardmentConquest(
 export function resolveAttackingPopulationAndConquest(
   state: GameState,
   sector: SectorTile,
-  winnerId?: string | { id: string }
+  winnerId?: string | { id: string },
+  spiralShiftModes?: Partial<Record<ShipType, import('../types/state').ShiftPortMode>>
 ): void {
   const actualWinnerId = typeof winnerId === 'string' ? winnerId : winnerId?.id;
   if (!actualWinnerId || typeof actualWinnerId !== 'string' || !actualWinnerId.startsWith('player_')) {
@@ -7040,9 +7237,15 @@ export function resolveAttackingPopulationAndConquest(
       const survivingAttackerShips = sector.ships.filter((s) => s.ownerId === actualWinnerId);
 
       for (const s of survivingAttackerShips) {
-        const bp = attackerPlayer.blueprints[s.type];
-        if (!bp) continue;
-        const stats = calculateBlueprintStats(bp);
+        const rawBp = attackerPlayer.blueprints[s.type];
+        if (!rawBp) continue;
+        const bp = resolveBlueprintWithShiftPort(
+          rawBp,
+          attackerPlayer,
+          spiralShiftModes?.[s.type],
+          state.expansions || rawBp.activeExpansions
+        );
+        const stats = calculateBlueprintStats(bp, state.expansions || rawBp.activeExpansions);
         const compBonus = stats.computerBonus;
         const allParts = [...(bp.slots || []), ...(bp.externalParts || [])];
 
@@ -8519,9 +8722,11 @@ export function computeCurrentScores(state: GameState): {
     );
 
     const trackVP =
-      getTechTrackVPForPlayer('military', mCount, p.faction.id) +
-      getTechTrackVPForPlayer('grid', gCount, p.faction.id) +
-      getTechTrackVPForPlayer('nano', nCount, p.faction.id);
+      p.faction.id === 'the_spiral'
+        ? getTechTrackVPForPlayer('military', p.techTrack.researched.length, p.faction.id)
+        : getTechTrackVPForPlayer('military', mCount, p.faction.id) +
+          getTechTrackVPForPlayer('grid', gCount, p.faction.id) +
+          getTechTrackVPForPlayer('nano', nCount, p.faction.id);
     const tileVP = p.techTrack.researched.reduce((sum, t) => sum + (t.victoryPoints || 0), 0);
     const techVP = trackVP + tileVP;
 

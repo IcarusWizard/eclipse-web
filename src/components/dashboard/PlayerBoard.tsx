@@ -197,7 +197,11 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
             <button
               onClick={onOpenTrade}
               className="p-1 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-400 transition-colors"
-              title={l(`Trade (${player.faction.tradeRatio ?? 2}:1)`, `交易 (${player.faction.tradeRatio ?? 2}:1)`)}
+              title={
+                player.faction.id === 'the_spiral'
+                  ? l('Trade (2:1 Sci • 3:1 Mat/Money)', '交易 (2:1 科研 • 3:1 材料/金钱)')
+                  : l(`Trade (${player.faction.tradeRatio ?? 2}:1)`, `交易 (${player.faction.tradeRatio ?? 2}:1)`)
+              }
             >
               <ArrowRightLeft className="w-3.5 h-3.5" />
             </button>
@@ -456,7 +460,11 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           <button
             onClick={onOpenTrade}
             className="p-1.5 hover:bg-slate-800 rounded text-slate-400 hover:text-amber-400 transition-colors"
-            title={l(`Trade (${player.faction.tradeRatio ?? 2}:1 for Credits)`, `交易 (${player.faction.tradeRatio ?? 2}:1 兑换信用点)`)}
+            title={
+              player.faction.id === 'the_spiral'
+                ? l('Trade (2:1 Sci • 3:1 Mat/Money)', '交易 (2:1 科研 • 3:1 材料/金钱)')
+                : l(`Trade (${player.faction.tradeRatio ?? 2}:1 for Credits)`, `交易 (${player.faction.tradeRatio ?? 2}:1 兑换信用点)`)
+            }
           >
             <ArrowRightLeft className="w-4 h-4" />
           </button>

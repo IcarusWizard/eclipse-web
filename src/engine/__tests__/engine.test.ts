@@ -31655,6 +31655,318 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(hordeTechHtml).toContain('Nano: 1/4 Researched');
       expect(hordeTechHtml).not.toContain('/7 Researched');
     });
+
+    it('302. verifies The Spiral community faction, Mind single 7-slot tech line & cheapest starting tech, asymmetric 2:1 Science trade, and Body Shift Port combat + bombardment', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { ALL_FACTIONS, isFactionAvailable, getFactionReputationSlotTypes } = await import('../rules/setup');
+      const { getEligibleSpiralStartingTechs, getTotalTechSlotsMax, calculateTechCost, TECH_CATALOG } = await import('../rules/techData');
+      const { hasPendingPreGameCubeSetup, checkAndTriggerCombat } = await import('../rules/gameReducer');
+      const { buildCombatUnitsForSector } = await import('../rules/combatEngine');
+      const { canBlueprintPowerShiftMode, getShiftPortSlotIndex } = await import('../rules/shipValidation');
+      const { createDefaultSimulatorSide, buildSimulatorUnits } = await import('../rules/combatSimulator');
+      const { getPriorityActorId, computeBotAction } = await import('../ai/terranBot');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { SpiralStartingTechModal } = await import('../../components/setup/SpiralStartingTechModal');
+      const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+
+      // 1. Expansion gating, stats, homeworld, and initial pending Cheapest Tech setup
+      expect(getExpansionForItem('the_spiral')?.id).toBe('community_factions');
+      expect(isFactionAvailable('the_spiral', [])).toBe(false);
+      expect(isFactionAvailable('the_spiral', ['community_factions'])).toBe(true);
+
+      const spiralFaction = ALL_FACTIONS.find((f) => f.id === 'the_spiral')!;
+      expect(spiralFaction).toBeDefined();
+      expect(spiralFaction.startingSectorNumber).toBe(255);
+      expect(spiralFaction.startingResources).toEqual({ money: 2, science: 2, materials: 3 });
+      expect(spiralFaction.startingColonyShips).toBe(3);
+      expect(spiralFaction.tradeRatio).toBe(3);
+      expect(getFactionReputationSlotTypes(spiralFaction)).toEqual(['both', 'both', 'both', 'both']);
+
+      const game = createInitialGame(2, ['the_spiral', 'terran_federation'], ['community_factions']);
+      const spiral = game.players.find((p) => p.faction.id === 'the_spiral')!;
+      const terran = game.players.find((p) => p.faction.id === 'terran_federation')!;
+      expect(spiral).toBeDefined();
+      expect(game.pendingSpiralTechSetup).toEqual({ playerId: spiral.id });
+      expect(hasPendingPreGameCubeSetup(game)).toBe(true);
+
+      const homeSec = game.sectors.find((s) => s.id === `home_sector_${spiral.id}`)!;
+      expect(homeSec.name).toBe('Spiralis');
+      expect(homeSec.hasArtifact).toBe(true);
+      expect(homeSec.planets.map((p) => `${p.resource}:${Boolean(p.isAdvanced)}`)).toEqual([
+        'material:false',
+        'science:false',
+        'money:false',
+        'science:true',
+      ]);
+      expect(homeSec.planets.filter((p) => p.colonizedBy === spiral.id).length).toBe(3);
+      expect(homeSec.planets.find((p) => p.isAdvanced)?.colonizedBy).toBeUndefined();
+
+      // Pre-game Cheapest Tech selection rejects high-cost tile when cheaper exists and accepts lowest cost
+      const eligibleStartTechs = getEligibleSpiralStartingTechs(game.techSupply);
+      expect(eligibleStartTechs.length).toBeGreaterThan(0);
+      const maxCostInTray = game.techSupply.reduce((m, t) => (t.baseCost > m ? t.baseCost : m), 0);
+      const nonCheapest = game.techSupply.find((t) => t.baseCost > eligibleStartTechs[0]!.baseCost);
+      if (nonCheapest && maxCostInTray > eligibleStartTechs[0]!.baseCost) {
+        const badStart = executeAction(game, {
+          type: 'CHOOSE_SPIRAL_STARTING_TECH',
+          playerId: spiral.id,
+          techId: nonCheapest.id,
+        });
+        expect(badStart.success).toBe(false);
+      }
+
+      const chooseOk = executeAction(game, {
+        type: 'CHOOSE_SPIRAL_STARTING_TECH',
+        playerId: spiral.id,
+        techId: eligibleStartTechs[0]!.id,
+      });
+      expect(chooseOk.success).toBe(true);
+      let cur = chooseOk.newState;
+      expect(cur.pendingSpiralTechSetup).toBeNull();
+      expect(hasPendingPreGameCubeSetup(cur)).toBe(false);
+      expect(cur.players.find((p) => p.id === spiral.id)!.techTrack.researched.length).toBe(1);
+
+      // Bot chooses CHEAPEST tech automatically too
+      const botGame = createInitialGame(2, ['the_spiral', 'terran_federation'], ['community_factions']);
+      botGame.players.find((p) => p.faction.id === 'the_spiral')!.isBot = true;
+      expect(getPriorityActorId(botGame)).toBe(botGame.players.find((p) => p.faction.id === 'the_spiral')!.id);
+      const botSetupAct = computeBotAction(botGame);
+      expect(botSetupAct?.type).toBe('CHOOSE_SPIRAL_STARTING_TECH');
+
+      // 2p AI game where Spiral is player_1 (second seat) and AI is activePlayerIndex 0:
+      // AI cannot act before Spiral finishes starting tech, and player_1 IS allowed to dispatch CHOOSE_SPIRAL_STARTING_TECH
+      const seat2SpiralGame = createInitialGame(2, ['terran_federation', 'the_spiral'], ['community_factions']);
+      seat2SpiralGame.players[0]!.isBot = true;
+      const seat2Spiral = seat2SpiralGame.players[1]!;
+      expect(seat2SpiralGame.activePlayerIndex).toBe(0);
+      expect(getPriorityActorId(seat2SpiralGame)).toBe(seat2Spiral.id);
+      expect(executeAction(seat2SpiralGame, { type: 'PASS', playerId: seat2SpiralGame.players[0]!.id }).success).toBe(false);
+      const seat2Eligible = getEligibleSpiralStartingTechs(seat2SpiralGame.techSupply);
+      const seat2ChooseOk = executeAction(seat2SpiralGame, {
+        type: 'CHOOSE_SPIRAL_STARTING_TECH',
+        playerId: seat2Spiral.id,
+        techId: seat2Eligible[0]!.id,
+      });
+      expect(seat2ChooseOk.success).toBe(true);
+      expect(seat2ChooseOk.newState.pendingSpiralTechSetup).toBeNull();
+
+      // 2. Asymmetric Trade: 2:1 Science vs 3:1 Materials & Money
+      const spiralCur = cur.players.find((p) => p.id === spiral.id)!;
+      spiralCur.resources.science = 4;
+      spiralCur.resources.materials = 5;
+      expect(executeAction(cur, { type: 'TRADE', playerId: spiral.id, fromResource: 'science', amount: 1, toResource: 'money' }).success).toBe(false);
+      const sciTradeOk = executeAction(cur, { type: 'TRADE', playerId: spiral.id, fromResource: 'science', amount: 2, toResource: 'money' });
+      expect(sciTradeOk.success).toBe(true);
+      expect(sciTradeOk.newState.players.find((p) => p.id === spiral.id)!.resources.science).toBe(2);
+      expect(sciTradeOk.newState.players.find((p) => p.id === spiral.id)!.resources.money).toBe(3);
+      expect(executeAction(cur, { type: 'TRADE', playerId: spiral.id, fromResource: 'material', amount: 2, toResource: 'money' }).success).toBe(false);
+      expect(executeAction(cur, { type: 'TRADE', playerId: spiral.id, fromResource: 'material', amount: 3, toResource: 'money' }).success).toBe(true);
+
+      // 3. Mind: Single 7-slot Tech Line (discounts across mixed trays + 7-tech cap + 1/2/3/5 VP scored once)
+      expect(getTotalTechSlotsMax('the_spiral')).toBe(7);
+      const extraTechs = [
+        'gauss_shield',
+        'improved_hull',
+        'fusion_source',
+        'positron_computer',
+        'plasma_cannon',
+        'fusion_drive',
+        'tachyon_source',
+      ].filter((id) => id !== eligibleStartTechs[0]!.id);
+      cur.techSupply = [
+        ...extraTechs.map((id) => TECH_CATALOG.find((t) => t.id === id)!),
+        ...cur.techSupply,
+      ];
+      cur.activePlayerIndex = cur.players.findIndex((p) => p.id === spiral.id);
+      cur.players.find((p) => p.id === spiral.id)!.resources.science = 99;
+
+      // With 1 starting tech on single line, next researched tech uses index 1 (-1 discount) regardless of category
+      const fusionDriveTech = TECH_CATALOG.find((t) => t.id === 'fusion_drive')!;
+      expect(calculateTechCost(fusionDriveTech, 1, 'nano', 'the_spiral')).toBe(fusionDriveTech.baseCost - 1);
+
+      for (let i = 0; i < 6; i++) {
+        const sp = cur.players.find((p) => p.id === spiral.id)!;
+        sp.influenceTrack.discsOnTrack = 10;
+        cur.activePlayerIndex = cur.players.findIndex((p) => p.id === spiral.id);
+        const r = executeAction(cur, { type: 'RESEARCH', playerId: spiral.id, techId: extraTechs[i]! });
+        expect(r.success).toBe(true);
+        cur = r.newState;
+      }
+      expect(cur.players.find((p) => p.id === spiral.id)!.techTrack.researched.length).toBe(7);
+      cur.activePlayerIndex = cur.players.findIndex((p) => p.id === spiral.id);
+      const eighthTechFail = executeAction(cur, { type: 'RESEARCH', playerId: spiral.id, techId: extraTechs[6]! });
+      expect(eighthTechFail.success).toBe(false);
+
+      // Verify single-line Tech VP is 5 (at 7 techs), not 3x
+      const score7 = computeCurrentScores(cur).scores[spiral.id]!;
+      expect(score7.techs).toBe(5);
+
+      // 4. Body: Shift Port fixed-slot lock, power checks, Phase 1 & Phase 2 Combat + Immediate Bombardment
+      expect(getShiftPortSlotIndex(spiral.blueprints.interceptor)).toBe(0);
+      expect(getShiftPortSlotIndex(spiral.blueprints.cruiser)).toBe(1);
+      expect(getShiftPortSlotIndex(spiral.blueprints.dreadnought)).toBe(2);
+      expect(getShiftPortSlotIndex(spiral.blueprints.starbase)).toBe(0);
+
+      // Cannot overwrite fixed Shift Port via UPGRADE
+      const overwriteShiftFail = executeAction(cur, {
+        type: 'UPGRADE',
+        playerId: spiral.id,
+        upgrades: [{ shipType: 'interceptor', slotIndex: 0, partId: 'gluon_computer' }],
+      });
+      expect(overwriteShiftFail.success).toBe(false);
+
+      // Power checks: Dreadnought has 0 spare power (cannot power Ion Cannon 1⚡ or Positron Computer 1⚡); Cruiser has 1 spare power (can power Positron Computer 1⚡, cannot power Plasma Cannon 2⚡); Interceptor has 2 spare power
+      expect(canBlueprintPowerShiftMode(spiral.blueprints.dreadnought, 'cannon', false).allowed).toBe(false);
+      expect(canBlueprintPowerShiftMode(spiral.blueprints.dreadnought, 'computer', false).allowed).toBe(true);
+      expect(canBlueprintPowerShiftMode(spiral.blueprints.cruiser, 'cannon', true).allowed).toBe(false);
+      expect(canBlueprintPowerShiftMode(spiral.blueprints.cruiser, 'computer', true).allowed).toBe(true);
+      expect(canBlueprintPowerShiftMode(spiral.blueprints.interceptor, 'cannon', true).allowed).toBe(true);
+
+      // Trigger combat in a controlled Terran sector with 1 Spiral Interceptor & 1 Terran cube (0 Terran ships after combat)
+      const battleSec = cur.sectors.find((s) => s.sectorNumber === 101 || (s.discOwner === terran.id && s.id !== homeSec.id)) || cur.sectors[1]!;
+      battleSec.discOwner = terran.id;
+      battleSec.planets = [{ id: 'test_bomb_p', resource: 'money', isAdvanced: false, colonizedBy: terran.id }];
+      battleSec.ships = [
+        { id: 'sp_battle_int_1', ownerId: spiral.id, type: 'interceptor', damage: 0 },
+        { id: 'tr_battle_int_1', ownerId: terran.id, type: 'interceptor', damage: 0 },
+      ];
+      battleSec.playerEntryOrder = [terran.id, spiral.id];
+      checkAndTriggerCombat(cur);
+      expect(cur.phase).toBe('COMBAT_PHASE');
+      expect(cur.activeCombat?.sectorId).toBe(battleSec.id);
+
+      // Must configure Shift Port before firing!
+      const prematureFire = executeAction(cur, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: spiral.id,
+        sectorId: battleSec.id,
+        autoAssign: true,
+      });
+      expect(prematureFire.success).toBe(false);
+
+      // CombatModal UI SSR before configuration shows Shift Port selection panel
+      const combatPreConfigHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(CombatModal, {
+            state: cur,
+            combat: cur.activeCombat!,
+            onStepCombat: () => {},
+            onConfigureSpiralShiftPort: () => {},
+          })
+        )
+      );
+      expect(combatPreConfigHtml).toContain('data-testid="spiral-shift-port-panel"');
+      expect(combatPreConfigHtml).toContain('data-testid="spiral-shift-confirm-btn"');
+
+      // Configure Phase 2 Plasma Cannon on Interceptor (cur already has 7 techs -> Phase 2!)
+      const cfgOk = executeAction(cur, {
+        type: 'CONFIGURE_SPIRAL_SHIFT_PORT',
+        playerId: spiral.id,
+        sectorId: battleSec.id,
+        choices: { interceptor: 'cannon' },
+      });
+      expect(cfgOk.success).toBe(true);
+      cur = cfgOk.newState;
+      const resolvedUnits = buildCombatUnitsForSector(
+        battleSec,
+        cur.players,
+        cur.activeCombat!.participatingPlayerIds,
+        cur.neutralShipBlueprints,
+        cur.expansions,
+        cur.activeCombat!.spiralShiftModes
+      );
+      const spUnit = resolvedUnits.find((u) => u.id === 'sp_battle_int_1')!;
+      expect(spUnit.weapons).toEqual([{ color: 'orange', damage: 2, count: 1, isMissile: undefined }]);
+
+      // Finish combat with Terran ship already destroyed -> immediate planetary bombardment uses Shift Port Plasma Cannon
+      battleSec.ships = [{ id: 'sp_battle_int_1', ownerId: spiral.id, type: 'interceptor', damage: 0 }];
+      cur.activeCombat!.stage = 'resolved';
+      (cur.activeCombat as any).winnerOwnerId = spiral.id;
+      const concludeRes = executeAction(cur, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: spiral.id,
+        sectorId: battleSec.id,
+        concludeCombat: true,
+      });
+      expect(concludeRes.success).toBe(true);
+      if (concludeRes.newState.pendingCombatConquest?.bombardmentSummary) {
+        expect(concludeRes.newState.pendingCombatConquest.bombardmentSummary.rolls.length).toBeGreaterThanOrEqual(1);
+        expect(concludeRes.newState.pendingCombatConquest.bombardmentSummary.rolls[0]!.diceColor).toBe('orange');
+      }
+
+      // Simulator resolves Phase 1 & Phase 2 Shift Ports
+      const simSideP2 = createDefaultSimulatorSide('the_spiral', { shipCounts: { interceptor: 1 } });
+      simSideP2.spiralPhase2 = true;
+      simSideP2.spiralShiftModes = { interceptor: 'cannon' };
+      const simUnits = buildSimulatorUnits(simSideP2, 'attacker');
+      expect(simUnits[0]!.weapons).toEqual([{ color: 'orange', damage: 2, count: 1, isMissile: undefined }]);
+
+      // 5. Additional UI SSR checks (FactionSheetCard, SpiralStartingTechModal, TechMarketModal, PhysicalPlayerBoardModal)
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(LanguageProvider, null, React.createElement(FactionSheetCard, { faction: spiralFaction }))
+      );
+      expect(sheetHtml).toContain('The Spiral');
+      expect(sheetHtml).toContain('/factions/the_spiral.jpg');
+      expect(sheetHtml).toContain('Spiralis');
+      expect(sheetHtml).toContain('2 Sci ➔ 1');
+      expect(sheetHtml).toContain('data-testid="starting-tech-cheapest-badge"');
+
+      const setupModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(SpiralStartingTechModal, {
+            player: spiral,
+            techSupply: game.techSupply,
+            onChooseTech: () => {},
+          })
+        )
+      );
+      expect(setupModalHtml).toContain('data-testid="spiral-starting-tech-modal"');
+      expect(setupModalHtml).toContain('data-testid="spiral-setup-confirm-btn"');
+
+      const spAfter7 = cur.players.find((p) => p.id === spiral.id)!;
+      const techModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(TechMarketModal, {
+            player: spAfter7,
+            techSupply: cur.techSupply,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(techModalHtml).toContain('data-testid="spiral-single-tech-line-status"');
+      expect(techModalHtml).toContain('Single Tech Line: 7/7 Researched');
+      expect(techModalHtml).toContain('Shift Port Phase 2 Active');
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: spAfter7,
+            players: cur.players,
+            activePlayerId: spiral.id,
+            sectors: cur.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('data-testid="spiral-single-tech-board"');
+      expect(boardHtml).toContain('SINGLE TECH LINE — ANY TRAY (7/7 Researched)');
+    });
   });
 });
 

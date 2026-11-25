@@ -659,15 +659,19 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                 {/* Quick-select Slot Pills */}
                 <div className="flex flex-wrap items-center justify-center gap-1.5 mt-2 pt-2 border-t border-slate-800/60">
                   {currentBlueprint.slots.map((sl, sIdx) => {
+                    const isShiftLocked = sl?.id === 'shift_port';
                     const isSelected = selectedSlotIndex === sIdx;
                     return (
                       <button
                         key={sIdx}
                         type="button"
-                        onClick={() => setSelectedSlotIndex(sIdx)}
-                        className={`px-2 py-0.5 rounded text-[10.5px] font-mono font-bold transition border cursor-pointer ${
-                          isSelected
-                            ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 ring-1 ring-cyan-400 shadow'
+                        disabled={isShiftLocked}
+                        onClick={() => !isShiftLocked && setSelectedSlotIndex(sIdx)}
+                        className={`px-2 py-0.5 rounded text-[10.5px] font-mono font-bold transition border ${
+                          isShiftLocked
+                            ? 'bg-rose-950/60 border-rose-700/70 text-rose-300 opacity-60 cursor-not-allowed'
+                            : isSelected
+                            ? 'bg-cyan-500/30 border-cyan-400 text-cyan-200 ring-1 ring-cyan-400 shadow cursor-pointer'
                             : 'bg-slate-900/90 border-slate-800 text-slate-400 hover:border-slate-600 hover:text-slate-200'
                         }`}
                         title={l(`Slot ${sIdx + 1}: ${sl?.name || 'Empty'}`, `槽位 ${sIdx + 1}：${sl ? translatePartName(sl.id, sl.name, language) : '空'}`)}

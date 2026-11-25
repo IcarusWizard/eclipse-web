@@ -200,6 +200,7 @@ export const getChassisTooltip = (
 
 export function getPartSlotCategoryClasses(part: ShipPart | null): string {
   if (!part) return 'bg-slate-900/30 border-dashed border-slate-700/60';
+  if (part.id === 'shift_port') return 'bg-rose-950/65 border-2 border-rose-500/90 shadow-md ring-1 ring-rose-500/35';
   const isAncient = part.id?.startsWith('ancient_') || (part as any)?.isAncient;
   if (isAncient) return 'bg-amber-950/40 border-amber-500/80 shadow ring-1 ring-amber-500/30';
   if (part.category === 'reactor') return 'bg-amber-950/30 border-amber-600/70';
@@ -327,6 +328,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
       {/* 1. Main Customizable Blueprint Slots */}
       {Array.from({ length: totalSlotsCount }).map((_, idx) => {
         const part = slots[idx] || null;
+        const isShiftLocked = part?.id === 'shift_port';
         const coord = layout.cubes[idx] || { col: idx, row: 0, offsetY: 0 };
         const left = coord.col * (cubeSize + gap);
         const top = coord.row * (cubeSize + gap) + (coord.offsetY / 100) * cubeSize;
@@ -336,7 +338,9 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
         const baseCategoryBg = getPartSlotCategoryClasses(part);
         const modularInfo = factionId === 'mega_war_inc' ? getMegaWarModularGroupInfo(shipType, idx) : null;
 
-        const stateClasses = isSelected
+        const stateClasses = isShiftLocked
+          ? baseCategoryBg
+          : isSelected
           ? 'border-2 border-cyan-400 bg-cyan-950/50 shadow-lg shadow-cyan-950 ring-2 ring-cyan-400/60'
           : isModified
           ? 'border-2 border-indigo-500 bg-indigo-950/40 shadow ring-1 ring-indigo-500/40'
@@ -344,7 +348,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
           ? `${part ? 'bg-slate-900/60' : 'bg-slate-900/35'} ${modularInfo.slotAccentClass}`
           : `border ${baseCategoryBg}`;
 
-        const cursorClasses = interactive && canModify ? 'cursor-pointer hover:border-slate-400' : '';
+        const cursorClasses = interactive && canModify && !isShiftLocked ? 'cursor-pointer hover:border-slate-400' : '';
         const modularTooltipSuffix = modularInfo
           ? `\n[${modularInfo.code} Modular • Shared: ${modularInfo.shortLabel}${modularInfo.allowsDrives ? '' : ' • No Drives'}]`
           : '';
@@ -353,7 +357,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
           <div
             key={`slot_${shipType}_${idx}`}
             onClick={() => {
-              if (interactive && onSelectSlot) {
+              if (interactive && !isShiftLocked && onSelectSlot) {
                 onSelectSlot(idx);
               }
             }}
@@ -381,8 +385,8 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
 
                 <ShipPartSlotGraphic part={part} size={size === 'lg' ? 'md' : size} showInitiative={false} />
 
-                {/* Interactive Controls in Editor (Top-Right: Revert & Trash Bin) */}
-                {interactive && (
+                {/* Interactive Controls in Editor (Top-Right: Revert & Trash Bin, hidden for fixed Shift Port) */}
+                {interactive && !isShiftLocked && (
                   <div className="absolute top-0.5 right-0.5 flex items-center gap-0.5 z-20">
                     {isModified && onRevertSlot && (
                       <button

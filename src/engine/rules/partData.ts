@@ -112,6 +112,17 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     shieldBonus: 0,
     hullBonus: 0,
   },
+  shift_port: {
+    id: 'shift_port',
+    name: 'Shift Port',
+    category: 'computer',
+    powerProduced: 0,
+    powerConsumed: 0,
+    initiativeBonus: 0,
+    computerBonus: 0,
+    shieldBonus: 0,
+    hullBonus: 0,
+  },
 
   // Shields
   gauss_shield: {
@@ -578,6 +589,34 @@ export function getEffectiveShipPart(part: ShipPart, activeExpansions?: string[]
     };
   }
   return part;
+}
+
+/**
+ * Returns true once The Spiral has researched 5 or more technologies, upgrading Shift Ports to Phase 2.
+ */
+export function isSpiralPhase2(researchedTechsOrCount: { length: number } | number | undefined): boolean {
+  const count = typeof researchedTechsOrCount === 'number'
+    ? researchedTechsOrCount
+    : (researchedTechsOrCount?.length ?? 0);
+  return count >= 5;
+}
+
+/**
+ * Resolves the active ShipPart substituted into a Shift Port slot for combat or bombardment.
+ * Phase 1 (< 5 techs): Ion Cannon / Electron Computer / Hull
+ * Phase 2 (>= 5 techs): Plasma Cannon / Positron Computer / Improved Hull
+ */
+export function getShiftPortResolvedPart(
+  mode: 'cannon' | 'computer' | 'hull',
+  phase2: boolean
+): ShipPart {
+  if (mode === 'cannon') {
+    return phase2 ? SHIP_PARTS.plasma_cannon! : SHIP_PARTS.ion_cannon!;
+  }
+  if (mode === 'computer') {
+    return phase2 ? SHIP_PARTS.positron_computer! : SHIP_PARTS.electron_computer!;
+  }
+  return phase2 ? SHIP_PARTS.improved_hull! : SHIP_PARTS.hull!;
 }
 
 
