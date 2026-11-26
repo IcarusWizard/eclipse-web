@@ -346,6 +346,14 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
                         +1 MOV
                       </span>
                     )}
+                    {faction.id === 'jotunn' && (act.key === 'UPG' || act.key === 'BUI' || act.key === 'MOV') && (
+                      <span
+                        title={l('Dread Nought: +1 same action OR +1 BUI/UPG/MOV on Dreadnought', '无畏雄心：+1 同类激活或 +1 无畏舰建造/升级/移动')}
+                        className="text-[9px] font-black font-mono text-sky-300 bg-sky-950/80 border border-sky-500/40 px-1 rounded leading-tight"
+                      >
+                        +1*
+                      </span>
+                    )}
                     {(faction.influenceColonyShipRefreshes ??
                       (faction.id === 'wardens_of_magellan' ? 1 : 2)) === 1 &&
                       act.key === 'INF' && (

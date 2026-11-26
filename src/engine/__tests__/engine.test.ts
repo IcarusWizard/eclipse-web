@@ -43,6 +43,7 @@ import {
   FACTION_COLOR_MAP,
   getPlayerReputationTrackSlots,
   getMaxReputationTilesForPlayer,
+  getFactionReputationSlotTypes,
   isFactionAvailable,
   getAvailableFactions,
 } from '../rules/setup';
@@ -59,6 +60,7 @@ import {
   computeReachableMoveDestinations,
   canExchangeAmbassadors,
   getMaxUpgradeActivations,
+  getMaxBuildActivations,
   getInfluenceColonyShipRefreshes,
   playerHasWormholeGenerator,
   applyShrinePlacement,
@@ -32753,6 +32755,551 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         })
       );
       expect(ragIntLayoutHtml).toContain('width:188px;height:124px');
+    });
+
+    test('Test 305: Community Faction: Jotunn (Frost Giants) (Dread Nought, Few in Number, Sector 241 Ark Ships, +1 VP/Dreadnought & UI)', async () => {
+      // 1. Expansion gating
+      expect(isFactionAvailable('jotunn', [])).toBe(false);
+      expect(isFactionAvailable('jotunn', ['community_factions'])).toBe(true);
+
+      // 2. Game setup verification
+      let game = createInitialGame(2, ['jotunn', 'terran_federation'], ['community_factions']);
+      const jt = game.players.find((p) => p.faction.id === 'jotunn')!;
+      expect(jt).toBeDefined();
+      expect(jt.resources).toEqual({ money: 3, science: 2, materials: 4 });
+      expect(jt.colonyShips).toEqual({ total: 3, ready: 3 });
+      expect(jt.influenceTrack.discsOnTrack).toBe(12);
+      expect(jt.faction.startingDiscs).toBe(13);
+      expect(jt.faction.tradeRatio).toBe(3);
+      expect(jt.techTrack.researched.map((t) => t.id)).toEqual(['advanced_mining']);
+      expect(getFactionReputationSlotTypes(jt.faction)).toEqual(['both', 'both', 'both', 'rep_only']);
+      expect(getInfluenceColonyShipRefreshes(jt)).toBe(1);
+
+      // Home Sector #241 Ark Ships
+      const homeSec = game.sectors.find((s) => s.discOwner === jt.id)!;
+      expect(homeSec.sectorNumber).toBe(241);
+      expect(homeSec.name).toBe('Ark Ships');
+      expect(homeSec.victoryPoints).toBe(3);
+      expect(homeSec.hasArtifact).toBe(true);
+      expect(homeSec.planets.length).toBe(3);
+      expect(homeSec.planets[0].resource).toBe('science');
+      expect(homeSec.planets[0].isAdvanced).toBe(false);
+      expect(homeSec.planets[0].colonizedBy).toBe(jt.id);
+      expect(homeSec.planets[1].resource).toBe('money');
+      expect(homeSec.planets[1].isAdvanced).toBe(true);
+      expect(homeSec.planets[1].colonizedBy).toBeUndefined();
+      expect(homeSec.planets[2].resource).toBe('material');
+      expect(homeSec.planets[2].isAdvanced).toBe(true);
+      expect(homeSec.planets[2].colonizedBy).toBe(jt.id);
+      expect(homeSec.planets[2].colonizedResource).toBe('material');
+      expect(jt.population.science.cubesOnBoard).toBe(10);
+      expect(jt.population.material.cubesOnBoard).toBe(10);
+      expect(jt.population.money.cubesOnBoard).toBe(11);
+      expect(homeSec.ships.map((sh) => sh.type)).toEqual(['interceptor']);
+
+      // 3. Few in Number: Influence action only flips back 1 Colony Ship (out of 3)
+      jt.colonyShips.ready = 0;
+      const infRes = executeAction(game, {
+        type: 'INFLUENCE',
+        playerId: jt.id,
+        refreshColonyShips: true,
+      });
+      expect(infRes.success).toBe(true);
+      expect(infRes.newState.players.find((p) => p.id === jt.id)!.colonyShips.ready).toBe(1);
+
+      // 4. Dread Nought activation limits (1 normal + 1 special same-type OR cross-action)
+      expect(getMaxUpgradeActivations(jt, false, false)).toBe(2);
+      expect(getMaxUpgradeActivations(jt, false, true)).toBe(1);
+      expect(getMaxBuildActivations(jt, false, false)).toBe(2);
+      expect(getMaxBuildActivations(jt, false, true)).toBe(1);
+      expect(getMaxMoveActivations(jt, false, false)).toBe(2);
+      expect(getMaxMoveActivations(jt, false, true)).toBe(1);
+
+      // Create an adjacent friendly/empty neighbor sector connected by wormhole for Move tests
+      const homeCoord = homeSec.coord;
+      const neighborCoord = { q: homeCoord.q, r: homeCoord.r - 1 }; // direction 0 toward center
+      const adjSec: SectorTile = {
+        id: 'sec_jt_adj',
+        sectorNumber: 201,
+        name: 'Frost Frontier',
+        ring: 2,
+        coord: neighborCoord,
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      game.sectors.push(adjSec);
+
+      // Give Jotunn plenty of Materials for Dreadnought builds
+      jt.resources.materials = 20;
+      jt.actionsTakenThisRound = 0;
+      game.activePlayerIndex = game.players.findIndex((p) => p.id === jt.id);
+
+      // 5A. UPGRADE 1 Interceptor slot + Dread Nought Build 1 Dreadnought (with requireConfirmation & atomic REVERT)
+      const upgAndBuildRes = executeAction(game, {
+        type: 'UPGRADE',
+        playerId: jt.id,
+        upgrades: [{ shipType: 'interceptor', slotIndex: 0, partId: 'hull' }],
+        dreadnoughtBonus: { build: { sectorId: homeSec.id, itemType: 'dreadnought' } },
+        requireConfirmation: true,
+      });
+      expect(upgAndBuildRes.success).toBe(true);
+      expect(upgAndBuildRes.newState.pendingActionConfirmation?.description).toContain('Dread Nought Build');
+      const jtAfterUpgBuild = upgAndBuildRes.newState.players.find((p) => p.id === jt.id)!;
+      expect(jtAfterUpgBuild.blueprints.interceptor!.slots[0]?.id).toBe('hull');
+      expect(upgAndBuildRes.newState.sectors.find((s) => s.id === homeSec.id)!.ships.filter((s) => s.type === 'dreadnought').length).toBe(1);
+
+      // Reject UPGRADE 2 slots + dreadnoughtBonus (exceeds 1 normal activation)
+      const tooManyWithBonusRes = validateAction(game, {
+        type: 'UPGRADE',
+        playerId: jt.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 0, partId: 'hull' },
+          { shipType: 'cruiser', slotIndex: 0, partId: 'hull' },
+        ],
+        dreadnoughtBonus: { build: { sectorId: homeSec.id, itemType: 'dreadnought' } },
+      });
+      expect(tooManyWithBonusRes.valid).toBe(false);
+
+      // Reject Dread Nought non-Dreadnought build
+      const nonDnBuildRes = validateAction(game, {
+        type: 'UPGRADE',
+        playerId: jt.id,
+        upgrades: [{ shipType: 'interceptor', slotIndex: 0, partId: 'hull' }],
+        dreadnoughtBonus: { build: { sectorId: homeSec.id, itemType: 'cruiser' } as any },
+      });
+      expect(nonDnBuildRes.valid).toBe(false);
+
+      // Atomic REVERT reverses BOTH upgrade and Dreadnought build
+      const revertRes = executeAction(upgAndBuildRes.newState, {
+        type: 'REVERT_TURN_ACTION',
+        playerId: jt.id,
+      });
+      expect(revertRes.success).toBe(true);
+      expect(revertRes.newState.sectors.find((s) => s.id === homeSec.id)!.ships.filter((s) => s.type === 'dreadnought').length).toBe(0);
+      expect(revertRes.newState.players.find((p) => p.id === jt.id)!.blueprints.interceptor!.slots[0]?.id).toBe('ion_cannon');
+
+      // 5B. BUILD 1 Dreadnought + Dread Nought Move that newly built Dreadnought!
+      const dnCreatedId = 'ship_jt_dn_1';
+      const buildAndMoveDnRes = executeAction(game, {
+        type: 'BUILD',
+        playerId: jt.id,
+        items: [{ sectorId: homeSec.id, itemType: 'dreadnought', createdShipId: dnCreatedId }],
+        dreadnoughtBonus: {
+          move: [{ shipId: dnCreatedId, fromSectorId: homeSec.id, toSectorId: adjSec.id, activationIndex: 0 }],
+        },
+      });
+      expect(buildAndMoveDnRes.success).toBe(true);
+      expect(buildAndMoveDnRes.newState.sectors.find((s) => s.id === adjSec.id)!.ships.some((s) => s.id === dnCreatedId)).toBe(true);
+
+      // Reject Dread Nought Move targeting an Interceptor instead of a Dreadnought
+      const startIntId = homeSec.ships.find((s) => s.type === 'interceptor')!.id;
+      const illegalDnMoveRes = validateAction(game, {
+        type: 'BUILD',
+        playerId: jt.id,
+        items: [{ sectorId: homeSec.id, itemType: 'interceptor' }],
+        dreadnoughtBonus: {
+          move: [{ shipId: startIntId, fromSectorId: homeSec.id, toSectorId: adjSec.id, activationIndex: 0 }],
+        },
+      });
+      expect(illegalDnMoveRes.valid).toBe(false);
+
+      // 5C. MOVE 1 Interceptor + Dread Nought Upgrade 1 Dreadnought slot (and reject upgrading Cruiser via Dread Nought)
+      let g2 = buildAndMoveDnRes.newState;
+      g2.activePlayerIndex = g2.players.findIndex((p) => p.id === jt.id);
+      const illegalCruiserDnUpg = validateAction(g2, {
+        type: 'MOVE',
+        playerId: jt.id,
+        moves: [{ shipId: startIntId, fromSectorId: homeSec.id, toSectorId: adjSec.id, activationIndex: 0 }],
+        dreadnoughtBonus: { upgrade: { shipType: 'cruiser' as any, slotIndex: 1, partId: 'hull' } },
+      });
+      expect(illegalCruiserDnUpg.valid).toBe(false);
+
+      const moveAndUpgDnRes = executeAction(g2, {
+        type: 'MOVE',
+        playerId: jt.id,
+        moves: [{ shipId: startIntId, fromSectorId: homeSec.id, toSectorId: adjSec.id, activationIndex: 0 }],
+        dreadnoughtBonus: { upgrade: { shipType: 'dreadnought', slotIndex: 7, partId: 'hull' } },
+      });
+      expect(moveAndUpgDnRes.success).toBe(true);
+      expect(moveAndUpgDnRes.newState.players.find((p) => p.id === jt.id)!.blueprints.dreadnought!.slots[7]?.id).toBe('hull');
+
+      // 5D. BUILD 1 Dreadnought + Dread Nought Upgrade Dreadnought slot
+      g2 = moveAndUpgDnRes.newState;
+      g2.activePlayerIndex = g2.players.findIndex((p) => p.id === jt.id);
+      const buildAndUpgDnRes = executeAction(g2, {
+        type: 'BUILD',
+        playerId: jt.id,
+        items: [{ sectorId: homeSec.id, itemType: 'dreadnought', createdShipId: 'ship_jt_dn_2' }],
+        dreadnoughtBonus: { upgrade: { shipType: 'dreadnought', slotIndex: 0, partId: 'hull' } },
+      });
+      expect(buildAndUpgDnRes.success).toBe(true);
+
+      // 6. Bonus VPs: +1 VP per Dreadnought on the board at end of game (2 Dreadnoughts => +2 speciesBonus)
+      const scoredState = buildAndUpgDnRes.newState;
+      expect(computeCurrentScores(scoredState).scores[jt.id].speciesBonus).toBe(2);
+      calculateFinalScores(scoredState);
+      expect(scoredState.finalScores?.[jt.id]?.speciesBonus).toBe(2);
+
+      // 7. Reject Dread Nought for non-Jotunn faction and on Reaction when passed
+      const terran = g2.players.find((p) => p.faction.id === 'terran_federation')!;
+      expect(
+        validateAction(g2, {
+          type: 'BUILD',
+          playerId: terran.id,
+          items: [{ sectorId: g2.sectors.find((s) => s.discOwner === terran.id)!.id, itemType: 'interceptor' }],
+          dreadnoughtBonus: { upgrade: { shipType: 'dreadnought', slotIndex: 2, partId: 'hull' } },
+        }).valid
+      ).toBe(false);
+
+      // 8. UI SSR Verification: FactionSheetCard, ActionBar, BuildModal, ShipBlueprintEditor, MoveModal, PhysicalPlayerBoardModal
+      const React = await import('react');
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { ActionBar } = await import('../../components/layout/ActionBar');
+      const { BuildModal } = await import('../../components/actions/BuildModal');
+      const { MoveModal } = await import('../../components/actions/MoveModal');
+      const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FactionSheetCard, { faction: jt.faction })
+        )
+      );
+      expect(sheetHtml).toContain('Jotunn');
+      expect(sheetHtml).toContain('Ark Ships');
+      expect(sheetHtml).toContain('+1*');
+      expect(sheetHtml).toContain('1 Colony Ship');
+
+      const actionBarHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ActionBar, {
+            activePlayer: jt,
+            players: game.players,
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onOpenTrade: () => {},
+            onOpenDiplomacy: () => {},
+            onPass: () => {},
+            isActionsLocked: false,
+          })
+        )
+      );
+      expect(actionBarHtml).toContain('(1+1*)');
+
+      const buildModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(BuildModal, {
+            player: jt,
+            sectors: game.sectors,
+            eligibleSectors: [homeSec],
+            slots: [{ sectorId: homeSec.id, itemType: 'dreadnought' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(buildModalHtml).toContain('data-testid="jotunn-dread-nought-banner"');
+      expect(buildModalHtml).toContain('data-testid="jotunn-dn-option-upgrade"');
+      expect(buildModalHtml).toContain('data-testid="jotunn-dn-option-move"');
+
+      const buildStep2Html = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(BuildModal, {
+            player: jt,
+            sectors: game.sectors,
+            eligibleSectors: [homeSec],
+            slots: [{ sectorId: homeSec.id, itemType: 'dreadnought' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+            isJotunnDreadnoughtBuild: true,
+            jotunnDreadnoughtBuildSourceLabel: '1 Upgrade modification',
+            onSkipJotunnDreadnoughtBonus: () => {},
+          })
+        )
+      );
+      expect(buildStep2Html).toContain('data-testid="jotunn-dn-build-step-banner"');
+      expect(buildStep2Html).toContain('data-testid="jotunn-skip-dn-build-btn"');
+
+      const upgEditorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ShipBlueprintEditor, {
+            player: jt,
+            onSaveBlueprint: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(upgEditorHtml).toContain('data-testid="jotunn-dread-nought-banner"');
+      expect(upgEditorHtml).toContain('data-testid="jotunn-dn-option-build"');
+
+      const moveStep1Html = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MoveModal, {
+            player: jt,
+            sectors: game.sectors,
+            playerShips: [],
+            simulatedShipSector: new Map(),
+            connectedDestinations: [],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 1,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: '',
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(moveStep1Html).toContain('data-testid="jotunn-dread-nought-banner"');
+      expect(moveStep1Html).toContain('data-testid="jotunn-dn-option-upgrade"');
+
+      // Move -> Pre-Build Dreadnought flow: Build window first, then Move with 1 remaining activation
+      const movePreBuildStep1Html = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(BuildModal, {
+            player: jt,
+            sectors: game.sectors,
+            eligibleSectors: [homeSec],
+            slots: [{ sectorId: homeSec.id, itemType: 'dreadnought' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+            isJotunnDreadnoughtBuild: true,
+            isJotunnMovePreBuild: true,
+            onSkipJotunnMovePreBuild: () => {},
+          })
+        )
+      );
+      expect(movePreBuildStep1Html).toContain('data-testid="jotunn-move-skip-build-btn"');
+      expect(movePreBuildStep1Html).toContain('Build Dreadnought &amp; Proceed to Move');
+
+      const moveAfterPreBuildHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MoveModal, {
+            player: jt,
+            sectors: game.sectors,
+            playerShips: [],
+            simulatedShipSector: new Map(),
+            connectedDestinations: [],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 1,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: '',
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+            jotunnPreBuildLabel: 'DREADNOUGHT in Sector 241',
+          })
+        )
+      );
+      expect(moveAfterPreBuildHtml).toContain('data-testid="jotunn-move-prebuild-banner"');
+      expect(moveAfterPreBuildHtml).toContain('0 / 1 Activations');
+      expect(moveAfterPreBuildHtml).not.toContain('data-testid="jotunn-dread-nought-banner"');
+
+      // Engine supports building a Dreadnought first in MOVE dreadnoughtBonus and moving it immediately with remaining 1 activation
+      const preDnId = 'ship_jt_prebuild_move_dn';
+      const moveWithPreBuildRes = executeAction(game, {
+        type: 'MOVE',
+        playerId: jt.id,
+        dreadnoughtBonus: {
+          build: { sectorId: homeSec.id, itemType: 'dreadnought', createdShipId: preDnId },
+        },
+        moves: [{ shipId: preDnId, fromSectorId: homeSec.id, toSectorId: adjSec.id, activationIndex: 0 }],
+      });
+      expect(moveWithPreBuildRes.success).toBe(true);
+      expect(moveWithPreBuildRes.newState.sectors.find((s) => s.id === adjSec.id)!.ships.some((s) => s.id === preDnId)).toBe(true);
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: jt,
+            players: game.players,
+            activePlayerId: jt.id,
+            sectors: game.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('Jotunn');
+    });
+
+    test('Test 306: Combat Phase resolves fleet battles and bombardments strictly in descending sector order and shows Bombardment UI to all players', async () => {
+      const game = createInitialGame(
+        4,
+        ['descendants_of_draco', 'enlightened_of_lyra', 'planta', 'orion_hegemony'],
+        []
+      );
+      const draco = game.players[0]!;
+      const lyra = game.players[1]!;
+      const orion = game.players[3]!;
+
+      // Clear any default conflicts and set up 108 (Draco+Ancient coexisting), 104 (Orion vs Draco cubes bombardment), 001 (Lyra vs GCDS fleet battle)
+      const sec001 = game.sectors.find((s) => s.sectorNumber === 1)!;
+      sec001.ships.push({ id: 'ship_lyra_001', ownerId: lyra.id, type: 'cruiser', damage: 0 });
+
+      const sec108: SectorTile = {
+        id: 'sector_108_test',
+        sectorNumber: 108,
+        name: 'Inner Coexist',
+        ring: 1,
+        coord: { q: 1, r: 0 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [{ id: 's108_p1', resource: 'money', isAdvanced: false, colonizedBy: draco.id, colonizedResource: 'money' }],
+        victoryPoints: 2,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 1,
+        discOwner: draco.id,
+        ships: [{ id: 'anc_108', ownerId: 'ancient', type: 'ancient', damage: 0 }],
+      };
+
+      const sec104: SectorTile = {
+        id: 'sector_104_test',
+        sectorNumber: 104,
+        name: 'Bombard Target',
+        ring: 1,
+        coord: { q: 0, r: 1 },
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [
+          { id: 's104_p1', resource: 'money', isAdvanced: false, colonizedBy: draco.id, colonizedResource: 'money' },
+          { id: 's104_p2', resource: 'money', isAdvanced: false, colonizedBy: draco.id, colonizedResource: 'money' },
+          { id: 's104_p3', resource: 'science', isAdvanced: false, colonizedBy: draco.id, colonizedResource: 'science' },
+          { id: 's104_p4', resource: 'science', isAdvanced: false, colonizedBy: draco.id, colonizedResource: 'science' },
+        ],
+        victoryPoints: 2,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        discOwner: draco.id,
+        ships: [
+          { id: 'orion_c1', ownerId: orion.id, type: 'cruiser', damage: 0 },
+          { id: 'orion_c2', ownerId: orion.id, type: 'cruiser', damage: 0 },
+        ],
+      };
+
+      game.sectors.push(sec108, sec104);
+      game.phase = 'COMBAT_PHASE';
+      game.resolvedCombatSectorIds = [];
+      game.activeCombat = null;
+      game.pendingCombatConquest = null;
+
+      // 1. Sector 108 (Draco + Ancients peacefully coexisting) is skipped;
+      //    Sector 104 (hostile bombardment) MUST trigger BEFORE Sector 001 (fleet combat vs GCDS)!
+      checkAndTriggerCombat(game);
+      expect(game.activeCombat).toBeNull();
+      expect(game.pendingCombatConquest).not.toBeNull();
+      expect(game.pendingCombatConquest!.sectorId).toBe('sector_104_test');
+      expect(game.pendingCombatConquest!.winnerPlayerId).toBe(orion.id);
+      expect(game.pendingCombatConquest!.bombardmentSummary).toBeDefined();
+
+      // 2. Non-controlling players (e.g. defender Draco at seat 0, or spectator) can see the full Bombardment Report UI!
+      const React = await import('react');
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { CombatConquestModal } = await import('../../components/combat/CombatConquestModal');
+
+      const defenderViewHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(CombatConquestModal, {
+            state: game,
+            conquest: game.pendingCombatConquest!,
+            currentSeat: 0, // Descendants of Draco (defender)
+            canControl: false,
+            onConfirm: () => {},
+          })
+        )
+      );
+      expect(defenderViewHtml).toContain('BOMBARDMENT REPORT: SECTOR 104');
+      expect(defenderViewHtml).toContain('Planetary Bombardment');
+      expect(defenderViewHtml).toContain('data-testid="combat-conquest-observer-badge"');
+
+      // 3. After resolving Sector 104 conquest/acknowledgment (or target selection + conquest), Sector 001 (GCDS) triggers NEXT!
+      if (game.pendingCombatConquest!.bombardmentSummary?.isPendingTargetSelection) {
+        const dmg = game.pendingCombatConquest!.bombardmentSummary!.totalDamage;
+        const targets = sec104.planets
+          .map((_, idx) => idx)
+          .slice(0, Math.min(dmg, sec104.planets.length));
+        const pickRes = executeAction(game, {
+          type: 'SELECT_BOMBARDMENT_TARGETS',
+          playerId: orion.id,
+          sectorId: 'sector_104_test',
+          targetPlanetIndices: targets,
+        });
+        expect(pickRes.success).toBe(true);
+        Object.assign(game, pickRes.newState);
+      }
+      if (game.pendingCombatConquest) {
+        const concludeRes = executeAction(game, {
+          type: 'COMBAT_CONQUEST',
+          playerId: orion.id,
+          sectorId: 'sector_104_test',
+          claimInfluence: false,
+          colonizePlanetIndices: [],
+        });
+        expect(concludeRes.success).toBe(true);
+        expect(concludeRes.newState.activeCombat?.sectorId).toBe(sec001.id);
+      } else {
+        checkAndTriggerCombat(game);
+        expect(game.activeCombat?.sectorId).toBe(sec001.id);
+      }
     });
   });
 });

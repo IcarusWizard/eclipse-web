@@ -4,6 +4,7 @@ import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
 import { getEffectiveMoveActivationLimit, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
+import { JotunnDreadNoughtBanner, JotunnDreadNoughtTarget } from '../common/JotunnDreadNoughtBanner';
 import { areSectorsConnected, getEdgeBetween } from '../../engine/rules/hexMath';
 import { getNebulaSubsectorForOuterEdge } from '../../engine/rules/galacticEvents';
 import type { WarpConduit } from '../../engine/rules/warpedUniverse';
@@ -62,7 +63,12 @@ export interface MoveModalProps {
   selectedShipId: string;
   onSelectShipId: (shipId: string) => void;
   onFinishActivation: () => void;
-  onMove: (moves: MoveStepPayload[], pulsarSectorId?: string, useMidasTouch?: boolean) => void;
+  onMove: (
+    moves: MoveStepPayload[],
+    pulsarSectorId?: string,
+    useMidasTouch?: boolean,
+    jotunnDnTarget?: 'build' | 'upgrade'
+  ) => void;
   onClose: () => void;
   pulsarSectorId?: string;
   warpConduits?: WarpConduit[];
@@ -71,6 +77,12 @@ export interface MoveModalProps {
   onSkipRegroupMove?: () => void;
   useMidasTouch?: boolean;
   onToggleMidasTouch?: (next: boolean) => void;
+  isJotunnDreadnoughtMove?: boolean;
+  jotunnDreadnoughtMoveSourceLabel?: string | null;
+  onSkipJotunnDreadnoughtBonus?: () => void;
+  jotunnPreBuildLabel?: string | null;
+  jotunnDnTarget?: 'same' | 'build' | 'upgrade';
+  onToggleJotunnDnTarget?: (next: JotunnDreadNoughtTarget) => void;
 }
 
 export const MoveModal: React.FC<MoveModalProps> = ({
@@ -100,17 +112,43 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   onSkipRegroupMove,
   useMidasTouch: useMidasTouchProp,
   onToggleMidasTouch,
+  isJotunnDreadnoughtMove,
+  jotunnDreadnoughtMoveSourceLabel,
+  onSkipJotunnDreadnoughtBonus,
+  jotunnPreBuildLabel,
+  jotunnDnTarget: jotunnDnTargetProp,
+  onToggleJotunnDnTarget,
 }) => {
   const { language, l } = useLanguage();
   const [localUseMidasTouch, setLocalUseMidasTouch] = useState<boolean>(false);
+  const [localJotunnDnTarget, setLocalJotunnDnTarget] = useState<JotunnDreadNoughtTarget>('same');
   const useMidasTouch = useMidasTouchProp ?? localUseMidasTouch;
+  const jotunnDnTarget = jotunnDnTargetProp ?? localJotunnDnTarget;
   const isPulsarActive = Boolean(pulsarSectorId);
   const isRegroupMoveStep = Boolean(regroupBuildLabel && onSkipRegroupMove);
   const isMidasTouchEligible = player.faction.id === 'legion_of_midas' && !isPulsarActive && !isRegroupMoveStep && !player.hasPassed;
   const effectiveMidasTouch = isMidasTouchEligible && useMidasTouch;
-  const maxMoves = isRegroupMoveStep
-    ? 1
-    : getEffectiveMoveActivationLimit(player, pulsarSectorId, undefined, effectiveMidasTouch);
+  const isJotunnBannerEligible =
+    player.faction.id === 'jotunn' &&
+    !isPulsarActive &&
+    !isRegroupMoveStep &&
+    !isJotunnDreadnoughtMove &&
+    !jotunnPreBuildLabel &&
+    !player.hasPassed;
+  const effectiveJotunnTarget =
+    isJotunnBannerEligible && (jotunnDnTarget === 'build' || jotunnDnTarget === 'upgrade')
+      ? jotunnDnTarget
+      : undefined;
+  const maxMoves =
+    isRegroupMoveStep || isJotunnDreadnoughtMove
+      ? 1
+      : getEffectiveMoveActivationLimit(
+          player,
+          pulsarSectorId,
+          undefined,
+          effectiveMidasTouch,
+          Boolean(effectiveJotunnTarget) || Boolean(jotunnPreBuildLabel)
+        );
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
   const hasWormholeGen = playerHasWormholeGenerator(player);
 
@@ -217,7 +255,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         targetSubsector: m.targetSubsector,
       })),
       pulsarSectorId,
-      effectiveMidasTouch || undefined
+      effectiveMidasTouch || undefined,
+      effectiveJotunnTarget
     );
   };
 
@@ -238,7 +277,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canExecute, plannedMoves, onMove, onClose, pulsarSectorId, distinctActivationsCount, maxMoves, showUnusedWarning, effectiveMidasTouch]);
+  }, [canExecute, plannedMoves, onMove, onClose, pulsarSectorId, distinctActivationsCount, maxMoves, showUnusedWarning, effectiveMidasTouch, effectiveJotunnTarget]);
 
   const currentShipSubsector = useMemo(() => {
     if (!currentShipObj || !currentSimSector || !currentSimSector.isNebula) return undefined;
@@ -297,6 +336,36 @@ export const MoveModal: React.FC<MoveModalProps> = ({
               }
             }}
           />
+        )}
+
+        {isJotunnBannerEligible && (
+          <JotunnDreadNoughtBanner
+            player={player}
+            primaryAction="MOVE"
+            selectedTarget={jotunnDnTarget}
+            onSelectTarget={(next) => {
+              if (onToggleJotunnDnTarget) {
+                onToggleJotunnDnTarget(next as 'same' | 'build' | 'upgrade');
+              } else {
+                setLocalJotunnDnTarget(next);
+              }
+            }}
+          />
+        )}
+
+        {isJotunnDreadnoughtMove && (
+          <div
+            data-testid="jotunn-dn-move-step-banner"
+            className="p-2 px-3 rounded-xl bg-sky-950/60 border border-sky-500/80 text-sky-200 text-xs flex items-center justify-between gap-2"
+          >
+            <span>
+              🛡️ <strong>{l('Dread Nought (+1 MOV) — Step 2:', '无畏雄心 (+1 移动) — 第二步：')}</strong>{' '}
+              {jotunnDreadnoughtMoveSourceLabel || l('Move 1 Dreadnought ship', '移动 1 艘无畏舰')}
+            </span>
+            <span className="text-[10.5px] text-sky-300/90">
+              {l('Dreadnought only • Skip to commit Step 1 only', '仅限无畏舰移动 • 跳过则仅确认第一步')}
+            </span>
+          </div>
         )}
 
         {/* Header */}
@@ -466,19 +535,20 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                       const activeActHasMoves =
                         (activationGroups.find(([idx]) => idx === activeActivationIndex)?.[1].length ?? 0) > 0;
                       const lockedToMovingShip = !isSel && activeActHasMoves && activeActivationIndex + 1 >= maxMoves;
+                      const lockedToDreadnought = Boolean(isJotunnDreadnoughtMove && item.ship.type !== 'dreadnought');
 
                       return (
                         <button
                           key={item.ship.id}
                           type="button"
-                          disabled={pinned || isStarbase || lockedToMovingShip}
+                          disabled={pinned || isStarbase || lockedToMovingShip || lockedToDreadnought}
                           onClick={() => onSelectShipId(item.ship.id)}
                           className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 ${
                             isSel
                               ? 'bg-cyan-500 text-slate-950 shadow-sm'
                               : pinned
                               ? 'bg-rose-950/50 border border-rose-900/60 text-rose-400 opacity-60 cursor-not-allowed'
-                              : isStarbase || lockedToMovingShip
+                              : isStarbase || lockedToMovingShip || lockedToDreadnought
                               ? 'bg-slate-900 border border-slate-800 text-slate-500 opacity-50 cursor-not-allowed'
                               : 'bg-slate-900 border border-slate-700 text-slate-300 hover:border-slate-500'
                           }`}
@@ -487,6 +557,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                               ? l('Ship is pinned by hostile forces and cannot move', '飞船被敌方牵制，无法移动')
                               : isStarbase
                               ? l('Starbases have Drive Speed 0 and cannot move', '星际基地航速为 0，无法移动')
+                              : lockedToDreadnought
+                              ? l('Dread Nought Move may only move Dreadnought ships', '无畏雄心移动仅限移动无畏舰')
                               : lockedToMovingShip
                               ? l('1-activation Move locked to the ship already moving — undo move to pick another ship', '单次移动激活已锁定当前移动飞船 — 请先撤销后再选其他飞船')
                               : l(`Select ${item.ship.type} (Speed ${shipSpeed})`, `选择${translateShipType(item.ship.type, language)}（航速 ${shipSpeed}）`)
@@ -632,6 +704,20 @@ export const MoveModal: React.FC<MoveModalProps> = ({
           </div>
         )}
 
+        {jotunnPreBuildLabel && (
+          <div
+            data-testid="jotunn-move-prebuild-banner"
+            className="p-2 px-3 rounded-xl bg-sky-950/55 border border-sky-500/75 text-sky-200 text-xs flex items-center justify-between gap-2"
+          >
+            <span>
+              🛡️ <strong>{l('Dread Nought (+1 BUI) Queued:', '已排入无畏雄心建造：')}</strong> {jotunnPreBuildLabel}
+            </span>
+            <span className="text-[10.5px] text-sky-300/85">
+              {l('Plan remaining Move(s) — new Dreadnought may move (Revert reverses both)', '规划剩余移动次数——可移动新建的无畏舰（撤回可同时还原）')}
+            </span>
+          </div>
+        )}
+
         {regroupBuildLabel && (
           <div
             data-testid="ragnarok-regroup-move-banner"
@@ -701,6 +787,16 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                 {l('Skip Move & Build', '跳过移动直接建造')}
               </button>
             )}
+            {isJotunnDreadnoughtMove && onSkipJotunnDreadnoughtBonus && (
+              <button
+                type="button"
+                data-testid="jotunn-skip-dn-move-btn"
+                onClick={onSkipJotunnDreadnoughtBonus}
+                className="px-3.5 py-1.5 rounded-xl bg-sky-950/90 hover:bg-sky-900 border border-sky-600/70 text-sky-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                {l('Skip Dreadnought Move', '跳过无畏舰移动')}
+              </button>
+            )}
             <button
               disabled={!canExecute}
               onClick={handleTriggerMove}
@@ -708,6 +804,12 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             >
               {isRegroupMoveStep
                 ? l(`Build & Move (${plannedMoves.length} ${plannedMoves.length === 1 ? 'Step' : 'Steps'})`, `建造并移动 (${plannedMoves.length} 步)`)
+                : effectiveJotunnTarget === 'build'
+                ? l(`Move (${plannedMoves.length}) & Build Dreadnought ➔`, `移动 (${plannedMoves.length}) 并建造无畏舰 ➔`)
+                : effectiveJotunnTarget === 'upgrade'
+                ? l(`Move (${plannedMoves.length}) & Upgrade Dreadnought ➔`, `移动 (${plannedMoves.length}) 并升级无畏舰 ➔`)
+                : isJotunnDreadnoughtMove
+                ? l(`Move Dreadnought & Confirm`, `移动无畏舰并确认`)
                 : l(`Execute ${plannedMoves.length} ${plannedMoves.length === 1 ? 'Step' : 'Steps'} (Enter)`, `执行 ${plannedMoves.length} 步移动 (Enter)`)}
             </button>
           </div>
@@ -758,7 +860,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                     targetSubsector: m.targetSubsector,
                   })),
                   pulsarSectorId,
-                  effectiveMidasTouch || undefined
+                  effectiveMidasTouch || undefined,
+                  effectiveJotunnTarget
                 );
               }}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"

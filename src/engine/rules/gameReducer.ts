@@ -1096,6 +1096,175 @@ export function isRegroupFaction(factionId?: string): boolean {
   return factionId === 'heralds_of_ragnarok';
 }
 
+export function isDreadNoughtFaction(factionId?: string): boolean {
+  return factionId === 'jotunn';
+}
+
+function hasJotunnCrossBonus(bonus?: UpgradeAction['dreadnoughtBonus']): boolean {
+  return Boolean(bonus && (bonus.build || bonus.upgrade || (bonus.move && bonus.move.length > 0)));
+}
+
+function applyBlueprintSlotToBlueprint(
+  bp: ShipBlueprint,
+  up: { slotIndex: number; partId: string | null; isExternal?: boolean }
+): ShipBlueprint {
+  const simBp: ShipBlueprint = {
+    ...bp,
+    slots: [...bp.slots],
+    externalParts: bp.externalParts ? [...bp.externalParts] : undefined,
+  };
+  const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
+  if (up.isExternal || up.slotIndex === -1) {
+    simBp.externalParts = part ? [part] : [];
+  } else {
+    simBp.slots[up.slotIndex] = part;
+  }
+  return simBp;
+}
+
+function validateDreadnoughtBonusUpgrade(
+  player: PlayerState,
+  up: NonNullable<NonNullable<UpgradeAction['dreadnoughtBonus']>['upgrade']>,
+  expansions: string[]
+): { valid: boolean; error?: string; simulatedPlayer?: PlayerState } {
+  if (up.shipType !== 'dreadnought') {
+    return { valid: false, error: 'Dread Nought special upgrade may only target your Dreadnought blueprint.' };
+  }
+  const bp = player.blueprints.dreadnought;
+  if (!bp) {
+    return { valid: false, error: 'Dreadnought blueprint not found.' };
+  }
+  if (up.partId !== null && !SHIP_PARTS[up.partId]) {
+    return { valid: false, error: `Unknown ship part ${up.partId}.` };
+  }
+  if (!up.isExternal && up.slotIndex !== -1 && (up.slotIndex < 0 || up.slotIndex >= bp.maxSlots)) {
+    return { valid: false, error: `Invalid slot index ${up.slotIndex} for Dreadnought.` };
+  }
+  const part = up.partId ? SHIP_PARTS[up.partId]! : null;
+  if (up.isExternal || up.slotIndex === -1) {
+    if (part && part.id !== 'muon_source') {
+      return { valid: false, error: `${part.name} cannot be placed outside the blueprint grid.` };
+    }
+    const currentPartId = bp.externalParts && bp.externalParts.length > 0 ? bp.externalParts[0].id : null;
+    if (currentPartId === up.partId) {
+      return { valid: false, error: 'Dread Nought upgrade must modify a Dreadnought blueprint slot.' };
+    }
+  } else {
+    const currentPartId = bp.slots[up.slotIndex]?.id || null;
+    if (currentPartId === 'shift_port' && up.partId !== 'shift_port') {
+      return { valid: false, error: 'Shift Port slot is an innate system component and cannot be removed.' };
+    }
+    if (currentPartId === up.partId) {
+      return { valid: false, error: 'Dread Nought upgrade must modify a Dreadnought blueprint slot.' };
+    }
+  }
+  const simBp = applyBlueprintSlotToBlueprint(bp, up);
+  const stats = calculateBlueprintStats(simBp, expansions);
+  if (!stats.isValid) {
+    return { valid: false, error: `Illegal DREADNOUGHT blueprint: ${stats.errors.join(' ')}` };
+  }
+  return {
+    valid: true,
+    simulatedPlayer: {
+      ...player,
+      blueprints: {
+        ...player.blueprints,
+        dreadnought: simBp,
+      },
+    },
+  };
+}
+
+function applyDreadnoughtBonusUpgrade(
+  player: PlayerState,
+  up: NonNullable<NonNullable<UpgradeAction['dreadnoughtBonus']>['upgrade']>,
+  addLog: (msg: string, type?: GameLogEntry['type']) => void
+): void {
+  const bp = player.blueprints.dreadnought!;
+  const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
+  if (up.isExternal || up.slotIndex === -1) {
+    const oldPart = bp.externalParts && bp.externalParts.length > 0 ? bp.externalParts[0] : null;
+    bp.externalParts = part ? [part] : [];
+    if (part && oldPart) {
+      addLog(`🛠️ Dread Nought (+1 UPG): ${player.name} installed ${part.name} on DREADNOUGHT (replaced ${oldPart.name}).`, 'action');
+    } else if (part) {
+      addLog(`🛠️ Dread Nought (+1 UPG): ${player.name} installed ${part.name} on DREADNOUGHT (external).`, 'action');
+    } else if (oldPart) {
+      addLog(`🛠️ Dread Nought (+1 UPG): ${player.name} removed ${oldPart.name} from DREADNOUGHT (external).`, 'action');
+    }
+  } else {
+    const oldPart = bp.slots[up.slotIndex];
+    bp.slots[up.slotIndex] = part;
+    if (part && oldPart) {
+      addLog(`🛠️ Dread Nought (+1 UPG): ${player.name} installed ${part.name} on DREADNOUGHT (replaced ${oldPart.name}).`, 'action');
+    } else if (part) {
+      addLog(`🛠️ Dread Nought (+1 UPG): ${player.name} installed ${part.name} on DREADNOUGHT (Slot ${up.slotIndex + 1}).`, 'action');
+    } else if (oldPart) {
+      addLog(`🛠️ Dread Nought (+1 UPG): ${player.name} removed ${oldPart.name} from DREADNOUGHT.`, 'action');
+    }
+  }
+  if (up.partId && player.unlockedAncientParts && player.unlockedAncientParts.includes(up.partId)) {
+    player.unlockedAncientParts = player.unlockedAncientParts.filter((pid) => pid !== up.partId);
+  }
+}
+
+function validateDreadnoughtOnlyMoves(
+  effectiveState: GameState,
+  playerId: string,
+  moves: MoveStep[]
+): { valid: boolean; error?: string } {
+  const shipTypeMap = new Map<string, ShipType>();
+  for (const s of effectiveState.sectors) {
+    for (const sh of s.ships) {
+      if (sh.ownerId === playerId) {
+        shipTypeMap.set(sh.id, sh.type);
+      }
+    }
+  }
+  for (const m of moves) {
+    const st = shipTypeMap.get(m.shipId);
+    if (!st) {
+      return { valid: false, error: `Ship ${m.shipId} not found for Dread Nought Move.` };
+    }
+    if (st !== 'dreadnought') {
+      return { valid: false, error: 'Dread Nought special Move activation may only move Dreadnought ships.' };
+    }
+  }
+  return { valid: true };
+}
+
+function validateJotunnDreadnoughtBonusCommon(
+  player: PlayerState,
+  bonus: NonNullable<UpgradeAction['dreadnoughtBonus']>,
+  primaryType: 'UPGRADE' | 'BUILD' | 'MOVE',
+  isPassed: boolean,
+  pulsarSectorId?: string
+): { valid: boolean; error?: string } {
+  if (!isDreadNoughtFaction(player.faction.id)) {
+    return { valid: false, error: 'Only Jotunn may use the Dread Nought special activation.' };
+  }
+  if (isPassed || pulsarSectorId) {
+    return { valid: false, error: 'Dread Nought special activation is only available on a full action (not Reaction or Pulsar).' };
+  }
+  const count =
+    (bonus.build ? 1 : 0) +
+    (bonus.upgrade ? 1 : 0) +
+    (bonus.move && bonus.move.length > 0 ? 1 : 0);
+  if (count > 1) {
+    return { valid: false, error: 'Dread Nought grants only 1 special activation per action.' };
+  }
+  if (primaryType === 'BUILD' && bonus.build) {
+    return { valid: false, error: 'To build a 2nd item, include it directly in BUILD items rather than dreadnoughtBonus.build.' };
+  }
+  if (primaryType === 'UPGRADE' && bonus.upgrade) {
+    return { valid: false, error: 'To upgrade a 2nd slot, include it directly in UPGRADE upgrades rather than dreadnoughtBonus.upgrade.' };
+  }
+  if (primaryType === 'MOVE' && bonus.move && bonus.move.length > 0) {
+    return { valid: false, error: 'To move a 2nd ship, include it directly in MOVE moves rather than dreadnoughtBonus.move.' };
+  }
+  return { valid: true };
+}
+
 /**
  * Returns a non-mutating preview GameState with staged Build items applied
  * so Move planning, UI pinning checks, and validation reflect newly constructed ships.
@@ -2262,7 +2431,22 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         const midasCheck = validateMidasTouchUsage(player, 'UPGRADE', { isPassed, pulsarSectorId: action.pulsarSectorId });
         if (!midasCheck.valid) return midasCheck;
       }
-      const maxUpgrade = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxUpgradeActivations(player, action.useMidasTouch));
+      const hasDnCrossBonus = hasJotunnCrossBonus(action.dreadnoughtBonus);
+      if (action.dreadnoughtBonus && hasDnCrossBonus) {
+        const commonCheck = validateJotunnDreadnoughtBonusCommon(
+          player,
+          action.dreadnoughtBonus,
+          'UPGRADE',
+          isPassed,
+          action.pulsarSectorId
+        );
+        if (!commonCheck.valid) return commonCheck;
+      }
+      const maxUpgrade = action.pulsarSectorId
+        ? 1
+        : isPassed
+        ? 1
+        : getMaxUpgradeActivations(player, action.useMidasTouch, hasDnCrossBonus);
       if (modifiedCount > maxUpgrade) {
         return {
           valid: false,
@@ -2327,6 +2511,33 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         }
       }
 
+      if (action.dreadnoughtBonus?.build) {
+        if (action.dreadnoughtBonus.build.itemType !== 'dreadnought') {
+          return { valid: false, error: 'Dread Nought special build may only construct a Dreadnought.' };
+        }
+        const buildCheck = validateBuildItems(state, player, [action.dreadnoughtBonus.build]);
+        if (!buildCheck.valid) return buildCheck;
+      }
+      if (action.dreadnoughtBonus?.move && action.dreadnoughtBonus.move.length > 0) {
+        const typeCheck = validateDreadnoughtOnlyMoves(state, player.id, action.dreadnoughtBonus.move);
+        if (!typeCheck.valid) return typeCheck;
+        const simPlayerForMove: PlayerState = {
+          ...player,
+          blueprints: {
+            ...player.blueprints,
+            ...simulatedBps,
+          },
+        };
+        return validateMovePlan(
+          state,
+          state,
+          simPlayerForMove,
+          action.dreadnoughtBonus.move,
+          1,
+          'Dread Nought (+1 MOV on Dreadnought) allows moving at most 1 Dreadnought.'
+        );
+      }
+
       return { valid: true };
     }
 
@@ -2364,7 +2575,22 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         const midasCheck = validateMidasTouchUsage(player, 'BUILD', { isPassed, pulsarSectorId: action.pulsarSectorId });
         if (!midasCheck.valid) return midasCheck;
       }
-      const maxBuild = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxBuildActivations(player, action.useMidasTouch));
+      const hasDnCrossBonus = hasJotunnCrossBonus(action.dreadnoughtBonus);
+      if (action.dreadnoughtBonus && hasDnCrossBonus) {
+        const commonCheck = validateJotunnDreadnoughtBonusCommon(
+          player,
+          action.dreadnoughtBonus,
+          'BUILD',
+          isPassed,
+          action.pulsarSectorId
+        );
+        if (!commonCheck.valid) return commonCheck;
+      }
+      const maxBuild = action.pulsarSectorId
+        ? 1
+        : isPassed
+        ? 1
+        : getMaxBuildActivations(player, action.useMidasTouch, hasDnCrossBonus);
       if (action.items.length > maxBuild) {
         return {
           valid: false,
@@ -2396,6 +2622,24 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           action.regroupMoves,
           1,
           'Regroup (+1 MOV) allows moving at most 1 ship.'
+        );
+      }
+
+      if (action.dreadnoughtBonus?.upgrade) {
+        const upgCheck = validateDreadnoughtBonusUpgrade(player, action.dreadnoughtBonus.upgrade, state.expansions);
+        if (!upgCheck.valid) return upgCheck;
+      }
+      if (action.dreadnoughtBonus?.move && action.dreadnoughtBonus.move.length > 0) {
+        const effectiveMoveState = applyBuildItemsToPreviewState(state, action.playerId, action.items);
+        const typeCheck = validateDreadnoughtOnlyMoves(effectiveMoveState, player.id, action.dreadnoughtBonus.move);
+        if (!typeCheck.valid) return typeCheck;
+        return validateMovePlan(
+          state,
+          effectiveMoveState,
+          player,
+          action.dreadnoughtBonus.move,
+          1,
+          'Dread Nought (+1 MOV on Dreadnought) allows moving at most 1 Dreadnought.'
         );
       }
 
@@ -2436,7 +2680,24 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         const midasCheck = validateMidasTouchUsage(player, 'MOVE', { isPassed, pulsarSectorId: action.pulsarSectorId });
         if (!midasCheck.valid) return midasCheck;
       }
-      const maxMoveActivations = getEffectiveMoveActivationLimit(player, action.pulsarSectorId, isPassed, action.useMidasTouch);
+      const hasDnCrossBonus = hasJotunnCrossBonus(action.dreadnoughtBonus);
+      if (action.dreadnoughtBonus && hasDnCrossBonus) {
+        const commonCheck = validateJotunnDreadnoughtBonusCommon(
+          player,
+          action.dreadnoughtBonus,
+          'MOVE',
+          isPassed,
+          action.pulsarSectorId
+        );
+        if (!commonCheck.valid) return commonCheck;
+      }
+      const maxMoveActivations = getEffectiveMoveActivationLimit(
+        player,
+        action.pulsarSectorId,
+        isPassed,
+        action.useMidasTouch,
+        hasDnCrossBonus
+      );
 
       if (action.raidBuild) {
         if (!isRaidFaction(player.faction.id)) {
@@ -2451,14 +2712,33 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         }
       }
 
-      const effectiveMoveState = action.raidBuild
-        ? applyBuildItemsToPreviewState(state, action.playerId, [action.raidBuild])
+      if (action.dreadnoughtBonus?.build) {
+        if (action.dreadnoughtBonus.build.itemType !== 'dreadnought') {
+          return { valid: false, error: 'Dread Nought special build may only construct a Dreadnought.' };
+        }
+        const buildCheck = validateBuildItems(state, player, [action.dreadnoughtBonus.build]);
+        if (!buildCheck.valid) return buildCheck;
+      }
+
+      let simPlayerForMove = player;
+      if (action.dreadnoughtBonus?.upgrade) {
+        const upgCheck = validateDreadnoughtBonusUpgrade(player, action.dreadnoughtBonus.upgrade, state.expansions);
+        if (!upgCheck.valid) return upgCheck;
+        simPlayerForMove = upgCheck.simulatedPlayer || player;
+      }
+
+      const previewBuilds = [
+        ...(action.raidBuild ? [action.raidBuild] : []),
+        ...(action.dreadnoughtBonus?.build ? [action.dreadnoughtBonus.build] : []),
+      ];
+      const effectiveMoveState = previewBuilds.length > 0
+        ? applyBuildItemsToPreviewState(state, action.playerId, previewBuilds)
         : state;
 
       return validateMovePlan(
         state,
         effectiveMoveState,
-        player,
+        simPlayerForMove,
         action.moves,
         maxMoveActivations,
         isPassed ? 'Reaction Move allows moving at most 1 ship.' : undefined
@@ -4374,6 +4654,12 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       }
       const detailsMsg = upgradeDetails.length > 0 ? `: ${upgradeDetails.join(', ')}` : '';
       addLog(`🛠️ ${player.name} upgraded ship blueprints${detailsMsg}.`, 'action');
+      if (action.dreadnoughtBonus?.build && isDreadNoughtFaction(player.faction.id)) {
+        applyBuildItems(newState, player, [action.dreadnoughtBonus.build], addLog, 'Dread Nought (+1 BUI): ');
+      }
+      if (action.dreadnoughtBonus?.move && action.dreadnoughtBonus.move.length > 0 && isDreadNoughtFaction(player.faction.id)) {
+        executeMoveSteps(newState, player, action.dreadnoughtBonus.move, addLog, action.requireConfirmation, 'Dread Nought (+1 MOV): ');
+      }
       break;
     }
 
@@ -4401,6 +4687,12 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       if (action.regroupMoves && action.regroupMoves.length > 0 && isRegroupFaction(player.faction.id)) {
         executeMoveSteps(newState, player, action.regroupMoves, addLog, action.requireConfirmation, 'Regroup (+1 MOV): ');
       }
+      if (action.dreadnoughtBonus?.upgrade && isDreadNoughtFaction(player.faction.id)) {
+        applyDreadnoughtBonusUpgrade(player, action.dreadnoughtBonus.upgrade, addLog);
+      }
+      if (action.dreadnoughtBonus?.move && action.dreadnoughtBonus.move.length > 0 && isDreadNoughtFaction(player.faction.id)) {
+        executeMoveSteps(newState, player, action.dreadnoughtBonus.move, addLog, action.requireConfirmation, 'Dread Nought (+1 MOV): ');
+      }
       break;
     }
 
@@ -4426,6 +4718,12 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       if (action.raidBuild && isRaidFaction(player.faction.id)) {
         applyBuildItems(newState, player, [action.raidBuild], addLog, 'Raid (+1 BUI): ');
+      }
+      if (action.dreadnoughtBonus?.build && isDreadNoughtFaction(player.faction.id)) {
+        applyBuildItems(newState, player, [action.dreadnoughtBonus.build], addLog, 'Dread Nought (+1 BUI): ');
+      }
+      if (action.dreadnoughtBonus?.upgrade && isDreadNoughtFaction(player.faction.id)) {
+        applyDreadnoughtBonusUpgrade(player, action.dreadnoughtBonus.upgrade, addLog);
       }
 
       executeMoveSteps(newState, player, action.moves || [], addLog, action.requireConfirmation);
@@ -6649,9 +6947,19 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         if (buildAct.regroupMoves && buildAct.regroupMoves.length > 0) {
           description = `${description} + Regroup Move (${buildAct.regroupMoves.length} step${buildAct.regroupMoves.length > 1 ? 's' : ''})`;
         }
+        if (buildAct.dreadnoughtBonus?.upgrade) {
+          description = `${description} + Dread Nought Upgrade`;
+        } else if (buildAct.dreadnoughtBonus?.move?.length) {
+          description = `${description} + Dread Nought Move (${buildAct.dreadnoughtBonus.move.length} step${buildAct.dreadnoughtBonus.move.length > 1 ? 's' : ''})`;
+        }
       } else if (action.type === 'UPGRADE') {
         const upAct = action as UpgradeAction;
         description = `Upgraded ${upAct.upgrades?.length || 0} blueprint part(s)`;
+        if (upAct.dreadnoughtBonus?.build) {
+          description = `${description} + Dread Nought Build (DREADNOUGHT)`;
+        } else if (upAct.dreadnoughtBonus?.move?.length) {
+          description = `${description} + Dread Nought Move (${upAct.dreadnoughtBonus.move.length} step${upAct.dreadnoughtBonus.move.length > 1 ? 's' : ''})`;
+        }
       } else if (action.type === 'MOVE') {
         const mvAct = action as MoveAction;
         const count = mvAct.moves?.length || 0;
@@ -6671,6 +6979,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         }
         if (mvAct.raidBuild) {
           description = `${description} + Raid Build (${mvAct.raidBuild.itemType.toUpperCase()})`;
+        }
+        if (mvAct.dreadnoughtBonus?.build) {
+          description = `${description} + Dread Nought Build (DREADNOUGHT)`;
+        } else if (mvAct.dreadnoughtBonus?.upgrade) {
+          description = `${description} + Dread Nought Upgrade`;
         }
       } else if (action.type === 'RESEARCH') {
         const resAct = action as ResearchAction;
@@ -6692,7 +7005,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
       const moveBetrayalAllyIds =
         action.type === 'MOVE' ||
-        (action.type === 'BUILD' && Boolean((action as BuildAction).regroupMoves?.length))
+        (action.type === 'BUILD' && Boolean((action as BuildAction).regroupMoves?.length || (action as BuildAction).dreadnoughtBonus?.move?.length)) ||
+        (action.type === 'UPGRADE' && Boolean((action as UpgradeAction).dreadnoughtBonus?.move?.length))
           ? getMoveAggressionAllyIds(newState.sectors, player)
           : undefined;
 
@@ -8058,6 +8372,46 @@ export function computeReachableMoveDestinations(
   });
 }
 
+function isDracoAncientPeacefulOnly(owners: string[], players: PlayerState[]): boolean {
+  if (owners.length !== 2 || !owners.includes('ancient')) return false;
+  const otherOwner = owners.find((o) => o !== 'ancient');
+  const otherPlayer = players.find((p) => p.id === otherOwner);
+  return otherPlayer?.faction.id === 'descendants_of_draco';
+}
+
+function getUnresolvedFleetCombatSubsector(state: GameState, sec: SectorTile): 1 | 2 | 3 | undefined {
+  if (!sec.isNebula) return undefined;
+  return ([1, 2, 3] as const).find((subIdx) => {
+    if (state.resolvedCombatSectorIds!.includes(`${sec.id}_sub_${subIdx}`)) return false;
+    const subShips = sec.ships.filter((s) => (s.subsector ?? 1) === subIdx);
+    const subOwners = Array.from(new Set(subShips.map((s) => s.ownerId)));
+    if (isDracoAncientPeacefulOnly(subOwners, state.players)) return false;
+    return subOwners.length > 1;
+  });
+}
+
+function hasUnresolvedFleetCombat(state: GameState, sec: SectorTile): boolean {
+  if (sec.isNebula) {
+    return getUnresolvedFleetCombatSubsector(state, sec) !== undefined;
+  }
+  const owners = Array.from(new Set(sec.ships.map((s) => s.ownerId)));
+  if (isDracoAncientPeacefulOnly(owners, state.players)) return false;
+  return owners.length > 1;
+}
+
+function hasUnresolvedHostilePopulation(sec: SectorTile): boolean {
+  if (sec.isNebula) return false;
+  const shipOwners = Array.from(new Set(sec.ships.map((s) => s.ownerId))).filter(
+    (id) => id.startsWith('player_')
+  );
+  if (shipOwners.length === 0) return false;
+  const hasHostileDisc = !!sec.discOwner && !shipOwners.includes(sec.discOwner);
+  const hasHostileCubes = sec.planets.some(
+    (p) => p.colonizedBy && !shipOwners.includes(p.colonizedBy)
+  );
+  return hasHostileDisc || hasHostileCubes;
+}
+
 export function checkAndTriggerCombat(state: GameState): void {
   // If a player still has a pending conquest, discovery, sector control, reputation draw, or destroyed population track choice, wait for resolution
   if (
@@ -8075,61 +8429,26 @@ export function checkAndTriggerCombat(state: GameState): void {
     state.resolvedCombatSectorIds = [];
   }
 
-  // 1. Find all sectors with hostile fleet battles (2+ distinct ship owners), resolved in descending Sector Number order (Rulebook page 20)
-  const shipCombatSectors = state.sectors
-    .filter((sec) => {
-      if (state.resolvedCombatSectorIds!.includes(sec.id)) return false;
-      if (sec.isNebula) {
-        return ([1, 2, 3] as const).some((subIdx) => {
-          if (state.resolvedCombatSectorIds!.includes(`${sec.id}_sub_${subIdx}`)) return false;
-          const subShips = sec.ships.filter((s) => (s.subsector ?? 1) === subIdx);
-          const subOwners = Array.from(new Set(subShips.map((s) => s.ownerId)));
-          if (subOwners.length === 2 && subOwners.includes('ancient')) {
-            const otherOwner = subOwners.find((o) => o !== 'ancient');
-            const otherPlayer = state.players.find((p) => p.id === otherOwner);
-            if (otherPlayer?.faction.id === 'descendants_of_draco') {
-              return false;
-            }
-          }
-          return subOwners.length > 1;
-        });
-      }
-      const owners = Array.from(new Set(sec.ships.map((s) => s.ownerId)));
-      // Draco does not battle Ancients
-      if (owners.length === 2 && owners.includes('ancient')) {
-        const otherOwner = owners.find((o) => o !== 'ancient');
-        const otherPlayer = state.players.find((p) => p.id === otherOwner);
-        if (otherPlayer?.faction.id === 'descendants_of_draco') {
-          return false;
-        }
-      }
-      return owners.length > 1;
-    })
+  // 1. Resolve all contested sectors (fleet battles AND planetary bombardments) strictly in descending
+  // Sector Number order (Rulebook pp. 20-21). Only move to the next lower sector once the current sector
+  // is completely resolved. Peaceful coexistence (e.g. Draco + Ancients alone) is skipped.
+  const contestedSectorsDescending = state.sectors
+    .filter(
+      (sec) =>
+        !state.resolvedCombatSectorIds!.includes(sec.id) &&
+        (hasUnresolvedFleetCombat(state, sec) || hasUnresolvedHostilePopulation(sec))
+    )
     .sort((a, b) => b.sectorNumber - a.sectorNumber);
 
-  if (shipCombatSectors.length > 0) {
-    const sector = shipCombatSectors[0]!;
-    let relevantShips = sector.ships;
-    let activeSub: 1 | 2 | 3 | undefined;
-    if (sector.isNebula) {
-      activeSub = ([1, 2, 3] as const).find((subIdx) => {
-        if (state.resolvedCombatSectorIds!.includes(`${sector.id}_sub_${subIdx}`)) return false;
-        const subShips = sector.ships.filter((s) => (s.subsector ?? 1) === subIdx);
-        const subOwners = Array.from(new Set(subShips.map((s) => s.ownerId)));
-        if (subOwners.length === 2 && subOwners.includes('ancient')) {
-          const otherOwner = subOwners.find((o) => o !== 'ancient');
-          const otherPlayer = state.players.find((p) => p.id === otherOwner);
-          if (otherPlayer?.faction.id === 'descendants_of_draco') {
-            return false;
-          }
-        }
-        return subOwners.length > 1;
-      });
-      if (activeSub) {
+  if (contestedSectorsDescending.length > 0) {
+    const sector = contestedSectorsDescending[0]!;
+    if (hasUnresolvedFleetCombat(state, sector)) {
+      let relevantShips = sector.ships;
+      const activeSub = getUnresolvedFleetCombatSubsector(state, sector);
+      if (sector.isNebula && activeSub) {
         relevantShips = sector.ships.filter((s) => (s.subsector ?? 1) === activeSub);
       }
-    }
-    const distinctOwners = Array.from(new Set(relevantShips.map((s) => s.ownerId)));
+      const distinctOwners = Array.from(new Set(relevantShips.map((s) => s.ownerId)));
 
     // Order owners by entry order (Rulebook page 20 & Bug 66):
     // "the person who last enter the system is the first attacker then attack the player who enter the system second last,
@@ -8219,43 +8538,26 @@ export function checkAndTriggerCombat(state: GameState): void {
     );
     const hasMissiles = combatUnits.some((u) => u.weapons.some((w) => w.isMissile));
 
-    state.activeCombat = {
-      sectorId: sector.id,
-      subsector: activeSub,
-      attackerOwnerId,
-      defenderOwnerId: defenderOwnerId || getSectorDefenderOwnerId(sector, state.players),
-      participatingPlayerIds: duelParticipants,
-      roundNumber: 1,
-      stage: hasMissiles ? 'missile' : 'regular',
-      initiativeOrder: [],
-      currentTurnIndex: 0,
-      lastRolls: [],
-      retreatDeclared: {},
-      missileFiredShipIds: [],
-      roundActedGroupKeys: [],
-    };
-    state.phase = 'COMBAT_PHASE';
-    return;
-  }
+      state.activeCombat = {
+        sectorId: sector.id,
+        subsector: activeSub,
+        attackerOwnerId,
+        defenderOwnerId: defenderOwnerId || getSectorDefenderOwnerId(sector, state.players),
+        participatingPlayerIds: duelParticipants,
+        roundNumber: 1,
+        stage: hasMissiles ? 'missile' : 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        missileFiredShipIds: [],
+        roundActedGroupKeys: [],
+      };
+      state.phase = 'COMBAT_PHASE';
+      return;
+    }
 
-  // 2. Sectors where a player has ships in an opponent controlled/populated sector without a fleet battle (Rulebook page 21)
-  const hostileControlledSectors = state.sectors
-    .filter((sec) => {
-      if (state.resolvedCombatSectorIds!.includes(sec.id)) return false;
-      const shipOwners = Array.from(new Set(sec.ships.map((s) => s.ownerId))).filter(
-        (id) => id.startsWith('player_')
-      );
-      if (shipOwners.length === 0) return false;
-      const hasHostileDisc = !!sec.discOwner && !shipOwners.includes(sec.discOwner);
-      const hasHostileCubes = sec.planets.some(
-        (p) => p.colonizedBy && !shipOwners.includes(p.colonizedBy)
-      );
-      return hasHostileDisc || hasHostileCubes;
-    })
-    .sort((a, b) => b.sectorNumber - a.sectorNumber);
-
-  if (hostileControlledSectors.length > 0) {
-    const sector = hostileControlledSectors[0];
+    // Unopposed hostile population / sector control bombardment at this sector
     state.resolvedCombatSectorIds!.push(sector.id);
     const attackerId = sector.ships.find((s) => s.ownerId.startsWith('player_'))?.ownerId;
     state.phase = 'COMBAT_PHASE';
@@ -9011,6 +9313,13 @@ export function computeCurrentScores(state: GameState): {
     } else if (p.faction.id === 'remnants_of_ra') {
       // Secrets of the Ancients: +1 VP for each controlled sector with an artifact key
       speciesBonus += controlledSectors.filter((s) => s.hasArtifact).length;
+    } else if (p.faction.id === 'jotunn') {
+      // Bonus VPs: +1 VP per Dreadnought at end of game
+      const dreadnoughtsOnBoard = state.sectors.reduce(
+        (sum, s) => sum + s.ships.filter((sh) => sh.ownerId === p.id && sh.type === 'dreadnought').length,
+        0
+      );
+      speciesBonus += dreadnoughtsOnBoard;
     }
 
     // 9. Traitor Tile Penalty (-2 VP)
@@ -9118,22 +9427,53 @@ export function getMaxResearchActivations(player: PlayerState, useMidasTouch?: b
   return (player.faction.researchActivations ?? 1) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
 }
 
-export function getMaxUpgradeActivations(player: PlayerState, useMidasTouch?: boolean): number {
+function getJotunnSameTypeBonus(player: PlayerState, hasCrossBonus?: boolean): number {
+  return player.faction.id === 'jotunn' && !hasCrossBonus ? 1 : 0;
+}
+
+export function getMaxUpgradeActivations(
+  player: PlayerState,
+  useMidasTouch?: boolean,
+  hasDreadnoughtCrossBonus?: boolean
+): number {
   const base = player.faction.upgradeActivations ?? 2;
   const hasPicoModulator = player.techTrack.researched.some((t) => t.id === 'pico_modulator');
-  return base + (hasPicoModulator ? 2 : 0) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
+  return (
+    base +
+    getJotunnSameTypeBonus(player, hasDreadnoughtCrossBonus) +
+    (hasPicoModulator ? 2 : 0) +
+    (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0)
+  );
 }
 
-export function getMaxBuildActivations(player: PlayerState, useMidasTouch?: boolean): number {
+export function getMaxBuildActivations(
+  player: PlayerState,
+  useMidasTouch?: boolean,
+  hasDreadnoughtCrossBonus?: boolean
+): number {
   const base = player.faction.buildActivations ?? 2;
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
-  return base + (hasNanorobots ? 1 : 0) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
+  return (
+    base +
+    getJotunnSameTypeBonus(player, hasDreadnoughtCrossBonus) +
+    (hasNanorobots ? 1 : 0) +
+    (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0)
+  );
 }
 
-export function getMaxMoveActivations(player: PlayerState, useMidasTouch?: boolean): number {
+export function getMaxMoveActivations(
+  player: PlayerState,
+  useMidasTouch?: boolean,
+  hasDreadnoughtCrossBonus?: boolean
+): number {
   const base = player.faction.moveActivations ?? (player.faction.isHuman ? 3 : 2);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
-  return base + (hasImprovedLogistics ? 1 : 0) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
+  return (
+    base +
+    getJotunnSameTypeBonus(player, hasDreadnoughtCrossBonus) +
+    (hasImprovedLogistics ? 1 : 0) +
+    (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0)
+  );
 }
 
 /**
@@ -9144,12 +9484,13 @@ export function getEffectiveMoveActivationLimit(
   player: PlayerState,
   pulsarSectorId?: string | null,
   isPassedOverride?: boolean,
-  useMidasTouch?: boolean
+  useMidasTouch?: boolean,
+  hasDreadnoughtCrossBonus?: boolean
 ): number {
   if (pulsarSectorId || isPassedOverride || player.hasPassed) {
     return 1;
   }
-  return getMaxMoveActivations(player, useMidasTouch);
+  return getMaxMoveActivations(player, useMidasTouch, hasDreadnoughtCrossBonus);
 }
 
 export function getMaxInfluenceActivations(player: PlayerState, useMidasTouch?: boolean): number {

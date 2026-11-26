@@ -405,6 +405,19 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'hr_p3', resource: 'money', isAdvanced: false },
     ],
   },
+  jotunn: {
+    sectorNumber: 241,
+    name: 'Ark Ships',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'jt_p1', resource: 'science', isAdvanced: false },
+      { id: 'jt_p2', resource: 'money', isAdvanced: true },
+      { id: 'jt_p3', resource: 'material', isAdvanced: true },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

@@ -22,6 +22,7 @@ import { useLanguage } from '../../i18n/LanguageContext';
 import { translateShipType } from '../../i18n/catalogTranslations';
 import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
+import { JotunnDreadNoughtBanner, JotunnDreadNoughtTarget } from '../common/JotunnDreadNoughtBanner';
 
 export interface BuildItemPayload {
   sectorId: string;
@@ -38,12 +39,22 @@ export interface BuildModalProps {
   onChangeSlots: (slots: BuildItemPayload[]) => void;
   activeSlotIndex: number;
   onSelectSlotIndex: (index: number) => void;
-  onBuild: (items: BuildItemPayload[], pulsarSectorId?: string, useMidasTouch?: boolean) => void;
+  onBuild: (
+    items: BuildItemPayload[],
+    pulsarSectorId?: string,
+    useMidasTouch?: boolean,
+    jotunnDnTarget?: 'upgrade' | 'move'
+  ) => void;
   onClose: () => void;
   pulsarSectorId?: string;
   isRaidBuild?: boolean;
   onSkipRaidBuild?: () => void;
   isRegroupBuild?: boolean;
+  isJotunnDreadnoughtBuild?: boolean;
+  isJotunnMovePreBuild?: boolean;
+  jotunnDreadnoughtBuildSourceLabel?: string | null;
+  onSkipJotunnDreadnoughtBonus?: () => void;
+  onSkipJotunnMovePreBuild?: () => void;
 }
 
 export const BuildModal: React.FC<BuildModalProps> = ({
@@ -60,13 +71,32 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   isRaidBuild,
   onSkipRaidBuild,
   isRegroupBuild,
+  isJotunnDreadnoughtBuild,
+  isJotunnMovePreBuild,
+  jotunnDreadnoughtBuildSourceLabel,
+  onSkipJotunnDreadnoughtBonus,
+  onSkipJotunnMovePreBuild,
 }) => {
   const { language, l } = useLanguage();
   const [useMidasTouch, setUseMidasTouch] = useState<boolean>(false);
+  const [jotunnDnTarget, setJotunnDnTarget] = useState<JotunnDreadNoughtTarget>('same');
   const isPulsarActive = Boolean(pulsarSectorId);
   const isMidasTouchEligible = player.faction.id === 'legion_of_midas' && !isPulsarActive && !isRaidBuild && !player.hasPassed;
   const effectiveMidasTouch = isMidasTouchEligible && useMidasTouch;
-  const maxBuild = isPulsarActive || isRaidBuild ? 1 : (player.hasPassed ? 1 : getMaxBuildActivations(player, effectiveMidasTouch));
+  const isJotunnBannerEligible =
+    player.faction.id === 'jotunn' &&
+    !isPulsarActive &&
+    !isRaidBuild &&
+    !isRegroupBuild &&
+    !isJotunnDreadnoughtBuild &&
+    !player.hasPassed;
+  const effectiveJotunnTarget = isJotunnBannerEligible && (jotunnDnTarget === 'upgrade' || jotunnDnTarget === 'move') ? jotunnDnTarget : undefined;
+  const maxBuild =
+    isPulsarActive || isRaidBuild || isJotunnDreadnoughtBuild
+      ? 1
+      : player.hasPassed
+      ? 1
+      : getMaxBuildActivations(player, effectiveMidasTouch, Boolean(effectiveJotunnTarget));
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
   const hasOrbitalTech = player.techTrack.researched.some((t) => t.id === 'orbital');
   const hasMonolithTech = player.techTrack.researched.some((t) => t.id === 'monolith');
@@ -186,7 +216,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     return extra > 0 ? l(` • Price of Power +${extra}`, ` • 额外发现+${extra}材料`) : '';
   };
 
-  const buildItems: {
+  const rawBuildItems: {
     type: ShipType | 'orbital' | 'monolith';
     name: string;
     cost: number;
@@ -275,6 +305,18 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       description: l(`Ancient mega-structure granting 3 Victory Points at game end (Cost ${getItemCost('monolith')} Mats, requires Monolith tech).`, `远古巨构建筑，终局提供 3 胜利分（费用 ${getItemCost('monolith')} 材料，需要方尖碑科技）。`),
     },
   ];
+
+  const buildItems = isJotunnDreadnoughtBuild
+    ? rawBuildItems.map((it) =>
+        it.type === 'dreadnought'
+          ? it
+          : {
+              ...it,
+              unlocked: false,
+              disabledReason: l('Dread Nought Build: Dreadnought only', '无畏雄心：仅限建造无畏舰'),
+            }
+      )
+    : rawBuildItems;
 
   const totalCost = slots.reduce((sum, s) => sum + getItemCost(s.itemType, Boolean(s.upgradeFromShipId)), 0);
   const canAfford = player.resources.materials >= totalCost;
@@ -400,10 +442,28 @@ export const BuildModal: React.FC<BuildModalProps> = ({
 
   const [showUnusedWarning, setShowUnusedWarning] = useState(false);
 
+  useEffect(() => {
+    if (isJotunnDreadnoughtBuild && (slots.length !== 1 || slots[0]?.itemType !== 'dreadnought')) {
+      onChangeSlots([{ sectorId: slots[0]?.sectorId || eligibleSectors[0]?.id || '', itemType: 'dreadnought' }]);
+      onSelectSlotIndex(0);
+    }
+  }, [isJotunnDreadnoughtBuild, eligibleSectors]);
+
   const handleToggleMidasTouch = (next: boolean) => {
     setUseMidasTouch(next);
     if (!next) {
       const baseMax = getMaxBuildActivations(player, false);
+      if (slots.length > baseMax) {
+        onChangeSlots(slots.slice(0, baseMax));
+        onSelectSlotIndex(Math.min(activeSlotIndex, baseMax - 1));
+      }
+    }
+  };
+
+  const handleToggleJotunnDnTarget = (next: JotunnDreadNoughtTarget) => {
+    setJotunnDnTarget(next);
+    if (next !== 'same') {
+      const baseMax = getMaxBuildActivations(player, effectiveMidasTouch, true);
       if (slots.length > baseMax) {
         onChangeSlots(slots.slice(0, baseMax));
         onSelectSlotIndex(Math.min(activeSlotIndex, baseMax - 1));
@@ -417,7 +477,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       setShowUnusedWarning(true);
       return;
     }
-    onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined);
+    onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined, effectiveJotunnTarget);
   };
 
   // Keyboard shortcut listener
@@ -435,13 +495,13 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         if (slots.length < maxBuild && !showUnusedWarning) {
           setShowUnusedWarning(true);
         } else {
-          onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined);
+          onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined, effectiveJotunnTarget);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canBuild, slots, onBuild, onClose, pulsarSectorId, maxBuild, showUnusedWarning, effectiveMidasTouch]);
+  }, [canBuild, slots, onBuild, onClose, pulsarSectorId, maxBuild, showUnusedWarning, effectiveMidasTouch, effectiveJotunnTarget]);
 
   return (
     <>
@@ -514,6 +574,46 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             enabled={useMidasTouch}
             onToggle={handleToggleMidasTouch}
           />
+        )}
+
+        {isJotunnBannerEligible && (
+          <JotunnDreadNoughtBanner
+            player={player}
+            primaryAction="BUILD"
+            selectedTarget={jotunnDnTarget}
+            onSelectTarget={handleToggleJotunnDnTarget}
+          />
+        )}
+
+        {isJotunnDreadnoughtBuild && (
+          <div
+            data-testid="jotunn-dn-build-step-banner"
+            className="p-2 px-3 rounded-xl bg-sky-950/60 border border-sky-500/80 text-sky-200 text-xs flex items-center justify-between shadow-sm gap-2"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-sky-400 shrink-0" />
+              <div>
+                <span className="font-bold">
+                  🛡️ {isJotunnMovePreBuild
+                    ? l('Dread Nought (+1 BUI) — Step 1: Build 1 Dreadnought, then Move', '无畏雄心 (+1 建造) — 第一步：建造 1 艘无畏舰后再移动')
+                    : l('Dread Nought (+1 BUI) — Step 2: Build 1 Dreadnought', '无畏雄心 (+1 建造) — 第二步：建造 1 艘无畏舰')}
+                </span>
+                <span className="text-sky-300/85 text-[11px] block">
+                  {isJotunnMovePreBuild
+                    ? l(
+                        'Build 1 Dreadnought first, then proceed to Move with your remaining activation(s) (newly built Dreadnought can move!).',
+                        '先在受控星区建造 1 艘无畏舰，随后使用剩余移动激活进行移动（可移动刚建好的无畏舰）。'
+                      )
+                    : jotunnDreadnoughtBuildSourceLabel
+                    ? `${l('Staged Step 1:', '已暂存第一步：')} ${jotunnDreadnoughtBuildSourceLabel}`
+                    : l('Construct 1 Dreadnought at a controlled sector, or skip to commit only your Step 1 action.', '在受控星区建造 1 艘无畏舰，或跳过仅确认第一步行动。')}
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-sky-900 text-sky-200 font-mono text-[10px] font-bold uppercase border border-sky-700 shrink-0">
+              {l('Dreadnought Only', '限无畏舰')}
+            </span>
+          </div>
         )}
 
         {/* Header */}
@@ -819,6 +919,26 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 {l('Skip Build ➔ Move', '跳过建造 ➔ 移动')}
               </button>
             )}
+            {isJotunnMovePreBuild && onSkipJotunnMovePreBuild && (
+              <button
+                type="button"
+                data-testid="jotunn-move-skip-build-btn"
+                onClick={onSkipJotunnMovePreBuild}
+                className="px-3.5 py-1.5 rounded-xl bg-sky-950/90 hover:bg-sky-900 border border-sky-600/70 text-sky-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                {l('Skip Build ➔ Move', '跳过建造 ➔ 移动')}
+              </button>
+            )}
+            {!isJotunnMovePreBuild && isJotunnDreadnoughtBuild && onSkipJotunnDreadnoughtBonus && (
+              <button
+                type="button"
+                data-testid="jotunn-skip-dn-build-btn"
+                onClick={onSkipJotunnDreadnoughtBonus}
+                className="px-3.5 py-1.5 rounded-xl bg-sky-950/90 hover:bg-sky-900 border border-sky-600/70 text-sky-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                {l('Skip Dreadnought Build', '跳过建造无畏舰')}
+              </button>
+            )}
             <button
               disabled={!canBuild}
               onClick={handleTriggerBuild}
@@ -826,8 +946,16 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             >
               {isRaidBuild
                 ? l('Build 1 & Proceed to Move ➔', '建造并进入移动 ➔')
+                : isJotunnMovePreBuild
+                ? l('Build Dreadnought & Proceed to Move ➔', '建造无畏舰并进入移动 ➔')
                 : isRegroupBuild
                 ? l(`Build ${slots.length} & Proceed to Move ➔`, `建造 ${slots.length} 项并进入移动 ➔`)
+                : effectiveJotunnTarget === 'upgrade'
+                ? l(`Build ${slots.length} & Upgrade Dreadnought ➔`, `建造 ${slots.length} 项并升级无畏舰 ➔`)
+                : effectiveJotunnTarget === 'move'
+                ? l(`Build ${slots.length} & Move Dreadnought ➔`, `建造 ${slots.length} 项并移动无畏舰 ➔`)
+                : isJotunnDreadnoughtBuild
+                ? l('Build Dreadnought & Confirm', '建造无畏舰并确认')
                 : l(`Construct ${slots.length} ${slots.length === 1 ? 'Item' : 'Items'} (Enter)`, `建造 ${slots.length} 项 (Enter)`)}
             </button>
           </div>
@@ -869,7 +997,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               type="button"
               onClick={() => {
                 setShowUnusedWarning(false);
-                onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined);
+                onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined, effectiveJotunnTarget);
               }}
               className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-amber-950/50 cursor-pointer"
             >

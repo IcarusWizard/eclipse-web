@@ -26,6 +26,7 @@ interface CombatConquestModalProps {
   state: GameState;
   conquest: PendingCombatConquest;
   currentSeat?: number | 'all' | 'spectator';
+  canControl?: boolean;
   onConfirm: (
     claimInfluence: boolean,
     colonizePlanetIndices: number[],
@@ -40,6 +41,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   state,
   conquest,
   currentSeat = 'all',
+  canControl: canControlProp,
   onConfirm,
   onRerollBombardmentDie,
   onConfirmBombardment,
@@ -52,12 +54,19 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   if (!sector || !winner) return null;
 
   const isSpectator = currentSeat === 'spectator';
-  const canControl =
+  const defaultCanControl =
     !isSpectator &&
     (currentSeat === 'all' ||
       (typeof currentSeat === 'number' && state.players[currentSeat]?.id === winner.id));
+  const canControl = canControlProp ?? defaultCanControl;
 
-  if (!canControl) {
+  const [currentStep, setCurrentStep] = useState<'bombardment' | 'conquest'>(
+    conquest.bombardmentSummary ? 'bombardment' : 'conquest'
+  );
+
+  // Non-controlling players & spectators observe Bombardment reports just like fleet combat;
+  // once solely in the post-combat Sector Control/Conquest decision step, show the waiting banner.
+  if (!canControl && (!conquest.bombardmentSummary || currentStep !== 'bombardment')) {
     return (
       <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
         <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
@@ -73,10 +82,6 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   const alreadyControls = sector.discOwner === winner.id;
   const hasDiscsAvailable = winner.influenceTrack.discsOnTrack > 0;
   const canClaim = conquest.canClaimInfluence !== false;
-
-  const [currentStep, setCurrentStep] = useState<'bombardment' | 'conquest'>(
-    conquest.bombardmentSummary ? 'bombardment' : 'conquest'
-  );
 
   // Default to true if user has available discs, can claim, and doesn't already control the sector
   const [claimInfluence, setClaimInfluence] = useState<boolean>(
@@ -238,9 +243,16 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
           </div>
 
           {!canControl && (
-            <div className="px-3 py-1.5 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse">
+            <div
+              data-testid="combat-conquest-observer-badge"
+              className="px-3 py-1.5 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-300 text-xs font-bold animate-pulse shrink-0"
+            >
               {currentSeat === 'spectator'
-                ? l(`Spectator Mode (Observing Conquest by ${winner.name})`, `旁观模式（正在观察 ${winner.name} 的征服行动）`)
+                ? currentStep === 'bombardment'
+                  ? l(`Spectator Mode (Observing Bombardment by ${winner.name})`, `旁观模式（正在观察 ${winner.name} 的轰炸结算）`)
+                  : l(`Spectator Mode (Observing Conquest by ${winner.name})`, `旁观模式（正在观察 ${winner.name} 的征服行动）`)
+                : currentStep === 'bombardment'
+                ? l(`Waiting for ${winner.name} to confirm bombardment...`, `等待 ${winner.name} 确认轰炸结果...`)
                 : l(`Waiting for ${winner.name} to choose control options...`, `等待 ${winner.name} 选择控制选项...`)}
             </div>
           )}
@@ -473,9 +485,12 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                         <button
                           key={p.id || idx}
                           type="button"
+                          disabled={!canControl}
                           data-testid={`bombard-target-planet-${idx}`}
                           onClick={() => handleToggleBombardTarget(idx)}
-                          className={`flex items-center justify-between px-3 py-2 rounded-lg border text-left transition cursor-pointer ${
+                          className={`flex items-center justify-between px-3 py-2 rounded-lg border text-left transition ${
+                            !canControl ? 'cursor-not-allowed opacity-85' : 'cursor-pointer'
+                          } ${
                             isSel
                               ? 'bg-rose-950/80 border-rose-400 text-white ring-1 ring-rose-400/60'
                               : 'bg-slate-900/90 border-slate-700 text-slate-300 hover:border-slate-500'
@@ -562,8 +577,12 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                   </div>
                 ) : hasDiscsAvailable ? (
                   <label
-                    onClick={() => setClaimInfluence(!claimInfluence)}
-                    className={`flex items-start gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
+                    onClick={() => {
+                      if (canControl) setClaimInfluence(!claimInfluence);
+                    }}
+                    className={`flex items-start gap-3 p-3 rounded-lg border transition-all ${
+                      !canControl ? 'cursor-not-allowed opacity-80' : 'cursor-pointer'
+                    } ${
                       claimInfluence
                         ? 'bg-cyan-950/40 border-cyan-500/80 shadow-md ring-1 ring-cyan-500/50'
                         : 'bg-slate-900 border-slate-800 hover:border-slate-700'
@@ -572,7 +591,8 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                     <input
                       type="checkbox"
                       checked={claimInfluence}
-                      onChange={(e) => setClaimInfluence(e.target.checked)}
+                      disabled={!canControl}
+                      onChange={(e) => canControl && setClaimInfluence(e.target.checked)}
                       className="w-4 h-4 mt-0.5 rounded border-slate-700 text-cyan-500 focus:ring-cyan-400 accent-cyan-500 shrink-0"
                     />
                     <div className="text-xs">
@@ -670,7 +690,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                           <div
                             key={planet.id || pIdx}
                             onClick={() => {
-                              if (!isColonized && canSelect) {
+                              if (canControl && !isColonized && canSelect) {
                                 handleTogglePlanet(pIdx);
                               }
                             }}
@@ -739,7 +759,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     {/* Money Button */}
                                     <button
                                       type="button"
-                                      disabled={winner.population.money.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedEconomy)}
+                                      disabled={!canControl || winner.population.money.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedEconomy)}
                                       onClick={() => {
                                         setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'money' }));
                                         if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
@@ -760,7 +780,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     {/* Science Button */}
                                     <button
                                       type="button"
-                                      disabled={winner.population.science.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedLabs)}
+                                      disabled={!canControl || winner.population.science.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedLabs)}
                                       onClick={() => {
                                         setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'science' }));
                                         if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
@@ -782,7 +802,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     {!isOrb && (
                                       <button
                                         type="button"
-                                        disabled={winner.population.material.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedMining)}
+                                        disabled={!canControl || winner.population.material.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedMining)}
                                         onClick={() => {
                                           setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'material' }));
                                           if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
@@ -815,9 +835,9 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                 <input
                                   type="checkbox"
                                   checked={isSelected}
-                                  disabled={!canSelect}
+                                  disabled={!canControl || !canSelect}
                                   onChange={() => handleTogglePlanet(pIdx)}
-                                  className="w-4 h-4 rounded border-slate-700 text-indigo-500 focus:ring-indigo-400 accent-indigo-500 cursor-pointer"
+                                  className="w-4 h-4 rounded border-slate-700 text-indigo-500 focus:ring-indigo-400 accent-indigo-500 cursor-pointer disabled:cursor-not-allowed"
                                 />
                               )}
                             </div>
@@ -909,11 +929,16 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                     {l('All defenders neutralized! Ready for sector conquest.', '敌方守军已清除！准备占领星区。')}
                   </div>
                   <button
-                    onClick={() => setCurrentStep('conquest')}
-                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-emerald-950 flex items-center gap-1.5 transition-all cursor-pointer"
+                    onClick={() => canControl && setCurrentStep('conquest')}
+                    disabled={!canControl}
+                    className="px-5 py-2.5 rounded-xl bg-gradient-to-r from-emerald-500 to-emerald-600 hover:from-emerald-400 hover:to-emerald-500 text-slate-950 font-bold text-xs tracking-wide shadow-lg shadow-emerald-950 flex items-center gap-1.5 transition-all cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
                   >
-                    <span>{l('Proceed to Sector Control', '前往星区控制')}</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
+                    <span>
+                      {canControl
+                        ? l('Proceed to Sector Control', '前往星区控制')
+                        : l(`Waiting for ${winner.name}...`, `等待 ${winner.name}...`)}
+                    </span>
+                    {canControl && <ChevronRight className="w-3.5 h-3.5" />}
                   </button>
                 </>
               )}

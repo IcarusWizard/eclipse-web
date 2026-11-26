@@ -29,7 +29,8 @@ export type FactionId =
   | 'the_horde'
   | 'the_spiral'
   | 'legion_of_midas'
-  | 'heralds_of_ragnarok';
+  | 'heralds_of_ragnarok'
+  | 'jotunn';
 
 export interface FactionInfo {
   readonly id: FactionId;

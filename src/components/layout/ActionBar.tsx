@@ -29,6 +29,7 @@ import {
   getPlayerDisplayName,
   isRaidFaction,
   isRegroupFaction,
+  isDreadNoughtFaction,
 } from '../../engine/rules/gameReducer';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -451,6 +452,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           title={
             hasPassed
               ? l('Reaction Upgrade (UPG) - 1 ship component', '反应升级 (UPG) - 1 个飞船部件')
+              : isDreadNoughtFaction(activePlayer.faction.id)
+              ? l(
+                  `Upgrade (UPG) - ${maxUpgrade - 1} normal + 1 special Dread Nought (+1 UPG or Dreadnought Build/Move)`,
+                  `升级 (UPG) - ${maxUpgrade - 1} 常规 + 1 无畏雄心特殊激活（+1 升级或建造/移动无畏舰）`
+                )
               : l(`Upgrade (UPG) - Up to ${maxUpgrade} ship component upgrades`, `升级 (UPG) - 最多升级 ${maxUpgrade} 个飞船部件`)
           }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
@@ -461,7 +467,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         >
           <Wrench className="w-4 h-4 shrink-0" />
           <span className="leading-tight">{l('UPG', '升级')}</span>
-          <span className="text-[8.5px] opacity-80 leading-none">({maxUpgrade})</span>
+          <span className="text-[8.5px] opacity-80 leading-none">
+            {!hasPassed && isDreadNoughtFaction(activePlayer.faction.id)
+              ? `(${Math.max(1, maxUpgrade - 1)}+1*)`
+              : `(${maxUpgrade})`}
+          </span>
         </button>
 
         {/* Build */}
@@ -471,6 +481,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           title={
             hasPassed
               ? l('Reaction Build (BLD) - 1 ship or structure', '反应建造 (BLD) - 1 个飞船或建筑')
+              : isDreadNoughtFaction(activePlayer.faction.id)
+              ? l(
+                  `Build (BLD) - ${maxBuild - 1} normal + 1 special Dread Nought (+1 BUI or Dreadnought Upgrade/Move)`,
+                  `建造 (BLD) - ${maxBuild - 1} 常规 + 1 无畏雄心特殊激活（+1 建造或升级/移动无畏舰）`
+                )
               : l(`Build (BLD) - Up to ${maxBuild} ships or structures`, `建造 (BLD) - 最多建造 ${maxBuild} 个飞船或建筑`)
           }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
@@ -482,7 +497,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <Hammer className="w-4 h-4 shrink-0" />
           <span className="leading-tight">{l('BLD', '建造')}</span>
           <span className="text-[8.5px] opacity-80 leading-none">
-            ({maxBuild}{!hasPassed && isRegroupFaction(activePlayer.faction.id) ? '+1M' : ''})
+            {!hasPassed && isDreadNoughtFaction(activePlayer.faction.id)
+              ? `(${Math.max(1, maxBuild - 1)}+1*)`
+              : `(${maxBuild}${!hasPassed && isRegroupFaction(activePlayer.faction.id) ? '+1M' : ''})`}
           </span>
         </button>
 
@@ -493,6 +510,11 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           title={
             hasPassed
               ? l('Reaction Move (MOV) - 1 ship movement', '反应移动 (MOV) - 1 次飞船移动')
+              : isDreadNoughtFaction(activePlayer.faction.id)
+              ? l(
+                  `Move (MOV) - ${maxMoves - 1} normal + 1 special Dread Nought (+1 MOV or Dreadnought Build/Upgrade)`,
+                  `移动 (MOV) - ${maxMoves - 1} 常规 + 1 无畏雄心特殊激活（+1 移动或建造/升级无畏舰）`
+                )
               : l(`Move (MOV) - Up to ${maxMoves} ship movements`, `移动 (MOV) - 最多 ${maxMoves} 次飞船移动`)
           }
           className={`flex flex-col items-center justify-center gap-0.5 px-1.5 sm:px-2.5 py-1.5 rounded-xl font-bold text-[10px] tracking-wider uppercase transition-all shadow shrink-0 text-center cursor-pointer disabled:cursor-not-allowed min-w-[44px] sm:min-w-[52px] ${
@@ -504,7 +526,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           <Rocket className="w-4 h-4 shrink-0" />
           <span className="leading-tight">{l('MOV', '移动')}</span>
           <span className="text-[8.5px] opacity-80 leading-none">
-            ({maxMoves}{!hasPassed && isRaidFaction(activePlayer.faction.id) ? '+1B' : ''})
+            {!hasPassed && isDreadNoughtFaction(activePlayer.faction.id)
+              ? `(${Math.max(1, maxMoves - 1)}+1*)`
+              : `(${maxMoves}${!hasPassed && isRaidFaction(activePlayer.faction.id) ? '+1B' : ''})`}
           </span>
         </button>
 

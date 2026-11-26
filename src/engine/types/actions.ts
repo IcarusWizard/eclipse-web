@@ -102,6 +102,24 @@ export interface ResearchAction extends BaseAction {
   useMidasTouch?: boolean;
 }
 
+export interface JotunnDreadnoughtBonus {
+  /** Build 1 Dreadnought using the Dread Nought special activation */
+  build?: {
+    sectorId: string;
+    itemType: 'dreadnought';
+    createdShipId?: string;
+  };
+  /** Upgrade 1 slot on the Dreadnought blueprint using the Dread Nought special activation */
+  upgrade?: {
+    shipType: 'dreadnought';
+    slotIndex: number;
+    partId: string | null;
+    isExternal?: boolean;
+  };
+  /** Execute 1 Move activation on Dreadnought(s) using the Dread Nought special activation */
+  move?: MoveStep[];
+}
+
 export interface UpgradeAction extends BaseAction {
   type: 'UPGRADE';
   upgrades: {
@@ -112,6 +130,8 @@ export interface UpgradeAction extends BaseAction {
     /** Mega War Inc.: target modular color group when attaching/removing an external part (e.g. Muon Source). */
     modularGroupId?: 'int_cru_dre' | 'cru_dre' | 'dre_sb' | 'sb_only';
   }[];
+  /** Jotunn Dread Nought: spend the special activation on a Dreadnought Build or Move instead of +1 Upgrade. */
+  dreadnoughtBonus?: JotunnDreadnoughtBonus;
   pulsarSectorId?: string;
   useMidasTouch?: boolean;
 }
@@ -127,6 +147,8 @@ export interface BuildAction extends BaseAction {
   }[];
   /** Heralds of Ragnarök Regroup: optional 1 Move activation included with a normal Build action. */
   regroupMoves?: MoveStep[];
+  /** Jotunn Dread Nought: spend the special activation on a Dreadnought Upgrade or Move instead of +1 Build. */
+  dreadnoughtBonus?: JotunnDreadnoughtBonus;
   pulsarSectorId?: string;
   useMidasTouch?: boolean;
 }
@@ -151,6 +173,8 @@ export interface MoveAction extends BaseAction {
     upgradeFromShipId?: string;
     createdShipId?: string;
   };
+  /** Jotunn Dread Nought: spend the special activation on a Dreadnought Build or Upgrade instead of +1 Move. */
+  dreadnoughtBonus?: JotunnDreadnoughtBonus;
 }
 
 export interface InfluenceAction extends BaseAction {

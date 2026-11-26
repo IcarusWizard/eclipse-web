@@ -89,6 +89,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   the_spiral: '/factions/the_spiral.jpg',
   legion_of_midas: '/factions/legion_of_midas.jpg',
   heralds_of_ragnarok: '/factions/heralds_of_ragnarok.jpg',
+  jotunn: '/factions/jotunn.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -580,6 +581,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
         icon: 'vp',
         en: 'Alternate Ship Designs & Start: Interceptor costs 4 Mats (5 slots with extra Hull, Initiative +1). Cruiser costs 4 Mats (5 slots without Hull, Initiative +2). Begin with 1 Cruiser in Sector 299 (Yggdrasil).',
         zh: '特制舰船设计与开局：拦截舰造价 4（5 槽含额外船体，先攻 +1）；巡洋舰造价 4（5 槽去船体，先攻 +2）。开局母星 299 号星区配置 1 艘巡洋舰而非拦截舰。',
+      },
+    ],
+  },
+  jotunn: {
+    historyEn:
+      'The Jotunn are an ancient race of Giants remembered as gods by younger worlds. Their Bifrost technology and unmatched hardiness once made them the greatest miners in the galaxy—until all their colonies were destroyed and contact with their homeworlds was lost. Arriving in massive Ark Ships at Sector 241, Jarl Ymir Ironhammer and his surviving Battle Brothers now prepare to forge a new empire.',
+    historyZh:
+      '约顿巨人（Jotunn）是一个曾在远古降临此星域、被诸多文明奉为神明的古老巨人种族。彩虹桥技术与惊人的体魄曾让他们成为银河最顶尖的矿工，直到故土失联、殖民地悉数覆灭。如今幸存者乘坐巨型方舟舰重返 241 号星区，铁锤亚米尔酋长正率领战友重建帝国、寻觅真正的新家园。',
+    portraitUrl: '/factions/jotunn.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'jotunn_dread_nought',
+        icon: 'ship',
+        en: 'Dread Nought: With any BUI, UPG, or MOV action you get 1 normal activation and 1 special activation, spendable as either +1 activation of that same type OR a BUI/UPG/MOV specifically on a Dreadnought.',
+        zh: '无畏雄心（Dread Nought）：每次执行建造、升级或移动行动时，获得 1 次常规激活和 1 次特殊激活；特殊激活可用于追加 1 次同类激活，或用于对无畏舰执行 1 次建造/升级/移动。',
+      },
+      {
+        id: 'jotunn_few_in_number',
+        icon: 'colony',
+        en: 'Few in Number: 3 Colony Ships total, and only flip back 1 Colony Ship face-up when performing an Influence action.',
+        zh: '人口稀少：共有 3 艘殖民船，执行扩张/影响力行动时仅能翻回 1 艘殖民船。',
+      },
+      {
+        id: 'jotunn_bonus_vp',
+        icon: 'vp',
+        en: 'Bonus VPs & Setup: +1 VP per Dreadnought at end of game. Begin with Advanced Mining and a Material cube populated on your Advanced Material planet in Sector 241 (Ark Ships), 4 Materials / 2 Science / 3 Money, 3:1 Trade, and 4 Reputation Track slots.',
+        zh: '额外得分与开局：游戏结束时每艘无畏舰额外 +1 VP。开局自带高阶采矿并在 241 号方舟星区的高阶材料行星上预置 1 枚材料人口，4 材料/2 科研/3 金钱、3:1 贸易率与 4 格声望轨。',
       },
     ],
   },

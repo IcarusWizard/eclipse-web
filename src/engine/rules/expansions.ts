@@ -271,7 +271,10 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'heralds_of_ragnarok' ||
     norm === 'heralds of ragnarok' ||
     norm === 'heralds of ragnarök' ||
-    norm === 'yggdrasil'
+    norm === 'yggdrasil' ||
+    norm === 'jotunn' ||
+    norm === 'frost giants' ||
+    norm === 'ark ships'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }

@@ -23,6 +23,7 @@ import {
   isRegroupFaction,
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
+import { SHIP_PARTS } from './engine/rules/partData';
 import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
@@ -191,8 +192,33 @@ const AppContent: React.FC = () => {
   const [stagedRaidBuild, setStagedRaidBuild] = useState<(BuildItemPayload & { createdShipId?: string }) | null>(null);
   const [isRegroupBuildStep, setIsRegroupBuildStep] = useState<boolean>(false);
   const [stagedRegroupBuilds, setStagedRegroupBuilds] = useState<(BuildItemPayload & { createdShipId?: string })[] | null>(null);
+  const [stagedJotunnPrimary, setStagedJotunnPrimary] = useState<
+    | {
+        kind: 'UPGRADE';
+        upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[];
+        target: 'build' | 'move';
+      }
+    | {
+        kind: 'BUILD';
+        items: (BuildItemPayload & { createdShipId?: string })[];
+        target: 'upgrade' | 'move';
+      }
+    | {
+        kind: 'MOVE';
+        moves: MoveStepPayload[];
+        target: 'build' | 'upgrade';
+      }
+    | null
+  >(null);
+  const [isJotunnMovePreBuildStep, setIsJotunnMovePreBuildStep] = useState<boolean>(false);
+  const [stagedJotunnMoveBuild, setStagedJotunnMoveBuild] = useState<{
+    sectorId: string;
+    itemType: 'dreadnought';
+    createdShipId: string;
+  } | null>(null);
   const [isMoveOpen, setIsMoveOpen] = useState<boolean>(false);
   const [useMidasTouchMove, setUseMidasTouchMove] = useState<boolean>(false);
+  const [jotunnMoveTarget, setJotunnMoveTarget] = useState<'same' | 'build' | 'upgrade'>('same');
   const [isInfluenceOpen, setIsInfluenceOpen] = useState<boolean>(false);
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
   const [isNewGameOpen, setIsNewGameOpen] = useState<boolean>(false);
@@ -1957,10 +1983,66 @@ const AppContent: React.FC = () => {
   const handleSaveBlueprint = (
     upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
     pulsarSectorId?: string,
-    useMidasTouch?: boolean
+    useMidasTouch?: boolean,
+    jotunnDnTarget?: 'build' | 'move'
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot modify ship blueprints.');
+      return;
+    }
+    if (stagedJotunnPrimary && stagedJotunnPrimary.target === 'upgrade') {
+      const dnUp = upgrades.find((u) => u.shipType === 'dreadnought');
+      if (!dnUp) {
+        showToast('Dread Nought Upgrade must modify 1 slot on your Dreadnought blueprint.');
+        return;
+      }
+      const bonusPayload = {
+        upgrade: {
+          shipType: 'dreadnought' as const,
+          slotIndex: dnUp.slotIndex,
+          partId: dnUp.partId,
+          isExternal: dnUp.isExternal,
+        },
+      };
+      const res =
+        stagedJotunnPrimary.kind === 'BUILD'
+          ? executeAction(state, {
+              type: 'BUILD',
+              playerId: activePlayer.id,
+              items: stagedJotunnPrimary.items,
+              dreadnoughtBonus: bonusPayload,
+              requireConfirmation: true,
+            })
+          : executeAction(state, {
+              type: 'MOVE',
+              playerId: activePlayer.id,
+              moves: stagedJotunnPrimary.moves,
+              dreadnoughtBonus: bonusPayload,
+              requireConfirmation: true,
+            });
+      if (res.success) {
+        setState(res.newState);
+        setIsBlueprintOpen(false);
+        setBlueprintShipType(undefined);
+        setStagedJotunnPrimary(null);
+      } else {
+        showToast(res.error || 'Dread Nought action failed.');
+      }
+      return;
+    }
+    if (jotunnDnTarget === 'build' || jotunnDnTarget === 'move') {
+      setStagedJotunnPrimary({
+        kind: 'UPGRADE',
+        upgrades,
+        target: jotunnDnTarget,
+      });
+      setIsBlueprintOpen(false);
+      setBlueprintShipType(undefined);
+      if (jotunnDnTarget === 'build') {
+        setIsBuildOpen(true);
+      } else {
+        setIsMoveOpen(true);
+      }
       return;
     }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
@@ -2102,14 +2184,57 @@ const AppContent: React.FC = () => {
   };
 
   // --- MOVE FLOW STATE & HANDLERS ---
-  const movePlanningState = useMemo(
-    () =>
-      isMoveOpen && stagedRaidBuild
-        ? applyRaidBuildToPreviewState(state, activePlayer.id, stagedRaidBuild)
-        : isMoveOpen && stagedRegroupBuilds && stagedRegroupBuilds.length > 0
-        ? applyBuildItemsToPreviewState(state, activePlayer.id, stagedRegroupBuilds)
-        : state,
-    [isMoveOpen, stagedRaidBuild, stagedRegroupBuilds, state, activePlayer.id]
+  const movePlanningState = useMemo(() => {
+    if (isMoveOpen && stagedRaidBuild) {
+      return applyRaidBuildToPreviewState(state, activePlayer.id, stagedRaidBuild);
+    }
+    if (isMoveOpen && stagedJotunnMoveBuild) {
+      return applyBuildItemsToPreviewState(state, activePlayer.id, [stagedJotunnMoveBuild]);
+    }
+    if (isMoveOpen && stagedRegroupBuilds && stagedRegroupBuilds.length > 0) {
+      return applyBuildItemsToPreviewState(state, activePlayer.id, stagedRegroupBuilds);
+    }
+    if (isMoveOpen && stagedJotunnPrimary?.target === 'move') {
+      if (stagedJotunnPrimary.kind === 'BUILD') {
+        return applyBuildItemsToPreviewState(state, activePlayer.id, stagedJotunnPrimary.items);
+      }
+      if (stagedJotunnPrimary.kind === 'UPGRADE') {
+        const previewDnBp = activePlayer.blueprints.dreadnought
+          ? {
+              ...activePlayer.blueprints.dreadnought,
+              slots: [...activePlayer.blueprints.dreadnought.slots],
+              externalParts: activePlayer.blueprints.dreadnought.externalParts
+                ? [...activePlayer.blueprints.dreadnought.externalParts]
+                : undefined,
+            }
+          : undefined;
+        if (previewDnBp) {
+          for (const up of stagedJotunnPrimary.upgrades) {
+            if (up.shipType !== 'dreadnought') continue;
+            const part = up.partId ? SHIP_PARTS[up.partId] || null : null;
+            if (up.isExternal || up.slotIndex === -1) {
+              previewDnBp.externalParts = part ? [part] : [];
+            } else {
+              previewDnBp.slots[up.slotIndex] = part;
+            }
+          }
+          return {
+            ...state,
+            players: state.players.map((p) =>
+              p.id === activePlayer.id
+                ? { ...p, blueprints: { ...p.blueprints, dreadnought: previewDnBp } }
+                : p
+            ),
+          };
+        }
+      }
+    }
+    return state;
+  }, [isMoveOpen, stagedRaidBuild, stagedJotunnMoveBuild, stagedRegroupBuilds, stagedJotunnPrimary, state, activePlayer]);
+
+  const effectiveMovePlayer = useMemo(
+    () => movePlanningState.players.find((p) => p.id === activePlayer.id) || activePlayer,
+    [movePlanningState.players, activePlayer]
   );
 
   const playerShips = useMemo(() => {
@@ -2126,11 +2251,11 @@ const AppContent: React.FC = () => {
 
   const movableShips = useMemo(() => {
     return playerShips.filter((p) => {
-      const bp = activePlayer.blueprints[p.ship.type];
+      const bp = effectiveMovePlayer.blueprints[p.ship.type];
       const stats = bp ? calculateBlueprintStats(bp) : null;
       return stats ? stats.totalDriveSpeed > 0 : p.ship.type !== 'starbase';
     });
-  }, [playerShips, activePlayer.blueprints]);
+  }, [playerShips, effectiveMovePlayer.blueprints]);
 
   const [plannedMoves, setPlannedMoves] = useState<PlannedMove[]>([]);
   const [selectedMoveShipId, setSelectedMoveShipId] = useState<string>('');
@@ -2143,7 +2268,13 @@ const AppContent: React.FC = () => {
       setPlannedMoves([]);
       setActiveActivationIndex(0);
       setUseMidasTouchMove(false);
-      setSelectedMoveShipId(movableShips[0]?.ship.id || playerShips[0]?.ship.id || '');
+      setJotunnMoveTarget('same');
+      const preferDreadnought = stagedJotunnPrimary?.target === 'move';
+      const preferredShip = preferDreadnought
+        ? movableShips.find((s) => s.ship.type === 'dreadnought') ||
+          playerShips.find((s) => s.ship.type === 'dreadnought')
+        : movableShips[0] || playerShips[0];
+      setSelectedMoveShipId(preferredShip?.ship.id || '');
     }
     prevMoveOpenRef.current = isMoveOpen;
   }, [isMoveOpen]);
@@ -2172,13 +2303,21 @@ const AppContent: React.FC = () => {
     return pinningState.isShipPinned(shipId);
   };
 
-  const maxMoves = stagedRegroupBuilds && stagedRegroupBuilds.length > 0
-    ? 1
-    : getEffectiveMoveActivationLimit(activePlayer, activePulsarSectorId, undefined, useMidasTouchMove);
+  const maxMoves =
+    (stagedRegroupBuilds && stagedRegroupBuilds.length > 0) ||
+    stagedJotunnPrimary?.target === 'move'
+      ? 1
+      : getEffectiveMoveActivationLimit(
+          effectiveMovePlayer,
+          activePulsarSectorId,
+          undefined,
+          useMidasTouchMove,
+          jotunnMoveTarget !== 'same' || Boolean(stagedJotunnMoveBuild)
+        );
 
   const currentMoveShip = playerShips.find((p) => p.ship.id === selectedMoveShipId)?.ship;
   const currentSimSector = simulatedShipSector.get(selectedMoveShipId);
-  const currentShipBlueprint = currentMoveShip ? activePlayer.blueprints[currentMoveShip.type] : null;
+  const currentShipBlueprint = currentMoveShip ? effectiveMovePlayer.blueprints[currentMoveShip.type] : null;
   const currentShipStats = currentShipBlueprint ? calculateBlueprintStats(currentShipBlueprint) : null;
   const currentShipDriveSpeed = currentShipStats ? currentShipStats.totalDriveSpeed : 0;
   const currentShipHasJumpDrive = Boolean(
@@ -2381,10 +2520,97 @@ const AppContent: React.FC = () => {
   const handleBuild = (
     items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string }[],
     pulsarSectorId?: string,
-    useMidasTouch?: boolean
+    useMidasTouch?: boolean,
+    jotunnDnTarget?: 'upgrade' | 'move'
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
+      return;
+    }
+    if (isJotunnMovePreBuildStep) {
+      const dnItem = items.find((i) => i.itemType === 'dreadnought');
+      if (!dnItem || items.length !== 1) {
+        showToast('Dread Nought Build must construct 1 Dreadnought or skip to Move.');
+        return;
+      }
+      const createdShipId = `ship_${activePlayer.id}_dn_move_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`;
+      const prepared = { sectorId: dnItem.sectorId, itemType: 'dreadnought' as const, createdShipId };
+      const buildCheck = validateBuildItems(state, activePlayer, [prepared]);
+      if (!buildCheck.valid) {
+        showToast(buildCheck.error || 'Dreadnought build selection is invalid.');
+        return;
+      }
+      setStagedJotunnMoveBuild(prepared);
+      setIsBuildOpen(false);
+      setIsJotunnMovePreBuildStep(false);
+      setIsMoveOpen(true);
+      return;
+    }
+    if (stagedJotunnPrimary && stagedJotunnPrimary.target === 'build') {
+      const dnItem = items.find((i) => i.itemType === 'dreadnought');
+      if (!dnItem || items.length !== 1) {
+        showToast('Dread Nought Build must construct 1 Dreadnought.');
+        return;
+      }
+      const bonusPayload = {
+        build: {
+          sectorId: dnItem.sectorId,
+          itemType: 'dreadnought' as const,
+        },
+      };
+      const res =
+        stagedJotunnPrimary.kind === 'UPGRADE'
+          ? executeAction(state, {
+              type: 'UPGRADE',
+              playerId: activePlayer.id,
+              upgrades: stagedJotunnPrimary.upgrades,
+              dreadnoughtBonus: bonusPayload,
+              requireConfirmation: true,
+            })
+          : executeAction(state, {
+              type: 'MOVE',
+              playerId: activePlayer.id,
+              moves: stagedJotunnPrimary.moves,
+              dreadnoughtBonus: bonusPayload,
+              requireConfirmation: true,
+            });
+      if (res.success) {
+        setState(res.newState);
+        setIsBuildOpen(false);
+        setStagedJotunnPrimary(null);
+      } else {
+        showToast(res.error || 'Dread Nought build failed.');
+      }
+      return;
+    }
+    if (jotunnDnTarget === 'upgrade' || jotunnDnTarget === 'move') {
+      const timestamp = Date.now();
+      const preparedItems = items.map((item, idx) => {
+        const createdShipId =
+          !item.upgradeFromShipId && item.itemType !== 'orbital' && item.itemType !== 'monolith'
+            ? `ship_${activePlayer.id}_dn_${timestamp}_${idx}_${Math.random().toString(36).substr(2, 4)}`
+            : item.itemType === 'orbital' && activePlayer.faction.id === 'the_exiles'
+              ? `ship_${activePlayer.id}_orbital_${timestamp}_${idx}_${Math.random().toString(36).substr(2, 4)}`
+              : undefined;
+        return { ...item, createdShipId };
+      });
+      const buildCheck = validateBuildItems(state, activePlayer, preparedItems);
+      if (!buildCheck.valid) {
+        showToast(buildCheck.error || 'Construction selection is invalid.');
+        return;
+      }
+      setStagedJotunnPrimary({
+        kind: 'BUILD',
+        items: preparedItems,
+        target: jotunnDnTarget,
+      });
+      setIsBuildOpen(false);
+      if (jotunnDnTarget === 'upgrade') {
+        setBlueprintShipType('dreadnought');
+        setIsBlueprintOpen(true);
+      } else {
+        setIsMoveOpen(true);
+      }
       return;
     }
     if (isRaidBuildStep) {
@@ -2487,15 +2713,117 @@ const AppContent: React.FC = () => {
     }
   };
 
+  const handleSkipJotunnMovePreBuild = () => {
+    setStagedJotunnMoveBuild(null);
+    setIsBuildOpen(false);
+    setIsJotunnMovePreBuildStep(false);
+    setIsMoveOpen(true);
+  };
+
+  const handleSkipJotunnDreadnoughtBonus = () => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
+    if (!stagedJotunnPrimary) {
+      setIsBuildOpen(false);
+      setIsBlueprintOpen(false);
+      setIsMoveOpen(false);
+      return;
+    }
+    const res =
+      stagedJotunnPrimary.kind === 'UPGRADE'
+        ? executeAction(state, {
+            type: 'UPGRADE',
+            playerId: activePlayer.id,
+            upgrades: stagedJotunnPrimary.upgrades,
+            requireConfirmation: true,
+          })
+        : stagedJotunnPrimary.kind === 'BUILD'
+        ? executeAction(state, {
+            type: 'BUILD',
+            playerId: activePlayer.id,
+            items: stagedJotunnPrimary.items,
+            requireConfirmation: true,
+          })
+        : executeAction(state, {
+            type: 'MOVE',
+            playerId: activePlayer.id,
+            moves: stagedJotunnPrimary.moves,
+            requireConfirmation: true,
+          });
+    if (res.success) {
+      setState(res.newState);
+      setStagedJotunnPrimary(null);
+      setIsBuildOpen(false);
+      setIsBlueprintOpen(false);
+      setBlueprintShipType(undefined);
+      setIsMoveOpen(false);
+      setUseMidasTouchMove(false);
+      setJotunnMoveTarget('same');
+      setActivePulsarSectorId(null);
+    } else {
+      showToast(res.error || 'Action failed.');
+    }
+  };
+
   // Move flow
   const handleMove = (
     moves: MoveStepPayload[],
     pulsarSectorId?: string,
     useMidasTouch?: boolean,
+    jotunnDnTarget?: 'build' | 'upgrade',
     raidBuild?: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string; createdShipId?: string }
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
+      return;
+    }
+    if (stagedJotunnPrimary && stagedJotunnPrimary.target === 'move') {
+      const bonusPayload = { move: moves };
+      const res =
+        stagedJotunnPrimary.kind === 'UPGRADE'
+          ? executeAction(state, {
+              type: 'UPGRADE',
+              playerId: activePlayer.id,
+              upgrades: stagedJotunnPrimary.upgrades,
+              dreadnoughtBonus: bonusPayload,
+              requireConfirmation: true,
+            })
+          : executeAction(state, {
+              type: 'BUILD',
+              playerId: activePlayer.id,
+              items: stagedJotunnPrimary.items,
+              dreadnoughtBonus: bonusPayload,
+              requireConfirmation: true,
+            });
+      if (res.success) {
+        setState(res.newState);
+        setIsMoveOpen(false);
+        setUseMidasTouchMove(false);
+        setJotunnMoveTarget('same');
+        setStagedJotunnPrimary(null);
+        setActivePulsarSectorId(null);
+      } else {
+        showToast(res.error || 'Dread Nought maneuver failed.');
+      }
+      return;
+    }
+    if (jotunnDnTarget === 'build' || jotunnDnTarget === 'upgrade') {
+      setStagedJotunnPrimary({
+        kind: 'MOVE',
+        moves,
+        target: jotunnDnTarget,
+      });
+      setIsMoveOpen(false);
+      setUseMidasTouchMove(false);
+      setJotunnMoveTarget('same');
+      if (jotunnDnTarget === 'build') {
+        setIsBuildOpen(true);
+      } else {
+        setBlueprintShipType('dreadnought');
+        setIsBlueprintOpen(true);
+      }
       return;
     }
     if (stagedRegroupBuilds && stagedRegroupBuilds.length > 0) {
@@ -2519,6 +2847,7 @@ const AppContent: React.FC = () => {
     }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const effectiveRaidBuild = raidBuild ?? stagedRaidBuild ?? undefined;
+    const effectiveDnMoveBuild = stagedJotunnMoveBuild ?? undefined;
     const res = executeAction(state, {
       type: 'MOVE',
       playerId: activePlayer.id,
@@ -2526,6 +2855,7 @@ const AppContent: React.FC = () => {
       pulsarSectorId: effectivePulsarId,
       useMidasTouch: useMidasTouch ?? (useMidasTouchMove || undefined),
       raidBuild: effectiveRaidBuild,
+      dreadnoughtBonus: effectiveDnMoveBuild ? { build: effectiveDnMoveBuild } : undefined,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -2533,6 +2863,7 @@ const AppContent: React.FC = () => {
       setIsMoveOpen(false);
       setUseMidasTouchMove(false);
       setStagedRaidBuild(null);
+      setStagedJotunnMoveBuild(null);
       setActivePulsarSectorId(null);
     } else {
       showToast(res.error || 'Movement maneuver failed.');
@@ -3935,7 +4266,7 @@ const AppContent: React.FC = () => {
       <div className="relative flex-1 w-full h-full overflow-hidden">
         {/* Galaxy Hex Map */}
         <HexGalaxyMap
-          state={isMoveOpen && (stagedRaidBuild || (stagedRegroupBuilds && stagedRegroupBuilds.length > 0)) ? movePlanningState : state}
+          state={isMoveOpen && (stagedRaidBuild || stagedJotunnMoveBuild || (stagedRegroupBuilds && stagedRegroupBuilds.length > 0) || stagedJotunnPrimary?.target === 'move') ? movePlanningState : state}
           selectedSectorId={selectedSector?.id || null}
           onSelectSector={(s) => setSelectedSector(s)}
           isExploreMode={effectiveExploreMode}
@@ -4377,10 +4708,27 @@ const AppContent: React.FC = () => {
           initialShipType={blueprintShipType}
           pulsarSectorId={activePulsarSectorId ?? undefined}
           readOnly={!canActForPlayer(viewedPlayer.id) || isActionsLocked}
+          isJotunnDreadnoughtUpgrade={stagedJotunnPrimary?.target === 'upgrade'}
+          jotunnDreadnoughtUpgradeSourceLabel={
+            stagedJotunnPrimary?.kind === 'BUILD'
+              ? stagedJotunnPrimary.items
+                  .map(
+                    (it) =>
+                      `${it.itemType.toUpperCase()} @ Sector ${state.sectors.find((s) => s.id === it.sectorId)?.sectorNumber ?? it.sectorId}`
+                  )
+                  .join(', ')
+              : stagedJotunnPrimary?.kind === 'MOVE'
+              ? `${stagedJotunnPrimary.moves.length} Move step${stagedJotunnPrimary.moves.length > 1 ? 's' : ''}`
+              : null
+          }
+          onSkipJotunnDreadnoughtBonus={
+            stagedJotunnPrimary?.target === 'upgrade' ? handleSkipJotunnDreadnoughtBonus : undefined
+          }
           onSaveBlueprint={handleSaveBlueprint}
           onClose={() => {
             setIsBlueprintOpen(false);
             setBlueprintShipType(undefined);
+            setStagedJotunnPrimary(null);
             setActivePulsarSectorId(null);
           }}
         />
@@ -4415,12 +4763,30 @@ const AppContent: React.FC = () => {
           isRaidBuild={isRaidBuildStep}
           onSkipRaidBuild={handleSkipRaidBuild}
           isRegroupBuild={isRegroupBuildStep}
+          isJotunnDreadnoughtBuild={stagedJotunnPrimary?.target === 'build' || isJotunnMovePreBuildStep}
+          isJotunnMovePreBuild={isJotunnMovePreBuildStep}
+          jotunnDreadnoughtBuildSourceLabel={
+            stagedJotunnPrimary?.kind === 'UPGRADE'
+              ? `${stagedJotunnPrimary.upgrades.length} Upgrade modification${stagedJotunnPrimary.upgrades.length > 1 ? 's' : ''}`
+              : stagedJotunnPrimary?.kind === 'MOVE'
+              ? `${stagedJotunnPrimary.moves.length} Move step${stagedJotunnPrimary.moves.length > 1 ? 's' : ''}`
+              : null
+          }
+          onSkipJotunnDreadnoughtBonus={
+            stagedJotunnPrimary?.target === 'build' ? handleSkipJotunnDreadnoughtBonus : undefined
+          }
+          onSkipJotunnMovePreBuild={
+            isJotunnMovePreBuildStep ? handleSkipJotunnMovePreBuild : undefined
+          }
           onClose={() => {
             setIsBuildOpen(false);
             setIsRaidBuildStep(false);
             setStagedRaidBuild(null);
             setIsRegroupBuildStep(false);
             setStagedRegroupBuilds(null);
+            setIsJotunnMovePreBuildStep(false);
+            setStagedJotunnMoveBuild(null);
+            setStagedJotunnPrimary(null);
             setActivePulsarSectorId(null);
           }}
         />
@@ -4428,7 +4794,7 @@ const AppContent: React.FC = () => {
 
       {isMoveOpen && (
         <MoveModal
-          player={activePlayer}
+          player={effectiveMovePlayer}
           sectors={movePlanningState.sectors}
           playerShips={playerShips}
           simulatedShipSector={simulatedShipSector}
@@ -4445,7 +4811,9 @@ const AppContent: React.FC = () => {
           selectedShipId={selectedMoveShipId}
           onSelectShipId={handleSelectMoveShipId}
           onFinishActivation={handleFinishCurrentActivation}
-          onMove={handleMove}
+          onMove={(moves, pulsarId, useMidas, jotunnTarget) =>
+            handleMove(moves, pulsarId, useMidas, jotunnTarget)
+          }
           pulsarSectorId={activePulsarSectorId ?? undefined}
           raidBuildLabel={
             stagedRaidBuild
@@ -4463,6 +4831,47 @@ const AppContent: React.FC = () => {
               : null
           }
           onSkipRegroupMove={stagedRegroupBuilds && stagedRegroupBuilds.length > 0 ? handleSkipRegroupMove : undefined}
+          isJotunnDreadnoughtMove={stagedJotunnPrimary?.target === 'move'}
+          jotunnPreBuildLabel={
+            stagedJotunnMoveBuild
+              ? `DREADNOUGHT in Sector ${state.sectors.find((s) => s.id === stagedJotunnMoveBuild.sectorId)?.sectorNumber ?? stagedJotunnMoveBuild.sectorId}`
+              : null
+          }
+          jotunnDreadnoughtMoveSourceLabel={
+            stagedJotunnPrimary?.kind === 'BUILD'
+              ? `Build: ${stagedJotunnPrimary.items
+                  .map(
+                    (it) =>
+                      `${it.itemType.toUpperCase()} @ Sector ${state.sectors.find((s) => s.id === it.sectorId)?.sectorNumber ?? it.sectorId}`
+                  )
+                  .join(', ')}`
+              : stagedJotunnPrimary?.kind === 'UPGRADE'
+              ? `Upgrade: ${stagedJotunnPrimary.upgrades.length} slot${stagedJotunnPrimary.upgrades.length > 1 ? 's' : ''}`
+              : null
+          }
+          onSkipJotunnDreadnoughtBonus={
+            stagedJotunnPrimary?.target === 'move' ? handleSkipJotunnDreadnoughtBonus : undefined
+          }
+          jotunnDnTarget={jotunnMoveTarget}
+          onToggleJotunnDnTarget={(next) => {
+            const safeNext = next === 'same' || next === 'build' || next === 'upgrade' ? next : 'same';
+            if (safeNext === 'build') {
+              // When choosing Build Dreadnought as Move's special action, prompt Build window FIRST, then Move with remaining activations
+              setIsMoveOpen(false);
+              setJotunnMoveTarget('same');
+              setIsJotunnMovePreBuildStep(true);
+              setIsBuildOpen(true);
+              return;
+            }
+            setJotunnMoveTarget(safeNext);
+            if (safeNext !== 'same') {
+              const baseMax = getEffectiveMoveActivationLimit(effectiveMovePlayer, activePulsarSectorId, undefined, useMidasTouchMove, true);
+              if (plannedMoves.some((m) => m.activationIndex >= baseMax)) {
+                setPlannedMoves((prev) => prev.filter((m) => m.activationIndex < baseMax));
+                setActiveActivationIndex((prev) => Math.min(prev, baseMax));
+              }
+            }
+          }}
           warpConduits={state.warpedUniverse?.conduits}
           useMidasTouch={useMidasTouchMove}
           onToggleMidasTouch={(next) => {
@@ -4478,8 +4887,11 @@ const AppContent: React.FC = () => {
           onClose={() => {
             setIsMoveOpen(false);
             setUseMidasTouchMove(false);
+            setJotunnMoveTarget('same');
             setStagedRaidBuild(null);
+            setStagedJotunnMoveBuild(null);
             setStagedRegroupBuilds(null);
+            setStagedJotunnPrimary(null);
             setActivePulsarSectorId(null);
           }}
         />
@@ -4677,28 +5089,16 @@ const AppContent: React.FC = () => {
       )}
 
       {!state.pendingReputationDraw && state.pendingCombatConquest && (
-        canActForPlayer(state.pendingCombatConquest.winnerPlayerId) ? (
-          <CombatConquestModal
-            state={state}
-            conquest={state.pendingCombatConquest}
-            currentSeat={currentSeat}
-            onConfirm={handleCombatConquest}
-            onRerollBombardmentDie={handleRerollBombardmentDie}
-            onConfirmBombardment={handleConfirmBombardment}
-            onSelectBombardmentTargets={handleSelectBombardmentTargets}
-          />
-        ) : (
-          <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-50 bg-slate-900/95 border border-indigo-500/80 shadow-2xl rounded-2xl px-5 py-3 flex items-center gap-3 backdrop-blur text-sm text-slate-200 pointer-events-none animate-bounce">
-            <Sparkles className="w-5 h-5 text-indigo-400 shrink-0" />
-            <span>
-              Waiting for{' '}
-              <strong className="text-indigo-300">
-                {state.players.find((p) => p.id === state.pendingCombatConquest!.winnerPlayerId)?.name || 'Commander'}
-              </strong>{' '}
-              to decide whether to control Sector {state.sectors.find((s) => s.id === state.pendingCombatConquest!.sectorId)?.sectorNumber || state.pendingCombatConquest.sectorId}...
-            </span>
-          </div>
-        )
+        <CombatConquestModal
+          state={state}
+          conquest={state.pendingCombatConquest}
+          currentSeat={currentSeat}
+          canControl={canActForPlayer(state.pendingCombatConquest.winnerPlayerId)}
+          onConfirm={handleCombatConquest}
+          onRerollBombardmentDie={handleRerollBombardmentDie}
+          onConfirmBombardment={handleConfirmBombardment}
+          onSelectBombardmentTargets={handleSelectBombardmentTargets}
+        />
       )}
 
       {!state.pendingReputationDraw &&

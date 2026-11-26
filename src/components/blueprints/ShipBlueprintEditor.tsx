@@ -16,6 +16,7 @@ import {
 import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
+import { JotunnDreadNoughtBanner, JotunnDreadNoughtTarget } from '../common/JotunnDreadNoughtBanner';
 import { ShipPartTileIconography, ShipPartSlotGraphic, getPartTooltip } from '../common/PhysicalTileIconography';
 import { ShipBlueprintSlotsLayout } from './ShipBlueprintSlotsLayout';
 import { MegaWarModularStrip } from './MegaWarModularStrip';
@@ -51,9 +52,13 @@ interface ShipBlueprintEditorProps {
       modularGroupId?: MegaWarModularGroupId;
     }[],
     pulsarSectorId?: string,
-    useMidasTouch?: boolean
+    useMidasTouch?: boolean,
+    jotunnDnTarget?: 'build' | 'move'
   ) => void;
   readOnly?: boolean;
+  isJotunnDreadnoughtUpgrade?: boolean;
+  jotunnDreadnoughtUpgradeSourceLabel?: string | null;
+  onSkipJotunnDreadnoughtBonus?: () => void;
   onClose: () => void;
 }
 
@@ -64,6 +69,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   pulsarSectorId,
   onSaveBlueprint,
   readOnly = false,
+  isJotunnDreadnoughtUpgrade = false,
+  jotunnDreadnoughtUpgradeSourceLabel,
+  onSkipJotunnDreadnoughtBonus,
   onClose,
 }) => {
   const { language, l } = useLanguage();
@@ -71,11 +79,14 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     () => Object.keys(player.blueprints) as ShipType[],
     [player.blueprints]
   );
-  const [activeShipType, setActiveShipType] = useState<ShipType>(() => (
-    initialShipType && availableShipTypes.includes(initialShipType)
+  const [activeShipType, setActiveShipType] = useState<ShipType>(() => {
+    if (isJotunnDreadnoughtUpgrade && availableShipTypes.includes('dreadnought')) {
+      return 'dreadnought';
+    }
+    return initialShipType && availableShipTypes.includes(initialShipType)
       ? initialShipType
-      : availableShipTypes[0] || 'interceptor'
-  ));
+      : availableShipTypes[0] || 'interceptor';
+  });
   const [selectedSlotIndex, setSelectedSlotIndex] = useState<number | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
 
@@ -101,10 +112,26 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   });
 
   const [useMidasTouch, setUseMidasTouch] = useState<boolean>(false);
+  const [jotunnDnTarget, setJotunnDnTarget] = useState<JotunnDreadNoughtTarget>('same');
   const isPulsarActive = Boolean(pulsarSectorId);
   const isMidasTouchEligible = player.faction.id === 'legion_of_midas' && !isPulsarActive && !player.hasPassed && !readOnly;
   const effectiveMidasTouch = isMidasTouchEligible && useMidasTouch;
-  const maxUpgrades = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxUpgradeActivations(player, effectiveMidasTouch));
+  const isJotunnBannerEligible =
+    player.faction.id === 'jotunn' &&
+    !isPulsarActive &&
+    !isJotunnDreadnoughtUpgrade &&
+    !player.hasPassed &&
+    !readOnly;
+  const effectiveJotunnTarget =
+    isJotunnBannerEligible && (jotunnDnTarget === 'build' || jotunnDnTarget === 'move')
+      ? jotunnDnTarget
+      : undefined;
+  const maxUpgrades =
+    isPulsarActive || isJotunnDreadnoughtUpgrade
+      ? 1
+      : player.hasPassed
+      ? 1
+      : getMaxUpgradeActivations(player, effectiveMidasTouch, Boolean(effectiveJotunnTarget));
 
   // Available ship parts unlocked for the player (standard base, researched techs, and ancient discoveries)
   const STANDARD_PART_IDS = useMemo(
@@ -502,7 +529,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       isExternal: m.isExternal,
       modularGroupId: m.modularGroupId,
     }));
-    onSaveBlueprint(upgradesToApply, pulsarSectorId, effectiveMidasTouch || undefined);
+    onSaveBlueprint(upgradesToApply, pulsarSectorId, effectiveMidasTouch || undefined, effectiveJotunnTarget);
   };
 
   return (
@@ -582,14 +609,18 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             const bpStats = calculateBlueprintStats(bp, activeExpansions);
             const shipUpgradeCount = modifiedSlots.filter((m) => m.shipType === type).length;
 
+            const isDisabledTab = isJotunnDreadnoughtUpgrade && type !== 'dreadnought';
+
             return (
               <button
                 key={type}
+                disabled={isDisabledTab}
                 onClick={() => {
+                  if (isDisabledTab) return;
                   setActiveShipType(type);
                   setSelectedSlotIndex(null);
                 }}
-                className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-all border-t border-x flex items-center gap-2 ${
+                className={`px-4 py-2.5 rounded-t-lg font-bold text-sm tracking-wide transition-all border-t border-x flex items-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed ${
                   isActive
                     ? 'bg-slate-900 border-cyan-500/50 text-cyan-400'
                     : 'border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/40'
@@ -627,6 +658,36 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 }
               }}
             />
+          </div>
+        )}
+        {isJotunnBannerEligible && (
+          <div className="mx-6 mt-4">
+            <JotunnDreadNoughtBanner
+              player={player}
+              primaryAction="UPGRADE"
+              selectedTarget={jotunnDnTarget}
+              disableCrossSwitch={usedActivations > getMaxUpgradeActivations(player, effectiveMidasTouch, true)}
+              disableReason={l('Undo extra drafted slot first', '请先还原多余已修改槽位')}
+              onSelectTarget={(next) => setJotunnDnTarget(next)}
+            />
+          </div>
+        )}
+        {isJotunnDreadnoughtUpgrade && (
+          <div
+            data-testid="jotunn-dn-upgrade-step-banner"
+            className="mx-6 mt-4 px-3 py-2 rounded-xl bg-sky-950/60 border border-sky-500/80 text-sky-200 text-xs flex items-center justify-between gap-2"
+          >
+            <div>
+              <span className="font-bold">🛡️ {l('Dread Nought (+1 UPG) — Step 2: Upgrade 1 Dreadnought Slot', '无畏雄心 (+1 升级) — 第二步：升级 1 个无畏舰槽位')}</span>
+              <span className="text-sky-300/85 text-[11px] block">
+                {jotunnDreadnoughtUpgradeSourceLabel
+                  ? `${l('Staged Step 1:', '已暂存第一步：')} ${jotunnDreadnoughtUpgradeSourceLabel}`
+                  : l('Modify 1 slot on your Dreadnought blueprint, or skip to commit only your Step 1 action.', '改装无畏舰蓝图上的 1 个槽位，或跳过仅确认第一步行动。')}
+              </span>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-sky-900 text-sky-200 font-mono text-[10px] font-bold uppercase border border-sky-700 shrink-0">
+              {l('Dreadnought Only', '限无畏舰')}
+            </span>
           </div>
         )}
         {isBattleFocusFaction && (
@@ -1080,6 +1141,16 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             >
               {l('Cancel', '取消')}
             </button>
+            {isJotunnDreadnoughtUpgrade && onSkipJotunnDreadnoughtBonus && (
+              <button
+                type="button"
+                data-testid="jotunn-skip-dn-upgrade-btn"
+                onClick={onSkipJotunnDreadnoughtBonus}
+                className="px-4 py-2 rounded-xl bg-sky-950/90 hover:bg-sky-900 border border-sky-600/70 text-sky-200 text-xs font-semibold cursor-pointer"
+              >
+                {l('Skip Dreadnought Upgrade', '跳过升级无畏舰')}
+              </button>
+            )}
             <button
               disabled={readOnly || usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid}
               onClick={handleSave}
@@ -1089,6 +1160,12 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 ? l('Spectator Mode (Read Only)', '观战模式（只读）')
                 : usedActivations === 0
                 ? l(`Make Up to ${maxUpgrades} Upgrades`, `最多进行 ${maxUpgrades} 项升级`)
+                : effectiveJotunnTarget === 'build'
+                ? l(`Upgrade ${usedActivations} & Build Dreadnought ➔`, `升级 ${usedActivations} 项并建造无畏舰 ➔`)
+                : effectiveJotunnTarget === 'move'
+                ? l(`Upgrade ${usedActivations} & Move Dreadnought ➔`, `升级 ${usedActivations} 项并移动无畏舰 ➔`)
+                : isJotunnDreadnoughtUpgrade
+                ? l('Save Dreadnought Upgrade & Confirm', '保存无畏舰升级并确认')
                 : l(`Save ${usedActivations} Upgrade${usedActivations > 1 ? 's' : ''}`, `保存 ${usedActivations} 项升级`)}
             </button>
           </div>
@@ -1137,7 +1214,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   isExternal: m.isExternal,
                   modularGroupId: m.modularGroupId,
                 }));
-                onSaveBlueprint(upgradesToApply, pulsarSectorId, effectiveMidasTouch || undefined);
+                onSaveBlueprint(upgradesToApply, pulsarSectorId, effectiveMidasTouch || undefined, effectiveJotunnTarget);
               }}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"
             >

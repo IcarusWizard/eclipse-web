@@ -45,9 +45,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   ice: '#7dd3fc', // The Spiral
   gold: '#d4af37', // Legion of Midas
   asgard: '#64748b', // Heralds of Ragnarök
+  frost: '#5b8ec9', // Jotunn
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -82,6 +83,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   the_spiral: 'ice',
   legion_of_midas: 'gold',
   heralds_of_ragnarok: 'asgard',
+  jotunn: 'frost',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -108,6 +110,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   the_spiral: ECLIPSE_COLOR_PALETTE.ice,
   legion_of_midas: ECLIPSE_COLOR_PALETTE.gold,
   heralds_of_ragnarok: ECLIPSE_COLOR_PALETTE.asgard,
+  jotunn: ECLIPSE_COLOR_PALETTE.frost,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -671,6 +674,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 3,
     reputationSlotTypes: ['amb_only', 'both', 'both', 'rep_only', 'rep_only'],
   },
+  {
+    id: 'jotunn',
+    name: 'Jotunn',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.frost,
+    startingSectorNumber: 241,
+    startingResources: { money: 3, science: 2, materials: 4 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: ['advanced_mining'],
+    traitDescription: 'Dread Nought: Normal BUI, UPG, or MOV actions grant 1 normal activation and 1 special activation spendable as either +1 activation of that same type OR a BUI/UPG/MOV on a Dreadnought. Few in Number: Only flip back 1 Colony Ship on an Influence action. Bonus VPs: +1 VP per Dreadnought at end of game. Setup: Start with Advanced Mining and a Material cube on your Advanced Material planet in Sector 241 (Ark Ships).',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 1,
+    buildActivations: 1,
+    moveActivations: 1,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 1,
+    reputationSlots: 4,
+    ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -692,7 +718,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -730,7 +756,7 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   ) {
     return ['both', 'both', 'both', 'both'];
   }
-  if (faction.id === 'the_exiles') {
+  if (faction.id === 'the_exiles' || faction.id === 'jotunn') {
     return ['both', 'both', 'both', 'rep_only'];
   }
   if (faction.id === 'heralds_of_ragnarok') {
@@ -973,6 +999,13 @@ export function buildPlayerAndHomeSector(
       faction.id === 'heralds_of_ragnarok'
     ) {
       isColonized = !p.isAdvanced;
+    } else if (faction.id === 'jotunn') {
+      if (p.isAdvanced && p.resource === 'material') {
+        isColonized = true;
+        colonizedResource = 'material';
+      } else if (!p.isAdvanced) {
+        isColonized = true;
+      }
     } else if (faction.id === 'legion_of_midas') {
       // Money Is Power: start with a Money cube on the Advanced Gold square (lm_p2);
       // the Gray/Wild square (lm_p1) is chosen pre-game via CHOOSE_MIDAS_STARTING_CUBE.
