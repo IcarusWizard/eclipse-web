@@ -20,6 +20,7 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
 }) => {
   const { language, l } = useLanguage();
   const [autoPassEnabled, setAutoPassEnabled] = useState<boolean>(true);
+  const firstPassGold = player.faction.id === 'legion_of_midas' ? 1 : 2;
 
   if (!isOpen) return null;
 
@@ -69,6 +70,11 @@ export const FirstPassHintModal: React.FC<FirstPassHintModalProps> = ({
                   Passing concludes your main actions for Round {round}. However, whenever opponents take actions,
                   the turn will rotate back to you for <strong className="text-slate-100">Reaction Turns</strong> (where
                   you can Upgrade 1 part, Build 1 ship/structure, or Pass) until all players pass consecutively.
+                  {firstPassGold === 1 && (
+                    <span className="block mt-1 text-amber-300 font-semibold">
+                      All That Glitters: Legion of Midas earns 1 Gold instead of 2 Gold when passing first.
+                    </span>
+                  )}
                 </>
               )}
             </div>

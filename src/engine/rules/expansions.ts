@@ -263,7 +263,11 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'kassus gar rift' ||
     norm === 'the_spiral' ||
     norm === 'the spiral' ||
-    norm === 'spiralis'
+    norm === 'spiralis' ||
+    norm === 'legion_of_midas' ||
+    norm === 'legion of midas' ||
+    norm === 'phrygia-giants' ||
+    norm === 'phrygia giants'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }

@@ -3,6 +3,7 @@ import { PlayerState } from '../../engine/types/player';
 import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
 import { getEffectiveMoveActivationLimit, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
+import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { areSectorsConnected, getEdgeBetween } from '../../engine/rules/hexMath';
 import { getNebulaSubsectorForOuterEdge } from '../../engine/rules/galacticEvents';
 import type { WarpConduit } from '../../engine/rules/warpedUniverse';
@@ -61,11 +62,13 @@ export interface MoveModalProps {
   selectedShipId: string;
   onSelectShipId: (shipId: string) => void;
   onFinishActivation: () => void;
-  onMove: (moves: MoveStepPayload[], pulsarSectorId?: string) => void;
+  onMove: (moves: MoveStepPayload[], pulsarSectorId?: string, useMidasTouch?: boolean) => void;
   onClose: () => void;
   pulsarSectorId?: string;
   warpConduits?: WarpConduit[];
   raidBuildLabel?: string | null;
+  useMidasTouch?: boolean;
+  onToggleMidasTouch?: (next: boolean) => void;
 }
 
 export const MoveModal: React.FC<MoveModalProps> = ({
@@ -91,10 +94,16 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   pulsarSectorId,
   warpConduits,
   raidBuildLabel,
+  useMidasTouch: useMidasTouchProp,
+  onToggleMidasTouch,
 }) => {
   const { language, l } = useLanguage();
+  const [localUseMidasTouch, setLocalUseMidasTouch] = useState<boolean>(false);
+  const useMidasTouch = useMidasTouchProp ?? localUseMidasTouch;
   const isPulsarActive = Boolean(pulsarSectorId);
-  const maxMoves = getEffectiveMoveActivationLimit(player, pulsarSectorId);
+  const isMidasTouchEligible = player.faction.id === 'legion_of_midas' && !isPulsarActive && !player.hasPassed;
+  const effectiveMidasTouch = isMidasTouchEligible && useMidasTouch;
+  const maxMoves = getEffectiveMoveActivationLimit(player, pulsarSectorId, undefined, effectiveMidasTouch);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
   const hasWormholeGen = playerHasWormholeGenerator(player);
 
@@ -200,7 +209,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
         activationIndex: m.activationIndex,
         targetSubsector: m.targetSubsector,
       })),
-      pulsarSectorId
+      pulsarSectorId,
+      effectiveMidasTouch || undefined
     );
   };
 
@@ -221,7 +231,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canExecute, plannedMoves, onMove, onClose, pulsarSectorId, distinctActivationsCount, maxMoves, showUnusedWarning]);
+  }, [canExecute, plannedMoves, onMove, onClose, pulsarSectorId, distinctActivationsCount, maxMoves, showUnusedWarning, effectiveMidasTouch]);
 
   const currentShipSubsector = useMemo(() => {
     if (!currentShipObj || !currentSimSector || !currentSimSector.isNebula) return undefined;
@@ -265,6 +275,21 @@ export const MoveModal: React.FC<MoveModalProps> = ({
               {l('1 Ship Limit', '限 1 艘飞船')}
             </span>
           </div>
+        )}
+
+        {isMidasTouchEligible && (
+          <MidasTouchBanner
+            player={player}
+            actionType="MOVE"
+            enabled={useMidasTouch}
+            onToggle={(next) => {
+              if (onToggleMidasTouch) {
+                onToggleMidasTouch(next);
+              } else {
+                setLocalUseMidasTouch(next);
+              }
+            }}
+          />
         )}
 
         {/* Header */}
@@ -699,7 +724,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                     activationIndex: m.activationIndex,
                     targetSubsector: m.targetSubsector,
                   })),
-                  pulsarSectorId
+                  pulsarSectorId,
+                  effectiveMidasTouch || undefined
                 );
               }}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"

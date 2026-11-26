@@ -28,6 +28,7 @@ import {
   getMaxInfluenceActivations,
   getPlayerDisplayName,
 } from '../../engine/rules/gameReducer';
+import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { useLanguage } from '../../i18n/LanguageContext';
 
 interface ActionBarProps {
@@ -35,6 +36,8 @@ interface ActionBarProps {
   players?: PlayerState[];
   isExploreMode: boolean;
   onToggleExplore: () => void;
+  useMidasTouchExplore?: boolean;
+  onToggleMidasTouchExplore?: (next: boolean) => void;
   onOpenResearch: () => void;
   onOpenUpgrade: () => void;
   onOpenBuild: () => void;
@@ -68,6 +71,8 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   players,
   isExploreMode,
   onToggleExplore,
+  useMidasTouchExplore = false,
+  onToggleMidasTouchExplore,
   onOpenResearch,
   onOpenUpgrade,
   onOpenBuild,
@@ -209,7 +214,7 @@ export const ActionBar: React.FC<ActionBarProps> = ({
   const canActReaction = !isTurnGated && !isSpectator && hasDiscs && hasPassed && !hasPendingExplore;
   const canPass = !isTurnGated && !isSpectator && !hasPendingExplore;
 
-  const maxExplore = getMaxExploreActivations(activePlayer);
+  const maxExplore = getMaxExploreActivations(activePlayer, isExploreMode && !hasPendingExplore && useMidasTouchExplore);
   const maxResearch = getMaxResearchActivations(activePlayer);
   const maxUpgrade = hasPassed ? 1 : getMaxUpgradeActivations(activePlayer);
   const maxBuild = hasPassed ? 1 : getMaxBuildActivations(activePlayer);
@@ -359,6 +364,17 @@ export const ActionBar: React.FC<ActionBarProps> = ({
           )}
         </div>
       </div>
+
+      {/* Midas Touch Explore Toggle (shown when selecting hex to Explore) */}
+      {isExploreMode && !hasPendingExplore && !isTurnGated && !isSpectator && !hasPassed && activePlayer.faction.id === 'legion_of_midas' && onToggleMidasTouchExplore && (
+        <MidasTouchBanner
+          player={activePlayer}
+          actionType="EXPLORE"
+          enabled={useMidasTouchExplore}
+          onToggle={onToggleMidasTouchExplore}
+          className="w-full"
+        />
+      )}
 
       {/* Action Buttons Grid */}
       <div

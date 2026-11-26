@@ -15,6 +15,7 @@ import {
 } from '../../engine/rules/shipValidation';
 import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
 import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
+import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { ShipPartTileIconography, ShipPartSlotGraphic, getPartTooltip } from '../common/PhysicalTileIconography';
 import { ShipBlueprintSlotsLayout } from './ShipBlueprintSlotsLayout';
 import { MegaWarModularStrip } from './MegaWarModularStrip';
@@ -49,7 +50,8 @@ interface ShipBlueprintEditorProps {
       isExternal?: boolean;
       modularGroupId?: MegaWarModularGroupId;
     }[],
-    pulsarSectorId?: string
+    pulsarSectorId?: string,
+    useMidasTouch?: boolean
   ) => void;
   readOnly?: boolean;
   onClose: () => void;
@@ -98,8 +100,11 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     return drafts as Record<ShipType, ShipPart[]>;
   });
 
+  const [useMidasTouch, setUseMidasTouch] = useState<boolean>(false);
   const isPulsarActive = Boolean(pulsarSectorId);
-  const maxUpgrades = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxUpgradeActivations(player));
+  const isMidasTouchEligible = player.faction.id === 'legion_of_midas' && !isPulsarActive && !player.hasPassed && !readOnly;
+  const effectiveMidasTouch = isMidasTouchEligible && useMidasTouch;
+  const maxUpgrades = isPulsarActive ? 1 : (player.hasPassed ? 1 : getMaxUpgradeActivations(player, effectiveMidasTouch));
 
   // Available ship parts unlocked for the player (standard base, researched techs, and ancient discoveries)
   const STANDARD_PART_IDS = useMemo(
@@ -497,7 +502,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
       isExternal: m.isExternal,
       modularGroupId: m.modularGroupId,
     }));
-    onSaveBlueprint(upgradesToApply, pulsarSectorId);
+    onSaveBlueprint(upgradesToApply, pulsarSectorId, effectiveMidasTouch || undefined);
   };
 
   return (
@@ -609,6 +614,21 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
         </div>
 
         {/* Main Content Area */}
+        {isMidasTouchEligible && (
+          <div className="mx-6 mt-4">
+            <MidasTouchBanner
+              player={player}
+              actionType="UPGRADE"
+              enabled={useMidasTouch}
+              onToggle={(next) => {
+                setUseMidasTouch(next);
+                if (!next && usedActivations > getMaxUpgradeActivations(player, false)) {
+                  setShowUnusedWarning(false);
+                }
+              }}
+            />
+          </div>
+        )}
         {isBattleFocusFaction && (
           <div
             data-testid="horde-battle-focus-banner"
@@ -1117,7 +1137,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   isExternal: m.isExternal,
                   modularGroupId: m.modularGroupId,
                 }));
-                onSaveBlueprint(upgradesToApply, pulsarSectorId);
+                onSaveBlueprint(upgradesToApply, pulsarSectorId, effectiveMidasTouch || undefined);
               }}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"
             >

@@ -526,6 +526,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const isCurrentUpkeepSlot = slotIndex === player.influenceTrack.discsOnTrack;
                       const isNextActionSlot = slotIndex === player.influenceTrack.discsOnTrack - 1;
                       const isNext2ActionsSlot = slotIndex === player.influenceTrack.discsOnTrack - 2;
+                      const isMidasRedZone = player.faction.id === 'legion_of_midas' && slotIndex < 7;
 
                       return (
                         <div
@@ -564,6 +565,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                                 ? 'border-dashed border-amber-400/80 bg-amber-950/20'
                                 : isNext2ActionsSlot
                                 ? 'border-dashed border-rose-400/80 bg-rose-950/20'
+                                : isMidasRedZone
+                                ? 'border-rose-500/80 bg-rose-950/25 shadow-sm shadow-rose-950/40'
                                 : isCovered
                                 ? 'border-slate-700 bg-slate-900 shadow-inner'
                                 : 'border-slate-800 bg-slate-950'

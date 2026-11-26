@@ -379,6 +379,19 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'sp_p4', resource: 'science', isAdvanced: true },
     ],
   },
+  legion_of_midas: {
+    sectorNumber: 277,
+    name: 'Phrygia-Giants',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'lm_p1', resource: 'any', isAdvanced: false },
+      { id: 'lm_p2', resource: 'money', isAdvanced: true },
+      { id: 'lm_p3', resource: 'science', isAdvanced: true },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

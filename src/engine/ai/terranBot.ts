@@ -188,6 +188,9 @@ export function getPriorityActorId(state: GameState): string | null {
   if (state.pendingSpiralTechSetup) {
     return state.pendingSpiralTechSetup.playerId;
   }
+  if (state.pendingMidasStartingCubeSetup) {
+    return state.pendingMidasStartingCubeSetup.playerId;
+  }
   if (state.phase === 'DRAFT_PHASE' && state.factionDraft) {
     return state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] || null;
   }
@@ -382,6 +385,19 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
       };
     }
   }
+  if (state.pendingMidasStartingCubeSetup?.playerId === player.id) {
+    const tracks: ('material' | 'science' | 'money')[] = ['material', 'science', 'money'];
+    const bestTrack = tracks.reduce(
+      (best, cur) =>
+        player.population[cur].cubesOnBoard > player.population[best].cubesOnBoard ? cur : best,
+      'material'
+    );
+    return {
+      type: 'CHOOSE_MIDAS_STARTING_CUBE',
+      playerId: player.id,
+      resource: bestTrack,
+    };
+  }
   if (state.phase === 'DRAFT_PHASE' && state.factionDraft) {
     return handleDraftFaction(state, player);
   }
@@ -406,6 +422,9 @@ function buildSafeFallbackAction(state: GameState, player: PlayerState): GameAct
     if (eligible.length > 0) {
       return { type: 'CHOOSE_SPIRAL_STARTING_TECH', playerId: player.id, techId: eligible[0]!.id };
     }
+  }
+  if (state.pendingMidasStartingCubeSetup?.playerId === player.id) {
+    return { type: 'CHOOSE_MIDAS_STARTING_CUBE', playerId: player.id, resource: 'material' };
   }
   if (state.pendingActionConfirmation?.playerId === player.id) {
     return { type: 'CONFIRM_TURN_ACTION', playerId: player.id };

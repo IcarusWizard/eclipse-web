@@ -14,6 +14,8 @@ import {
 import { isSpiralPhase2 } from '../../engine/rules/partData';
 import { getMinorSpeciesTechDiscount } from '../../engine/rules/minorSpecies';
 import { SHIP_PARTS } from '../../engine/rules/partData';
+import { getMaxResearchActivations } from '../../engine/rules/gameReducer';
+import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { TechTileIconography } from '../common/PhysicalTileIconography';
@@ -60,7 +62,8 @@ interface TechMarketModalProps {
     targetTrack?: 'military' | 'grid' | 'nano',
     warpPortalSectorId?: string,
     shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string },
-    ancientInstinctUpgrade?: { shipType: ShipType; slotIndex: number; partId: string }
+    ancientInstinctUpgrade?: { shipType: ShipType; slotIndex: number; partId: string },
+    useMidasTouch?: boolean
   ) => void;
   onClose: () => void;
 }
@@ -99,7 +102,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     (currentSeat === 'all' || (typeof currentSeat === 'number' && players?.[currentSeat]?.id === commander.id));
   const hasActionDiscs = commander.influenceTrack.discsOnTrack > 0;
   const hasPassed = commander.hasPassed;
-  const maxResearch = commander.faction.researchActivations ?? 1;
+  const [useMidasTouch, setUseMidasTouch] = useState<boolean>(false);
+  const isMidasTouchEligible =
+    commander.faction.id === 'legion_of_midas' && isCommanderTurn && hasActionDiscs && !hasPassed;
+  const effectiveMidasTouch = isMidasTouchEligible && useMidasTouch;
+  const maxResearch = getMaxResearchActivations(commander, effectiveMidasTouch);
 
   // Player-controlled sectors for Warp Portal placement (Bug 79)
   const controlledSectors = React.useMemo(
@@ -634,7 +641,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                       });
                       return;
                     }
-                    onResearchTech(tech.id, chosenTrack, portalSec, shrinePlacement);
+                    onResearchTech(tech.id, chosenTrack, portalSec, shrinePlacement, undefined, effectiveMidasTouch || undefined);
                   }}
                   disabled={isShrinePartiallySelected}
                   className="w-full py-1 rounded-lg text-xs font-bold bg-gradient-to-r from-pink-600 to-rose-600 hover:from-pink-500 hover:to-rose-500 text-white shadow-md shadow-pink-950/50 transition-all font-sans disabled:opacity-40 cursor-pointer flex items-center justify-center gap-1"
@@ -726,6 +733,21 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
         {/* Player Switcher & Tech Track Discounts Status Banner */}
         <div className="bg-slate-900/60 px-5 py-2.5 border-b border-slate-800 flex flex-wrap items-center justify-between gap-4 text-xs shrink-0">
+          {isMidasTouchEligible && (
+            <MidasTouchBanner
+              player={commander}
+              actionType="RESEARCH"
+              enabled={useMidasTouch}
+              onToggle={(next) => {
+                setUseMidasTouch(next);
+                if (!next) {
+                  setSelectedForResearch([]);
+                  setShowUnusedWarning(false);
+                }
+              }}
+              className="w-full"
+            />
+          )}
           <div className="flex items-center gap-2 flex-wrap">
             <span className="font-bold text-slate-400">{l('Viewing Commander:', '当前查看指挥官：')}</span>
             {players && players.length > 1 ? (
@@ -1190,7 +1212,11 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
               </div>
               <div>
                 <div className="text-xs font-bold text-cyan-300 uppercase tracking-wide flex items-center gap-2">
-                  <span>{l('Hydran Double Research Staging', '海德拉双重研发暂存区')}</span>
+                  <span>
+                    {commander.faction.id === 'legion_of_midas'
+                      ? l('Midas Touch Double Research Staging', '点金手双重研发暂存区')
+                      : l('Hydran Double Research Staging', '海德拉双重研发暂存区')}
+                  </span>
                   <span className="px-2 py-0.5 rounded bg-cyan-950 border border-cyan-700 text-[10px] text-cyan-400 font-mono font-bold">
                     {selectedForResearch.length} / {maxResearch} {l('Selected', '已选')}
                   </span>
@@ -1256,7 +1282,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   }
                   const hasWarp = selectedForResearch.some((s) => s.techId === 'warp_portal');
                   const targetSecId = hasWarp ? (warpPortalSectorId || (sectors || []).find((s) => s.discOwner === commander.id)?.id) : undefined;
-                  onResearchTech(selectedForResearch, undefined, targetSecId, shrinePlacement);
+                  onResearchTech(selectedForResearch, undefined, targetSecId, shrinePlacement, undefined, effectiveMidasTouch || undefined);
                 }}
                 className="px-5 py-2 rounded-xl bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg shadow-cyan-950/50 transition-all flex items-center gap-1.5 font-sans cursor-pointer"
               >
@@ -1336,7 +1362,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 setShowUnusedWarning(false);
                 const hasWarp = selectedForResearch.some((s) => s.techId === 'warp_portal');
                 const targetSecId = hasWarp ? (warpPortalSectorId || (sectors || []).find((s) => s.discOwner === commander.id)?.id) : undefined;
-                onResearchTech(selectedForResearch, undefined, targetSecId, shrinePlacement);
+                onResearchTech(selectedForResearch, undefined, targetSecId, shrinePlacement, undefined, effectiveMidasTouch || undefined);
               }}
               className="px-4 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-cyan-950/50 cursor-pointer"
             >

@@ -857,12 +857,21 @@ export function advanceTurnOrAutoPass(state: GameState, checkCurrentPlayerFirst:
 
 /**
  * Returns true while any faction still needs to complete pre-game starting placement/selection
- * (The Exiles home Orbital, Remnants of Ra home Artifact [A] slot, or The Spiral Cheapest Tech).
+ * (The Exiles home Orbital, Remnants of Ra home Artifact [A] slot, The Spiral Cheapest Tech,
+ * or Legion of Midas Gray/Wild starting cube).
  */
 export function hasPendingPreGameCubeSetup(
-  state: Pick<GameState, 'pendingExilesOrbitalSetup' | 'pendingRaArtifactSetup' | 'pendingSpiralTechSetup'>
+  state: Pick<
+    GameState,
+    'pendingExilesOrbitalSetup' | 'pendingRaArtifactSetup' | 'pendingSpiralTechSetup' | 'pendingMidasStartingCubeSetup'
+  >
 ): boolean {
-  return Boolean(state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingSpiralTechSetup);
+  return Boolean(
+    state.pendingExilesOrbitalSetup ||
+      state.pendingRaArtifactSetup ||
+      state.pendingSpiralTechSetup ||
+      state.pendingMidasStartingCubeSetup
+  );
 }
 
 export function validateBuildItems(
@@ -1176,11 +1185,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return { valid: false, error: 'Player not found.' };
   }
 
-  // Pending Exiles / Remnants of Ra / The Spiral starting setup choices must complete before taking normal actions
+  // Pending Exiles / Remnants of Ra / The Spiral / Legion of Midas starting setup choices must complete before taking normal actions
   const isPreGameSetupAction =
     action.type === 'CHOOSE_EXILES_ORBITAL_CUBE' ||
     action.type === 'CHOOSE_RA_ARTIFACT_CUBE' ||
-    action.type === 'CHOOSE_SPIRAL_STARTING_TECH';
+    action.type === 'CHOOSE_SPIRAL_STARTING_TECH' ||
+    action.type === 'CHOOSE_MIDAS_STARTING_CUBE';
   if (state.pendingExilesOrbitalSetup && !isPreGameSetupAction) {
     return {
       valid: false,
@@ -1197,6 +1207,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return {
       valid: false,
       error: 'The Spiral commander must select their starting cheapest technology before taking actions.',
+    };
+  }
+  if (state.pendingMidasStartingCubeSetup && !isPreGameSetupAction) {
+    return {
+      valid: false,
+      error: 'Legion of Midas commander must choose their starting Gray population cube before taking actions.',
     };
   }
 
@@ -1239,6 +1255,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
       action.type !== 'CHOOSE_SPIRAL_STARTING_TECH' &&
+      action.type !== 'CHOOSE_MIDAS_STARTING_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'RETURN_AMBASSADOR_CUBE' &&
@@ -1282,6 +1299,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_EXILES_ORBITAL_CUBE' &&
       action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
       action.type !== 'CHOOSE_SPIRAL_STARTING_TECH' &&
+      action.type !== 'CHOOSE_MIDAS_STARTING_CUBE' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'RETURN_AMBASSADOR_CUBE' &&
@@ -1447,10 +1465,24 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
   switch (action.type) {
     case 'START_EXPLORE': {
+      const isSecondActivation = Boolean(action.isSecondActivation || (state.pendingExploreActivations && state.pendingExploreActivations > 0));
+      if (action.useMidasTouch) {
+        const midasCheck = validateMidasTouchUsage(player, 'EXPLORE', { isPassed: isPassedPlayer, isSecondActivation });
+        if (!midasCheck.valid) return midasCheck;
+      }
       return validateExplorePlacement(action.fromCoord, action.targetCoord, action.isSecondActivation, true);
     }
 
     case 'EXPLORE': {
+      const isSecondActivation = Boolean(
+        action.isSecondActivation ||
+        state.pendingExplore?.isSecondActivation ||
+        (state.pendingExploreActivations && state.pendingExploreActivations > 0)
+      );
+      if (action.useMidasTouch) {
+        const midasCheck = validateMidasTouchUsage(player, 'EXPLORE', { isPassed: isPassedPlayer, isSecondActivation });
+        if (!midasCheck.valid) return midasCheck;
+      }
       if (state.pendingExplore) {
         if (!areCoordsEqual(state.pendingExplore.targetCoord, action.targetCoord)) {
           return { valid: false, error: 'Must resolve the currently revealed sector coordinate first.' };
@@ -1473,7 +1505,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Must specify at least one technology to research.' };
       }
 
-      const maxResearch = player.faction.researchActivations ?? 1;
+      if (action.useMidasTouch) {
+        const midasCheck = validateMidasTouchUsage(player, 'RESEARCH', { isPassed: isPassedPlayer });
+        if (!midasCheck.valid) return midasCheck;
+      }
+
+      const maxResearch = getMaxResearchActivations(player, action.useMidasTouch);
       if (researches.length > maxResearch) {
         return { valid: false, error: `Cannot research more than ${maxResearch} technologies in a single Research action.` };
       }
@@ -1793,7 +1830,11 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
 
       const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
-      const maxUpgrade = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxUpgradeActivations(player));
+      if (action.useMidasTouch) {
+        const midasCheck = validateMidasTouchUsage(player, 'UPGRADE', { isPassed, pulsarSectorId: action.pulsarSectorId });
+        if (!midasCheck.valid) return midasCheck;
+      }
+      const maxUpgrade = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxUpgradeActivations(player, action.useMidasTouch));
       if (modifiedCount > maxUpgrade) {
         return {
           valid: false,
@@ -1891,7 +1932,11 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
 
       const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
-      const maxBuild = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxBuildActivations(player));
+      if (action.useMidasTouch) {
+        const midasCheck = validateMidasTouchUsage(player, 'BUILD', { isPassed, pulsarSectorId: action.pulsarSectorId });
+        if (!midasCheck.valid) return midasCheck;
+      }
+      const maxBuild = action.pulsarSectorId ? 1 : (isPassed ? 1 : getMaxBuildActivations(player, action.useMidasTouch));
       if (action.items.length > maxBuild) {
         return {
           valid: false,
@@ -1936,7 +1981,11 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
 
       const isPassed = player.hasPassed || state.passedPlayerIds.includes(player.id);
-      const maxMoveActivations = getEffectiveMoveActivationLimit(player, action.pulsarSectorId, isPassed);
+      if (action.useMidasTouch) {
+        const midasCheck = validateMidasTouchUsage(player, 'MOVE', { isPassed, pulsarSectorId: action.pulsarSectorId });
+        if (!midasCheck.valid) return midasCheck;
+      }
+      const maxMoveActivations = getEffectiveMoveActivationLimit(player, action.pulsarSectorId, isPassed, action.useMidasTouch);
       const hasWormholeGen = playerHasWormholeGenerator(player);
 
       if (action.raidBuild) {
@@ -2227,10 +2276,14 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
 
     case 'INFLUENCE': {
+      if (action.useMidasTouch) {
+        const midasCheck = validateMidasTouchUsage(player, 'INFLUENCE', { isPassed: isPassedPlayer });
+        if (!midasCheck.valid) return midasCheck;
+      }
       const claimed = action.claimSectors ?? ((action as any).sectorId ? [(action as any).sectorId] : []);
       const abandoned = action.abandonSectors ?? [];
       const totalActivations = claimed.length + abandoned.length;
-      const maxActivations = getMaxInfluenceActivations(player);
+      const maxActivations = getMaxInfluenceActivations(player, action.useMidasTouch);
 
       if (totalActivations > maxActivations) {
         return { valid: false, error: `Maximum ${maxActivations} influence activations allowed per action.` };
@@ -3055,6 +3108,22 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'CHOOSE_MIDAS_STARTING_CUBE': {
+      if (!state.pendingMidasStartingCubeSetup) {
+        return { valid: false, error: 'No pending Legion of Midas starting cube setup.' };
+      }
+      if (state.pendingMidasStartingCubeSetup.playerId !== action.playerId) {
+        return { valid: false, error: 'Only the Legion of Midas commander can make this choice.' };
+      }
+      if (action.resource !== 'money' && action.resource !== 'science' && action.resource !== 'material') {
+        return { valid: false, error: 'Must choose a money, science, or material population cube.' };
+      }
+      if (player.population[action.resource].cubesOnBoard <= 0) {
+        return { valid: false, error: `No ${action.resource} population cubes remaining on track.` };
+      }
+      return { valid: true };
+    }
+
     case 'CONFIGURE_SPIRAL_SHIFT_PORT': {
       if (state.phase !== 'COMBAT_PHASE' || !state.activeCombat) {
         return { valid: false, error: 'No active combat in progress for Shift Port configuration.' };
@@ -3668,6 +3737,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         targetCoord: action.targetCoord,
         playerId: player.id,
         isSecondActivation: Boolean(action.isSecondActivation || (newState.pendingExploreActivations && newState.pendingExploreActivations > 0)),
+        useMidasTouch: Boolean(action.useMidasTouch),
       };
       return { success: true, newState };
     }
@@ -3678,13 +3748,18 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         newState.pendingExplore?.isSecondActivation ||
         (newState.pendingExploreActivations && newState.pendingExploreActivations > 0)
       );
+      const usingMidasTouch = !isSecondActivation && Boolean(action.useMidasTouch || newState.pendingExplore?.useMidasTouch);
       if (isSecondActivation) {
         newState.pendingExploreActivations = 0;
       } else {
+        // Deduct Midas Touch gold BEFORE deducting action disc (<= 7 disc rule checks pre-action discs)
+        if (usingMidasTouch) {
+          consumeMidasTouchCost(player, 'EXPLORE', addLog);
+        }
         // Deduct action disc
         player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
         player.actionsTakenThisRound += 1;
-        const maxExplores = player.faction.exploreActivations ?? 1;
+        const maxExplores = getMaxExploreActivations(player, usingMidasTouch);
         if (maxExplores > 1) {
           newState.pendingExploreActivations = maxExplores - 1;
         } else {
@@ -3857,6 +3932,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     }
 
     case 'RESEARCH': {
+      if (action.useMidasTouch) {
+        consumeMidasTouchCost(player, 'RESEARCH', addLog);
+      }
       player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       player.actionsTakenThisRound += 1;
 
@@ -4033,6 +4111,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         };
         addLog(`🌟 ${player.name} activated Pulsar in Sector ${pulsarSec.sectorNumber} (shifted disc to UPGRADE)!`, 'action');
       } else {
+        if (action.useMidasTouch) {
+          consumeMidasTouchCost(player, 'UPGRADE', addLog);
+        }
         player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       }
       player.actionsTakenThisRound += 1;
@@ -4119,6 +4200,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         };
         addLog(`🌟 ${player.name} activated Pulsar in Sector ${pulsarSec.sectorNumber} (shifted disc to BUILD)!`, 'action');
       } else {
+        if (action.useMidasTouch) {
+          consumeMidasTouchCost(player, 'BUILD', addLog);
+        }
         player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       }
       player.actionsTakenThisRound += 1;
@@ -4140,6 +4224,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         };
         addLog(`🌟 ${player.name} activated Pulsar in Sector ${pulsarSec.sectorNumber} (shifted disc to MOVE)!`, 'action');
       } else {
+        if (action.useMidasTouch) {
+          consumeMidasTouchCost(player, 'MOVE', addLog);
+        }
         player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       }
       player.actionsTakenThisRound += 1;
@@ -4421,6 +4508,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     }
 
     case 'INFLUENCE': {
+      if (action.useMidasTouch) {
+        consumeMidasTouchCost(player, 'INFLUENCE', addLog);
+      }
       player.influenceTrack.discsOnTrack = Math.max(0, player.influenceTrack.discsOnTrack - 1);
       player.actionsTakenThisRound += 1;
 
@@ -4658,13 +4748,14 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         player.hasPassed = true;
 
         const tileNum = newState.passedPlayerIds.length;
+        const firstPassBonus = player.faction.id === 'legion_of_midas' ? 1 : 2;
         if (newState.expansions?.includes('turn_order')) {
           if (tileNum === 1) {
             newState.firstPlayerPassedThisRound = player.id;
             player.isFirstPasser = true;
-            player.resources.money += 2; // First to pass gets +2 Credits bonus!
+            player.resources.money += firstPassBonus; // All That Glitters: Midas earns 1 Gold instead of 2 when passing first
             addLog(
-              `${player.name} was FIRST to PASS, took Next Turn Order Tile #1 (Start Player next round), and received 2 Credits bonus!`,
+              `${player.name} was FIRST to PASS, took Next Turn Order Tile #1 (Start Player next round), and received ${firstPassBonus} Credit${firstPassBonus === 1 ? '' : 's'} bonus${player.faction.id === 'legion_of_midas' ? ' (All That Glitters)' : ''}!`,
               'system'
             );
           } else {
@@ -4677,8 +4768,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           if (tileNum === 1) {
             newState.firstPlayerPassedThisRound = player.id;
             player.isFirstPasser = true;
-            player.resources.money += 2; // First to pass gets +2 Credits bonus!
-            addLog(`${player.name} was FIRST to PASS and received 2 Credits bonus!`, 'system');
+            player.resources.money += firstPassBonus; // All That Glitters: Midas earns 1 Gold instead of 2 when passing first
+            addLog(
+              `${player.name} was FIRST to PASS and received ${firstPassBonus} Credit${firstPassBonus === 1 ? '' : 's'} bonus${player.faction.id === 'legion_of_midas' ? ' (All That Glitters)' : ''}!`,
+              'system'
+            );
           } else {
             addLog(`${player.name} passed for the round.`);
           }
@@ -6037,6 +6131,35 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       return { success: true, newState };
     }
 
+    case 'CHOOSE_MIDAS_STARTING_CUBE': {
+      if (!newState.pendingMidasStartingCubeSetup) {
+        return { success: false, newState: state, error: 'No pending Legion of Midas starting cube setup.' };
+      }
+      const sector = newState.sectors.find((s) => s.id === newState.pendingMidasStartingCubeSetup!.sectorId);
+      const planet = sector?.planets.find((p) => p.id === newState.pendingMidasStartingCubeSetup!.planetId);
+      if (planet) {
+        const oldRes = planet.colonizedBy === player.id ? planet.colonizedResource : undefined;
+        if (oldRes && oldRes !== action.resource && (oldRes === 'money' || oldRes === 'science' || oldRes === 'material')) {
+          player.population[oldRes].cubesOnBoard = Math.min(11, player.population[oldRes].cubesOnBoard + 1);
+        }
+        if (oldRes !== action.resource) {
+          player.population[action.resource].cubesOnBoard = Math.max(
+            0,
+            player.population[action.resource].cubesOnBoard - 1
+          );
+        }
+        planet.colonizedBy = player.id;
+        planet.colonizedResource = action.resource;
+      }
+      newState.pendingMidasStartingCubeSetup = null;
+      addLog(
+        `🪙 ${player.name} placed a ${action.resource.toUpperCase()} population cube on the Gray planet in Sector ${sector?.sectorNumber || 277} (Phrygia-Giants).`,
+        'action'
+      );
+      triggerPendingAtlantiansStartingLabsDiscovery(newState);
+      return { success: true, newState };
+    }
+
     case 'CONFIGURE_SPIRAL_SHIFT_PORT': {
       if (newState.activeCombat && newState.activeCombat.sectorId === action.sectorId) {
         newState.activeCombat.spiralShiftModes = newState.activeCombat.spiralShiftModes || {};
@@ -6302,6 +6425,21 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         const spiralPlayer = newState.players.find((p) => p.faction.id === 'the_spiral');
         if (spiralPlayer) {
           newState.pendingSpiralTechSetup = { playerId: spiralPlayer.id };
+        }
+
+        const midasPlayer = newState.players.find((p) => p.faction.id === 'legion_of_midas');
+        if (midasPlayer) {
+          const homeSector = newState.sectors.find(
+            (s) => s.id === `home_sector_${midasPlayer.id}` || s.sectorNumber === 277
+          );
+          const wildPlanet = homeSector?.planets.find((p) => p.resource === 'any' && !p.isAdvanced && !p.colonizedBy);
+          if (wildPlanet && homeSector) {
+            newState.pendingMidasStartingCubeSetup = {
+              playerId: midasPlayer.id,
+              sectorId: homeSector.id,
+              planetId: wildPlanet.id,
+            };
+          }
         }
 
         triggerPendingAtlantiansStartingLabsDiscovery(newState);
@@ -8838,30 +8976,94 @@ export function calculateFinalScores(state: GameState): void {
   state.winnerId = leaderPlayerId;
 }
 
-export function getMaxExploreActivations(player: PlayerState): number {
-  return player.faction.exploreActivations ?? 1;
+export type MidasTouchActionType = 'EXPLORE' | 'RESEARCH' | 'UPGRADE' | 'BUILD' | 'MOVE' | 'INFLUENCE';
+
+export const MIDAS_TOUCH_BASE_COSTS: Record<MidasTouchActionType, number> = {
+  EXPLORE: 4,
+  RESEARCH: 3,
+  UPGRADE: 1,
+  BUILD: 1,
+  MOVE: 1,
+  INFLUENCE: 1,
+};
+
+/**
+ * Returns the Gold cost for Legion of Midas to activate Midas Touch (+1 activation)
+ * BEFORE performing an action. If 7 or less action discs remain on track, cost increases by +1.
+ */
+export function getMidasTouchCost(
+  player: Pick<PlayerState, 'faction' | 'influenceTrack'>,
+  actionType: MidasTouchActionType
+): number {
+  const base = MIDAS_TOUCH_BASE_COSTS[actionType];
+  const lowDiscSurcharge = player.influenceTrack.discsOnTrack <= 7 ? 1 : 0;
+  return base + lowDiscSurcharge;
 }
 
-export function getMaxResearchActivations(player: PlayerState): number {
-  return player.faction.researchActivations ?? 1;
+function validateMidasTouchUsage(
+  player: PlayerState,
+  actionType: MidasTouchActionType,
+  options?: { isPassed?: boolean; pulsarSectorId?: string; isSecondActivation?: boolean }
+): { valid: boolean; error?: string; cost?: number } {
+  if (player.faction.id !== 'legion_of_midas') {
+    return { valid: false, error: 'Only Legion of Midas may use Midas Touch.' };
+  }
+  if (options?.isPassed) {
+    return { valid: false, error: 'Midas Touch cannot be used during a Reaction action.' };
+  }
+  if (options?.pulsarSectorId) {
+    return { valid: false, error: 'Midas Touch cannot be used during a Pulsar activation.' };
+  }
+  if (options?.isSecondActivation) {
+    return { valid: false, error: 'Midas Touch can only be activated once before performing an Explore action.' };
+  }
+  const cost = getMidasTouchCost(player, actionType);
+  if (player.resources.money < cost) {
+    return {
+      valid: false,
+      error: `Midas Touch (${actionType}) requires ${cost} Gold (${player.influenceTrack.discsOnTrack <= 7 ? 'includes +1 cost for ≤7 action discs remaining' : 'base cost'}), but player has ${player.resources.money}.`,
+    };
+  }
+  return { valid: true, cost };
 }
 
-export function getMaxUpgradeActivations(player: PlayerState): number {
+function consumeMidasTouchCost(
+  player: PlayerState,
+  actionType: MidasTouchActionType,
+  addLog: (msg: string, type?: GameLogEntry['type']) => void
+): void {
+  const cost = getMidasTouchCost(player, actionType);
+  player.resources.money = Math.max(0, player.resources.money - cost);
+  addLog(
+    `✨ Midas Touch (${player.name}): spent ${cost} Gold for +1 ${actionType} activation.`,
+    'action'
+  );
+}
+
+export function getMaxExploreActivations(player: PlayerState, useMidasTouch?: boolean): number {
+  return (player.faction.exploreActivations ?? 1) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
+}
+
+export function getMaxResearchActivations(player: PlayerState, useMidasTouch?: boolean): number {
+  return (player.faction.researchActivations ?? 1) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
+}
+
+export function getMaxUpgradeActivations(player: PlayerState, useMidasTouch?: boolean): number {
   const base = player.faction.upgradeActivations ?? 2;
   const hasPicoModulator = player.techTrack.researched.some((t) => t.id === 'pico_modulator');
-  return base + (hasPicoModulator ? 2 : 0);
+  return base + (hasPicoModulator ? 2 : 0) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
 }
 
-export function getMaxBuildActivations(player: PlayerState): number {
+export function getMaxBuildActivations(player: PlayerState, useMidasTouch?: boolean): number {
   const base = player.faction.buildActivations ?? 2;
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
-  return base + (hasNanorobots ? 1 : 0);
+  return base + (hasNanorobots ? 1 : 0) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
 }
 
-export function getMaxMoveActivations(player: PlayerState): number {
+export function getMaxMoveActivations(player: PlayerState, useMidasTouch?: boolean): number {
   const base = player.faction.moveActivations ?? (player.faction.isHuman ? 3 : 2);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
-  return base + (hasImprovedLogistics ? 1 : 0);
+  return base + (hasImprovedLogistics ? 1 : 0) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
 }
 
 /**
@@ -8871,16 +9073,17 @@ export function getMaxMoveActivations(player: PlayerState): number {
 export function getEffectiveMoveActivationLimit(
   player: PlayerState,
   pulsarSectorId?: string | null,
-  isPassedOverride?: boolean
+  isPassedOverride?: boolean,
+  useMidasTouch?: boolean
 ): number {
   if (pulsarSectorId || isPassedOverride || player.hasPassed) {
     return 1;
   }
-  return getMaxMoveActivations(player);
+  return getMaxMoveActivations(player, useMidasTouch);
 }
 
-export function getMaxInfluenceActivations(player: PlayerState): number {
-  return player.faction.influenceActivations ?? 2;
+export function getMaxInfluenceActivations(player: PlayerState, useMidasTouch?: boolean): number {
+  return (player.faction.influenceActivations ?? 2) + (useMidasTouch && player.faction.id === 'legion_of_midas' ? 1 : 0);
 }
 
 export function getInfluenceColonyShipRefreshes(player: PlayerState): number {

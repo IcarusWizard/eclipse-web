@@ -107,6 +107,7 @@ export interface PendingExplore {
   fromCoord: HexCoord;
   playerId: string;
   isSecondActivation?: boolean;
+  useMidasTouch?: boolean;
 }
 
 export interface PendingDiscovery {
@@ -302,6 +303,7 @@ export interface GameState {
   pendingExilesOrbitalSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   pendingRaArtifactSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   pendingSpiralTechSetup?: { playerId: string } | null;
+  pendingMidasStartingCubeSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];
   sectorCombatRecords?: Record<string, {

@@ -31967,6 +31967,502 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(boardHtml).toContain('data-testid="spiral-single-tech-board"');
       expect(boardHtml).toContain('SINGLE TECH LINE — ANY TRAY (7/7 Researched)');
     });
+
+    it('303. verifies Legion of Midas community faction, Money Is Power setup, All That Glitters (+1 first pass), and Midas Touch (+1 activation & <=7 disc surcharge across all 6 actions)', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { ALL_FACTIONS, isFactionAvailable, getFactionReputationSlotTypes } = await import('../rules/setup');
+      const { TECH_CATALOG } = await import('../rules/techData');
+      const {
+        hasPendingPreGameCubeSetup,
+        getMidasTouchCost,
+        getMaxExploreActivations,
+        getMaxResearchActivations,
+        getMaxBuildActivations,
+        getMaxInfluenceActivations,
+        getInfluenceColonyShipRefreshes,
+      } = await import('../rules/gameReducer');
+      const { getPriorityActorId, computeBotAction } = await import('../ai/terranBot');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { MidasStartingCubeModal } = await import('../../components/setup/MidasStartingCubeModal');
+      const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+      const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+      const { BuildModal } = await import('../../components/actions/BuildModal');
+      const { MoveModal } = await import('../../components/actions/MoveModal');
+      const { InfluenceModal } = await import('../../components/actions/InfluenceModal');
+      const { FirstPassHintModal } = await import('../../components/actions/FirstPassHintModal');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+      // 1. Expansion gating, stats, homeworld Sector 277 Phrygia-Giants, and Money Is Power
+      expect(getExpansionForItem('legion_of_midas')?.id).toBe('community_factions');
+      expect(isFactionAvailable('legion_of_midas', [])).toBe(false);
+      expect(isFactionAvailable('legion_of_midas', ['community_factions'])).toBe(true);
+
+      const midasFaction = ALL_FACTIONS.find((f) => f.id === 'legion_of_midas')!;
+      expect(midasFaction).toBeDefined();
+      expect(midasFaction.startingSectorNumber).toBe(277);
+      expect(midasFaction.startingResources).toEqual({ money: 4, science: 3, materials: 2 });
+      expect(midasFaction.startingColonyShips).toBe(3);
+      expect(midasFaction.startingDiscs).toBe(13);
+      expect(midasFaction.startingTechIds).toEqual(['advanced_economy']);
+      expect(midasFaction.tradeRatio).toBe(3);
+      expect(getFactionReputationSlotTypes(midasFaction)).toEqual(['amb_only', 'both', 'both', 'both']);
+
+      const game = createInitialGame(2, ['legion_of_midas', 'terran_federation'], ['community_factions']);
+      const midasInit = game.players.find((p) => p.faction.id === 'legion_of_midas')!;
+      expect(midasInit.techTrack.researched.some((t) => t.id === 'advanced_economy')).toBe(true);
+
+      const homeSec = game.sectors.find((s) => s.id === `home_sector_${midasInit.id}`)!;
+      expect(homeSec.sectorNumber).toBe(277);
+      expect(homeSec.name).toBe('Phrygia-Giants');
+      expect(homeSec.hasArtifact).toBe(true);
+      expect(homeSec.planets.map((p) => `${p.resource}:${Boolean(p.isAdvanced)}`)).toEqual([
+        'any:false',
+        'money:true',
+        'science:true',
+      ]);
+      // Money Is Power pre-places Money cube in Advanced Gold square
+      expect(homeSec.planets[1]!.colonizedBy).toBe(midasInit.id);
+      expect(homeSec.planets[1]!.colonizedResource).toBe('money');
+      expect(midasInit.population.money.cubesOnBoard).toBe(10);
+      expect(homeSec.planets[0]!.colonizedBy).toBeUndefined();
+
+      // Pending Gray/Wild starting cube setup blocks normal actions until chosen
+      expect(game.pendingMidasStartingCubeSetup).toEqual({
+        playerId: midasInit.id,
+        sectorId: homeSec.id,
+        planetId: homeSec.planets[0]!.id,
+      });
+      expect(hasPendingPreGameCubeSetup(game)).toBe(true);
+      const blockedPass = executeAction(game, { type: 'PASS', playerId: midasInit.id });
+      expect(blockedPass.success).toBe(false);
+
+      // Bot handles pendingMidasStartingCubeSetup automatically
+      const botGame = createInitialGame(2, ['legion_of_midas', 'terran_federation'], ['community_factions']);
+      const botMidas = botGame.players.find((p) => p.faction.id === 'legion_of_midas')!;
+      botMidas.isBot = true;
+      expect(getPriorityActorId(botGame)).toBe(botMidas.id);
+      const botAction = computeBotAction(botGame, botMidas.id);
+      expect(botAction?.type).toBe('CHOOSE_MIDAS_STARTING_CUBE');
+
+      // Human selects Material cube for Gray square
+      const chooseCubeRes = executeAction(game, {
+        type: 'CHOOSE_MIDAS_STARTING_CUBE',
+        playerId: midasInit.id,
+        resource: 'material',
+      });
+      expect(chooseCubeRes.success).toBe(true);
+      let state = chooseCubeRes.newState;
+      expect(state.pendingMidasStartingCubeSetup).toBeNull();
+      expect(hasPendingPreGameCubeSetup(state)).toBe(false);
+      expect(state.players[0]!.population.material.cubesOnBoard).toBe(10);
+
+      // 2. Midas Touch cost helper (>7 vs <=7 discs)
+      const pMidas = state.players.find((p) => p.id === midasInit.id)!;
+      expect(pMidas.influenceTrack.discsOnTrack).toBe(12);
+      expect(getMidasTouchCost(pMidas, 'EXPLORE')).toBe(4);
+      expect(getMidasTouchCost(pMidas, 'RESEARCH')).toBe(3);
+      expect(getMidasTouchCost(pMidas, 'UPGRADE')).toBe(1);
+      expect(getMidasTouchCost(pMidas, 'BUILD')).toBe(1);
+      expect(getMidasTouchCost(pMidas, 'MOVE')).toBe(1);
+      expect(getMidasTouchCost(pMidas, 'INFLUENCE')).toBe(1);
+      expect(getMaxExploreActivations(pMidas, true)).toBe(2);
+      expect(getMaxResearchActivations(pMidas, true)).toBe(2);
+      expect(getMaxUpgradeActivations(pMidas, true)).toBe(3);
+      expect(getMaxBuildActivations(pMidas, true)).toBe(3);
+      expect(getMaxMoveActivations(pMidas, true)).toBe(3);
+      expect(getMaxInfluenceActivations(pMidas, true)).toBe(3);
+      expect(getInfluenceColonyShipRefreshes(pMidas)).toBe(2);
+
+      // <=7 discs adds +1 Gold to every Midas Touch cost
+      const lowDiscSim = { ...pMidas, influenceTrack: { totalDiscs: 13, discsOnTrack: 7 } };
+      expect(getMidasTouchCost(lowDiscSim, 'EXPLORE')).toBe(5);
+      expect(getMidasTouchCost(lowDiscSim, 'RESEARCH')).toBe(4);
+      expect(getMidasTouchCost(lowDiscSim, 'UPGRADE')).toBe(2);
+      expect(getMidasTouchCost(lowDiscSim, 'BUILD')).toBe(2);
+      expect(getMidasTouchCost(lowDiscSim, 'MOVE')).toBe(2);
+      expect(getMidasTouchCost(lowDiscSim, 'INFLUENCE')).toBe(2);
+
+      // 3. Midas Touch Explore (spend 4 Gold BEFORE performing action -> 2 Explore activations)
+      state.activePlayerIndex = 0;
+      const explorable = getExplorableHexes(state.sectors, midasInit.id, false, state.sectorDecks);
+      expect(explorable.length).toBeGreaterThanOrEqual(2);
+      const expTarget1 = explorable[0]!;
+      const startExp = executeAction(state, {
+        type: 'START_EXPLORE',
+        playerId: midasInit.id,
+        fromCoord: expTarget1.from,
+        targetCoord: expTarget1.target,
+        useMidasTouch: true,
+      });
+      expect(startExp.success).toBe(true);
+      expect(startExp.newState.pendingExplore?.useMidasTouch).toBe(true);
+
+      const exp1 = executeAction(startExp.newState, {
+        type: 'EXPLORE',
+        playerId: midasInit.id,
+        fromCoord: expTarget1.from,
+        targetCoord: expTarget1.target,
+        rotation: 0,
+        discard: true,
+        claimInfluence: false,
+      });
+      expect(exp1.success).toBe(true);
+      expect(exp1.newState.players[0]!.resources.money).toBe(0); // 4 - 4 = 0
+      expect(exp1.newState.pendingExploreActivations).toBe(1);
+
+      const finishExp = executeAction(exp1.newState, { type: 'FINISH_EXPLORE', playerId: midasInit.id });
+      expect(finishExp.success).toBe(true);
+      expect(finishExp.newState.pendingExploreActivations).toBe(0);
+
+      // 4. Midas Touch Research (+1 -> 2 techs) with 8 discs BEFORE action (base cost 3) vs 7 discs (cost 4)
+      const seenTechIds = new Set(state.players[0]!.techTrack.researched.map((t) => t.id));
+      const uniqueSupply = state.techSupply.filter((t) => {
+        if (
+          !TECH_CATALOG.some((c) => c.id === t.id) ||
+          seenTechIds.has(t.id) ||
+          t.id === 'advanced_robotics' ||
+          t.id === 'quantum_grid' ||
+          t.id === 'ancient_labs' ||
+          t.id === 'warp_portal' ||
+          t.id === 'artifact_key'
+        ) {
+          return false;
+        }
+        seenTechIds.add(t.id);
+        return true;
+      });
+      const twoCheapTechs = uniqueSupply.slice(0, 2);
+      const resTestState: GameState = JSON.parse(JSON.stringify(state));
+      resTestState.players[0]!.resources.money = 10;
+      resTestState.players[0]!.resources.science = 30;
+      resTestState.players[0]!.influenceTrack.discsOnTrack = 8; // >7 before action!
+      resTestState.activePlayerIndex = 0;
+      const resAction = executeAction(resTestState, {
+        type: 'RESEARCH',
+        playerId: midasInit.id,
+        researches: twoCheapTechs.map((t) => ({
+          techId: t.id,
+          targetTrack: t.category === 'rare' ? 'military' : (t.category as 'military' | 'grid' | 'nano'),
+        })),
+        useMidasTouch: true,
+      });
+      expect(resAction.success).toBe(true);
+      expect(resAction.newState.players[0]!.resources.money).toBe(7); // 10 - 3
+      expect(resAction.newState.players[0]!.influenceTrack.discsOnTrack).toBe(7);
+
+      // Now at 7 discs remaining BEFORE action -> Research Midas Touch costs 4 Gold!
+      const nextTechForSurcharge = uniqueSupply[2]!;
+      const resLowMoneyState: GameState = JSON.parse(JSON.stringify(resAction.newState));
+      resLowMoneyState.players[0]!.resources.money = 3;
+      resLowMoneyState.players[0]!.resources.science = 30;
+      resLowMoneyState.activePlayerIndex = 0;
+      const fail3GoldRes = executeAction(resLowMoneyState, {
+        type: 'RESEARCH',
+        playerId: midasInit.id,
+        researches: [{
+          techId: nextTechForSurcharge.id,
+          targetTrack: nextTechForSurcharge.category === 'rare' ? 'grid' : (nextTechForSurcharge.category as 'military' | 'grid' | 'nano'),
+        }],
+        useMidasTouch: true,
+      });
+      expect(fail3GoldRes.success).toBe(false);
+
+      const resWith7Discs: GameState = JSON.parse(JSON.stringify(resAction.newState));
+      resWith7Discs.activePlayerIndex = 0;
+      resWith7Discs.players[0]!.resources.science = 30;
+      const resSurchargePass = executeAction(resWith7Discs, {
+        type: 'RESEARCH',
+        playerId: midasInit.id,
+        researches: [{
+          techId: nextTechForSurcharge.id,
+          targetTrack: nextTechForSurcharge.category === 'rare' ? 'grid' : (nextTechForSurcharge.category as 'military' | 'grid' | 'nano'),
+        }],
+        useMidasTouch: true,
+      });
+      expect(resSurchargePass.success).toBe(true);
+      expect(resSurchargePass.newState.players[0]!.resources.money).toBe(3); // 7 - 4 = 3
+
+      // 5. Midas Touch Upgrade (3 slots), Build (3 items), Move (3 activations), Influence (3 disc claims, ships capped at 2)
+      const actionTestState: GameState = JSON.parse(JSON.stringify(state));
+      actionTestState.players[0]!.resources.money = 20;
+      actionTestState.players[0]!.resources.materials = 40;
+      actionTestState.activePlayerIndex = 0;
+      const upgRes = executeAction(actionTestState, {
+        type: 'UPGRADE',
+        playerId: midasInit.id,
+        useMidasTouch: true,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 3, partId: 'hull' },
+          { shipType: 'cruiser', slotIndex: 5, partId: 'hull' },
+          { shipType: 'dreadnought', slotIndex: 7, partId: 'hull' },
+        ],
+      });
+      expect(upgRes.success).toBe(true);
+      expect(upgRes.newState.players[0]!.resources.money).toBe(19);
+
+      const bldState: GameState = JSON.parse(JSON.stringify(upgRes.newState));
+      bldState.activePlayerIndex = 0;
+      const bldRes = executeAction(bldState, {
+        type: 'BUILD',
+        playerId: midasInit.id,
+        useMidasTouch: true,
+        items: [
+          { sectorId: homeSec.id, itemType: 'interceptor' },
+          { sectorId: homeSec.id, itemType: 'interceptor' },
+          { sectorId: homeSec.id, itemType: 'interceptor' },
+        ],
+      });
+      expect(bldRes.success).toBe(true);
+      expect(bldRes.newState.players[0]!.resources.money).toBe(18);
+
+      // Move 3 ships using 3 activations
+      const movState: GameState = JSON.parse(JSON.stringify(bldRes.newState));
+      movState.activePlayerIndex = 0;
+      const homeMovSec = movState.sectors.find((s) => s.id === homeSec.id)!;
+      const adjCoord = expTarget1.target;
+      const adjSec: SectorTile = {
+        id: 'sec_midas_move_target',
+        sectorNumber: 201,
+        name: 'Test Alpha',
+        ring: 2,
+        coord: adjCoord,
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      homeMovSec.wormholes = [true, true, true, true, true, true];
+      movState.sectors.push(adjSec);
+      const midasShips = homeMovSec.ships.filter((s) => s.ownerId === midasInit.id).slice(0, 3);
+      const movRes = executeAction(movState, {
+        type: 'MOVE',
+        playerId: midasInit.id,
+        useMidasTouch: true,
+        moves: midasShips.map((s, idx) => ({
+          shipId: s.id,
+          fromSectorId: homeMovSec.id,
+          toSectorId: adjSec.id,
+          activationIndex: idx,
+        })),
+      });
+      expect(movRes.success).toBe(true);
+      expect(movRes.newState.players[0]!.resources.money).toBe(17);
+
+      // Influence 3 sector claims with 3 activations while Colony Ship refresh remains 2
+      const infState: GameState = JSON.parse(JSON.stringify(movRes.newState));
+      infState.activePlayerIndex = 0;
+      infState.players[0]!.colonyShips = { total: 3, ready: 0 };
+      const sec2 = { ...adjSec, id: 'sec_midas_inf_2', sectorNumber: 202, coord: { q: adjCoord.q + 1, r: adjCoord.r }, discOwner: undefined };
+      const sec3 = { ...adjSec, id: 'sec_midas_inf_3', sectorNumber: 203, coord: { q: adjCoord.q + 1, r: adjCoord.r - 1 }, discOwner: undefined };
+      // Connect sec2 & sec3 directly to homeMovSec neighbors so claim sequence succeeds
+      const homeNeighbors = getExplorableHexes([homeMovSec], midasInit.id, true).slice(0, 3);
+      const infClaimSecs: SectorTile[] = homeNeighbors.map((hn, i) => ({
+        id: `sec_midas_claim_${i}`,
+        sectorNumber: 210 + i,
+        name: `Midas Claim ${i}`,
+        ring: 2,
+        coord: hn.target,
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      }));
+      // Remove overlapping adjSec if any and push clean claim targets
+      infState.sectors = infState.sectors.filter(
+        (s) => !infClaimSecs.some((c) => areCoordsEqual(c.coord, s.coord))
+      );
+      infState.sectors.push(...infClaimSecs);
+      void sec2;
+      void sec3;
+      const infRes = executeAction(infState, {
+        type: 'INFLUENCE',
+        playerId: midasInit.id,
+        claimSectors: infClaimSecs.map((c) => c.id),
+        useMidasTouch: true,
+      });
+      expect(infRes.success).toBe(true);
+      expect(infRes.newState.players[0]!.resources.money).toBe(16);
+      expect(infRes.newState.players[0]!.colonyShips.ready).toBe(2); // Capped at 2 even with Midas Touch!
+
+      // Cannot use Midas Touch on Reaction turn
+      const reactionState: GameState = JSON.parse(JSON.stringify(state));
+      reactionState.players[0]!.hasPassed = true;
+      reactionState.passedPlayerIds = [midasInit.id];
+      const reactFail = executeAction(reactionState, {
+        type: 'BUILD',
+        playerId: midasInit.id,
+        items: [{ sectorId: homeSec.id, itemType: 'interceptor' }],
+        useMidasTouch: true,
+      });
+      expect(reactFail.success).toBe(false);
+
+      // 6. All That Glitters: passing first awards 1 Gold instead of 2 Gold
+      const passState: GameState = JSON.parse(JSON.stringify(state));
+      passState.activePlayerIndex = 0;
+      const beforeMoney = passState.players[0]!.resources.money;
+      const firstPassRes = executeAction(passState, { type: 'PASS', playerId: midasInit.id });
+      expect(firstPassRes.success).toBe(true);
+      expect(firstPassRes.newState.players[0]!.isFirstPasser).toBe(true);
+      expect(firstPassRes.newState.players[0]!.resources.money).toBe(beforeMoney + 1);
+
+      // Also in Turn Order variant
+      const passToState: GameState = JSON.parse(JSON.stringify(state));
+      passToState.expansions = ['community_factions', 'turn_order'];
+      passToState.activePlayerIndex = 0;
+      const firstPassTo = executeAction(passToState, { type: 'PASS', playerId: midasInit.id });
+      expect(firstPassTo.success).toBe(true);
+      expect(firstPassTo.newState.players[0]!.resources.money).toBe(beforeMoney + 1);
+
+      // 7. UI SSR checks (FactionSheetCard, MidasStartingCubeModal, TechMarketModal, ShipBlueprintEditor, BuildModal, MoveModal, InfluenceModal, FirstPassHintModal, PhysicalPlayerBoardModal)
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(LanguageProvider, null, React.createElement(FactionSheetCard, { faction: midasFaction }))
+      );
+      expect(sheetHtml).toContain('Legion of Midas');
+      expect(sheetHtml).toContain('/factions/legion_of_midas.jpg');
+      expect(sheetHtml).toContain('Phrygia-Giants');
+
+      const cubeModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MidasStartingCubeModal, { player: midasInit, onChooseCube: () => {} })
+        )
+      );
+      expect(cubeModalHtml).toContain('data-testid="midas-starting-cube-modal"');
+
+      const midasAfter = state.players[0]!;
+      const techHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(TechMarketModal, {
+            player: midasAfter,
+            activePlayer: midasAfter,
+            techSupply: state.techSupply,
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(techHtml).toContain('data-testid="midas-touch-banner"');
+
+      const upgHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ShipBlueprintEditor, {
+            player: midasAfter,
+            onSaveBlueprint: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(upgHtml).toContain('data-testid="midas-touch-banner"');
+
+      const bldHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(BuildModal, {
+            player: midasAfter,
+            sectors: state.sectors,
+            eligibleSectors: [homeSec],
+            slots: [{ sectorId: homeSec.id, itemType: 'interceptor' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(bldHtml).toContain('data-testid="midas-touch-banner"');
+
+      const movHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MoveModal, {
+            player: midasAfter,
+            sectors: state.sectors,
+            playerShips: [],
+            simulatedShipSector: new Map(),
+            connectedDestinations: [],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 1,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: '',
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(movHtml).toContain('data-testid="midas-touch-banner"');
+
+      const infHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(InfluenceModal, {
+            player: midasAfter,
+            sectors: state.sectors,
+            onClose: () => {},
+            onConfirm: () => {},
+          })
+        )
+      );
+      expect(infHtml).toContain('data-testid="midas-touch-banner"');
+
+      const passHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FirstPassHintModal, {
+            player: midasAfter,
+            round: 1,
+            isOpen: true,
+            onConfirmPass: () => {},
+            onCancel: () => {},
+          })
+        )
+      );
+      expect(passHtml).toContain('All That Glitters');
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: midasAfter,
+            players: state.players,
+            activePlayerId: midasAfter.id,
+            sectors: state.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('Legion of Midas');
+    });
   });
 });
 

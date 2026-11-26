@@ -43,9 +43,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   magenta: '#ec4899', // Remnants of Ra
   lime: '#84cc16', // The Horde
   ice: '#7dd3fc', // The Spiral
+  gold: '#d4af37', // Legion of Midas
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -78,6 +79,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   remnants_of_ra: 'magenta',
   the_horde: 'lime',
   the_spiral: 'ice',
+  legion_of_midas: 'gold',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -102,6 +104,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   remnants_of_ra: ECLIPSE_COLOR_PALETTE.magenta,
   the_horde: ECLIPSE_COLOR_PALETTE.lime,
   the_spiral: ECLIPSE_COLOR_PALETTE.ice,
+  legion_of_midas: ECLIPSE_COLOR_PALETTE.gold,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -619,6 +622,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 4,
     reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
+  {
+    id: 'legion_of_midas',
+    name: 'Legion of Midas',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.gold,
+    startingSectorNumber: 277,
+    startingResources: { money: 4, science: 3, materials: 2 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: ['advanced_economy'],
+    traitDescription: 'Midas Touch: BEFORE performing an action, spend Gold for +1 activation (Explore 4, Research 3, Upgrade 1, Build 1, Move 1, Influence action disc 1; +1 cost when <=7 action discs remain). Money Is Power: Start with a Population Cube in your Advanced Gold square (Sector 277 Phrygia-Giants). All That Glitters: Earn 1 Gold instead of 2 when passing first.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 2,
+    reputationSlots: 4,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -640,7 +666,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -660,7 +686,7 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   if (faction.isHuman || faction.id?.startsWith('terran_') || faction.id === 'mega_war_inc') {
     return ['amb_only', 'both', 'both', 'both', 'both'];
   }
-  if (faction.id === 'hydran_progress' || faction.id === 'planta') {
+  if (faction.id === 'hydran_progress' || faction.id === 'planta' || faction.id === 'legion_of_midas') {
     return ['amb_only', 'both', 'both', 'both'];
   }
   if (faction.id === 'orion_hegemony') {
@@ -913,6 +939,13 @@ export function buildPlayerAndHomeSector(
       }
     } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
       isColonized = !p.isAdvanced;
+    } else if (faction.id === 'legion_of_midas') {
+      // Money Is Power: start with a Money cube on the Advanced Gold square (lm_p2);
+      // the Gray/Wild square (lm_p1) is chosen pre-game via CHOOSE_MIDAS_STARTING_CUBE.
+      if (p.isAdvanced && p.resource === 'money') {
+        isColonized = true;
+        colonizedResource = 'money';
+      }
     } else {
       isColonized = !p.isAdvanced && idx < 3;
     }
@@ -1168,7 +1201,7 @@ export function buildPendingDiscoveryForPlayer(
  */
 export function triggerPendingAtlantiansStartingLabsDiscovery(state: GameState): void {
   if (state.phase === 'DRAFT_PHASE') return;
-  if (state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingSpiralTechSetup || state.pendingDiscovery) return;
+  if (state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingSpiralTechSetup || state.pendingMidasStartingCubeSetup || state.pendingDiscovery) return;
   const atlantians = state.players.find(
     (p) => p.faction.id === 'atlantians' && p.startingAncientLabsResolved === false
   );
@@ -1544,6 +1577,20 @@ export function createInitialGame(
     ? { playerId: spiralPlayer.id }
     : null;
 
+  const midasPlayer = players.find((p) => p.faction.id === 'legion_of_midas');
+  let pendingMidasStartingCubeSetup: { playerId: string; sectorId: string; planetId: string } | null = null;
+  if (midasPlayer) {
+    const homeSector = sectors.find((s) => s.id === `home_sector_${midasPlayer.id}` || s.sectorNumber === 277);
+    const wildPlanet = homeSector?.planets.find((p) => p.resource === 'any' && !p.isAdvanced && !p.colonizedBy);
+    if (wildPlanet && homeSector) {
+      pendingMidasStartingCubeSetup = {
+        playerId: midasPlayer.id,
+        sectorId: homeSector.id,
+        planetId: wildPlanet.id,
+      };
+    }
+  }
+
   const enabledExpansions = expansions || [];
   for (const p of players) {
     if (p.blueprints) {
@@ -1587,6 +1634,7 @@ export function createInitialGame(
     pendingExilesOrbitalSetup,
     pendingRaArtifactSetup,
     pendingSpiralTechSetup,
+    pendingMidasStartingCubeSetup,
     resolvedCombatSectorIds: [],
     replaySteps: [],
     log: [

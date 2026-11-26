@@ -52,6 +52,7 @@ import { PulsarModal } from './components/actions/PulsarModal';
 import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupModal';
 import { RaArtifactSetupModal } from './components/setup/RaArtifactSetupModal';
 import { SpiralStartingTechModal } from './components/setup/SpiralStartingTechModal';
+import { MidasStartingCubeModal } from './components/setup/MidasStartingCubeModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { ExploreSectorControlModal } from './components/actions/ExploreSectorControlModal';
 import { BlackHoleReturnModal } from './components/actions/BlackHoleReturnModal';
@@ -172,6 +173,7 @@ const AppContent: React.FC = () => {
   const [isGalleryOpen, setIsGalleryOpen] = useState<boolean>(false);
   const [isCombatSimulatorOpen, setIsCombatSimulatorOpen] = useState<boolean>(false);
   const [isExploreMode, setIsExploreMode] = useState<boolean>(false);
+  const [useMidasTouchExplore, setUseMidasTouchExplore] = useState<boolean>(false);
   const [exploreRotation, setExploreRotation] = useState<number>(0);
   const [dracoSelectedTileIndex, setDracoSelectedTileIndex] = useState<number>(0);
   const [isBlueprintOpen, setIsBlueprintOpen] = useState<boolean>(false);
@@ -185,6 +187,7 @@ const AppContent: React.FC = () => {
   const [isRaidBuildStep, setIsRaidBuildStep] = useState<boolean>(false);
   const [stagedRaidBuild, setStagedRaidBuild] = useState<(BuildItemPayload & { createdShipId?: string }) | null>(null);
   const [isMoveOpen, setIsMoveOpen] = useState<boolean>(false);
+  const [useMidasTouchMove, setUseMidasTouchMove] = useState<boolean>(false);
   const [isInfluenceOpen, setIsInfluenceOpen] = useState<boolean>(false);
   const [isTradeOpen, setIsTradeOpen] = useState<boolean>(false);
   const [isNewGameOpen, setIsNewGameOpen] = useState<boolean>(false);
@@ -319,6 +322,7 @@ const AppContent: React.FC = () => {
     state.pendingExilesOrbitalSetup,
     state.pendingRaArtifactSetup,
     state.pendingSpiralTechSetup,
+    state.pendingMidasStartingCubeSetup,
     isBuildOpen,
     isMoveOpen,
     isInfluenceOpen,
@@ -854,6 +858,8 @@ const AppContent: React.FC = () => {
       offTurnDecisionKey = `ra_setup:${state.pendingRaArtifactSetup.playerId}`;
     } else if (state.pendingSpiralTechSetup && (currentSeat === 'all' || state.pendingSpiralTechSetup.playerId === myId)) {
       offTurnDecisionKey = `spiral_setup:${state.pendingSpiralTechSetup.playerId}`;
+    } else if (state.pendingMidasStartingCubeSetup && (currentSeat === 'all' || state.pendingMidasStartingCubeSetup.playerId === myId)) {
+      offTurnDecisionKey = `midas_setup:${state.pendingMidasStartingCubeSetup.playerId}`;
     } else if (state.isDraftMode && state.factionDraft && (currentSeat === 'all' || state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] === myId)) {
       offTurnDecisionKey = `draft:${state.factionDraft.currentDraftIndex}`;
     }
@@ -895,6 +901,7 @@ const AppContent: React.FC = () => {
     state.pendingExilesOrbitalSetup,
     state.pendingRaArtifactSetup,
     state.pendingSpiralTechSetup,
+    state.pendingMidasStartingCubeSetup,
     state.isDraftMode,
     state.factionDraft,
   ]);
@@ -1714,11 +1721,13 @@ const AppContent: React.FC = () => {
       fromCoord,
       targetCoord,
       isSecondActivation: isSecond,
+      useMidasTouch: !isSecond && useMidasTouchExplore ? true : undefined,
     });
     if (!res.success) {
       showToast(res.error || 'Exploration failed.');
       return;
     }
+    setUseMidasTouchExplore(false);
 
     lastStateFingerprintRef.current = getStateFingerprint(res.newState);
     saveGameState(res.newState);
@@ -1797,7 +1806,11 @@ const AppContent: React.FC = () => {
         !res.newState.pendingArtifactReward
       ) {
         setIsExploreMode(true);
-        showToast('🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.');
+        showToast(
+          activePlayer.faction.id === 'legion_of_midas'
+            ? '🪙 Midas Touch: 1 Explore Activation remaining! Select an adjacent hex on the map.'
+            : '🌿 Planta Expansion: 1 Explore Activation remaining! Select an adjacent hex on the map.'
+        );
       }
     } else {
       showToast(res.error || 'Exploration failed.');
@@ -1848,16 +1861,20 @@ const AppContent: React.FC = () => {
       handleFinishExplore();
       return;
     }
-    setIsExploreMode((prev) => !prev);
+    setIsExploreMode((prev) => {
+      if (prev) setUseMidasTouchExplore(false);
+      return !prev;
+    });
   };
 
-  // Research flow (supports single tech or array of technologies for Hydran double research, Lyra shrine placement, and Atlantians Ancient Instinct Upgrade 1)
+  // Research flow (supports single tech or array of technologies for Hydran/Midas double research, Lyra shrine placement, and Atlantians Ancient Instinct Upgrade 1)
   const handleResearchTech = (
     researchesOrId: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
     targetTrack?: 'military' | 'grid' | 'nano',
     warpPortalSectorId?: string,
     shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string },
-    ancientInstinctUpgrade?: { shipType: ShipType; slotIndex: number; partId: string }
+    ancientInstinctUpgrade?: { shipType: ShipType; slotIndex: number; partId: string },
+    useMidasTouch?: boolean
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
@@ -1877,6 +1894,7 @@ const AppContent: React.FC = () => {
       warpPortalSectorId,
       shrinePlacement,
       ancientInstinctUpgrade,
+      useMidasTouch,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -1933,7 +1951,8 @@ const AppContent: React.FC = () => {
   // Blueprint save flow
   const handleSaveBlueprint = (
     upgrades: { shipType: ShipType; slotIndex: number; partId: string | null; isExternal?: boolean }[],
-    pulsarSectorId?: string
+    pulsarSectorId?: string,
+    useMidasTouch?: boolean
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot modify ship blueprints.');
@@ -1945,6 +1964,7 @@ const AppContent: React.FC = () => {
       playerId: activePlayer.id,
       upgrades,
       pulsarSectorId: effectivePulsarId,
+      useMidasTouch,
       requireConfirmation: true,
     });
 
@@ -2115,6 +2135,7 @@ const AppContent: React.FC = () => {
     if (isMoveOpen && !prevMoveOpenRef.current) {
       setPlannedMoves([]);
       setActiveActivationIndex(0);
+      setUseMidasTouchMove(false);
       setSelectedMoveShipId(movableShips[0]?.ship.id || playerShips[0]?.ship.id || '');
     }
     prevMoveOpenRef.current = isMoveOpen;
@@ -2144,7 +2165,7 @@ const AppContent: React.FC = () => {
     return pinningState.isShipPinned(shipId);
   };
 
-  const maxMoves = getEffectiveMoveActivationLimit(activePlayer, activePulsarSectorId);
+  const maxMoves = getEffectiveMoveActivationLimit(activePlayer, activePulsarSectorId, undefined, useMidasTouchMove);
 
   const currentMoveShip = playerShips.find((p) => p.ship.id === selectedMoveShipId)?.ship;
   const currentSimSector = simulatedShipSector.get(selectedMoveShipId);
@@ -2350,7 +2371,8 @@ const AppContent: React.FC = () => {
   // Build flow
   const handleBuild = (
     items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string }[],
-    pulsarSectorId?: string
+    pulsarSectorId?: string,
+    useMidasTouch?: boolean
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
@@ -2385,6 +2407,7 @@ const AppContent: React.FC = () => {
       playerId: activePlayer.id,
       items,
       pulsarSectorId: effectivePulsarId,
+      useMidasTouch,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -2407,6 +2430,7 @@ const AppContent: React.FC = () => {
   const handleMove = (
     moves: MoveStepPayload[],
     pulsarSectorId?: string,
+    useMidasTouch?: boolean,
     raidBuild?: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string; createdShipId?: string }
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
@@ -2420,12 +2444,14 @@ const AppContent: React.FC = () => {
       playerId: activePlayer.id,
       moves,
       pulsarSectorId: effectivePulsarId,
+      useMidasTouch: useMidasTouch ?? (useMidasTouchMove || undefined),
       raidBuild: effectiveRaidBuild,
       requireConfirmation: true,
     });
     if (res.success) {
       setState(res.newState);
       setIsMoveOpen(false);
+      setUseMidasTouchMove(false);
       setStagedRaidBuild(null);
       setActivePulsarSectorId(null);
     } else {
@@ -2979,7 +3005,8 @@ const AppContent: React.FC = () => {
   const handleExecuteInfluence = (
     claimSectors: string[],
     abandonSectors: string[],
-    abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>
+    abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>,
+    useMidasTouch?: boolean
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
@@ -2991,6 +3018,7 @@ const AppContent: React.FC = () => {
       claimSectors: claimSectors.length > 0 ? claimSectors : undefined,
       abandonSectors: abandonSectors.length > 0 ? abandonSectors : undefined,
       abandonReturnTrack,
+      useMidasTouch,
       requireConfirmation: true,
     });
     if (res.success) {
@@ -3208,6 +3236,26 @@ const AppContent: React.FC = () => {
       showToast('Selected starting technology for The Spiral.');
     } else {
       showToast(res.error || 'Failed to select starting technology.');
+    }
+  };
+
+  // Legion of Midas Starting Gray/Wild Cube Selection
+  const handleChooseMidasStartingCube = (resource: 'money' | 'science' | 'material') => {
+    if (!state.pendingMidasStartingCubeSetup) return;
+    if (!canActForPlayer(state.pendingMidasStartingCubeSetup.playerId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'CHOOSE_MIDAS_STARTING_CUBE',
+      playerId: state.pendingMidasStartingCubeSetup.playerId,
+      resource,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(`Sector 277 Gray planet populated with a ${resource.toUpperCase()} cube.`);
+    } else {
+      showToast(res.error || 'Failed to place starting Gray population cube.');
     }
   };
 
@@ -3965,6 +4013,8 @@ const AppContent: React.FC = () => {
             players={state.players}
             isExploreMode={effectiveExploreMode}
             onToggleExplore={handleToggleExplore}
+            useMidasTouchExplore={useMidasTouchExplore}
+            onToggleMidasTouchExplore={setUseMidasTouchExplore}
             onOpenResearch={() => setIsTechMarketOpen(true)}
             onOpenUpgrade={() => setIsBlueprintOpen(true)}
             onOpenBuild={() => {
@@ -4292,8 +4342,20 @@ const AppContent: React.FC = () => {
               : null
           }
           warpConduits={state.warpedUniverse?.conduits}
+          useMidasTouch={useMidasTouchMove}
+          onToggleMidasTouch={(next) => {
+            setUseMidasTouchMove(next);
+            if (!next) {
+              const baseMax = getEffectiveMoveActivationLimit(activePlayer, activePulsarSectorId, undefined, false);
+              if (plannedMoves.some((m) => m.activationIndex >= baseMax)) {
+                setPlannedMoves((prev) => prev.filter((m) => m.activationIndex < baseMax));
+                setActiveActivationIndex((prev) => Math.min(prev, baseMax));
+              }
+            }
+          }}
           onClose={() => {
             setIsMoveOpen(false);
+            setUseMidasTouchMove(false);
             setStagedRaidBuild(null);
             setActivePulsarSectorId(null);
           }}
@@ -4430,6 +4492,40 @@ const AppContent: React.FC = () => {
                 {state.players.find((p) => p.id === state.pendingSpiralTechSetup!.playerId)?.name || 'The Spiral'}
               </strong>{' '}
               is choosing starting cheapest Technology Tile...
+            </span>
+          </div>
+        )
+      )}
+
+      {state.pendingMidasStartingCubeSetup &&
+        !(
+          (state.pendingExilesOrbitalSetup &&
+            canActForPlayer(state.pendingExilesOrbitalSetup.playerId) &&
+            canActForPlayer(state.pendingMidasStartingCubeSetup.playerId)) ||
+          (state.pendingRaArtifactSetup &&
+            canActForPlayer(state.pendingRaArtifactSetup.playerId) &&
+            canActForPlayer(state.pendingMidasStartingCubeSetup.playerId)) ||
+          (state.pendingSpiralTechSetup &&
+            canActForPlayer(state.pendingSpiralTechSetup.playerId) &&
+            canActForPlayer(state.pendingMidasStartingCubeSetup.playerId))
+        ) && (
+        canActForPlayer(state.pendingMidasStartingCubeSetup.playerId) ? (
+          <MidasStartingCubeModal
+            player={
+              state.players.find((p) => p.id === state.pendingMidasStartingCubeSetup!.playerId) ||
+              activePlayer
+            }
+            onChooseCube={handleChooseMidasStartingCube}
+          />
+        ) : (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-amber-600/80 px-4 py-2 rounded-xl text-xs text-slate-300 shadow-xl backdrop-blur-md flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <span>
+              Commander{' '}
+              <strong className="text-amber-300">
+                {state.players.find((p) => p.id === state.pendingMidasStartingCubeSetup!.playerId)?.name || 'Legion of Midas'}
+              </strong>{' '}
+              is choosing starting Gray planet population cube...
             </span>
           </div>
         )

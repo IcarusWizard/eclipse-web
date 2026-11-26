@@ -9,6 +9,7 @@ import {
   findValidClaimSequence,
 } from '../../engine/rules/gameReducer';
 import type { WarpConduit } from '../../engine/rules/warpedUniverse';
+import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import {
   CircleDot,
   Rocket,
@@ -30,7 +31,8 @@ interface InfluenceModalProps {
   onConfirm: (
     claimSectors: string[],
     abandonSectors: string[],
-    abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>
+    abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>,
+    useMidasTouch?: boolean
   ) => void;
   warpConduits?: WarpConduit[];
 }
@@ -43,7 +45,8 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
   warpConduits,
 }) => {
   const { language, l } = useLanguage();
-  const maxActivations = getMaxInfluenceActivations(player);
+  const [useMidasTouch, setUseMidasTouch] = useState<boolean>(false);
+  const maxActivations = getMaxInfluenceActivations(player, useMidasTouch);
   const [claimSectors, setClaimSectors] = useState<string[]>([]);
   const [abandonSectors, setAbandonSectors] = useState<string[]>([]);
   const [abandonReturnTrack, setAbandonReturnTrack] = useState<
@@ -230,9 +233,31 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
     }
   };
 
+  const handleToggleMidasTouch = (next: boolean) => {
+    setUseMidasTouch(next);
+    if (!next) {
+      const baseMax = getMaxInfluenceActivations(player, false);
+      if (claimSectors.length + abandonSectors.length > baseMax) {
+        const trimmedAbandon = abandonSectors.slice(0, baseMax);
+        const remainingBudget = Math.max(0, baseMax - trimmedAbandon.length);
+        const trimmedClaims = findValidClaimSequence(
+          claimSectors.slice(0, remainingBudget),
+          sectors,
+          player.id,
+          trimmedAbandon,
+          hasWormholeGen,
+          warpConduits,
+          isDraco
+        ) || [];
+        setAbandonSectors(trimmedAbandon);
+        setClaimSectors(trimmedClaims);
+      }
+    }
+  };
+
   const handleExecute = () => {
     if (!canAffordDiscs) return;
-    onConfirm(claimSectors, abandonSectors, abandonReturnTrack);
+    onConfirm(claimSectors, abandonSectors, abandonReturnTrack, useMidasTouch || undefined);
   };
 
   const moneyFull = player.population.money.cubesOnBoard >= 11;
@@ -270,6 +295,13 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
 
         {/* Content Body */}
         <div className="p-4 space-y-4 overflow-y-auto scrollbar-thin">
+          <MidasTouchBanner
+            player={player}
+            actionType="INFLUENCE"
+            enabled={useMidasTouch}
+            onToggle={handleToggleMidasTouch}
+          />
+
           {/* Colony Ships Readying Perk */}
           <div className="bg-indigo-950/30 border border-indigo-500/40 rounded-xl p-3 flex items-center justify-between">
             <div className="flex items-center gap-3">

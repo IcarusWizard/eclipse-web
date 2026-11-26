@@ -54,6 +54,7 @@ export interface StartExploreAction extends BaseAction {
   fromCoord: HexCoord;
   targetCoord: HexCoord;
   isSecondActivation?: boolean;
+  useMidasTouch?: boolean;
 }
 
 export interface ExploreAction extends BaseAction {
@@ -65,6 +66,7 @@ export interface ExploreAction extends BaseAction {
   claimInfluence?: boolean;
   chosenTileIndex?: number; // for Draco (0: top, 1: second from top)
   isSecondActivation?: boolean;
+  useMidasTouch?: boolean;
 }
 
 export interface FinishExploreAction extends BaseAction {
@@ -97,6 +99,7 @@ export interface ResearchAction extends BaseAction {
     slotIndex: number;
     partId: string;
   };
+  useMidasTouch?: boolean;
 }
 
 export interface UpgradeAction extends BaseAction {
@@ -110,6 +113,7 @@ export interface UpgradeAction extends BaseAction {
     modularGroupId?: 'int_cru_dre' | 'cru_dre' | 'dre_sb' | 'sb_only';
   }[];
   pulsarSectorId?: string;
+  useMidasTouch?: boolean;
 }
 
 export interface BuildAction extends BaseAction {
@@ -121,6 +125,7 @@ export interface BuildAction extends BaseAction {
     upgradeFromShipId?: string;
   }[];
   pulsarSectorId?: string;
+  useMidasTouch?: boolean;
 }
 
 export interface MoveStep {
@@ -136,6 +141,7 @@ export interface MoveAction extends BaseAction {
   type: 'MOVE';
   moves: MoveStep[];
   pulsarSectorId?: string;
+  useMidasTouch?: boolean;
   raidBuild?: {
     sectorId: string;
     itemType: ShipType | 'orbital' | 'monolith';
@@ -150,6 +156,7 @@ export interface InfluenceAction extends BaseAction {
   claimSectors?: string[]; // Place disc from track on sector
   abandonSectors?: string[]; // Remove disc from sector back to track
   abandonReturnTrack?: Record<string, 'money' | 'science' | 'material'>; // Map of planetId to chosen track for returning orbital/wild population cubes (Bug 120)
+  useMidasTouch?: boolean;
 }
 
 export interface ColonizeAction extends BaseAction {
@@ -386,6 +393,11 @@ export interface ConfigureSpiralShiftPortAction extends BaseAction {
   choices: Partial<Record<ShipType, 'cannon' | 'computer' | 'hull'>>;
 }
 
+export interface ChooseMidasStartingCubeAction extends BaseAction {
+  type: 'CHOOSE_MIDAS_STARTING_CUBE';
+  resource: 'money' | 'science' | 'material';
+}
+
 export interface SendChatAction extends BaseAction {
   type: 'SEND_CHAT';
   message: string;
@@ -430,6 +442,7 @@ export type GameAction =
   | ChooseRaArtifactCubeAction
   | ChooseSpiralStartingTechAction
   | ConfigureSpiralShiftPortAction
+  | ChooseMidasStartingCubeAction
   | ClaimMinorSpeciesAction
   | ActivatePulsarAction
   | ReturnBlackHoleShipAction

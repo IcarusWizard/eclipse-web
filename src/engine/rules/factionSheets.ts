@@ -87,6 +87,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   remnants_of_ra: '/factions/remnants_of_ra.jpg',
   the_horde: '/factions/the_horde.jpg',
   the_spiral: '/factions/the_spiral.jpg',
+  legion_of_midas: '/factions/legion_of_midas.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -522,6 +523,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
         icon: 'colony',
         en: 'Asymmetric Trade & Homeworld: Trade 2 Science for 1 any resource (Materials / Money at 3:1). Sector 255 Spiralis provides Material, Science, Money, and Advanced Science.',
         zh: '非对称贸易与母星：可用 2 科研兑换 1 任意资源（材料/金钱为 3:1）。255 号螺旋星拥有材料、科研、金钱与高级科研行星。',
+      },
+    ],
+  },
+  legion_of_midas: {
+    historyEn:
+      'Born out of interstellar merchant guilds—trading first goods, then favours, then entire empires—the Legion of Midas commands unmatched galactic wealth. Civilizations flock to their gilded banner, though everything has a price, and the Midas Legion excels at extracting every last ounce of value and turning conquest into pure gold.',
+    historyZh:
+      '迈达斯军团源自星际商行——最初交易货物，随后交易人情，最终交易整座帝国。他们坐拥全银河无可匹敌的财富；无数文明慕名依附于金甲旗帜之下，然而一切皆有价码，军团擅长榨干每颗星球的价值，并将征服所及尽数化为黄金。',
+    portraitUrl: '/factions/legion_of_midas.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'midas_touch',
+        icon: 'trade',
+        en: 'Midas Touch: BEFORE performing an action, spend Gold for +1 activation (EXP 4, RES 3, UPG 1, BUI 1, MOV 1, INF action disc 1). If ≤7 action discs remain, costs increase by +1 Gold.',
+        zh: '点金手（Midas Touch）：在执行行动前，可花费金钱获得 +1 次同类型激活（探索4 / 研发3 / 升级1 / 建造1 / 移动1 / 扩张仅限额外圆片1）；若剩余圆片 ≤7 枚，各项费用 +1 金钱。',
+      },
+      {
+        id: 'money_is_power',
+        icon: 'colony',
+        en: 'Money Is Power: Begin with Advanced Economy and a starting Population Cube placed in your Advanced Gold square (Sector 277 Phrygia-Giants), alongside your chosen Gray square cube.',
+        zh: '金钱即力量：开局自带高阶经济科技，并在母星 277 号星区（Phrygia-Giants）的高级金钱槽预置 1 枚人口方块，同时自选 1 枚方块置入灰色泛用槽。',
+      },
+      {
+        id: 'all_that_glitters',
+        icon: 'rep',
+        en: 'All That Glitters & Reputation Track: Earn 1 Gold instead of 2 Gold when passing first. 4 Reputation Track slots (Slot 1 is Ambassador-only; Slots 2–4 hold Reputation Tiles or Ambassadors).',
+        zh: '闪耀皆有代价：首位跳过仅获得 1 金钱（而非 2 金钱）。声望轨共 4 格（第 1 格仅限大使，第 2-4 格可兼放声望板块或大使）。',
       },
     ],
   },

@@ -21,6 +21,7 @@ import {
 import { useLanguage } from '../../i18n/LanguageContext';
 import { translateShipType } from '../../i18n/catalogTranslations';
 import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
+import { MidasTouchBanner } from '../common/MidasTouchBanner';
 
 export interface BuildItemPayload {
   sectorId: string;
@@ -37,7 +38,7 @@ export interface BuildModalProps {
   onChangeSlots: (slots: BuildItemPayload[]) => void;
   activeSlotIndex: number;
   onSelectSlotIndex: (index: number) => void;
-  onBuild: (items: BuildItemPayload[], pulsarSectorId?: string) => void;
+  onBuild: (items: BuildItemPayload[], pulsarSectorId?: string, useMidasTouch?: boolean) => void;
   onClose: () => void;
   pulsarSectorId?: string;
   isRaidBuild?: boolean;
@@ -59,8 +60,11 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   onSkipRaidBuild,
 }) => {
   const { language, l } = useLanguage();
+  const [useMidasTouch, setUseMidasTouch] = useState<boolean>(false);
   const isPulsarActive = Boolean(pulsarSectorId);
-  const maxBuild = isPulsarActive || isRaidBuild ? 1 : (player.hasPassed ? 1 : getMaxBuildActivations(player));
+  const isMidasTouchEligible = player.faction.id === 'legion_of_midas' && !isPulsarActive && !isRaidBuild && !player.hasPassed;
+  const effectiveMidasTouch = isMidasTouchEligible && useMidasTouch;
+  const maxBuild = isPulsarActive || isRaidBuild ? 1 : (player.hasPassed ? 1 : getMaxBuildActivations(player, effectiveMidasTouch));
   const hasNanorobots = player.techTrack.researched.some((t) => t.id === 'nanorobots');
   const hasOrbitalTech = player.techTrack.researched.some((t) => t.id === 'orbital');
   const hasMonolithTech = player.techTrack.researched.some((t) => t.id === 'monolith');
@@ -394,13 +398,24 @@ export const BuildModal: React.FC<BuildModalProps> = ({
 
   const [showUnusedWarning, setShowUnusedWarning] = useState(false);
 
+  const handleToggleMidasTouch = (next: boolean) => {
+    setUseMidasTouch(next);
+    if (!next) {
+      const baseMax = getMaxBuildActivations(player, false);
+      if (slots.length > baseMax) {
+        onChangeSlots(slots.slice(0, baseMax));
+        onSelectSlotIndex(Math.min(activeSlotIndex, baseMax - 1));
+      }
+    }
+  };
+
   const handleTriggerBuild = () => {
     if (!canBuild) return;
     if (slots.length < maxBuild && !showUnusedWarning) {
       setShowUnusedWarning(true);
       return;
     }
-    onBuild(slots, pulsarSectorId);
+    onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined);
   };
 
   // Keyboard shortcut listener
@@ -418,13 +433,13 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         if (slots.length < maxBuild && !showUnusedWarning) {
           setShowUnusedWarning(true);
         } else {
-          onBuild(slots, pulsarSectorId);
+          onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined);
         }
       }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [canBuild, slots, onBuild, onClose, pulsarSectorId, maxBuild, showUnusedWarning]);
+  }, [canBuild, slots, onBuild, onClose, pulsarSectorId, maxBuild, showUnusedWarning, effectiveMidasTouch]);
 
   return (
     <>
@@ -467,6 +482,15 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               {l('1 Item Limit', '限 1 项')}
             </span>
           </div>
+        )}
+
+        {isMidasTouchEligible && (
+          <MidasTouchBanner
+            player={player}
+            actionType="BUILD"
+            enabled={useMidasTouch}
+            onToggle={handleToggleMidasTouch}
+          />
         )}
 
         {/* Header */}
@@ -820,7 +844,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
               type="button"
               onClick={() => {
                 setShowUnusedWarning(false);
-                onBuild(slots, pulsarSectorId);
+                onBuild(slots, pulsarSectorId, effectiveMidasTouch || undefined);
               }}
               className="px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-xs font-bold transition shadow-lg shadow-amber-950/50 cursor-pointer"
             >
