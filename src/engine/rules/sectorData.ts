@@ -392,6 +392,19 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'lm_p3', resource: 'science', isAdvanced: true },
     ],
   },
+  heralds_of_ragnarok: {
+    sectorNumber: 299,
+    name: 'Yggdrasil',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'hr_p1', resource: 'any', isAdvanced: true },
+      { id: 'hr_p2', resource: 'science', isAdvanced: false },
+      { id: 'hr_p3', resource: 'money', isAdvanced: false },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

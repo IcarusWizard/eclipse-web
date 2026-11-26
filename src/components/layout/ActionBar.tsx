@@ -27,6 +27,8 @@ import {
   getMaxMoveActivations,
   getMaxInfluenceActivations,
   getPlayerDisplayName,
+  isRaidFaction,
+  isRegroupFaction,
 } from '../../engine/rules/gameReducer';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { useLanguage } from '../../i18n/LanguageContext';
@@ -479,7 +481,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         >
           <Hammer className="w-4 h-4 shrink-0" />
           <span className="leading-tight">{l('BLD', '建造')}</span>
-          <span className="text-[8.5px] opacity-80 leading-none">({maxBuild})</span>
+          <span className="text-[8.5px] opacity-80 leading-none">
+            ({maxBuild}{!hasPassed && isRegroupFaction(activePlayer.faction.id) ? '+1M' : ''})
+          </span>
         </button>
 
         {/* Move */}
@@ -499,7 +503,9 @@ export const ActionBar: React.FC<ActionBarProps> = ({
         >
           <Rocket className="w-4 h-4 shrink-0" />
           <span className="leading-tight">{l('MOV', '移动')}</span>
-          <span className="text-[8.5px] opacity-80 leading-none">({maxMoves})</span>
+          <span className="text-[8.5px] opacity-80 leading-none">
+            ({maxMoves}{!hasPassed && isRaidFaction(activePlayer.faction.id) ? '+1B' : ''})
+          </span>
         </button>
 
         {/* Influence */}

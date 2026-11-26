@@ -88,6 +88,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   the_horde: '/factions/the_horde.jpg',
   the_spiral: '/factions/the_spiral.jpg',
   legion_of_midas: '/factions/legion_of_midas.jpg',
+  heralds_of_ragnarok: '/factions/heralds_of_ragnarok.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -551,6 +552,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
         icon: 'rep',
         en: 'All That Glitters & Reputation Track: Earn 1 Gold instead of 2 Gold when passing first. 4 Reputation Track slots (Slot 1 is Ambassador-only; Slots 2–4 hold Reputation Tiles or Ambassadors).',
         zh: '闪耀皆有代价：首位跳过仅获得 1 金钱（而非 2 金钱）。声望轨共 4 格（第 1 格仅限大使，第 2-4 格可兼放声望板块或大使）。',
+      },
+    ],
+  },
+  heralds_of_ragnarok: {
+    historyEn:
+      'From days immemorial it was prophesied that Jörmungandr would swallow the world and Ragnarök would follow. When Asgard slipped into a cataclysmic black hole in CY29182, the warlike Asgardians took it as the final omen—mobilizing from Sector 299 Yggdrasil to seek glorious battle against the deadliest foes in the galaxy or die nobly bound for Valhalla.',
+    historyZh:
+      '自太古预言流传：尘世巨蟒将吞噬世界、诸神黄昏终将降临。在 CY29182 年阿斯加德坠入毁灭黑洞后，好战的阿萨神族将其视为最终预兆，从 299 号星区世界树（Yggdrasil）全军出征，誓与银河最凶险的强敌决一死战，或战死沙场荣归英灵殿。',
+    portraitUrl: '/factions/heralds_of_ragnarok.jpg',
+    startingShips: [{ shipType: 'cruiser', count: 1 }],
+    rules: [
+      {
+        id: 'ragnarok_raid',
+        icon: 'ship',
+        en: 'Raid: Move actions include +1 Build activation (stage up to 1 ship or structure before executing your moves; reverting cancels both).',
+        zh: '突袭掠夺（Raid）：移动行动额外包含 +1 次建造激活（可在移动前先建造 1 项并一并结算，撤回可同时还原）。',
+      },
+      {
+        id: 'ragnarok_regroup',
+        icon: 'ship',
+        en: 'Regroup: Build actions include +1 Move activation (after staging up to 2 builds, optionally move 1 ship including newly built vessels).',
+        zh: '重整集结（Regroup）：建造行动额外包含 +1 次移动激活（完成至多 2 项建造后，可额外移动 1 艘飞船，包括刚建造的飞船）。',
+      },
+      {
+        id: 'ragnarok_designs',
+        icon: 'vp',
+        en: 'Alternate Ship Designs & Start: Interceptor costs 4 Mats (5 slots with extra Hull, Initiative +1). Cruiser costs 4 Mats (5 slots without Hull, Initiative +2). Begin with 1 Cruiser in Sector 299 (Yggdrasil).',
+        zh: '特制舰船设计与开局：拦截舰造价 4（5 槽含额外船体，先攻 +1）；巡洋舰造价 4（5 槽去船体，先攻 +2）。开局母星 299 号星区配置 1 艘巡洋舰而非拦截舰。',
       },
     ],
   },

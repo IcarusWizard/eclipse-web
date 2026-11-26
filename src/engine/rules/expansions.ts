@@ -267,7 +267,11 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'legion_of_midas' ||
     norm === 'legion of midas' ||
     norm === 'phrygia-giants' ||
-    norm === 'phrygia giants'
+    norm === 'phrygia giants' ||
+    norm === 'heralds_of_ragnarok' ||
+    norm === 'heralds of ragnarok' ||
+    norm === 'heralds of ragnarök' ||
+    norm === 'yggdrasil'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }

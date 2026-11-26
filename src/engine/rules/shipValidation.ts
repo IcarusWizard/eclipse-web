@@ -795,6 +795,39 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
         },
       };
 
+    case 'heralds_of_ragnarok': {
+      const base = createDefaultHumanBlueprints();
+      return {
+        ...base,
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 5,
+          baseInitiative: 1,
+          baseBuildCost: 4,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            SHIP_PARTS.hull,
+            null,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 5,
+          baseInitiative: 2,
+          baseBuildCost: 4,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+            null,
+          ],
+        },
+      };
+    }
+
     case 'wardens_of_magellan':
     case 'enlightened_of_lyra':
     case 'atlantians':
@@ -1202,10 +1235,11 @@ export function getBaseBuildItemCost(
   const isRhoIndi = factionId === 'rho_indi_syndicate';
   const isExiles = factionId === 'the_exiles';
   const isMegaWar = factionId === 'mega_war_inc';
+  const isHeralds = factionId === 'heralds_of_ragnarok';
 
   let cost = 3;
-  if (itemType === 'interceptor') cost = isMechanema || isMegaWar ? 2 : (isRhoIndi ? 4 : 3);
-  else if (itemType === 'cruiser') cost = isMechanema ? 4 : (isRhoIndi ? 6 : 5);
+  if (itemType === 'interceptor') cost = isMechanema || isMegaWar ? 2 : (isRhoIndi || isHeralds ? 4 : 3);
+  else if (itemType === 'cruiser') cost = isMechanema || isHeralds ? 4 : (isRhoIndi ? 6 : 5);
   else if (itemType === 'dreadnought') cost = isMechanema ? 7 : 8;
   else if (itemType === 'starbase') cost = isMechanema ? 2 : (isRhoIndi ? 4 : 3);
   else if (itemType === 'orbital') cost = isMechanema ? 3 : (isExiles ? 5 : 4);

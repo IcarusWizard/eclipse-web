@@ -18,6 +18,9 @@ import {
   hasPendingPreGameCubeSetup,
   validateBuildItems,
   applyRaidBuildToPreviewState,
+  applyBuildItemsToPreviewState,
+  isRaidFaction,
+  isRegroupFaction,
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
@@ -186,6 +189,8 @@ const AppContent: React.FC = () => {
   const [isBuildOpen, setIsBuildOpen] = useState<boolean>(false);
   const [isRaidBuildStep, setIsRaidBuildStep] = useState<boolean>(false);
   const [stagedRaidBuild, setStagedRaidBuild] = useState<(BuildItemPayload & { createdShipId?: string }) | null>(null);
+  const [isRegroupBuildStep, setIsRegroupBuildStep] = useState<boolean>(false);
+  const [stagedRegroupBuilds, setStagedRegroupBuilds] = useState<(BuildItemPayload & { createdShipId?: string })[] | null>(null);
   const [isMoveOpen, setIsMoveOpen] = useState<boolean>(false);
   const [useMidasTouchMove, setUseMidasTouchMove] = useState<boolean>(false);
   const [isInfluenceOpen, setIsInfluenceOpen] = useState<boolean>(false);
@@ -2101,8 +2106,10 @@ const AppContent: React.FC = () => {
     () =>
       isMoveOpen && stagedRaidBuild
         ? applyRaidBuildToPreviewState(state, activePlayer.id, stagedRaidBuild)
+        : isMoveOpen && stagedRegroupBuilds && stagedRegroupBuilds.length > 0
+        ? applyBuildItemsToPreviewState(state, activePlayer.id, stagedRegroupBuilds)
         : state,
-    [isMoveOpen, stagedRaidBuild, state, activePlayer.id]
+    [isMoveOpen, stagedRaidBuild, stagedRegroupBuilds, state, activePlayer.id]
   );
 
   const playerShips = useMemo(() => {
@@ -2165,7 +2172,9 @@ const AppContent: React.FC = () => {
     return pinningState.isShipPinned(shipId);
   };
 
-  const maxMoves = getEffectiveMoveActivationLimit(activePlayer, activePulsarSectorId, undefined, useMidasTouchMove);
+  const maxMoves = stagedRegroupBuilds && stagedRegroupBuilds.length > 0
+    ? 1
+    : getEffectiveMoveActivationLimit(activePlayer, activePulsarSectorId, undefined, useMidasTouchMove);
 
   const currentMoveShip = playerShips.find((p) => p.ship.id === selectedMoveShipId)?.ship;
   const currentSimSector = simulatedShipSector.get(selectedMoveShipId);
@@ -2401,6 +2410,32 @@ const AppContent: React.FC = () => {
       setIsMoveOpen(true);
       return;
     }
+    if (isRegroupBuildStep) {
+      if (!items || items.length === 0) {
+        showToast('Select at least 1 item to build.');
+        return;
+      }
+      const timestamp = Date.now();
+      const preparedItems = items.map((item, idx) => {
+        const createdShipId =
+          !item.upgradeFromShipId && item.itemType !== 'orbital' && item.itemType !== 'monolith'
+            ? `ship_${activePlayer.id}_regroup_${timestamp}_${idx}_${Math.random().toString(36).substr(2, 4)}`
+            : item.itemType === 'orbital' && activePlayer.faction.id === 'the_exiles'
+              ? `ship_${activePlayer.id}_orbital_${timestamp}_${idx}_${Math.random().toString(36).substr(2, 4)}`
+              : undefined;
+        return { ...item, createdShipId };
+      });
+      const buildCheck = validateBuildItems(state, activePlayer, preparedItems);
+      if (!buildCheck.valid) {
+        showToast(buildCheck.error || 'Regroup build selection is invalid.');
+        return;
+      }
+      setStagedRegroupBuilds(preparedItems);
+      setIsBuildOpen(false);
+      setIsRegroupBuildStep(false);
+      setIsMoveOpen(true);
+      return;
+    }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
     const res = executeAction(state, {
       type: 'BUILD',
@@ -2426,6 +2461,32 @@ const AppContent: React.FC = () => {
     setIsMoveOpen(true);
   };
 
+  const handleSkipRegroupMove = () => {
+    if (!canActForPlayer(activePlayer.id)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
+    if (!stagedRegroupBuilds || stagedRegroupBuilds.length === 0) {
+      setIsMoveOpen(false);
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'BUILD',
+      playerId: activePlayer.id,
+      items: stagedRegroupBuilds,
+      requireConfirmation: true,
+    });
+    if (res.success) {
+      setState(res.newState);
+      setIsMoveOpen(false);
+      setUseMidasTouchMove(false);
+      setStagedRegroupBuilds(null);
+      setActivePulsarSectorId(null);
+    } else {
+      showToast(res.error || 'Construction failed.');
+    }
+  };
+
   // Move flow
   const handleMove = (
     moves: MoveStepPayload[],
@@ -2435,6 +2496,25 @@ const AppContent: React.FC = () => {
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
       showToast('Spectators cannot perform actions.');
+      return;
+    }
+    if (stagedRegroupBuilds && stagedRegroupBuilds.length > 0) {
+      const res = executeAction(state, {
+        type: 'BUILD',
+        playerId: activePlayer.id,
+        items: stagedRegroupBuilds,
+        regroupMoves: moves,
+        requireConfirmation: true,
+      });
+      if (res.success) {
+        setState(res.newState);
+        setIsMoveOpen(false);
+        setUseMidasTouchMove(false);
+        setStagedRegroupBuilds(null);
+        setActivePulsarSectorId(null);
+      } else {
+        showToast(res.error || 'Build + Regroup maneuver failed.');
+      }
       return;
     }
     const effectivePulsarId = pulsarSectorId || activePulsarSectorId || undefined;
@@ -2986,10 +3066,14 @@ const AppContent: React.FC = () => {
       setState(res.newState);
       if (res.newState.pendingExploreActivations && res.newState.pendingExploreActivations > 0) {
         setIsExploreMode(true);
+        const prefix =
+          activePlayer.faction.id === 'legion_of_midas'
+            ? '🪙 Midas Touch'
+            : '🌿 Planta Expansion';
         showToast(
           claimInfluence
-            ? 'Influence Disc placed! 🌿 Planta Expansion: 1 Explore Activation remaining — select an adjacent hex on the map.'
-            : 'Sector left uncontrolled. 🌿 Planta Expansion: 1 Explore Activation remaining — select an adjacent hex on the map.'
+            ? `Influence Disc placed! ${prefix}: 1 Explore Activation remaining — select an adjacent hex on the map.`
+            : `Sector left uncontrolled. ${prefix}: 1 Explore Activation remaining — select an adjacent hex on the map.`
         );
       } else if (claimInfluence) {
         showToast('Influence Disc placed on sector!');
@@ -3810,30 +3894,48 @@ const AppContent: React.FC = () => {
         </div>
       )}
 
-      {/* Planta 2nd Activation Banner */}
-      {Boolean(state.pendingExploreActivations && state.pendingExploreActivations > 0) && (
-        <div className="bg-emerald-950/90 border-b border-emerald-600 px-6 py-2 flex items-center justify-between z-40 text-xs text-emerald-200">
-          <div className="flex items-center gap-2">
-            <span className="text-base">🌿</span>
-            <span className="font-bold text-white">Planta Exploration:</span>
-            <span>1 Explore Activation remaining! Select an adjacent hex on the map to explore, or finish exploration.</span>
+      {/* 2nd Explore Activation Banner (Planta / Legion of Midas Midas Touch) */}
+      {Boolean(state.pendingExploreActivations && state.pendingExploreActivations > 0) && (() => {
+        const isMidasExplore = activePlayer.faction.id === 'legion_of_midas';
+        return (
+          <div
+            data-testid="pending-explore-activations-banner"
+            className={`${
+              isMidasExplore
+                ? 'bg-amber-950/90 border-b border-amber-500 text-amber-200'
+                : 'bg-emerald-950/90 border-b border-emerald-600 text-emerald-200'
+            } px-6 py-2 flex items-center justify-between z-40 text-xs`}
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-base">{isMidasExplore ? '🪙' : '🌿'}</span>
+              <span className="font-bold text-white">
+                {isMidasExplore ? 'Midas Touch Exploration:' : 'Planta Exploration:'}
+              </span>
+              <span>
+                {state.pendingExploreActivations} Explore Activation{(state.pendingExploreActivations || 0) > 1 ? 's' : ''} remaining! Select an adjacent hex on the map to explore, or finish exploration.
+              </span>
+            </div>
+            {!isTurnGated && (
+              <button
+                onClick={handleFinishExplore}
+                className={`px-3 py-1 rounded-lg bg-slate-900 text-xs font-bold border transition-colors shadow ${
+                  isMidasExplore
+                    ? 'hover:bg-amber-800 text-amber-300 hover:text-white border-amber-700'
+                    : 'hover:bg-emerald-800 text-emerald-300 hover:text-white border-emerald-700'
+                }`}
+              >
+                Finish Explore
+              </button>
+            )}
           </div>
-          {!isTurnGated && (
-            <button
-              onClick={handleFinishExplore}
-              className="px-3 py-1 rounded-lg bg-slate-900 hover:bg-emerald-800 text-emerald-300 hover:text-white font-bold border border-emerald-700 transition-colors shadow"
-            >
-              Finish Explore
-            </button>
-          )}
-        </div>
-      )}
+        );
+      })()}
 
       {/* Main Playing Area */}
       <div className="relative flex-1 w-full h-full overflow-hidden">
         {/* Galaxy Hex Map */}
         <HexGalaxyMap
-          state={isMoveOpen && stagedRaidBuild ? movePlanningState : state}
+          state={isMoveOpen && (stagedRaidBuild || (stagedRegroupBuilds && stagedRegroupBuilds.length > 0)) ? movePlanningState : state}
           selectedSectorId={selectedSector?.id || null}
           onSelectSector={(s) => setSelectedSector(s)}
           isExploreMode={effectiveExploreMode}
@@ -4020,11 +4122,15 @@ const AppContent: React.FC = () => {
             onOpenBuild={() => {
               setIsRaidBuildStep(false);
               setStagedRaidBuild(null);
+              setStagedRegroupBuilds(null);
+              setIsRegroupBuildStep(isRegroupFaction(activePlayer.faction.id) && !activePlayer.hasPassed && !activePulsarSectorId);
               setIsBuildOpen(true);
             }}
             onOpenMove={() => {
-              if (activePlayer.faction.id === 'the_horde' && !activePlayer.hasPassed && !activePulsarSectorId) {
+              if (isRaidFaction(activePlayer.faction.id) && !activePlayer.hasPassed && !activePulsarSectorId) {
                 setStagedRaidBuild(null);
+                setStagedRegroupBuilds(null);
+                setIsRegroupBuildStep(false);
                 setIsRaidBuildStep(true);
                 setBuildSlots([{ sectorId: eligibleBuildSectors[0]?.id || '', itemType: 'interceptor' }]);
                 setActiveBuildSlotIndex(0);
@@ -4032,6 +4138,8 @@ const AppContent: React.FC = () => {
               } else {
                 setIsRaidBuildStep(false);
                 setStagedRaidBuild(null);
+                setStagedRegroupBuilds(null);
+                setIsRegroupBuildStep(false);
                 setIsMoveOpen(true);
               }
             }}
@@ -4306,10 +4414,13 @@ const AppContent: React.FC = () => {
           pulsarSectorId={activePulsarSectorId ?? undefined}
           isRaidBuild={isRaidBuildStep}
           onSkipRaidBuild={handleSkipRaidBuild}
+          isRegroupBuild={isRegroupBuildStep}
           onClose={() => {
             setIsBuildOpen(false);
             setIsRaidBuildStep(false);
             setStagedRaidBuild(null);
+            setIsRegroupBuildStep(false);
+            setStagedRegroupBuilds(null);
             setActivePulsarSectorId(null);
           }}
         />
@@ -4341,6 +4452,17 @@ const AppContent: React.FC = () => {
               ? `${stagedRaidBuild.upgradeFromShipId ? 'Field-Upgrade → ' : ''}${stagedRaidBuild.itemType.toUpperCase()} in Sector ${state.sectors.find((s) => s.id === stagedRaidBuild.sectorId)?.sectorNumber ?? stagedRaidBuild.sectorId}`
               : null
           }
+          regroupBuildLabel={
+            stagedRegroupBuilds && stagedRegroupBuilds.length > 0
+              ? stagedRegroupBuilds
+                  .map(
+                    (it) =>
+                      `${it.itemType.toUpperCase()} @ Sector ${state.sectors.find((s) => s.id === it.sectorId)?.sectorNumber ?? it.sectorId}`
+                  )
+                  .join(', ')
+              : null
+          }
+          onSkipRegroupMove={stagedRegroupBuilds && stagedRegroupBuilds.length > 0 ? handleSkipRegroupMove : undefined}
           warpConduits={state.warpedUniverse?.conduits}
           useMidasTouch={useMidasTouchMove}
           onToggleMidasTouch={(next) => {
@@ -4357,6 +4479,7 @@ const AppContent: React.FC = () => {
             setIsMoveOpen(false);
             setUseMidasTouchMove(false);
             setStagedRaidBuild(null);
+            setStagedRegroupBuilds(null);
             setActivePulsarSectorId(null);
           }}
         />

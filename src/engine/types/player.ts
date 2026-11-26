@@ -28,7 +28,8 @@ export type FactionId =
   | 'remnants_of_ra'
   | 'the_horde'
   | 'the_spiral'
-  | 'legion_of_midas';
+  | 'legion_of_midas'
+  | 'heralds_of_ragnarok';
 
 export interface FactionInfo {
   readonly id: FactionId;

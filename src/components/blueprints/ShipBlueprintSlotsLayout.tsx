@@ -156,6 +156,22 @@ export const SHIP_LAYOUTS_PLANTA: Record<string, ShipLayoutDef> = {
   },
 };
 
+export const SHIP_LAYOUTS_HERALDS: Record<string, ShipLayoutDef> = {
+  ...SHIP_LAYOUTS_STANDARD,
+  interceptor: {
+    cubes: [
+      { col: 1, row: 0, offsetY: 0 },   // Slot 0: Top-Center
+      { col: 0, row: 0, offsetY: 50 },  // Slot 1: Left Wing
+      { col: 2, row: 0, offsetY: 0 },   // Slot 2: Top-Right
+      { col: 1, row: 1, offsetY: 0 },   // Slot 3: Bottom-Center
+      { col: 2, row: 1, offsetY: 0 },   // Slot 4: Bottom-Right (extra Heralds slot)
+    ],
+    gridCols: 3,
+    gridRows: 2,
+    extraCube: { col: 3, row: 0, offsetY: 35 },
+  },
+};
+
 export const getChassisName = (
   shipType: string,
   factionId?: string
@@ -258,7 +274,12 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
   className = '',
 }) => {
   const isPlanta = factionId === 'planta';
-  const layoutDict = isPlanta ? SHIP_LAYOUTS_PLANTA : SHIP_LAYOUTS_STANDARD;
+  const isHeralds = factionId === 'heralds_of_ragnarok';
+  const layoutDict = isPlanta
+    ? SHIP_LAYOUTS_PLANTA
+    : isHeralds
+    ? SHIP_LAYOUTS_HERALDS
+    : SHIP_LAYOUTS_STANDARD;
   const layout = layoutDict[shipType] || SHIP_LAYOUTS_STANDARD.interceptor!;
 
   // Sizing configuration

@@ -22735,7 +22735,6 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
           TechTileIconography,
         } = await import('../../components/common/PhysicalTileIconography');
         const { TECH_CATALOG } = await import('../rules/techData');
-        const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
 
         // 1. Verify DriveGraphic scaling across sm, md, lg
         const nucDrive = SHIP_PARTS.nuclear_drive!;
@@ -22872,6 +22871,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
 
         // H. ShipBlueprintSlotsLayout Symmetrical Corner Placement:
         // Initiative Badge at Top-Left (top-0.5 left-0.5 z-20) symmetrical to Trash Bin at Top-Right (top-0.5 right-0.5 z-20)
+        const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
         const bpLayoutHtml = renderToString(React.createElement(ShipBlueprintSlotsLayout, {
           shipType: 'interceptor',
           factionId: 'terran_directorate',
@@ -32462,6 +32462,297 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         )
       );
       expect(boardHtml).toContain('Legion of Midas');
+    });
+
+    it('304. verifies Heralds of Ragnarök community faction, alternate Interceptor/Cruiser designs (4 Mats), Cruiser start in Sector 299 Yggdrasil, Raid, and Regroup (+1 Move on Build)', async () => {
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { ALL_FACTIONS, isFactionAvailable, getFactionReputationSlotTypes } = await import('../rules/setup');
+      const { getBaseBuildItemCost } = await import('../rules/shipValidation');
+      const {
+        applyBuildItemsToPreviewState,
+        isRaidFaction,
+        isRegroupFaction,
+      } = await import('../rules/gameReducer');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { ActionBar } = await import('../../components/layout/ActionBar');
+      const { BuildModal } = await import('../../components/actions/BuildModal');
+      const { MoveModal } = await import('../../components/actions/MoveModal');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+      const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
+
+      // 1. Expansion gating, stats, homeworld Sector 295 Yggdrasil, and Cruiser start
+      expect(getExpansionForItem('heralds_of_ragnarok')?.id).toBe('community_factions');
+      expect(isFactionAvailable('heralds_of_ragnarok', [])).toBe(false);
+      expect(isFactionAvailable('heralds_of_ragnarok', ['community_factions'])).toBe(true);
+      expect(isRaidFaction('heralds_of_ragnarok')).toBe(true);
+      expect(isRegroupFaction('heralds_of_ragnarok')).toBe(true);
+
+      const ragFaction = ALL_FACTIONS.find((f) => f.id === 'heralds_of_ragnarok')!;
+      expect(ragFaction).toBeDefined();
+      expect(ragFaction.startingSectorNumber).toBe(299);
+      expect(ragFaction.startingResources).toEqual({ money: 3, science: 3, materials: 2 });
+      expect(ragFaction.startingColonyShips).toBe(3);
+      expect(ragFaction.startingDiscs).toBe(13);
+      expect(ragFaction.startingTechIds).toEqual(['neutron_bombs']);
+      expect(ragFaction.tradeRatio).toBe(3);
+      expect(getFactionReputationSlotTypes(ragFaction)).toEqual(['amb_only', 'both', 'both', 'rep_only', 'rep_only']);
+
+      const game = createInitialGame(2, ['heralds_of_ragnarok', 'terran_federation'], ['community_factions']);
+      const rag = game.players.find((p) => p.faction.id === 'heralds_of_ragnarok')!;
+      const terran = game.players.find((p) => p.faction.id === 'terran_federation')!;
+      expect(rag.techTrack.researched.some((t) => t.id === 'neutron_bombs')).toBe(true);
+
+      const homeSec = game.sectors.find((s) => s.id === `home_sector_${rag.id}`)!;
+      expect(homeSec.sectorNumber).toBe(299);
+      expect(homeSec.name).toBe('Yggdrasil');
+      expect(Boolean(homeSec.isNebula)).toBe(false);
+      expect(homeSec.hasArtifact).toBe(true);
+      expect(homeSec.planets.map((p) => `${p.resource}:${Boolean(p.isAdvanced)}:${p.colonizedResource || 'none'}`)).toEqual([
+        'any:true:none',
+        'science:false:science',
+        'money:false:money',
+      ]);
+      // Start with 1 Cruiser instead of an Interceptor
+      expect(homeSec.ships.length).toBe(1);
+      expect(homeSec.ships[0]!.type).toBe('cruiser');
+
+      // 2. Alternate Ship Designs (Interceptor 4 Mats, 5 slots + Hull, init 1; Cruiser 4 Mats, 5 slots - Hull, init 2)
+      expect(getBaseBuildItemCost(rag, 'interceptor')).toBe(4);
+      expect(getBaseBuildItemCost(rag, 'cruiser')).toBe(4);
+      expect(getBaseBuildItemCost(rag, 'dreadnought')).toBe(8);
+      expect(getBaseBuildItemCost(rag, 'starbase')).toBe(3);
+
+      const intBp = rag.blueprints.interceptor!;
+      expect(intBp.maxSlots).toBe(5);
+      expect(intBp.baseInitiative).toBe(1);
+      const intStats = calculateBlueprintStats(intBp);
+      expect(intStats.isValid).toBe(true);
+      expect(intStats.totalHull).toBe(2);
+      expect(intStats.totalInitiative).toBe(2); // 1 base + 1 nuclear drive
+
+      const cruBp = rag.blueprints.cruiser!;
+      expect(cruBp.maxSlots).toBe(5);
+      expect(cruBp.baseInitiative).toBe(2);
+      const cruStats = calculateBlueprintStats(cruBp);
+      expect(cruStats.isValid).toBe(true);
+      expect(cruStats.totalHull).toBe(1); // No hull slot
+      expect(cruStats.totalInitiative).toBe(3); // 2 base + 1 nuclear drive
+
+      // 3. Regroup (Build 2 + Move 1) with newly built ship & atomic Revert
+      const regroupState: GameState = JSON.parse(JSON.stringify(game));
+      regroupState.activePlayerIndex = 0;
+      regroupState.players[0]!.resources.materials = 15;
+      const homeReg = regroupState.sectors.find((s) => s.id === homeSec.id)!;
+      homeReg.wormholes = [true, true, true, true, true, true];
+      const explorable = getExplorableHexes([homeReg], rag.id, true);
+      const adjSec: SectorTile = {
+        id: 'sec_rag_adj_1',
+        sectorNumber: 201,
+        name: 'Jotunheim',
+        ring: 2,
+        coord: explorable[0]!.target,
+        rotation: 0,
+        wormholes: [true, true, true, true, true, true],
+        planets: [],
+        victoryPoints: 1,
+        hasArtifact: false,
+        hasDiscovery: false,
+        ancientsCount: 0,
+        ships: [],
+      };
+      regroupState.sectors = regroupState.sectors.filter((s) => !areCoordsEqual(s.coord, adjSec.coord));
+      regroupState.sectors.push(adjSec);
+
+      const stagedItems = [
+        { sectorId: homeReg.id, itemType: 'cruiser' as const, createdShipId: 'ship_rag_regroup_cruiser_1' },
+        { sectorId: homeReg.id, itemType: 'interceptor' as const, createdShipId: 'ship_rag_regroup_int_1' },
+      ];
+      const regroupPreview = applyBuildItemsToPreviewState(regroupState, rag.id, stagedItems);
+      expect(regroupPreview.sectors.find((s) => s.id === homeReg.id)!.ships.some((sh) => sh.id === 'ship_rag_regroup_cruiser_1')).toBe(true);
+
+      // Cannot exceed 1 Move activation during Regroup
+      const tooManyRegroupMoves = executeAction(regroupState, {
+        type: 'BUILD',
+        playerId: rag.id,
+        items: stagedItems,
+        regroupMoves: [
+          { shipId: homeReg.ships[0]!.id, fromSectorId: homeReg.id, toSectorId: adjSec.id, activationIndex: 0 },
+          { shipId: 'ship_rag_regroup_cruiser_1', fromSectorId: homeReg.id, toSectorId: adjSec.id, activationIndex: 1 },
+        ],
+      });
+      expect(tooManyRegroupMoves.success).toBe(false);
+
+      // Terran cannot use regroupMoves
+      const terranRegroupFail = executeAction(regroupState, {
+        type: 'BUILD',
+        playerId: terran.id,
+        items: [{ sectorId: `home_sector_${terran.id}`, itemType: 'interceptor' }],
+        regroupMoves: [{ shipId: `ship_${terran.id}_start_interceptor`, fromSectorId: `home_sector_${terran.id}`, toSectorId: `home_sector_${terran.id}` }],
+      });
+      expect(terranRegroupFail.success).toBe(false);
+
+      // Execute valid Build 2 (Cruiser 4M + Interceptor 4M = 8M) + Regroup Move of newly built Cruiser
+      const regroupExec = executeAction(regroupState, {
+        type: 'BUILD',
+        playerId: rag.id,
+        items: stagedItems,
+        regroupMoves: [
+          { shipId: 'ship_rag_regroup_cruiser_1', fromSectorId: homeReg.id, toSectorId: adjSec.id, activationIndex: 0 },
+        ],
+        requireConfirmation: true,
+      });
+      expect(regroupExec.success).toBe(true);
+      expect(regroupExec.newState.players[0]!.resources.materials).toBe(7); // 15 - 8
+      expect(regroupExec.newState.sectors.find((s) => s.id === adjSec.id)!.ships.some((sh) => sh.id === 'ship_rag_regroup_cruiser_1')).toBe(true);
+      expect(regroupExec.newState.pendingActionConfirmation?.description).toContain('Regroup Move');
+
+      // Revert restores BOTH Build and Regroup Move cleanly
+      const revertRegroup = executeAction(regroupExec.newState, {
+        type: 'REVERT_TURN_ACTION',
+        playerId: rag.id,
+      });
+      expect(revertRegroup.success).toBe(true);
+      expect(revertRegroup.newState.players[0]!.resources.materials).toBe(15);
+      expect(revertRegroup.newState.sectors.find((s) => s.id === adjSec.id)!.ships.length).toBe(0);
+      expect(revertRegroup.newState.sectors.find((s) => s.id === homeReg.id)!.ships.length).toBe(1);
+
+      // 4. Raid (Move 2 + Build 1 at Heralds 4-Mat cost) & atomic Revert
+      const raidExec = executeAction(regroupState, {
+        type: 'MOVE',
+        playerId: rag.id,
+        raidBuild: { sectorId: homeReg.id, itemType: 'cruiser', createdShipId: 'ship_rag_raid_cruiser_1' },
+        moves: [
+          { shipId: 'ship_rag_raid_cruiser_1', fromSectorId: homeReg.id, toSectorId: adjSec.id, activationIndex: 0 },
+          { shipId: homeReg.ships[0]!.id, fromSectorId: homeReg.id, toSectorId: adjSec.id, activationIndex: 1 },
+        ],
+        requireConfirmation: true,
+      });
+      expect(raidExec.success).toBe(true);
+      expect(raidExec.newState.players[0]!.resources.materials).toBe(11); // 15 - 4
+      expect(raidExec.newState.sectors.find((s) => s.id === adjSec.id)!.ships.length).toBe(2);
+
+      const revertRaid = executeAction(raidExec.newState, {
+        type: 'REVERT_TURN_ACTION',
+        playerId: rag.id,
+      });
+      expect(revertRaid.success).toBe(true);
+      expect(revertRaid.newState.players[0]!.resources.materials).toBe(15);
+      expect(revertRaid.newState.sectors.find((s) => s.id === adjSec.id)!.ships.length).toBe(0);
+
+      // 5. UI SSR checks (FactionSheetCard, ActionBar, BuildModal, MoveModal, PhysicalPlayerBoardModal)
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(LanguageProvider, null, React.createElement(FactionSheetCard, { faction: ragFaction }))
+      );
+      expect(sheetHtml).toContain('Heralds of Ragnar');
+      expect(sheetHtml).toContain('/factions/heralds_of_ragnarok.jpg');
+      expect(sheetHtml).toContain('Yggdrasil');
+      expect(sheetHtml).toContain('+1 BUI');
+      expect(sheetHtml).toContain('+1 MOV');
+
+      const actionBarHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ActionBar, {
+            activePlayer: rag,
+            isExploreMode: false,
+            onToggleExplore: () => {},
+            onOpenResearch: () => {},
+            onOpenUpgrade: () => {},
+            onOpenBuild: () => {},
+            onOpenMove: () => {},
+            onOpenInfluence: () => {},
+            onPass: () => {},
+          })
+        )
+      );
+      expect(actionBarHtml).toContain('(2+1M)');
+      expect(actionBarHtml).toContain('(2+1B)');
+
+      const buildModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(BuildModal, {
+            player: rag,
+            sectors: game.sectors,
+            eligibleSectors: [homeSec],
+            slots: [{ sectorId: homeSec.id, itemType: 'cruiser' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+            isRegroupBuild: true,
+          })
+        )
+      );
+      expect(buildModalHtml).toContain('data-testid="ragnarok-regroup-build-banner"');
+      expect(buildModalHtml).toContain('Proceed to Move');
+
+      const moveModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MoveModal, {
+            player: rag,
+            sectors: regroupPreview.sectors,
+            playerShips: [],
+            simulatedShipSector: new Map(),
+            connectedDestinations: [],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 1,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: '',
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+            regroupBuildLabel: 'CRUISER @ Sector 299, INTERCEPTOR @ Sector 299',
+            onSkipRegroupMove: () => {},
+          })
+        )
+      );
+      expect(moveModalHtml).toContain('data-testid="ragnarok-regroup-move-banner"');
+      expect(moveModalHtml).toContain('data-testid="regroup-skip-move-btn"');
+      expect(moveModalHtml).toContain('0 / 1 Activations');
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: rag,
+            players: game.players,
+            activePlayerId: rag.id,
+            sectors: game.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('Heralds of Ragnar');
+
+      // Heralds Interceptor 5th slot sits in the 3-column grid (bottom-right), never floating at col 4
+      const ragIntLayoutHtml = renderToStaticMarkup(
+        React.createElement(ShipBlueprintSlotsLayout, {
+          shipType: 'interceptor',
+          factionId: 'heralds_of_ragnarok',
+          slots: rag.blueprints.interceptor!.slots,
+          maxSlots: rag.blueprints.interceptor!.maxSlots,
+          size: 'md',
+        })
+      );
+      expect(ragIntLayoutHtml).toContain('width:188px;height:124px');
     });
   });
 });

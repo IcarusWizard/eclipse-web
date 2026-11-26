@@ -1088,15 +1088,25 @@ function applyBuildItems(
   }
 }
 
+export function isRaidFaction(factionId?: string): boolean {
+  return factionId === 'the_horde' || factionId === 'heralds_of_ragnarok';
+}
+
+export function isRegroupFaction(factionId?: string): boolean {
+  return factionId === 'heralds_of_ragnarok';
+}
+
 /**
- * Returns a non-mutating preview GameState with The Horde's staged Raid Build item applied
- * so Move planning, UI pinning checks, and validation reflect the newly constructed ship.
+ * Returns a non-mutating preview GameState with staged Build items applied
+ * so Move planning, UI pinning checks, and validation reflect newly constructed ships.
  */
-export function applyRaidBuildToPreviewState(
+export function applyBuildItemsToPreviewState(
   state: GameState,
   playerId: string,
-  raidBuild: NonNullable<MoveAction['raidBuild']>
+  items: { sectorId: string; itemType: ShipType | 'orbital' | 'monolith'; upgradeFromShipId?: string; createdShipId?: string }[]
 ): GameState {
+  if (!items || items.length === 0) return state;
+  const affectedSectorIds = new Set(items.map((it) => it.sectorId));
   const previewState: GameState = {
     ...state,
     players: state.players.map((p) =>
@@ -1108,7 +1118,7 @@ export function applyRaidBuildToPreviewState(
         : p
     ),
     sectors: state.sectors.map((s) =>
-      s.id === raidBuild.sectorId
+      affectedSectorIds.has(s.id)
         ? {
             ...s,
             ships: s.ships.map((sh) => ({ ...sh })),
@@ -1119,11 +1129,429 @@ export function applyRaidBuildToPreviewState(
     ),
   };
   const previewPlayer = previewState.players.find((p) => p.id === playerId);
-  if (!previewPlayer || !validateBuildItems(previewState, previewPlayer, [raidBuild]).valid) {
+  if (!previewPlayer || !validateBuildItems(previewState, previewPlayer, items).valid) {
     return state;
   }
-  applyBuildItems(previewState, previewPlayer, [raidBuild], () => {});
+  applyBuildItems(previewState, previewPlayer, items, () => {});
   return previewState;
+}
+
+/**
+ * Convenience wrapper for a single staged Raid Build item preview.
+ */
+export function applyRaidBuildToPreviewState(
+  state: GameState,
+  playerId: string,
+  raidBuild: NonNullable<MoveAction['raidBuild']>
+): GameState {
+  return applyBuildItemsToPreviewState(state, playerId, [raidBuild]);
+}
+
+function validateMovePlan(
+  state: GameState,
+  effectiveMoveState: GameState,
+  player: PlayerState,
+  moves: MoveStep[],
+  maxMoveActivations: number,
+  limitExceededMessage?: string
+): { valid: boolean; error?: string } {
+  if (!moves || moves.length === 0) {
+    return { valid: false, error: 'Must specify at least one ship movement.' };
+  }
+  const hasWormholeGen = playerHasWormholeGenerator(player);
+
+  // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed and Jump Drive
+  const shipMap = new Map<
+    string,
+    { ship: SectorShip; currentSectorId: string; driveSpeed: number; hasJumpDrive: boolean }
+  >();
+  for (const s of effectiveMoveState.sectors) {
+    for (const ship of s.ships) {
+      if (ship.ownerId === player.id) {
+        const bp = player.blueprints[ship.type];
+        const stats = bp ? calculateBlueprintStats(bp) : null;
+        const driveSpeed = stats ? stats.totalDriveSpeed : 1;
+        const hasJumpDrive = Boolean(stats?.hasJumpDrive || bp?.slots.some((sl) => sl?.id === 'jump_drive' || sl?.isJumpDrive));
+        shipMap.set(ship.id, { ship: { ...ship }, currentSectorId: s.id, driveSpeed, hasJumpDrive });
+      }
+    }
+  }
+
+  // 2. Group steps into activations
+  interface MoveActivationGroup {
+    activationIndex: number;
+    shipId: string;
+    steps: MoveStep[];
+  }
+  const activations: MoveActivationGroup[] = [];
+
+  const hasExplicitIndices = moves.every((m) => m.activationIndex !== undefined);
+  if (hasExplicitIndices) {
+    const grouped = new Map<number, MoveStep[]>();
+    for (const m of moves) {
+      const list = grouped.get(m.activationIndex!) || [];
+      list.push(m);
+      grouped.set(m.activationIndex!, list);
+    }
+    const sortedEntries = Array.from(grouped.entries()).sort(([a], [b]) => a - b);
+    for (const [idx, steps] of sortedEntries) {
+      const firstShip = steps[0]!.shipId;
+      if (steps.some((s) => s.shipId !== firstShip)) {
+        return { valid: false, error: 'A single move activation can only move one ship.' };
+      }
+      activations.push({ activationIndex: idx, shipId: firstShip, steps });
+    }
+  } else {
+    // Automatic grouping for consecutive steps of the same ship up to driveSpeed + jump
+    let currentAct: MoveActivationGroup | null = null;
+    for (const m of moves) {
+      const shipInfo = shipMap.get(m.shipId);
+      const maxSpeed = shipInfo ? shipInfo.driveSpeed + (shipInfo.hasJumpDrive ? 1 : 0) : 1;
+      if (currentAct && currentAct.shipId === m.shipId && currentAct.steps.length < maxSpeed) {
+        currentAct.steps.push(m);
+      } else {
+        currentAct = {
+          activationIndex: activations.length,
+          shipId: m.shipId,
+          steps: [m],
+        };
+        activations.push(currentAct);
+      }
+    }
+  }
+
+  if (activations.length > maxMoveActivations) {
+    return {
+      valid: false,
+      error:
+        limitExceededMessage ||
+        `Cannot make more than ${maxMoveActivations} ship movements (move activations) in a single Move action (attempted ${activations.length}).`,
+    };
+  }
+
+  // 3. Validate paths, drive speed limits, and pinning
+  const pinnedShips = new Set<string>();
+  const isDraco = player.faction.id === 'descendants_of_draco';
+
+  const simSectorShips = new Map<string, { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[]>();
+  for (const s of effectiveMoveState.sectors) {
+    simSectorShips.set(s.id, s.ships.map((sh) => ({ id: sh.id, ownerId: sh.ownerId, type: sh.type, subsector: sh.subsector })));
+  }
+
+  const getHostilesInSec = (
+    sec: SectorTile,
+    shipsList: { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[],
+    subsector?: 1 | 2 | 3
+  ) => {
+    const targetSub = subsector ?? 1;
+    const filteredList = sec.isNebula ? shipsList.filter((s) => (s.subsector ?? 1) === targetSub) : shipsList;
+    let ancients = sec.isNebula
+      ? filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
+      : Math.max(
+          sec.ancientsCount || 0,
+          filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
+        );
+    if (isDraco) ancients = 0;
+    const gcdsShips = filteredList.filter((s) => s.ownerId === 'gcds' || s.type === 'gcds').length;
+    const gcdsCount = sec.hasGCDS && !sec.isNebula && gcdsShips === 0 ? 1 : gcdsShips;
+    const guardianShips = filteredList.filter((s) => s.ownerId === 'guardian' || s.type === 'guardian').length;
+    const otherPlayerShips = filteredList.filter(
+      (s) => s.ownerId !== player.id && (s.ownerId.startsWith('player_') || state.players.some((p) => p.id === s.ownerId))
+    ).length;
+    return ancients + gcdsCount + guardianShips + otherPlayerShips;
+  };
+
+  for (const act of activations) {
+    const shipInfo = shipMap.get(act.shipId);
+    if (!shipInfo) {
+      return { valid: false, error: `Ship ${act.shipId} not found or not owned by player.` };
+    }
+    const maxMoves = shipInfo.driveSpeed + (shipInfo.hasJumpDrive ? 1 : 0);
+    if (maxMoves <= 0) {
+      return { valid: false, error: `${shipInfo.ship.type} has Drive Speed 0 and cannot move.` };
+    }
+    if (act.steps.length > maxMoves) {
+      return {
+        valid: false,
+        error: `Ship ${shipInfo.ship.type} attempted to move ${act.steps.length} hexes in one activation, but its engine only has Drive Speed ${shipInfo.driveSpeed}.`,
+      };
+    }
+    if (pinnedShips.has(act.shipId)) {
+      return { valid: false, error: `Ship ${shipInfo.ship.type} is pinned by hostile forces and cannot move further.` };
+    }
+
+    const originSecId = shipInfo.currentSectorId;
+    const originSec = effectiveMoveState.sectors.find((s) => s.id === originSecId);
+    if (originSec) {
+      const shipsInOrigin = simSectorShips.get(originSecId) || [];
+      const hasLiveGcds = !originSec.isNebula && (originSec.hasGCDS || shipsInOrigin.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
+      if (hasLiveGcds) {
+        return {
+          valid: false,
+          error: `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} by the Galactic Center Defense System (GCDS) and cannot move.`,
+        };
+      }
+      const shipSub = shipInfo.ship.subsector ?? 1;
+      const friendlyCount = originSec.isNebula
+        ? shipsInOrigin.filter((s) => s.ownerId === player.id && (s.subsector ?? 1) === shipSub).length
+        : shipsInOrigin.filter((s) => s.ownerId === player.id).length;
+      const hostiles = getHostilesInSec(originSec, shipsInOrigin, shipSub);
+      const hasCloaking = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
+      const pinningThreshold = hasCloaking ? friendlyCount * 2 : friendlyCount;
+      if (hostiles > 0 && hostiles >= pinningThreshold) {
+        return {
+          valid: false,
+          error: originSec.isNebula
+            ? `Ship ${shipInfo.ship.type} is pinned in Subsector ${shipSub} of Nebula Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`
+            : `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`,
+        };
+      }
+    }
+
+    let usedJumpInAct = false;
+    for (let sIdx = 0; sIdx < act.steps.length; sIdx++) {
+      const step = act.steps[sIdx]!;
+      if (pinnedShips.has(act.shipId)) {
+        return { valid: false, error: `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering and cannot take further movement steps.` };
+      }
+      if (shipInfo.currentSectorId !== step.fromSectorId) {
+        return {
+          valid: false,
+          error: `Ship is currently in Sector ${shipInfo.currentSectorId}, cannot move from ${step.fromSectorId}.`,
+        };
+      }
+
+      const fromSec = effectiveMoveState.sectors.find((s) => s.id === step.fromSectorId);
+      const toSec = effectiveMoveState.sectors.find((s) => s.id === step.toSectorId);
+      if (!fromSec || !toSec) {
+        return { valid: false, error: 'Sector not found for movement.' };
+      }
+      const isInternalNebulaMove = fromSec.id === toSec.id && fromSec.isNebula;
+      const isConnected = isInternalNebulaMove || areSectorsConnected(fromSec, toSec, hasWormholeGen, state.warpedUniverse?.conduits);
+      if (!isConnected) {
+        const areAdjacent = getEdgeBetween(fromSec.coord, toSec.coord) !== null;
+        if (shipInfo.hasJumpDrive && !usedJumpInAct && areAdjacent) {
+          usedJumpInAct = true;
+        } else if (shipInfo.hasJumpDrive && usedJumpInAct && areAdjacent) {
+          return {
+            valid: false,
+            error: `Ship ${shipInfo.ship.type} already used its 1 Jump Drive move in this activation. Further movement requires connected wormholes.`,
+          };
+        } else if (!areAdjacent) {
+          return {
+            valid: false,
+            error: `Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber} are not adjacent.`,
+          };
+        } else {
+          return {
+            valid: false,
+            error: `Wormhole does not connect Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber}.`,
+          };
+        }
+      }
+
+      if (fromSec.isNebula && fromSec.id !== toSec.id) {
+        const exitEdge = getEdgeBetween(fromSec.coord, toSec.coord);
+        if (exitEdge !== null) {
+          const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge, fromSec.rotation || 0);
+          const shipSub = shipInfo.ship.subsector ?? 1;
+          if (allowedSub !== shipSub) {
+            return {
+              valid: false,
+              error: `Ship is located in Subsector ${shipSub} of Nebula, but exit edge connects from Subsector ${allowedSub}. Must move between subsectors first.`,
+            };
+          }
+        }
+      }
+
+      if (toSec.isBlackHole && sIdx < act.steps.length - 1) {
+        return {
+          valid: false,
+          error: `Ship movement immediately terminates upon entering Black Hole Sector ${toSec.sectorNumber}.`,
+        };
+      }
+
+      let targetSub = step.targetSubsector;
+      if (toSec.isNebula && fromSec.id !== toSec.id) {
+        const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
+        const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
+        targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSec.rotation || 0);
+      }
+
+      const fromList = simSectorShips.get(fromSec.id) || [];
+      const shipInFromIdx = fromList.findIndex((s) => s.id === act.shipId);
+      if (shipInFromIdx >= 0) {
+        const [moved] = fromList.splice(shipInFromIdx, 1);
+        if (toSec.isNebula) {
+          moved!.subsector = targetSub ?? (moved!.subsector || 1);
+        } else {
+          moved!.subsector = undefined;
+        }
+        const toList = simSectorShips.get(toSec.id) || [];
+        toList.push(moved!);
+        simSectorShips.set(toSec.id, toList);
+      }
+      shipInfo.currentSectorId = step.toSectorId;
+      if (toSec.isNebula && targetSub) {
+        shipInfo.ship.subsector = targetSub;
+      }
+
+      const shipsInTo = simSectorShips.get(toSec.id) || [];
+      const finalTargetSub = toSec.isNebula ? (targetSub ?? shipInfo.ship.subsector ?? 1) : undefined;
+      const hasLiveGcdsInTo = !toSec.isNebula && (toSec.hasGCDS || shipsInTo.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
+      const friendlyInTo = toSec.isNebula && finalTargetSub
+        ? shipsInTo.filter((s) => s.ownerId === player.id && (s.subsector ?? 1) === finalTargetSub).length
+        : shipsInTo.filter((s) => s.ownerId === player.id).length;
+      const hostilesInTo = getHostilesInSec(toSec, shipsInTo, finalTargetSub);
+      const hasCloakingInTo = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
+      const pinningThresholdInTo = hasCloakingInTo ? friendlyInTo * 2 : friendlyInTo;
+      if (hasLiveGcdsInTo || (hostilesInTo > 0 && hostilesInTo >= pinningThresholdInTo)) {
+        pinnedShips.add(act.shipId);
+        if (sIdx < act.steps.length - 1) {
+          return {
+            valid: false,
+            error: hasLiveGcdsInTo
+              ? `Ship ${shipInfo.ship.type} was pinned by the Galactic Center Defense System (GCDS) upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`
+              : toSec.isNebula
+              ? `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Subsector ${finalTargetSub} of Nebula Sector ${toSec.sectorNumber} and cannot take further movement steps.`
+              : `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`,
+          };
+        }
+      }
+    }
+  }
+
+  return { valid: true };
+}
+
+function executeMoveSteps(
+  newState: GameState,
+  player: PlayerState,
+  moves: MoveStep[],
+  addLog: (msg: string, type?: GameLogEntry['type']) => void,
+  requireConfirmation?: boolean,
+  logPrefix: string = ''
+): void {
+  const stepsByActivation: Record<number, MoveStep[]> = {};
+  for (const step of moves) {
+    const actIdx = step.activationIndex ?? 0;
+    if (!stepsByActivation[actIdx]) {
+      stepsByActivation[actIdx] = [];
+    }
+    stepsByActivation[actIdx]!.push(step);
+  }
+
+  const sortedActKeys = Object.keys(stepsByActivation)
+    .map(Number)
+    .sort((a, b) => a - b);
+  for (const actIdx of sortedActKeys) {
+    const actSteps = stepsByActivation[actIdx]!;
+    for (const step of actSteps) {
+      const fromSector = newState.sectors.find((s) => s.id === step.fromSectorId)!;
+      const toSector = newState.sectors.find((s) => s.id === step.toSectorId)!;
+
+      const shipIdx = fromSector.ships.findIndex((s) => s.id === step.shipId);
+      if (shipIdx >= 0) {
+        const [movedShip] = fromSector.ships.splice(shipIdx, 1);
+        if (movedShip) {
+          if (toSector.isBlackHole) {
+            if (toSector.hasDiscovery && toSector.discoveryTile && !toSector.discoveryClaimed) {
+              toSector.discoveryClaimed = true;
+              newState.pendingDiscovery = buildPendingDiscoveryForPlayer(
+                newState.discoveryBag,
+                player,
+                toSector.id,
+                toSector.discoveryTile,
+                false
+              );
+              addLog(`${logPrefix}${player.name}'s ${movedShip.type.toUpperCase()} entered Black Hole Sector ${toSector.sectorNumber} (${toSector.name}) and claimed the Discovery Tile!`);
+            }
+
+            const bhOutcome = evaluateBlackHoleEntry(newState.round);
+            if (bhOutcome.immediate) {
+              const legalReturnSectors = getLegalBlackHoleReturnSectors(toSector.sectorNumber, newState.sectors);
+              const returnSecId = step.blackHoleReturnSectorId && legalReturnSectors.some((s) => s.id === step.blackHoleReturnSectorId)
+                ? step.blackHoleReturnSectorId
+                : (legalReturnSectors[0]?.id || fromSector.id);
+              const returnSec = newState.sectors.find((s) => s.id === returnSecId) || fromSector;
+
+              const bp = player.blueprints[movedShip.type as ShipType];
+              const maxHull = bp ? calculateBlueprintStats(bp).totalHull : (movedShip.type === 'interceptor' ? 1 : 2);
+              const totalDamage = (movedShip.damage || 0) + bhOutcome.damage;
+
+              if (totalDamage >= maxHull) {
+                player.graveyardShips = player.graveyardShips || [];
+                player.graveyardShips.push({
+                  ...movedShip,
+                  damage: totalDamage,
+                });
+                addLog(
+                  `💥 ${logPrefix}Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face} (Star/Blank) and sustained ${bhOutcome.damage} damage! Hull breached (${totalDamage}/${maxHull} HP) - destroyed by gravitational shear before returning to board! (Bug 147)`,
+                  'combat'
+                );
+              } else {
+                returnSec.ships.push({
+                  ...movedShip,
+                  damage: totalDamage,
+                });
+                addLog(`🌀 ${logPrefix}Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face} (Star/Blank)! Returned immediately to Sector ${returnSec.sectorNumber} with 1 damage!`);
+              }
+            } else {
+              if (!newState.galacticEvents) {
+                newState.galacticEvents = createGalacticEventsState(toSector.sectorNumber);
+              }
+              newState.galacticEvents.blackHoleDelayedShips.push({
+                shipId: movedShip.id,
+                ownerId: player.id,
+                shipType: movedShip.type as ShipType,
+                damage: 0,
+                returnRound: bhOutcome.returnRound,
+                blackHoleSectorNumber: toSector.sectorNumber,
+                blackHoleSectorId: toSector.id,
+              });
+              addLog(`🌀 ${logPrefix}Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face}! Trapped in spacetime; will emerge in Round ${bhOutcome.returnRound}.`);
+            }
+          } else if (toSector.isNebula) {
+            if (fromSector.id === toSector.id) {
+              const currentSub = movedShip.subsector || 1;
+              const newSub = step.targetSubsector || (currentSub === 1 ? 2 : (currentSub === 2 ? 3 : 1));
+              movedShip.subsector = newSub;
+              toSector.ships.push(movedShip);
+              addLog(`${logPrefix}${player.name} moved a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber} Sub ${currentSub} to Sector ${toSector.sectorNumber} Sub ${newSub}.`);
+            } else {
+              const edgeFromTo = getEdgeBetween(fromSector.coord, toSector.coord);
+              const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
+              const targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSector.rotation || 0);
+              const fromSectorSub = fromSector.isNebula ? (movedShip.subsector || 1) : undefined;
+              movedShip.subsector = targetSub;
+              toSector.ships.push(movedShip);
+              toSector.playerEntryOrder = toSector.playerEntryOrder || [];
+              if (!toSector.playerEntryOrder.includes(player.id)) {
+                toSector.playerEntryOrder.push(player.id);
+              }
+              addLog(`${logPrefix}${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber}${fromSectorSub ? ` Sub ${fromSectorSub}` : ''} to Sector ${toSector.sectorNumber} Sub ${targetSub}.`);
+            }
+          } else {
+            const fromSub = fromSector.isNebula ? (movedShip.subsector || 1) : undefined;
+            if (fromSector.isNebula) {
+              movedShip.subsector = undefined;
+            }
+            toSector.ships.push(movedShip);
+            toSector.playerEntryOrder = toSector.playerEntryOrder || [];
+            if (!toSector.playerEntryOrder.includes(player.id)) {
+              toSector.playerEntryOrder.push(player.id);
+            }
+            addLog(`${logPrefix}${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber}${fromSub ? ` Sub ${fromSub}` : ''} to Sector ${toSector.sectorNumber}.`);
+          }
+        }
+      }
+    }
+  }
+
+  const aggressionAllyIds = getMoveAggressionAllyIds(newState.sectors, player);
+  if (!requireConfirmation && aggressionAllyIds.length > 0) {
+    resolveAlliancesBreak(newState, player, aggressionAllyIds, addLog, false);
+  }
 }
 
 /**
@@ -1948,7 +2376,30 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         };
       }
 
-      return validateBuildItems(state, player, action.items);
+      const buildValidation = validateBuildItems(state, player, action.items);
+      if (!buildValidation.valid) {
+        return buildValidation;
+      }
+
+      if (action.regroupMoves && action.regroupMoves.length > 0) {
+        if (!isRegroupFaction(player.faction.id)) {
+          return { valid: false, error: 'Only Heralds of Ragnarök may attach a Regroup Move activation to a Build action.' };
+        }
+        if (isPassed || action.pulsarSectorId) {
+          return { valid: false, error: 'Regroup Move is only included with a full Build action (not Reaction or Pulsar build).' };
+        }
+        const effectiveRegroupState = applyBuildItemsToPreviewState(state, action.playerId, action.items);
+        return validateMovePlan(
+          state,
+          effectiveRegroupState,
+          player,
+          action.regroupMoves,
+          1,
+          'Regroup (+1 MOV) allows moving at most 1 ship.'
+        );
+      }
+
+      return { valid: true };
     }
 
     case 'MOVE': {
@@ -1986,11 +2437,10 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (!midasCheck.valid) return midasCheck;
       }
       const maxMoveActivations = getEffectiveMoveActivationLimit(player, action.pulsarSectorId, isPassed, action.useMidasTouch);
-      const hasWormholeGen = playerHasWormholeGenerator(player);
 
       if (action.raidBuild) {
-        if (player.faction.id !== 'the_horde') {
-          return { valid: false, error: 'Only The Horde may attach a Raid Build activation to a Move action.' };
+        if (!isRaidFaction(player.faction.id)) {
+          return { valid: false, error: 'Only Raid factions (The Horde / Heralds of Ragnarök) may attach a Raid Build activation to a Move action.' };
         }
         if (isPassed || action.pulsarSectorId) {
           return { valid: false, error: 'Raid Build is only included with a full Move action (not Reaction or Pulsar move).' };
@@ -2002,277 +2452,17 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
 
       const effectiveMoveState = action.raidBuild
-        ? applyRaidBuildToPreviewState(state, action.playerId, action.raidBuild)
+        ? applyBuildItemsToPreviewState(state, action.playerId, [action.raidBuild])
         : state;
 
-      // 1. Build a map of all ships currently in sectors with their blueprint driveSpeed and Jump Drive
-      const shipMap = new Map<
-        string,
-        { ship: SectorShip; currentSectorId: string; driveSpeed: number; hasJumpDrive: boolean }
-      >();
-      for (const s of effectiveMoveState.sectors) {
-        for (const ship of s.ships) {
-          if (ship.ownerId === action.playerId) {
-            const bp = player.blueprints[ship.type];
-            const stats = bp ? calculateBlueprintStats(bp) : null;
-            const driveSpeed = stats ? stats.totalDriveSpeed : 1;
-            const hasJumpDrive = Boolean(stats?.hasJumpDrive || bp?.slots.some((sl) => sl?.id === 'jump_drive' || sl?.isJumpDrive));
-            shipMap.set(ship.id, { ship: { ...ship }, currentSectorId: s.id, driveSpeed, hasJumpDrive });
-          }
-        }
-      }
-
-      // 2. Group steps into activations
-      interface MoveActivationGroup {
-        activationIndex: number;
-        shipId: string;
-        steps: typeof action.moves;
-      }
-      const activations: MoveActivationGroup[] = [];
-
-      const hasExplicitIndices = action.moves.every((m) => m.activationIndex !== undefined);
-      if (hasExplicitIndices) {
-        const grouped = new Map<number, typeof action.moves>();
-        for (const m of action.moves) {
-          const list = grouped.get(m.activationIndex!) || [];
-          list.push(m);
-          grouped.set(m.activationIndex!, list);
-        }
-        const sortedEntries = Array.from(grouped.entries()).sort(([a], [b]) => a - b);
-        for (const [idx, steps] of sortedEntries) {
-          const firstShip = steps[0]!.shipId;
-          if (steps.some((s) => s.shipId !== firstShip)) {
-            return { valid: false, error: 'A single move activation can only move one ship.' };
-          }
-          activations.push({ activationIndex: idx, shipId: firstShip, steps });
-        }
-      } else {
-        // Automatic grouping for consecutive steps of the same ship up to driveSpeed + jump
-        let currentAct: MoveActivationGroup | null = null;
-        for (const m of action.moves) {
-          const shipInfo = shipMap.get(m.shipId);
-          const maxSpeed = shipInfo ? shipInfo.driveSpeed + (shipInfo.hasJumpDrive ? 1 : 0) : 1;
-          if (currentAct && currentAct.shipId === m.shipId && currentAct.steps.length < maxSpeed) {
-            currentAct.steps.push(m);
-          } else {
-            currentAct = {
-              activationIndex: activations.length,
-              shipId: m.shipId,
-              steps: [m],
-            };
-            activations.push(currentAct);
-          }
-        }
-      }
-
-      if (activations.length > maxMoveActivations) {
-        return {
-          valid: false,
-          error: isPassed
-            ? 'Reaction Move allows moving at most 1 ship.'
-            : `Cannot make more than ${maxMoveActivations} ship movements (move activations) in a single Move action (attempted ${activations.length}).`,
-        };
-      }
-
-      // 3. Validate paths, drive speed limits, and pinning
-      const pinnedShips = new Set<string>();
-      const isDraco = player.faction.id === 'descendants_of_draco';
-
-      // Track ships in each sector across activations
-      const simSectorShips = new Map<string, { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[]>();
-      for (const s of effectiveMoveState.sectors) {
-        simSectorShips.set(s.id, s.ships.map((sh) => ({ id: sh.id, ownerId: sh.ownerId, type: sh.type, subsector: sh.subsector })));
-      }
-
-      const getHostilesInSec = (
-        sec: SectorTile,
-        shipsList: { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[],
-        subsector?: 1 | 2 | 3
-      ) => {
-        const targetSub = subsector ?? 1;
-        const filteredList = sec.isNebula ? shipsList.filter((s) => (s.subsector ?? 1) === targetSub) : shipsList;
-        let ancients = sec.isNebula
-          ? filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
-          : Math.max(
-              sec.ancientsCount || 0,
-              filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
-            );
-        if (isDraco) ancients = 0;
-        const gcdsShips = filteredList.filter((s) => s.ownerId === 'gcds' || s.type === 'gcds').length;
-        const gcdsCount = sec.hasGCDS && !sec.isNebula && gcdsShips === 0 ? 1 : gcdsShips;
-        const guardianShips = filteredList.filter((s) => s.ownerId === 'guardian' || s.type === 'guardian').length;
-        const otherPlayerShips = filteredList.filter(
-          (s) => s.ownerId !== action.playerId && (s.ownerId.startsWith('player_') || state.players.some((p) => p.id === s.ownerId))
-        ).length;
-        return ancients + gcdsCount + guardianShips + otherPlayerShips;
-      };
-
-      for (const act of activations) {
-        const shipInfo = shipMap.get(act.shipId);
-        if (!shipInfo) {
-          return { valid: false, error: `Ship ${act.shipId} not found or not owned by player.` };
-        }
-        const maxMoves = shipInfo.driveSpeed + (shipInfo.hasJumpDrive ? 1 : 0);
-        if (maxMoves <= 0) {
-          return { valid: false, error: `${shipInfo.ship.type} has Drive Speed 0 and cannot move.` };
-        }
-        if (act.steps.length > maxMoves) {
-          return {
-            valid: false,
-            error: `Ship ${shipInfo.ship.type} attempted to move ${act.steps.length} hexes in one activation, but its engine only has Drive Speed ${shipInfo.driveSpeed}.`,
-          };
-        }
-        if (pinnedShips.has(act.shipId)) {
-          return { valid: false, error: `Ship ${shipInfo.ship.type} is pinned by hostile forces and cannot move further.` };
-        }
-
-        // Check if origin sector pins this ship before taking any step (GCDS pins all, other hostiles pin 1:1)
-        const originSecId = shipInfo.currentSectorId;
-        const originSec = effectiveMoveState.sectors.find((s) => s.id === originSecId);
-        if (originSec) {
-          const shipsInOrigin = simSectorShips.get(originSecId) || [];
-          const hasLiveGcds = !originSec.isNebula && (originSec.hasGCDS || shipsInOrigin.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
-          if (hasLiveGcds) {
-            return {
-              valid: false,
-              error: `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} by the Galactic Center Defense System (GCDS) and cannot move.`,
-            };
-          }
-          const shipSub = shipInfo.ship.subsector ?? 1;
-          const friendlyCount = originSec.isNebula
-            ? shipsInOrigin.filter((s) => s.ownerId === action.playerId && (s.subsector ?? 1) === shipSub).length
-            : shipsInOrigin.filter((s) => s.ownerId === action.playerId).length;
-          const hostiles = getHostilesInSec(originSec, shipsInOrigin, shipSub);
-          const hasCloaking = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
-          const pinningThreshold = hasCloaking ? friendlyCount * 2 : friendlyCount;
-          if (hostiles > 0 && hostiles >= pinningThreshold) {
-            return {
-              valid: false,
-              error: originSec.isNebula
-                ? `Ship ${shipInfo.ship.type} is pinned in Subsector ${shipSub} of Nebula Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`
-                : `Ship ${shipInfo.ship.type} is pinned in Sector ${originSec.sectorNumber} (friendly ships: ${friendlyCount}, hostile ships: ${hostiles}) and cannot move.`,
-            };
-          }
-        }
-
-        let usedJumpInAct = false;
-        for (let sIdx = 0; sIdx < act.steps.length; sIdx++) {
-          const step = act.steps[sIdx]!;
-          if (pinnedShips.has(act.shipId)) {
-            return { valid: false, error: `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering and cannot take further movement steps.` };
-          }
-          if (shipInfo.currentSectorId !== step.fromSectorId) {
-            return {
-              valid: false,
-              error: `Ship is currently in Sector ${shipInfo.currentSectorId}, cannot move from ${step.fromSectorId}.`,
-            };
-          }
-
-          const fromSec = effectiveMoveState.sectors.find((s) => s.id === step.fromSectorId);
-          const toSec = effectiveMoveState.sectors.find((s) => s.id === step.toSectorId);
-          if (!fromSec || !toSec) {
-            return { valid: false, error: 'Sector not found for movement.' };
-          }
-          const isInternalNebulaMove = fromSec.id === toSec.id && fromSec.isNebula;
-          const isConnected = isInternalNebulaMove || areSectorsConnected(fromSec, toSec, hasWormholeGen, state.warpedUniverse?.conduits);
-          if (!isConnected) {
-            const areAdjacent = getEdgeBetween(fromSec.coord, toSec.coord) !== null;
-            if (shipInfo.hasJumpDrive && !usedJumpInAct && areAdjacent) {
-              usedJumpInAct = true;
-            } else if (shipInfo.hasJumpDrive && usedJumpInAct && areAdjacent) {
-              return {
-                valid: false,
-                error: `Ship ${shipInfo.ship.type} already used its 1 Jump Drive move in this activation. Further movement requires connected wormholes.`,
-              };
-            } else if (!areAdjacent) {
-              return {
-                valid: false,
-                error: `Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber} are not adjacent.`,
-              };
-            } else {
-              return {
-                valid: false,
-                error: `Wormhole does not connect Sector ${fromSec.sectorNumber} and Sector ${toSec.sectorNumber}.`,
-              };
-            }
-          }
-
-          // Nebula Exit Edge constraint: must leave via an Edge belonging to its current Subsector
-          if (fromSec.isNebula && fromSec.id !== toSec.id) {
-            const exitEdge = getEdgeBetween(fromSec.coord, toSec.coord);
-            if (exitEdge !== null) {
-              const allowedSub = getNebulaSubsectorForOuterEdge(exitEdge as HexEdge, fromSec.rotation || 0);
-              const shipSub = shipInfo.ship.subsector ?? 1;
-              if (allowedSub !== shipSub) {
-                return {
-                  valid: false,
-                  error: `Ship is located in Subsector ${shipSub} of Nebula, but exit edge connects from Subsector ${allowedSub}. Must move between subsectors first.`,
-                };
-              }
-            }
-          }
-
-          // Black Hole: movement immediately ends upon entry
-          if (toSec.isBlackHole && sIdx < act.steps.length - 1) {
-            return {
-              valid: false,
-              error: `Ship movement immediately terminates upon entering Black Hole Sector ${toSec.sectorNumber}.`,
-            };
-          }
-
-          let targetSub = step.targetSubsector;
-          if (toSec.isNebula && fromSec.id !== toSec.id) {
-            const edgeFromTo = getEdgeBetween(fromSec.coord, toSec.coord);
-            const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
-            targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSec.rotation || 0);
-          }
-
-          // Advance ship's simulated location in simSectorShips
-          const fromList = simSectorShips.get(fromSec.id) || [];
-          const shipInFromIdx = fromList.findIndex((s) => s.id === act.shipId);
-          if (shipInFromIdx >= 0) {
-            const [moved] = fromList.splice(shipInFromIdx, 1);
-            if (toSec.isNebula) {
-              moved!.subsector = targetSub ?? (moved!.subsector || 1);
-            } else {
-              moved!.subsector = undefined;
-            }
-            const toList = simSectorShips.get(toSec.id) || [];
-            toList.push(moved!);
-            simSectorShips.set(toSec.id, toList);
-          }
-          shipInfo.currentSectorId = step.toSectorId;
-          if (toSec.isNebula && targetSub) {
-            shipInfo.ship.subsector = targetSub;
-          }
-
-          // Check if destination has hostiles -> GCDS pins all; other hostiles pin 1:1 (or 2:1 with Cloaking Device)
-          const shipsInTo = simSectorShips.get(toSec.id) || [];
-          const finalTargetSub = toSec.isNebula ? (targetSub ?? shipInfo.ship.subsector ?? 1) : undefined;
-          const hasLiveGcdsInTo = !toSec.isNebula && (toSec.hasGCDS || shipsInTo.some((s) => s.ownerId === 'gcds' || s.type === 'gcds'));
-          const friendlyInTo = toSec.isNebula && finalTargetSub
-            ? shipsInTo.filter((s) => s.ownerId === action.playerId && (s.subsector ?? 1) === finalTargetSub).length
-            : shipsInTo.filter((s) => s.ownerId === action.playerId).length;
-          const hostilesInTo = getHostilesInSec(toSec, shipsInTo, finalTargetSub);
-          const hasCloakingInTo = player.techTrack.researched.some((t) => t.id === 'cloaking_device');
-          const pinningThresholdInTo = hasCloakingInTo ? friendlyInTo * 2 : friendlyInTo;
-          if (hasLiveGcdsInTo || (hostilesInTo > 0 && hostilesInTo >= pinningThresholdInTo)) {
-            pinnedShips.add(act.shipId);
-            if (sIdx < act.steps.length - 1) {
-              return {
-                valid: false,
-                error: hasLiveGcdsInTo
-                  ? `Ship ${shipInfo.ship.type} was pinned by the Galactic Center Defense System (GCDS) upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`
-                  : toSec.isNebula
-                  ? `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Subsector ${finalTargetSub} of Nebula Sector ${toSec.sectorNumber} and cannot take further movement steps.`
-                  : `Ship ${shipInfo.ship.type} was pinned by hostile forces upon entering Sector ${toSec.sectorNumber} and cannot take further movement steps.`,
-              };
-            }
-          }
-        }
-      }
-
-      return { valid: true };
+      return validateMovePlan(
+        state,
+        effectiveMoveState,
+        player,
+        action.moves,
+        maxMoveActivations,
+        isPassed ? 'Reaction Move allows moving at most 1 ship.' : undefined
+      );
     }
 
     case 'INFLUENCE': {
@@ -4208,6 +4398,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       player.actionsTakenThisRound += 1;
 
       applyBuildItems(newState, player, action.items, addLog);
+      if (action.regroupMoves && action.regroupMoves.length > 0 && isRegroupFaction(player.faction.id)) {
+        executeMoveSteps(newState, player, action.regroupMoves, addLog, action.requireConfirmation, 'Regroup (+1 MOV): ');
+      }
       break;
     }
 
@@ -4231,140 +4424,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       }
       player.actionsTakenThisRound += 1;
 
-      if (action.raidBuild && player.faction.id === 'the_horde') {
+      if (action.raidBuild && isRaidFaction(player.faction.id)) {
         applyBuildItems(newState, player, [action.raidBuild], addLog, 'Raid (+1 BUI): ');
       }
 
-      // Group moves by activation index
-      const stepsByActivation: Record<number, typeof action.moves> = {};
-      const moves = action.moves || [];
-      for (const step of moves) {
-        const actIdx = step.activationIndex ?? 0;
-        if (!stepsByActivation[actIdx]) {
-          stepsByActivation[actIdx] = [];
-        }
-        stepsByActivation[actIdx]!.push(step);
-      }
-
-      const sortedActKeys = Object.keys(stepsByActivation)
-        .map(Number)
-        .sort((a, b) => a - b);
-      for (const actIdx of sortedActKeys) {
-        const actSteps = stepsByActivation[actIdx]!;
-        for (const step of actSteps) {
-          const fromSector = newState.sectors.find((s) => s.id === step.fromSectorId)!;
-          const toSector = newState.sectors.find((s) => s.id === step.toSectorId)!;
-
-          const shipIdx = fromSector.ships.findIndex((s) => s.id === step.shipId);
-          if (shipIdx >= 0) {
-            const [movedShip] = fromSector.ships.splice(shipIdx, 1);
-            if (movedShip) {
-              if (toSector.isBlackHole) {
-                // Black hole entry: ends move activation & leaves board
-                if (toSector.hasDiscovery && toSector.discoveryTile && !toSector.discoveryClaimed) {
-                  toSector.discoveryClaimed = true;
-                  newState.pendingDiscovery = buildPendingDiscoveryForPlayer(
-                    newState.discoveryBag,
-                    player,
-                    toSector.id,
-                    toSector.discoveryTile,
-                    false
-                  );
-                  addLog(`${player.name}'s ${movedShip.type.toUpperCase()} entered Black Hole Sector ${toSector.sectorNumber} (${toSector.name}) and claimed the Discovery Tile!`);
-                }
-
-                // Roll yellow die
-                const bhOutcome = evaluateBlackHoleEntry(newState.round);
-                if (bhOutcome.immediate) {
-                  const legalReturnSectors = getLegalBlackHoleReturnSectors(toSector.sectorNumber, newState.sectors);
-                  const returnSecId = step.blackHoleReturnSectorId && legalReturnSectors.some((s) => s.id === step.blackHoleReturnSectorId)
-                    ? step.blackHoleReturnSectorId
-                    : (legalReturnSectors[0]?.id || fromSector.id);
-                  const returnSec = newState.sectors.find((s) => s.id === returnSecId) || fromSector;
-
-                  const bp = player.blueprints[movedShip.type as ShipType];
-                  const maxHull = bp ? calculateBlueprintStats(bp).totalHull : (movedShip.type === 'interceptor' ? 1 : 2);
-                  const totalDamage = (movedShip.damage || 0) + bhOutcome.damage;
-
-                  if (totalDamage >= maxHull) {
-                    player.graveyardShips = player.graveyardShips || [];
-                    player.graveyardShips.push({
-                      ...movedShip,
-                      damage: totalDamage,
-                    });
-                    addLog(
-                      `💥 Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face} (Star/Blank) and sustained ${bhOutcome.damage} damage! Hull breached (${totalDamage}/${maxHull} HP) - destroyed by gravitational shear before returning to board! (Bug 147)`,
-                      'combat'
-                    );
-                  } else {
-                    returnSec.ships.push({
-                      ...movedShip,
-                      damage: totalDamage,
-                    });
-                    addLog(`🌀 Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face} (Star/Blank)! Returned immediately to Sector ${returnSec.sectorNumber} with 1 damage!`);
-                  }
-                } else {
-                  if (!newState.galacticEvents) {
-                    newState.galacticEvents = createGalacticEventsState(toSector.sectorNumber);
-                  }
-                  newState.galacticEvents.blackHoleDelayedShips.push({
-                    shipId: movedShip.id,
-                    ownerId: player.id,
-                    shipType: movedShip.type as ShipType,
-                    damage: 0,
-                    returnRound: bhOutcome.returnRound,
-                    blackHoleSectorNumber: toSector.sectorNumber,
-                    blackHoleSectorId: toSector.id,
-                  });
-                  addLog(`🌀 Black Hole anomaly: ${player.name}'s ${movedShip.type.toUpperCase()} rolled ${bhOutcome.face}! Trapped in spacetime; will emerge in Round ${bhOutcome.returnRound}.`);
-                }
-              } else if (toSector.isNebula) {
-                if (fromSector.id === toSector.id) {
-                  // Internal move inside Nebula between subsectors
-                  const currentSub = movedShip.subsector || 1;
-                  const newSub = step.targetSubsector || (currentSub === 1 ? 2 : (currentSub === 2 ? 3 : 1));
-                  movedShip.subsector = newSub;
-                  toSector.ships.push(movedShip);
-                  addLog(`${player.name} moved a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber} Sub ${currentSub} to Sector ${toSector.sectorNumber} Sub ${newSub}.`);
-                } else {
-                  // Entering from outside
-                  const edgeFromTo = getEdgeBetween(fromSector.coord, toSector.coord);
-                  const entryEdge = edgeFromTo !== null ? ((edgeFromTo + 3) % 6) : 0;
-                  const targetSub = getNebulaSubsectorForOuterEdge(entryEdge as HexEdge, toSector.rotation || 0);
-                  const fromSectorSub = fromSector.isNebula ? (movedShip.subsector || 1) : undefined;
-                  movedShip.subsector = targetSub;
-                  toSector.ships.push(movedShip);
-                  toSector.playerEntryOrder = toSector.playerEntryOrder || [];
-                  if (!toSector.playerEntryOrder.includes(player.id)) {
-                    toSector.playerEntryOrder.push(player.id);
-                  }
-                  addLog(`${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber}${fromSectorSub ? ` Sub ${fromSectorSub}` : ''} to Sector ${toSector.sectorNumber} Sub ${targetSub}.`);
-                }
-              } else {
-                // Normal sector entry
-                const fromSub = fromSector.isNebula ? (movedShip.subsector || 1) : undefined;
-                if (fromSector.isNebula) {
-                  movedShip.subsector = undefined;
-                }
-                toSector.ships.push(movedShip);
-                toSector.playerEntryOrder = toSector.playerEntryOrder || [];
-                if (!toSector.playerEntryOrder.includes(player.id)) {
-                  toSector.playerEntryOrder.push(player.id);
-                }
-                addLog(`${player.name} navigated a ${movedShip.type.toUpperCase()} from Sector ${fromSector.sectorNumber}${fromSub ? ` Sub ${fromSub}` : ''} to Sector ${toSector.sectorNumber}.`);
-              }
-            }
-          }
-        }
-      }
-
-      // Check if player ended movement in allied player's territory (Act of Aggression, Rulebook p. 15).
-      // When action.requireConfirmation is true (UI flow), defer breaking the alliance & returning cubes
-      // until the player confirms & ends their Move action in CONFIRM_TURN_ACTION.
-      const aggressionAllyIds = getMoveAggressionAllyIds(newState.sectors, player);
-      if (!action.requireConfirmation && aggressionAllyIds.length > 0) {
-        resolveAlliancesBreak(newState, player, aggressionAllyIds, addLog, false);
-      }
+      executeMoveSteps(newState, player, action.moves || [], addLog, action.requireConfirmation);
       break;
     }
 
@@ -6582,6 +6646,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         const buildAct = action as BuildAction;
         const count = buildAct.items?.length || 0;
         description = `Built ${count} unit(s) / structure(s)`;
+        if (buildAct.regroupMoves && buildAct.regroupMoves.length > 0) {
+          description = `${description} + Regroup Move (${buildAct.regroupMoves.length} step${buildAct.regroupMoves.length > 1 ? 's' : ''})`;
+        }
       } else if (action.type === 'UPGRADE') {
         const upAct = action as UpgradeAction;
         description = `Upgraded ${upAct.upgrades?.length || 0} blueprint part(s)`;
@@ -6624,7 +6691,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       const exploreAct = action.type === 'EXPLORE' ? (action as ExploreAction) : undefined;
 
       const moveBetrayalAllyIds =
-        action.type === 'MOVE' ? getMoveAggressionAllyIds(newState.sectors, player) : undefined;
+        action.type === 'MOVE' ||
+        (action.type === 'BUILD' && Boolean((action as BuildAction).regroupMoves?.length))
+          ? getMoveAggressionAllyIds(newState.sectors, player)
+          : undefined;
 
       newState.pendingActionConfirmation = {
         actionType: (action.type === 'DISCOVERY_CHOICE' || action.type === 'EXPLORE_CONTROL') ? 'EXPLORE' : action.type,

@@ -123,7 +123,10 @@ export interface BuildAction extends BaseAction {
     itemType: ShipType | 'orbital' | 'monolith';
     /** Mega War Inc.: upgrades an existing Interceptor->Cruiser or Cruiser->Dreadnought anywhere on map. */
     upgradeFromShipId?: string;
+    createdShipId?: string;
   }[];
+  /** Heralds of Ragnarök Regroup: optional 1 Move activation included with a normal Build action. */
+  regroupMoves?: MoveStep[];
   pulsarSectorId?: string;
   useMidasTouch?: boolean;
 }

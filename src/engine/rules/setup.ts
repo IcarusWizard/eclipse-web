@@ -44,9 +44,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   lime: '#84cc16', // The Horde
   ice: '#7dd3fc', // The Spiral
   gold: '#d4af37', // Legion of Midas
+  asgard: '#64748b', // Heralds of Ragnarök
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -80,6 +81,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   the_horde: 'lime',
   the_spiral: 'ice',
   legion_of_midas: 'gold',
+  heralds_of_ragnarok: 'asgard',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -105,6 +107,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   the_horde: ECLIPSE_COLOR_PALETTE.lime,
   the_spiral: ECLIPSE_COLOR_PALETTE.ice,
   legion_of_midas: ECLIPSE_COLOR_PALETTE.gold,
+  heralds_of_ragnarok: ECLIPSE_COLOR_PALETTE.asgard,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -645,6 +648,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 4,
     reputationSlotTypes: ['amb_only', 'both', 'both', 'both'],
   },
+  {
+    id: 'heralds_of_ragnarok',
+    name: 'Heralds of Ragnarök',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.asgard,
+    startingSectorNumber: 299,
+    startingResources: { money: 3, science: 3, materials: 2 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: ['neutron_bombs'],
+    traitDescription: 'Raid (Move actions include +1 Build activation), Regroup (Build actions include +1 Move activation). Alternate Ship Designs: Interceptor costs 4 Mats with 5 slots (+1 Hull) & base Initiative 1; Cruiser costs 4 Mats with 5 slots (-1 Hull) & base Initiative 2. Start with a Cruiser in Sector 299 Yggdrasil instead of an Interceptor.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 2,
+    reputationSlots: 5,
+    ambassadorSlots: 3,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'rep_only', 'rep_only'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -666,7 +692,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -706,6 +732,9 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   }
   if (faction.id === 'the_exiles') {
     return ['both', 'both', 'both', 'rep_only'];
+  }
+  if (faction.id === 'heralds_of_ragnarok') {
+    return ['amb_only', 'both', 'both', 'rep_only', 'rep_only'];
   }
   if (faction.id === 'the_horde') {
     return ['rep_only', 'rep_only', 'rep_only', 'both', 'both'];
@@ -937,7 +966,12 @@ export function buildPlayerAndHomeSector(
       if (!p.isAdvanced) {
         isColonized = true;
       }
-    } else if (faction.id === 'planta' || faction.id === 'wardens_of_magellan' || faction.id === 'enlightened_of_lyra') {
+    } else if (
+      faction.id === 'planta' ||
+      faction.id === 'wardens_of_magellan' ||
+      faction.id === 'enlightened_of_lyra' ||
+      faction.id === 'heralds_of_ragnarok'
+    ) {
       isColonized = !p.isAdvanced;
     } else if (faction.id === 'legion_of_midas') {
       // Money Is Power: start with a Money cube on the Advanced Gold square (lm_p2);
@@ -990,7 +1024,7 @@ export function buildPlayerAndHomeSector(
       }
     );
   } else {
-    const startShipType = faction.id === 'orion_hegemony' ? 'cruiser' : 'interceptor';
+    const startShipType = faction.id === 'orion_hegemony' || faction.id === 'heralds_of_ragnarok' ? 'cruiser' : 'interceptor';
     startShips.push({
       id: `ship_${playerId}_start_${startShipType}`,
       ownerId: playerId,

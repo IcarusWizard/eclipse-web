@@ -43,6 +43,7 @@ export interface BuildModalProps {
   pulsarSectorId?: string;
   isRaidBuild?: boolean;
   onSkipRaidBuild?: () => void;
+  isRegroupBuild?: boolean;
 }
 
 export const BuildModal: React.FC<BuildModalProps> = ({
@@ -58,6 +59,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   pulsarSectorId,
   isRaidBuild,
   onSkipRaidBuild,
+  isRegroupBuild,
 }) => {
   const { language, l } = useLanguage();
   const [useMidasTouch, setUseMidasTouch] = useState<boolean>(false);
@@ -466,6 +468,27 @@ export const BuildModal: React.FC<BuildModalProps> = ({
           </div>
         )}
 
+        {/* Regroup Build Banner (Heralds of Ragnarök) */}
+        {isRegroupBuild && (
+          <div
+            data-testid="ragnarok-regroup-build-banner"
+            className="p-2 px-3 rounded-xl bg-slate-800/80 border border-slate-500/80 text-slate-100 text-xs flex items-center justify-between shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-cyan-300 shrink-0" />
+              <div>
+                <span className="font-bold">⚔️ {l(`Regroup (+1 MOV) — Step 1: Build up to ${maxBuild}`, `重整集结 (+1 移动) — 第一步：建造至多 ${maxBuild} 项`)}</span>
+                <span className="text-slate-300/85 text-[11px] block">
+                  {l('Stage your build(s), then proceed to optionally move 1 ship (including newly built vessels).', '选择建造内容后，可额外移动 1 艘飞船（含刚建好的飞船）；最后撤回将一并还原。')}
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-cyan-950 text-cyan-200 font-mono text-[10px] font-bold uppercase border border-cyan-700 shrink-0">
+              {l('+1 Move Next', '随后+1移动')}
+            </span>
+          </div>
+        )}
+
         {/* Pulsar Banner */}
         {isPulsarActive && (
           <div className="p-2 px-3 rounded-xl bg-cyan-950/60 border border-cyan-500/80 text-cyan-200 text-xs flex items-center justify-between shadow-sm">
@@ -803,6 +826,8 @@ export const BuildModal: React.FC<BuildModalProps> = ({
             >
               {isRaidBuild
                 ? l('Build 1 & Proceed to Move ➔', '建造并进入移动 ➔')
+                : isRegroupBuild
+                ? l(`Build ${slots.length} & Proceed to Move ➔`, `建造 ${slots.length} 项并进入移动 ➔`)
                 : l(`Construct ${slots.length} ${slots.length === 1 ? 'Item' : 'Items'} (Enter)`, `建造 ${slots.length} 项 (Enter)`)}
             </button>
           </div>

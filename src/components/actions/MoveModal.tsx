@@ -67,6 +67,8 @@ export interface MoveModalProps {
   pulsarSectorId?: string;
   warpConduits?: WarpConduit[];
   raidBuildLabel?: string | null;
+  regroupBuildLabel?: string | null;
+  onSkipRegroupMove?: () => void;
   useMidasTouch?: boolean;
   onToggleMidasTouch?: (next: boolean) => void;
 }
@@ -94,6 +96,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   pulsarSectorId,
   warpConduits,
   raidBuildLabel,
+  regroupBuildLabel,
+  onSkipRegroupMove,
   useMidasTouch: useMidasTouchProp,
   onToggleMidasTouch,
 }) => {
@@ -101,9 +105,12 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   const [localUseMidasTouch, setLocalUseMidasTouch] = useState<boolean>(false);
   const useMidasTouch = useMidasTouchProp ?? localUseMidasTouch;
   const isPulsarActive = Boolean(pulsarSectorId);
-  const isMidasTouchEligible = player.faction.id === 'legion_of_midas' && !isPulsarActive && !player.hasPassed;
+  const isRegroupMoveStep = Boolean(regroupBuildLabel && onSkipRegroupMove);
+  const isMidasTouchEligible = player.faction.id === 'legion_of_midas' && !isPulsarActive && !isRegroupMoveStep && !player.hasPassed;
   const effectiveMidasTouch = isMidasTouchEligible && useMidasTouch;
-  const maxMoves = getEffectiveMoveActivationLimit(player, pulsarSectorId, undefined, effectiveMidasTouch);
+  const maxMoves = isRegroupMoveStep
+    ? 1
+    : getEffectiveMoveActivationLimit(player, pulsarSectorId, undefined, effectiveMidasTouch);
   const hasImprovedLogistics = player.techTrack.researched.some((t) => t.id === 'improved_logistics');
   const hasWormholeGen = playerHasWormholeGenerator(player);
 
@@ -625,6 +632,20 @@ export const MoveModal: React.FC<MoveModalProps> = ({
           </div>
         )}
 
+        {regroupBuildLabel && (
+          <div
+            data-testid="ragnarok-regroup-move-banner"
+            className="p-2 px-3 rounded-xl bg-slate-800/80 border border-slate-500/80 text-slate-100 text-xs flex items-center justify-between gap-2"
+          >
+            <span>
+              ⚔️ <strong>{l('Regroup (+1 MOV) — Step 2:', '重整集结 (+1 移动) — 第二步：')}</strong> {regroupBuildLabel}
+            </span>
+            <span className="text-[10.5px] text-cyan-300/85">
+              {l('Move 1 ship or Skip to finish Build (Revert reverses both)', '可移动 1 艘飞船或跳过以完成建造（撤回可同时还原）')}
+            </span>
+          </div>
+        )}
+
         {willBreakAllianceAtEnd && (
           <div
             data-testid="move-betrayal-warning"
@@ -670,12 +691,24 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             >
               {l('Cancel', '取消')}
             </button>
+            {isRegroupMoveStep && onSkipRegroupMove && (
+              <button
+                type="button"
+                data-testid="regroup-skip-move-btn"
+                onClick={onSkipRegroupMove}
+                className="px-3.5 py-1.5 rounded-xl bg-amber-950/90 hover:bg-amber-900 border border-amber-600/70 text-amber-200 text-xs font-bold transition-colors cursor-pointer"
+              >
+                {l('Skip Move & Build', '跳过移动直接建造')}
+              </button>
+            )}
             <button
               disabled={!canExecute}
               onClick={handleTriggerMove}
               className="px-4 py-1.5 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wide shadow-lg transition-all"
             >
-              {l(`Execute ${plannedMoves.length} ${plannedMoves.length === 1 ? 'Step' : 'Steps'} (Enter)`, `执行 ${plannedMoves.length} 步移动 (Enter)`)}
+              {isRegroupMoveStep
+                ? l(`Build & Move (${plannedMoves.length} ${plannedMoves.length === 1 ? 'Step' : 'Steps'})`, `建造并移动 (${plannedMoves.length} 步)`)
+                : l(`Execute ${plannedMoves.length} ${plannedMoves.length === 1 ? 'Step' : 'Steps'} (Enter)`, `执行 ${plannedMoves.length} 步移动 (Enter)`)}
             </button>
           </div>
         </div>
