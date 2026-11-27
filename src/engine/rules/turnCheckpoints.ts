@@ -5,6 +5,7 @@ import {
   getCombatShipTypeGroups,
   getActiveCombatGroup,
   getPendingSpiralShiftPlayerId,
+  getPendingDivineInspirationPlayerId,
 } from './combatEngine';
 
 export interface AdminTurnCheckpointInfo {
@@ -327,6 +328,11 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
             const spIdx = seatOfPlayerId(spiralWaitId);
             if (spIdx >= 0) return spIdx;
           }
+          const divineWaitId = getPendingDivineInspirationPlayerId(stateObj.players, sec, combat);
+          if (divineWaitId) {
+            const diIdx = seatOfPlayerId(divineWaitId);
+            if (diIdx >= 0) return diIdx;
+          }
           const scopedSec =
             sec.isNebula && combat.subsector
               ? { ...sec, ships: (sec.ships || []).filter((s: any) => (s.subsector ?? 1) === combat.subsector) }
@@ -337,7 +343,8 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
             combat.participatingPlayerIds,
             stateObj.neutralShipBlueprints,
             stateObj.expansions,
-            combat.spiralShiftModes
+            combat.spiralShiftModes,
+            combat.divineInspirationChoice
           );
           const defenderId = combat.defenderOwnerId || getSectorDefenderOwnerId(scopedSec, stateObj.players);
           const aliveUnits = sortUnitsByInitiative(

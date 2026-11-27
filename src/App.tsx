@@ -29,7 +29,7 @@ import { SHIP_PARTS } from './engine/rules/partData';
 import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
-import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId } from './engine/rules/combatEngine';
+import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId, getPendingDivineInspirationPlayerId } from './engine/rules/combatEngine';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X, Sparkles, Coins, Rocket, CheckCircle2, Check } from 'lucide-react';
 
@@ -356,6 +356,7 @@ const AppContent: React.FC = () => {
     state.pendingRaArtifactSetup,
     state.pendingSpiralTechSetup,
     state.pendingMidasStartingCubeSetup,
+    state.pendingHolyCommunion,
     isBuildOpen,
     isMoveOpen,
     isInfluenceOpen,
@@ -835,8 +836,13 @@ const AppContent: React.FC = () => {
         const sec = state.sectors.find((s) => s.id === state.activeCombat!.sectorId);
         if (sec) {
           const spiralShiftId = getPendingSpiralShiftPlayerId(state.players, sec, state.activeCombat);
+          const divineInspId = !spiralShiftId
+            ? getPendingDivineInspirationPlayerId(state.players, sec, state.activeCombat)
+            : null;
           if (spiralShiftId) {
             combatDecisionPlayerId = spiralShiftId;
+          } else if (divineInspId) {
+            combatDecisionPlayerId = divineInspId;
           } else {
           const units = buildCombatUnitsForSector(
             sec,
@@ -844,7 +850,8 @@ const AppContent: React.FC = () => {
             state.activeCombat.participatingPlayerIds,
             state.neutralShipBlueprints,
             state.expansions,
-            state.activeCombat.spiralShiftModes
+            state.activeCombat.spiralShiftModes,
+            state.activeCombat.divineInspirationChoice
           );
           const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
           const aliveUnits = sortUnitsByInitiative(
@@ -893,6 +900,8 @@ const AppContent: React.FC = () => {
       offTurnDecisionKey = `spiral_setup:${state.pendingSpiralTechSetup.playerId}`;
     } else if (state.pendingMidasStartingCubeSetup && (currentSeat === 'all' || state.pendingMidasStartingCubeSetup.playerId === myId)) {
       offTurnDecisionKey = `midas_setup:${state.pendingMidasStartingCubeSetup.playerId}`;
+    } else if (state.pendingHolyCommunion && (currentSeat === 'all' || state.pendingHolyCommunion.playerId === myId)) {
+      offTurnDecisionKey = `holy_communion:${state.pendingHolyCommunion.sectorId}:${state.pendingHolyCommunion.playerId}`;
     } else if (state.isDraftMode && state.factionDraft && (currentSeat === 'all' || state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] === myId)) {
       offTurnDecisionKey = `draft:${state.factionDraft.currentDraftIndex}`;
     }
@@ -935,6 +944,7 @@ const AppContent: React.FC = () => {
     state.pendingRaArtifactSetup,
     state.pendingSpiralTechSetup,
     state.pendingMidasStartingCubeSetup,
+    state.pendingHolyCommunion,
     state.isDraftMode,
     state.factionDraft,
   ]);
@@ -3702,6 +3712,56 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // Children of Light Divine Inspiration Pre-Combat Blessing
+  const handleSetDivineInspiration = (
+    sectorId: string,
+    choice: 'hit' | 'shield',
+    targetPlayerId?: string
+  ) => {
+    if (isSpectator || !state.activeCombat) return;
+    const sec = state.sectors.find((s) => s.id === sectorId);
+    const playerId =
+      targetPlayerId ||
+      (sec ? getPendingDivineInspirationPlayerId(state.players, sec, state.activeCombat) : null);
+    if (!playerId) return;
+    if (!canActForPlayer(playerId)) {
+      showToast('Only the Children of Light commander can choose Divine Inspiration.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'SET_DIVINE_INSPIRATION',
+      playerId,
+      sectorId,
+      choice,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to set Divine Inspiration.');
+    }
+  };
+
+  // Children of Light Holy Communion Settlement Choice
+  const handleResolveHolyCommunion = (sectorId: string, claim: boolean) => {
+    if (isSpectator || !state.pendingHolyCommunion) return;
+    const pid = state.pendingHolyCommunion.playerId;
+    if (!canActForPlayer(pid)) {
+      showToast('Only the Children of Light commander can resolve Holy Communion.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'RESOLVE_HOLY_COMMUNION',
+      playerId: pid,
+      sectorId,
+      claim,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to resolve Holy Communion.');
+    }
+  };
+
   // Auto-Resolve Combat (per-player opt-in; finishes full battle when PvE or when all human combatants enable it)
   const handleAutoResolveCombat = (targetPlayerId?: string) => {
     if (isSpectator) {
@@ -3727,7 +3787,8 @@ const AppContent: React.FC = () => {
               state.activeCombat.participatingPlayerIds,
               state.neutralShipBlueprints,
               state.expansions,
-              state.activeCombat.spiralShiftModes
+              state.activeCombat.spiralShiftModes,
+              state.activeCombat.divineInspirationChoice
             );
             const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sec, state.players);
             const aliveUnits = sortUnitsByInitiative(
@@ -4929,6 +4990,7 @@ const AppContent: React.FC = () => {
           onRerollDie={handleRerollCombatDie}
           onAutoResolve={handleAutoResolveCombat}
           onConfigureSpiralShiftPort={handleConfigureSpiralShiftPort}
+          onSetDivineInspiration={handleSetDivineInspiration}
           currentSeat={currentSeat}
         />
       )}
@@ -5069,6 +5131,66 @@ const AppContent: React.FC = () => {
             </span>
           </div>
         )
+      )}
+
+      {state.pendingHolyCommunion && (
+        (() => {
+          const communion = state.pendingHolyCommunion!;
+          const targetSec = state.sectors.find((s) => s.id === communion.sectorId);
+          const communionPlayer = state.players.find((p) => p.id === communion.playerId) || activePlayer;
+          if (!targetSec) return null;
+          return canActForPlayer(communion.playerId) ? (
+            <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-sm flex items-center justify-center p-4">
+              <div
+                data-testid="holy-communion-modal"
+                className="bg-slate-900 border-2 border-fuchsia-500/80 rounded-2xl max-w-md w-full p-5 shadow-2xl space-y-4 text-slate-100"
+              >
+                <div className="space-y-1">
+                  <div className="text-[10px] font-black uppercase tracking-widest text-fuchsia-400">
+                    {l('Holy Communion • Settlement Reached', '神圣共融 • 已达感化祈祷上限')}
+                  </div>
+                  <h3 className="text-lg font-extrabold font-display text-white">
+                    {l(
+                      `Settle Sector ${targetSec.sectorNumber}?`,
+                      `是否立即占领 ${targetSec.sectorNumber} 号星区？`
+                    )}
+                  </h3>
+                  <p className="text-xs text-slate-300 leading-relaxed">
+                    {l(
+                      `Prayer tokens (${communion.prayerCount}) have reached 2× Ancients (${communion.ancientCount}). Place 1 Influence Disc from your track to claim Sector ${targetSec.sectorNumber}, convert all ${communion.ancientCount} Ancient ship(s) to your command, and claim its Discovery Tile.`,
+                      `祈祷标记（${communion.prayerCount}）已达到远古舰（${communion.ancientCount} 艘）的两倍。消耗 1 枚影响力圆片即可立即控制 ${targetSec.sectorNumber} 号星区、将这 ${communion.ancientCount} 艘远古舰转化为己方战舰并领取其发现板块。`
+                    )}
+                  </p>
+                </div>
+                <div className="flex flex-col sm:flex-row gap-2 justify-end pt-1">
+                  <button
+                    type="button"
+                    data-testid="holy-communion-decline-btn"
+                    onClick={() => handleResolveHolyCommunion(communion.sectorId, false)}
+                    className="px-4 py-2 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold text-xs border border-slate-700 cursor-pointer"
+                  >
+                    {l('Not Now', '暂不占领')}
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="holy-communion-settle-btn"
+                    onClick={() => handleResolveHolyCommunion(communion.sectorId, true)}
+                    className="px-4 py-2 rounded-lg bg-fuchsia-600 hover:bg-fuchsia-500 text-white font-black text-xs uppercase tracking-wider shadow-lg cursor-pointer"
+                  >
+                    {l('Settle & Convert Ancients (-1 Disc)', '占领并转化远古舰 (-1 圆片)')}
+                  </button>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-fuchsia-600/80 px-4 py-2 rounded-xl text-xs text-slate-300 shadow-xl backdrop-blur-md flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-fuchsia-400 animate-pulse" />
+              <span>
+                Commander <strong className="text-fuchsia-300">{communionPlayer.name}</strong> is resolving Holy Communion in Sector {targetSec.sectorNumber}...
+              </span>
+            </div>
+          );
+        })()
       )}
 
       {state.phase === 'DRAFT_PHASE' && (

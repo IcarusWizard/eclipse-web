@@ -2203,7 +2203,11 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     });
                   }
 
-                  const isContested = fleetGroups.length > 1;
+                  const isPeacefulCoexistenceOnly =
+                    fleetGroups.length === 2 &&
+                    fleetGroups.some((g) => g.ownerId === 'ancient') &&
+                    fleetGroups.some((g) => g.ownerFactionId === 'descendants_of_draco' || g.ownerFactionId === 'children_of_light');
+                  const isContested = fleetGroups.length > 1 && !isPeacefulCoexistenceOnly;
 
                   return (
                     <g transform={`translate(${x}, ${y + (isCenter ? 38 : 34)})`}>
@@ -2225,7 +2229,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         let cursorX = 0;
                         const segments = group.typeCounts.map((t) => {
                           const showIcon = shouldShowShipTypeIcon(t.type, group.ownerFactionId);
-                          const iconLayout = getShipIconBoxes(t.type);
+                          const iconLayout = getShipIconBoxes(t.type, group.ownerFactionId);
                           const iconW = showIcon ? iconLayout.width * unitScale : t.label.length * 5.0;
                           const iconH = iconLayout.height * unitScale;
                           const countW = String(t.count).length * 5.6;
@@ -2287,6 +2291,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                                 {seg.showIcon ? (
                                   <ShipTypeSvgBoxes
                                     shipType={seg.type}
+                                    factionId={group.ownerFactionId}
                                     x={seg.iconX - seg.segStart}
                                     y={-seg.iconH / 2}
                                     height={seg.iconH}
@@ -2332,8 +2337,8 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   );
                 })()}
 
-                {/* Influence Disc Indicator */}
-                {owner && (
+                {/* Influence Disc Indicator (or Holy Communion Prayer Token Badge when uncontrolled) */}
+                {owner ? (
                   <circle
                     cx={x}
                     cy={y + HEX_RADIUS - 18}
@@ -2343,6 +2348,45 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                     strokeWidth={isBlackOwner ? '2' : '1.5'}
                     className="shadow-lg"
                   />
+                ) : (
+                  sector.prayerTokensByPlayer &&
+                  Object.values(sector.prayerTokensByPlayer).some((v) => v > 0) && (() => {
+                    const totalPrayer = Object.values(sector.prayerTokensByPlayer!).reduce((a, b) => a + b, 0);
+                    const neutralAncients = Math.max(
+                      sector.ancientsCount || 0,
+                      sector.ships.filter((s) => s.ownerId === 'ancient').length
+                    );
+                    const targetNeeded = Math.max(1, neutralAncients) * 2;
+                    return (
+                      <g
+                        data-testid={`hex-prayer-badge-${sector.sectorNumber}`}
+                        transform={`translate(${x}, ${y + HEX_RADIUS - 16})`}
+                        className="pointer-events-none"
+                      >
+                        <rect
+                          x="-22"
+                          y="-7.5"
+                          width="44"
+                          height="15"
+                          rx="7.5"
+                          fill="rgba(74, 4, 78, 0.96)"
+                          stroke="#e879f9"
+                          strokeWidth="1.3"
+                        />
+                        <text
+                          x="0"
+                          y="3"
+                          textAnchor="middle"
+                          fill="#fae8ff"
+                          fontSize="8.5"
+                          fontWeight="900"
+                          fontFamily="monospace"
+                        >
+                          🙏 {totalPrayer}/{targetNeeded}
+                        </text>
+                      </g>
+                    );
+                  })()
                 )}
 
                 {/* Draft Phase Seat & Sequence Indicator */}

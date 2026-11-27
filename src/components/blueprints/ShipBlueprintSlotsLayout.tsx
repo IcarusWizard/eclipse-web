@@ -95,6 +95,20 @@ export const SHIP_LAYOUTS_STANDARD: Record<string, ShipLayoutDef> = {
   },
 };
 
+/** 5-slot H-shape layout used solely by Children of Light's converted Ancient (Holy Ones) blueprint board. */
+export const ANCIENT_PLAYER_BLUEPRINT_LAYOUT: ShipLayoutDef = {
+  cubes: [
+    { col: 0, row: 0, offsetY: 0 },   // Slot 0: Top-Left
+    { col: 2, row: 0, offsetY: 0 },   // Slot 1: Top-Right
+    { col: 1, row: 0, offsetY: 50 },  // Slot 2: Center
+    { col: 0, row: 1, offsetY: 0 },   // Slot 3: Bottom-Left
+    { col: 2, row: 1, offsetY: 0 },   // Slot 4: Bottom-Right
+  ],
+  gridCols: 3,
+  gridRows: 2,
+  extraCube: { col: 3, row: 0, offsetY: 50 },
+};
+
 export const SHIP_LAYOUTS_PLANTA: Record<string, ShipLayoutDef> = {
   interceptor: {
     cubes: [
@@ -152,7 +166,7 @@ export const SHIP_LAYOUTS_PLANTA: Record<string, ShipLayoutDef> = {
     ],
     gridCols: 3,
     gridRows: 2,
-    extraCube: { col: 3, row: 0, offsetY: 25 },
+  extraCube: { col: 3, row: 0, offsetY: 25 },
   },
 };
 
@@ -183,6 +197,9 @@ export const getChassisName = (
   }
   if (shipType === 'orbital') {
     return 'Exiles Orbital Chassis';
+  }
+  if (shipType === 'ancient') {
+    return 'Holy Ones Ancient Core';
   }
   if (factionId === 'orion_hegemony') {
     return 'Orion Martial Reactor';
@@ -287,7 +304,10 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
     : isHeralds
     ? SHIP_LAYOUTS_HERALDS
     : SHIP_LAYOUTS_STANDARD;
-  const layout = layoutDict[shipType] || SHIP_LAYOUTS_STANDARD.interceptor!;
+  const layout =
+    shipType === 'ancient'
+      ? ANCIENT_PLAYER_BLUEPRINT_LAYOUT
+      : layoutDict[shipType] || SHIP_LAYOUTS_STANDARD.interceptor!;
 
   // Sizing configuration
   const cubeSize = size === 'sm' ? 48 : size === 'lg' ? 72 : 60;

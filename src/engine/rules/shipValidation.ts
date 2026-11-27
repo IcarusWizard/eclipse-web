@@ -6,6 +6,7 @@ import { ShipBlueprint, ShipPart, BlueprintValidationResult } from '../types/blu
 import { SHIP_PARTS, ALL_ANCIENT_PART_IDS, getEffectiveShipPart, getShiftPortResolvedPart } from './partData';
 import { SectorTile, ShipType } from '../types/galaxy';
 import type { PlayerState } from '../types/player';
+import type { NeutralShipConfig, NeutralShipVariant } from './neutralShips';
 
 export const SHIP_LIMITS: Record<ShipType, number> = {
   interceptor: 8,
@@ -13,6 +14,7 @@ export const SHIP_LIMITS: Record<ShipType, number> = {
   dreadnought: 2,
   starbase: 4,
   orbital: 10,
+  ancient: 0,
 };
 
 export function countPlayerShips(sectors: SectorTile[], playerId: string): Record<ShipType, number> {
@@ -22,6 +24,7 @@ export function countPlayerShips(sectors: SectorTile[], playerId: string): Recor
     dreadnought: 0,
     starbase: 0,
     orbital: 0,
+    ancient: 0,
   };
   for (const s of sectors) {
     for (const ship of s.ships) {
@@ -37,10 +40,11 @@ export function getRemainingShipSupply(sectors: SectorTile[], playerId: string, 
   const built = countPlayerShips(sectors, playerId);
   return {
     interceptor: Math.max(0, SHIP_LIMITS.interceptor - built.interceptor),
-    cruiser: Math.max(0, SHIP_LIMITS.cruiser - built.cruiser),
+    cruiser: factionId === 'children_of_light' ? 0 : Math.max(0, SHIP_LIMITS.cruiser - built.cruiser),
     dreadnought: factionId === 'rho_indi_syndicate' ? 0 : Math.max(0, SHIP_LIMITS.dreadnought - built.dreadnought),
     starbase: factionId === 'the_exiles' ? 0 : Math.max(0, SHIP_LIMITS.starbase - built.starbase),
     orbital: Math.max(0, SHIP_LIMITS.orbital - built.orbital),
+    ancient: 0,
   };
 }
 
@@ -127,8 +131,8 @@ export function calculateBlueprintStats(
   }
 
   // 2. Drive requirement: Interceptor, Cruiser, and Dreadnought MUST have at least 1 drive (or Jump Drive).
-  // Starbases and Orbitals cannot move and do not require drives.
-  if (blueprint.type !== 'starbase' && blueprint.type !== 'orbital' && totalDriveSpeed <= 0 && !hasJumpDrive) {
+  // Starbases, Orbitals, and Children of Light Ancients do not require drives (Ancients with 0 Drive cannot move).
+  if (blueprint.type !== 'starbase' && blueprint.type !== 'orbital' && blueprint.type !== 'ancient' && totalDriveSpeed <= 0 && !hasJumpDrive) {
     errors.push(`${blueprint.type.toUpperCase()} must have at least one drive to move.`);
   }
 
@@ -234,8 +238,63 @@ export function createDefaultHumanBlueprints(): Record<string, ShipBlueprint> {
   };
 }
 
-export function createFactionBlueprints(factionId: string, activeExpansions?: string[]): Record<string, ShipBlueprint> {
-  const bps = getRawFactionBlueprints(factionId);
+export function createChildrenAncientBlueprint(
+  variant: NeutralShipVariant = 'default'
+): ShipBlueprint {
+  if (variant === 'advanced') {
+    return {
+      type: 'ancient',
+      maxSlots: 5,
+      baseInitiative: 0,
+      baseBuildCost: 0,
+      preprintedPower: 3,
+      slots: [
+        SHIP_PARTS.plasma_cannon,
+        SHIP_PARTS.electron_computer,
+        SHIP_PARTS.hull,
+        SHIP_PARTS.hull,
+        SHIP_PARTS.nuclear_drive,
+      ],
+    };
+  }
+  if (variant === 'expert') {
+    return {
+      type: 'ancient',
+      maxSlots: 5,
+      baseInitiative: 2,
+      baseBuildCost: 0,
+      preprintedPower: 3,
+      slots: [
+        SHIP_PARTS.ion_cannon,
+        SHIP_PARTS.electron_computer,
+        SHIP_PARTS.hull,
+        SHIP_PARTS.electron_computer,
+        SHIP_PARTS.nuclear_drive,
+      ],
+    };
+  }
+  return {
+    type: 'ancient',
+    maxSlots: 5,
+    baseInitiative: 1,
+    baseBuildCost: 0,
+    preprintedPower: 3,
+    slots: [
+      SHIP_PARTS.ion_cannon,
+      SHIP_PARTS.ion_cannon,
+      SHIP_PARTS.hull,
+      SHIP_PARTS.electron_computer,
+      SHIP_PARTS.nuclear_drive,
+    ],
+  };
+}
+
+export function createFactionBlueprints(
+  factionId: string,
+  activeExpansions?: string[],
+  neutralShipBlueprints?: Partial<NeutralShipConfig>
+): Record<string, ShipBlueprint> {
+  const bps = getRawFactionBlueprints(factionId, neutralShipBlueprints);
   if (activeExpansions && activeExpansions.length > 0) {
     for (const key of Object.keys(bps)) {
       (bps[key] as any).activeExpansions = activeExpansions;
@@ -244,7 +303,10 @@ export function createFactionBlueprints(factionId: string, activeExpansions?: st
   return bps;
 }
 
-function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprint> {
+function getRawFactionBlueprints(
+  factionId: string,
+  neutralShipBlueprints?: Partial<NeutralShipConfig>
+): Record<string, ShipBlueprint> {
   switch (factionId) {
     case 'eridani_empire':
       return {
@@ -835,6 +897,17 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
         cruiser: { ...base.cruiser, preprintedComputer: 1 },
         dreadnought: { ...base.dreadnought, preprintedComputer: 1 },
         starbase: { ...base.starbase, preprintedComputer: 1, preprintedHull: 1 },
+      };
+    }
+
+    case 'children_of_light': {
+      const base = createDefaultHumanBlueprints();
+      const ancientVariant = neutralShipBlueprints?.ancient || 'default';
+      return {
+        interceptor: { ...base.interceptor },
+        dreadnought: { ...base.dreadnought },
+        starbase: { ...base.starbase },
+        ancient: createChildrenAncientBlueprint(ancientVariant),
       };
     }
 

@@ -108,6 +108,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   const isRhoIndi = player.faction.id === 'rho_indi_syndicate';
   const isExiles = player.faction.id === 'the_exiles';
   const isMegaWar = player.faction.id === 'mega_war_inc';
+  const isChildren = player.faction.id === 'children_of_light';
 
   // Net supply delta queued by OTHER slots (positive = newly built/target; negative = freed hull by Mega War upgrade)
   const stagedInOtherSlots: Record<ShipType, number> = {
@@ -116,6 +117,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     dreadnought: 0,
     starbase: 0,
     orbital: 0,
+    ancient: 0,
   };
   slots.forEach((s, idx) => {
     if (idx !== activeSlotIndex && s.itemType in stagedInOtherSlots) {
@@ -146,6 +148,8 @@ export const BuildModal: React.FC<BuildModalProps> = ({
   );
 
   const getAvailableSupply = (type: ShipType): number => {
+    if (type === 'ancient') return 0;
+    if (isChildren && type === 'cruiser') return 0;
     if (isRhoIndi && type === 'dreadnought') return 0;
     if (isExiles && type === 'starbase') return 0;
     return Math.max(0, SHIP_LIMITS[type] - deployedShips[type] - stagedInOtherSlots[type]);
@@ -240,10 +244,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
       type: 'cruiser',
       name: l('Cruiser', '巡洋舰'),
       cost: getItemCost('cruiser'),
-      limit: SHIP_LIMITS.cruiser,
+      limit: isChildren ? 0 : SHIP_LIMITS.cruiser,
       supplyLeft: getAvailableSupply('cruiser'),
-      unlocked: getAvailableSupply('cruiser') > 0,
-      disabledReason: getAvailableSupply('cruiser') <= 0 ? l(`Max limit of ${SHIP_LIMITS.cruiser} reached`, `已达上限 ${SHIP_LIMITS.cruiser} 艘`) : undefined,
+      unlocked: !isChildren && getAvailableSupply('cruiser') > 0,
+      disabledReason: isChildren
+        ? l('Children of Light have no Cruisers (Ancient instead).', '光明之子无巡洋舰（以远古舰替代）。')
+        : getAvailableSupply('cruiser') <= 0
+        ? l(`Max limit of ${SHIP_LIMITS.cruiser} reached`, `已达上限 ${SHIP_LIMITS.cruiser} 艘`)
+        : undefined,
       description: l(`Medium combat warship with balanced shielding and firepower (Limit 4, Cost ${getItemCost('cruiser')} Mats${getPriceOfPowerNote('cruiser')}).`, `均衡防御与火力的中型主力战舰（上限 4，费用 ${getItemCost('cruiser')} 材料${getPriceOfPowerNote('cruiser')}）。`),
     },
     {
@@ -355,6 +363,7 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     dreadnought: 0,
     starbase: 0,
     orbital: 0,
+    ancient: 0,
   };
 
   for (const s of slots) {
@@ -369,7 +378,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
 
   const exceedsShipLimits = (['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).some(
     (t) => {
-      const maxLimit = isRhoIndi && t === 'dreadnought' ? 0 : isExiles && t === 'starbase' ? 0 : SHIP_LIMITS[t];
+      const maxLimit =
+        isChildren && t === 'cruiser'
+          ? 0
+          : isRhoIndi && t === 'dreadnought'
+          ? 0
+          : isExiles && t === 'starbase'
+          ? 0
+          : SHIP_LIMITS[t];
       return deployedShips[t] + overallQueuedShips[t] > maxLimit;
     }
   );
@@ -384,7 +400,14 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     if (slots.length < maxBuild) {
       let defaultType: ShipType | 'orbital' | 'monolith' = 'interceptor';
       for (const st of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]) {
-        const maxLimit = isRhoIndi && st === 'dreadnought' ? 0 : isExiles && st === 'starbase' ? 0 : SHIP_LIMITS[st];
+        const maxLimit =
+          isChildren && st === 'cruiser'
+            ? 0
+            : isRhoIndi && st === 'dreadnought'
+            ? 0
+            : isExiles && st === 'starbase'
+            ? 0
+            : SHIP_LIMITS[st];
         if (deployedShips[st] + overallQueuedShips[st] < maxLimit) {
           defaultType = st;
           break;

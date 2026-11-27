@@ -305,8 +305,22 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     draftExternalGroup,
   ]);
 
-  const usedActivations = modifiedSlots.length;
+  const hasFreeAncientActivation =
+    player.faction.id === 'children_of_light' &&
+    !isPulsarActive &&
+    !isJotunnDreadnoughtUpgrade &&
+    !player.hasPassed;
+  const ancientModifiedCount = modifiedSlots.filter((m) => m.shipType === 'ancient').length;
+  const freeAncientUsed = hasFreeAncientActivation ? Math.min(1, ancientModifiedCount) : 0;
+  const usedActivations = modifiedSlots.length - freeAncientUsed;
   const remainingActivations = Math.max(0, maxUpgrades - usedActivations);
+  const canModifyShipType = (shipType: ShipType): boolean => {
+    const bonus = hasFreeAncientActivation && shipType === 'ancient' && ancientModifiedCount === 0 ? 1 : 0;
+    return remainingActivations + bonus > 0;
+  };
+  const remainingForActiveShip =
+    remainingActivations +
+    (hasFreeAncientActivation && activeShipType === 'ancient' && ancientModifiedCount === 0 ? 1 : 0);
 
   const currentSlots = draftBlueprints[activeShipType] || [];
   const currentExternal = draftExternalParts[activeShipType] || [];
@@ -417,7 +431,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     if (slotRejectsDrives(activeShipType, selectedSlotIndex) && (part.category === 'drive' || Boolean(part.driveSpeed) || part.id === 'jump_drive' || Boolean(part.isJumpDrive))) {
       return;
     }
-    if (!isSlotModified(activeShipType, selectedSlotIndex) && remainingActivations <= 0) return;
+    if (!isSlotModified(activeShipType, selectedSlotIndex) && !canModifyShipType(activeShipType)) return;
 
     applyDraftSlotUpdate(activeShipType, selectedSlotIndex, part);
   };
@@ -427,7 +441,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     if (readOnly) return;
     if (player.blueprints[targetShip]?.slots[index]?.id === 'shift_port') return;
     if (wouldViolateBattleFocus(targetShip, index)) return;
-    if (!isSlotModified(targetShip, index) && remainingActivations <= 0) return;
+    if (!isSlotModified(targetShip, index) && !canModifyShipType(targetShip)) return;
 
     applyDraftSlotUpdate(targetShip, index, null);
     if (targetShip === activeShipType && selectedSlotIndex === index) {
@@ -517,7 +531,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
   const [showUnusedWarning, setShowUnusedWarning] = useState(false);
 
   const handleSave = () => {
-    if (readOnly || usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid) return;
+    if (readOnly || modifiedSlots.length === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid) return;
     if (usedActivations < maxUpgrades && !showUnusedWarning) {
       setShowUnusedWarning(true);
       return;
@@ -601,6 +615,27 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
           </div>
         )}
 
+        {/* Children of Light Holy Crusade Free Ancient Upgrade Banner */}
+        {hasFreeAncientActivation && (
+          <div
+            data-testid="children-holy-crusade-banner"
+            className="mx-4 mt-3 p-2 px-3 rounded-xl bg-fuchsia-950/50 border border-fuchsia-500/70 text-fuchsia-200 text-xs flex items-center justify-between shadow-sm"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-fuchsia-300 shrink-0" />
+              <div>
+                <span className="font-bold">🙏 {l('Holy Crusade: +1 Free Ancient Upgrade', '神圣远征：额外 +1 次免费远古蓝图升级')}</span>
+                <span className="text-fuchsia-300/80 text-[11px] block">
+                  {l('Your Upgrade action includes 1 extra free activation spendable only on the Ancient (Holy Ones) blueprint.', '本次升级行动额外赠送 1 次仅限用于远古（圣徒）蓝图的免费改装。')}
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-fuchsia-900/90 text-fuchsia-100 font-mono text-[10px] font-bold uppercase border border-fuchsia-600">
+              {freeAncientUsed > 0 ? l('1/1 Bonus Used', '免费远古已用 1/1') : l('+1 Free Ancient Ready', '+1 免费远古可用')}
+            </span>
+          </div>
+        )}
+
         {/* Ship Class Tabs with Per-Ship Upgrade Badges */}
         <div className="flex border-b border-slate-800 bg-slate-950/60 px-4 pt-2 gap-2">
           {availableShipTypes.map((type) => {
@@ -629,7 +664,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                 <ShipTypeIcon shipType={type} factionId={player.faction.id} size={13} className="opacity-90" />
                 <span>{translateShipType(type, language)}</span>
                 <span className="text-[10px] font-mono opacity-60 font-normal">
-                  ({l(`Limit ${SHIP_LIMITS[type]}`, `上限 ${SHIP_LIMITS[type]}`)})
+                  {type === 'ancient'
+                    ? l('(Holy Ones)', '(转化)')
+                    : `(${l(`Limit ${SHIP_LIMITS[type]}`, `上限 ${SHIP_LIMITS[type]}`)})`}
                 </span>
                 {shipUpgradeCount > 0 && (
                   <span className="px-1.5 py-0.5 rounded-full bg-indigo-600 text-white font-mono text-[10px] font-black">
@@ -885,7 +922,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   interactive={true}
                   selectedSlotIndex={selectedSlotIndex}
                   onSelectSlot={(idx) => {
-                    const canSelect = isSlotModified(activeShipType, idx) || remainingActivations > 0;
+                    const canSelect = isSlotModified(activeShipType, idx) || remainingForActiveShip > 0;
                     if (canSelect) {
                       setSelectedSlotIndex(idx);
                     }
@@ -895,12 +932,12 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                     .filter((idx) => idx !== -1)}
                   onRevertSlot={(idx) => handleRevertSlot(idx)}
                   onClearSlot={(idx) => {
-                    if (isSlotModified(activeShipType, idx) || remainingActivations > 0) {
+                    if (isSlotModified(activeShipType, idx) || remainingForActiveShip > 0) {
                       handleClearSlot(idx);
                     }
                   }}
                   onClearExternalPart={() => handleDetachExternalPart()}
-                  canModify={remainingActivations > 0}
+                  canModify={remainingForActiveShip > 0}
                   size="lg"
                 />
 
@@ -988,7 +1025,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             <h3 className="text-xs font-bold text-cyan-400 tracking-wider mb-2 uppercase flex items-center justify-between">
               <span>{l(`Available Components (${availableParts.length})`, `可用部件（${availableParts.length}）`)}</span>
               <span className="text-[10px] text-slate-400 font-mono lowercase">
-                ({l(`${remainingActivations} upgrade(s) left`, `剩余 ${remainingActivations} 次改装`)})
+                ({l(`${remainingForActiveShip} upgrade(s) left`, `剩余 ${remainingForActiveShip} 次改装`)})
               </span>
             </h3>
             <p className="text-[11px] text-slate-400 mb-2.5">
@@ -1034,7 +1071,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
 
             {selectedSlotIndex !== null &&
               !isSlotModified(activeShipType, selectedSlotIndex) &&
-              remainingActivations <= 0 && (
+              remainingForActiveShip <= 0 && (
                 <div className="mb-3 p-2.5 rounded-lg bg-amber-950/60 border border-amber-700/80 text-amber-200 text-xs flex items-center gap-2">
                   <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                   <span>{l(`Maximum upgrade activations reached (${maxUpgrades} / ${maxUpgrades}). Revert an existing change to modify this slot.`, `已达到最大改装次数上限（${maxUpgrades} / ${maxUpgrades}）。请先撤回已有改动以修改此槽位。`)}</span>
@@ -1063,10 +1100,10 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                     Boolean(part.isJumpDrive);
                   const isDriveBlockedHere =
                     isDrivePart && selectedSlotIndex !== null && slotRejectsDrives(activeShipType, selectedSlotIndex);
-                  const canAttachMuon = (isExtModified || remainingActivations > 0);
+                  const canAttachMuon = (isExtModified || remainingForActiveShip > 0);
                   const canEquip = isMuon
                     ? canAttachMuon
-                    : !isDriveBlockedHere && selectedSlotIndex !== null && (isSelectedSlotModified || remainingActivations > 0);
+                    : !isDriveBlockedHere && selectedSlotIndex !== null && (isSelectedSlotModified || remainingForActiveShip > 0);
 
                   return (
                     <button
@@ -1153,7 +1190,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
               </button>
             )}
             <button
-              disabled={readOnly || usedActivations === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid}
+              disabled={readOnly || modifiedSlots.length === 0 || usedActivations > maxUpgrades || !allModifiedShipsValid}
               onClick={handleSave}
               className="px-5 py-2 rounded-xl bg-cyan-500 hover:bg-cyan-400 disabled:opacity-30 disabled:cursor-not-allowed text-slate-950 font-black text-xs tracking-wider uppercase shadow-lg transition-all"
             >

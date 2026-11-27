@@ -84,6 +84,16 @@ export interface CombatState {
   spiralShiftConfiguredPlayerIds?: string[];
   /** Kurita Prefecture ("Honour your enemy with the first shot"): Round 1 delayed player IDs who shoot Missiles + Regular AFTER non-Kurita opponents. */
   kuritaDelayedPlayerIds?: string[];
+  /** Children of Light (Divine Inspiration): Start-of-battle choice ('hit' = +1 to Hit, 'shield' = -1 Shield) on non-Ancient ships in battles featuring an Ancient. */
+  divineInspirationChoice?: Partial<Record<string, 'hit' | 'shield'>>;
+}
+
+export interface PendingHolyCommunion {
+  sectorId: string;
+  playerId: string;
+  ancientCount: number;
+  prayerCount: number;
+  subsector?: 1 | 2 | 3;
 }
 
 export interface PendingReputationDraw {
@@ -308,6 +318,8 @@ export interface GameState {
   pendingRaArtifactSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   pendingSpiralTechSetup?: { playerId: string } | null;
   pendingMidasStartingCubeSetup?: { playerId: string; sectorId: string; planetId: string } | null;
+  pendingHolyCommunion?: PendingHolyCommunion | null;
+  pendingHolyCommunionQueue?: PendingHolyCommunion[];
   lastConfirmedAction?: ConfirmedActionHighlight | null;
   resolvedCombatSectorIds?: string[];
   sectorCombatRecords?: Record<string, {

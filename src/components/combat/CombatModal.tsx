@@ -12,6 +12,7 @@ import {
   SHIP_SIZE_RANK,
   CombatUnit,
   getPendingSpiralShiftPlayerId,
+  getPendingDivineInspirationPlayerId,
   getDefaultShiftPortMode,
 } from '../../engine/rules/combatEngine';
 import { canBlueprintPowerShiftMode, getShiftPortSlotIndex } from '../../engine/rules/shipValidation';
@@ -232,6 +233,11 @@ interface CombatModalProps {
     choices: Partial<Record<ShipType, ShiftPortMode>>,
     playerId?: string
   ) => void;
+  onSetDivineInspiration?: (
+    sectorId: string,
+    choice: 'hit' | 'shield',
+    playerId?: string
+  ) => void;
   currentSeat?: number | 'all' | 'spectator';
 }
 
@@ -242,6 +248,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   onRerollDie,
   onAutoResolve,
   onConfigureSpiralShiftPort,
+  onSetDivineInspiration,
   currentSeat = 'all',
 }) => {
   const { l, language } = useLanguage();
@@ -258,6 +265,12 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     : null;
   const pendingSpiralPlayer = pendingSpiralShiftId
     ? state.players.find((p) => p.id === pendingSpiralShiftId) || null
+    : null;
+  const pendingDivineInspirationId = sector
+    ? getPendingDivineInspirationPlayerId(state.players, sector, combat)
+    : null;
+  const pendingDivinePlayer = pendingDivineInspirationId
+    ? state.players.find((p) => p.id === pendingDivineInspirationId) || null
     : null;
   const spiralActiveShipClasses: ShipType[] = React.useMemo(() => {
     if (!pendingSpiralPlayer || !scopedSectorForCombat) return [];
@@ -293,7 +306,8 @@ export const CombatModal: React.FC<CombatModalProps> = ({
     combat.participatingPlayerIds,
     state.neutralShipBlueprints,
     state.expansions,
-    combat.spiralShiftModes
+    combat.spiralShiftModes,
+    combat.divineInspirationChoice
   );
   const defenderOwnerId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector, state.players);
   const aliveUnits = sortUnitsByInitiative(
@@ -1156,6 +1170,78 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             </div>
           )}
 
+          {/* Pre-Combat Divine Inspiration Selection for Children of Light */}
+          {pendingDivinePlayer && !isResolved && (
+            <div
+              data-testid="children-divine-inspiration-panel"
+              className="p-4 rounded-xl bg-slate-950/90 border-2 border-fuchsia-400/80 shadow-xl space-y-3"
+            >
+              {(() => {
+                const canChoose =
+                  !isSpectator &&
+                  (currentSeat === 'all' || (myPlayer && myPlayer.id === pendingDivinePlayer.id));
+                return (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-fuchsia-900/70 pb-2">
+                      <div>
+                        <h3 className="text-xs font-black text-fuchsia-300 uppercase tracking-wider font-display flex items-center gap-1.5">
+                          <Zap className="w-4 h-4 text-fuchsia-400" />
+                          {l(
+                            `Divine Inspiration — Choose Battle Blessing (${pendingDivinePlayer.name})`,
+                            `神圣启迪 — 选择战前祝福 (${pendingDivinePlayer.name})`
+                          )}
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {l(
+                            'An Ancient ship is present in this battle. Choose whether your non-Ancient ships gain +1 to Hit OR -1 Shield for the engagement.',
+                            '本场战斗中有远古舰参战。请为你的非远古战舰选择全战斗获得 +1 命中或 -1 护盾。'
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                    {canChoose && onSetDivineInspiration ? (
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                        <button
+                          type="button"
+                          data-testid="divine-inspiration-hit-btn"
+                          onClick={() => onSetDivineInspiration(combat.sectorId, 'hit', pendingDivinePlayer.id)}
+                          className="p-3 rounded-xl bg-amber-950/40 hover:bg-amber-900/60 border border-amber-500/70 text-left transition cursor-pointer"
+                        >
+                          <div className="text-xs font-black text-amber-300 uppercase">
+                            🎯 {l('+1 to Hit', '+1 命中')}
+                          </div>
+                          <div className="text-[11px] text-slate-300 mt-0.5">
+                            {l('All non-Ancient Children ships gain +1 Computer bonus.', '所有非远古光明之子战舰获得 +1 电脑命中加成。')}
+                          </div>
+                        </button>
+                        <button
+                          type="button"
+                          data-testid="divine-inspiration-shield-btn"
+                          onClick={() => onSetDivineInspiration(combat.sectorId, 'shield', pendingDivinePlayer.id)}
+                          className="p-3 rounded-xl bg-sky-950/40 hover:bg-sky-900/60 border border-sky-500/70 text-left transition cursor-pointer"
+                        >
+                          <div className="text-xs font-black text-sky-300 uppercase">
+                            🛡️ {l('-1 Shield', '-1 护盾')}
+                          </div>
+                          <div className="text-[11px] text-slate-300 mt-0.5">
+                            {l('All non-Ancient Children ships gain -1 Shield defense.', '所有非远古光明之子战舰获得 -1 护盾防御。')}
+                          </div>
+                        </button>
+                      </div>
+                    ) : (
+                      <div className="text-xs text-fuchsia-300 font-semibold">
+                        {l(
+                          `Waiting for ${pendingDivinePlayer.name} to choose Divine Inspiration (+1 to Hit or -1 Shield)...`,
+                          `正在等待 ${pendingDivinePlayer.name} 选择神圣启迪（+1 命中或 -1 护盾）...`
+                        )}
+                      </div>
+                    )}
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Pending Damage Assignment Panel (Manual Dice Allocation) */}
           {pendingSalvo && (
             <div className="p-4 rounded-xl bg-slate-950 border-2 border-cyan-500/80 shadow-2xl space-y-4">
@@ -1648,6 +1734,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-xs text-sky-200">
                 <Zap className="w-3.5 h-3.5 text-sky-400" />
                 <span>{l(`Configure Shift Ports above for ${pendingSpiralPlayer.name} before firing.`, `开火前请先在上方为 ${pendingSpiralPlayer.name} 配置转换接口。`)}</span>
+              </div>
+            ) : pendingDivinePlayer ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-fuchsia-950/60 border border-fuchsia-700/70 text-xs text-fuchsia-200">
+                <Zap className="w-3.5 h-3.5 text-fuchsia-400" />
+                <span>{l(`Choose Divine Inspiration above for ${pendingDivinePlayer.name} before firing.`, `开火前请先在上方为 ${pendingDivinePlayer.name} 选择神圣启迪。`)}</span>
               </div>
             ) : (
               <>

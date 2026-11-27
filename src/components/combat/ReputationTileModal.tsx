@@ -324,12 +324,12 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
                         <span className="text-base font-black font-display text-amber-300">
                           {slot.tile.effectiveVp ?? slot.tile.vp} VP
                         </span>
-                        {slot.tile.battleOutcome === 'win' && (
+                        {player.faction.id === 'kurita_prefecture' && slot.tile.battleOutcome === 'win' && (
                           <span className="text-[8px] font-bold text-emerald-300 font-mono">
                             {l(`${slot.tile.vp}+1 Cube`, `${slot.tile.vp}+1 胜`)}
                           </span>
                         )}
-                        {slot.tile.battleOutcome === 'loss' && (
+                        {player.faction.id === 'kurita_prefecture' && slot.tile.battleOutcome === 'loss' && (
                           <span className="text-[8px] font-bold text-rose-300 font-mono">
                             {l(`${slot.tile.vp}-1 Loss`, `${slot.tile.vp}-1 败`)}
                           </span>

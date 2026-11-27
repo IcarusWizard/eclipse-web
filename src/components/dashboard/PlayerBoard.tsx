@@ -599,7 +599,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               const repTileObj = slot.tile?.type === 'reputation' ? slot.tile : null;
               const isRep = Boolean(repTileObj);
               const repVal = repTileObj ? (repTileObj.effectiveVp ?? repTileObj.vp) : undefined;
-              const repOutcome = repTileObj?.battleOutcome;
+              const repOutcome = player.faction.id === 'kurita_prefecture' ? repTileObj?.battleOutcome : undefined;
 
               if (isAmbassador) {
                 const allyId = slot.tile?.allyId;
@@ -1018,13 +1018,23 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                   {deployed.interceptor}/{SHIP_LIMITS.interceptor}
                 </div>
               </div>
-              <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800 flex flex-col items-center">
-                <ShipTypeIcon shipType="cruiser" size={10} className="text-cyan-400 my-0.5" />
-                <div className="text-[8px] text-slate-400 uppercase">{l('Cru', '巡洋')}</div>
-                <div className="text-[10px] font-bold text-cyan-300">
-                  {deployed.cruiser}/{SHIP_LIMITS.cruiser}
+              {player.faction.id === 'children_of_light' ? (
+                <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-fuchsia-800/70 flex flex-col items-center">
+                  <ShipTypeIcon shipType="ancient" factionId={player.faction.id} size={10} className="text-fuchsia-300 my-0.5" />
+                  <div className="text-[8px] text-fuchsia-300 uppercase">{l('Anc', '远古')}</div>
+                  <div className="text-[10px] font-bold text-fuchsia-200">
+                    {deployed.ancient}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800 flex flex-col items-center">
+                  <ShipTypeIcon shipType="cruiser" size={10} className="text-cyan-400 my-0.5" />
+                  <div className="text-[8px] text-slate-400 uppercase">{l('Cru', '巡洋')}</div>
+                  <div className="text-[10px] font-bold text-cyan-300">
+                    {deployed.cruiser}/{SHIP_LIMITS.cruiser}
+                  </div>
+                </div>
+              )}
               <div className="bg-slate-900/90 rounded py-0.5 px-1 border border-slate-800 flex flex-col items-center">
                 <ShipTypeIcon shipType="dreadnought" size={10} className="text-cyan-400 my-0.5" />
                 <div className="text-[8px] text-slate-400 uppercase">{l('Dre', '无畏')}</div>

@@ -1,6 +1,7 @@
 import { GameState, ChatMessage } from '../types/state';
 import { TableMember, UserSession } from '../types/user';
 import { isReplayAvailable, compactReplaySteps } from './replay';
+import { createChildrenAncientBlueprint } from './shipValidation';
 import { compareGameStateProgress, isIncomingStateStale } from './turnCheckpoints';
 import type { AdminTurnCheckpointInfo } from './turnCheckpoints';
 export type { AdminTurnCheckpointInfo };
@@ -634,6 +635,20 @@ export function sanitizeLoadedGameState(state: GameState): GameState {
       if (p.blueprints.cruiser) (p.blueprints.cruiser as any).baseInitiative = 0;
       if (p.blueprints.dreadnought) (p.blueprints.dreadnought as any).baseInitiative = 0;
       if (p.blueprints.starbase) (p.blueprints.starbase as any).baseInitiative = 2;
+    }
+    if (
+      p?.faction?.id === 'children_of_light' &&
+      p.blueprints?.ancient &&
+      state.round === 1 &&
+      (p.actionsTakenThisRound || 0) === 0 &&
+      Array.isArray(p.blueprints.ancient.slots) &&
+      p.blueprints.ancient.slots.every((sl: any) => !sl)
+    ) {
+      const ancBp = createChildrenAncientBlueprint(state.neutralShipBlueprints?.ancient || 'default');
+      p.blueprints.ancient = {
+        ...ancBp,
+        activeExpansions: state.expansions || [],
+      };
     }
   }
   return state;

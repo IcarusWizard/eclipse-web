@@ -42,6 +42,8 @@ export type ActionType =
   | 'RETURN_BLACK_HOLE_SHIP'
   | 'DRAFT_FACTION'
   | 'SET_COMBAT_AUTO_RESOLVE'
+  | 'RESOLVE_HOLY_COMMUNION'
+  | 'SET_DIVINE_INSPIRATION'
   | 'SEND_CHAT';
 
 export interface BaseAction {
@@ -425,6 +427,18 @@ export interface ChooseMidasStartingCubeAction extends BaseAction {
   resource: 'money' | 'science' | 'material';
 }
 
+export interface SetDivineInspirationAction extends BaseAction {
+  type: 'SET_DIVINE_INSPIRATION';
+  sectorId: string;
+  choice: 'hit' | 'shield';
+}
+
+export interface ResolveHolyCommunionAction extends BaseAction {
+  type: 'RESOLVE_HOLY_COMMUNION';
+  sectorId: string;
+  claim: boolean;
+}
+
 export interface SendChatAction extends BaseAction {
   type: 'SEND_CHAT';
   message: string;
@@ -479,4 +493,6 @@ export type GameAction =
   | SetAutoPassAction
   | SetPassInAdvanceAction
   | SetCombatAutoResolveAction
+  | SetDivineInspirationAction
+  | ResolveHolyCommunionAction
   | SendChatAction;

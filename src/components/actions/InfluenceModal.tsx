@@ -7,6 +7,7 @@ import {
   getInfluenceColonyShipRefreshes,
   playerHasWormholeGenerator,
   findValidClaimSequence,
+  canPlayerClaimAncientSectorWithInfluence,
 } from '../../engine/rules/gameReducer';
 import type { WarpConduit } from '../../engine/rules/warpedUniverse';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
@@ -135,11 +136,15 @@ export const InfluenceModal: React.FC<InfluenceModalProps> = ({
       if (sec.discOwner) continue;
       if (sec.isNebula || sec.isBlackHole || sec.isSupernovaExploded) continue;
 
+      const allowsNeutralAncientsHere = canPlayerClaimAncientSectorWithInfluence(sec, player);
+      const neutralAncientCount = sec.isNebula
+        ? sec.ships.filter((s) => s.ownerId === 'ancient').length
+        : Math.max(sec.ancientsCount || 0, sec.ships.filter((s) => s.ownerId === 'ancient').length);
       const hasHostiles =
-        (!isDraco && sec.ancientsCount > 0) ||
+        (!allowsNeutralAncientsHere && neutralAncientCount > 0) ||
         sec.hasGCDS ||
         sec.ships.some(
-          (s) => s.ownerId !== player.id && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+          (s) => s.ownerId !== player.id && (!allowsNeutralAncientsHere || s.ownerId !== 'ancient')
         );
       if (hasHostiles) continue;
 

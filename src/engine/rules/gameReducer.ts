@@ -58,7 +58,7 @@ import {
 } from './shipValidation';
 import { SHIP_PARTS, ANCIENT_PART_IDS, isSpiralPhase2, getShiftPortResolvedPart } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet, syncRemnantsOfRaArtifactWildSlots, getTradeRateForResource } from './economyEngine';
-import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId, resolveBlueprintWithShiftPort, getDefaultShiftPortMode } from './combatEngine';
+import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId, getPendingDivineInspirationPlayerId, resolveBlueprintWithShiftPort, getDefaultShiftPortMode } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import {
@@ -91,6 +91,7 @@ export function getFactionShortName(factionOrName?: { name: string } | string | 
   if (!factionOrName) return '';
   const name = typeof factionOrName === 'string' ? factionOrName : factionOrName.name;
   if (!name) return '';
+  if (name === 'Children of Light') return 'Children';
   if (name.includes(' of ')) {
     return name.split(' of ').pop() || name;
   }
@@ -717,6 +718,164 @@ export function isPlayerInvaded(state: GameState, playerId: string): boolean {
 }
 
 /**
+ * Shared neutral-Ancient peaceful coexistence check (Descendants of Draco & Children of Light).
+ */
+export function coexistsPeacefullyWithNeutralAncients(player?: PlayerState | null): boolean {
+  return player?.faction.id === 'descendants_of_draco' || player?.faction.id === 'children_of_light';
+}
+
+function getNeutralAncientCountInSector(sec: SectorTile): number {
+  if (sec.isNebula) {
+    return sec.ships.filter((s) => s.ownerId === 'ancient').length;
+  }
+  return Math.max(sec.ancientsCount || 0, sec.ships.filter((s) => s.ownerId === 'ancient').length);
+}
+
+/**
+ * Returns true if a player is permitted to place an Influence Disc onto an uncontrolled sector containing neutral Ancients.
+ * Draco may always do so; Children of Light require Prayer tokens >= 2x neutral Ancients in that sector.
+ */
+export function canPlayerClaimAncientSectorWithInfluence(sec: SectorTile, player?: PlayerState | null): boolean {
+  if (!player) return false;
+  if (player.faction.id === 'descendants_of_draco') return true;
+  if (player.faction.id === 'children_of_light') {
+    const ancientCount = getNeutralAncientCountInSector(sec);
+    if (ancientCount <= 0) return false;
+    const prayerCount = sec.prayerTokensByPlayer?.[player.id] || 0;
+    return prayerCount >= ancientCount * 2;
+  }
+  return false;
+}
+
+/**
+ * Converts neutral Ancient ships in a sector to Children of Light control and triggers any unclaimed Discovery Tile.
+ */
+function convertSectorAncientsOnInfluence(
+  state: GameState,
+  player: PlayerState,
+  sector: SectorTile,
+  addLog: (msg: string, type?: GameLogEntry['type']) => void
+): void {
+  if (player.faction.id !== 'children_of_light') return;
+  const neutralShipCount = sector.ships.filter((s) => s.ownerId === 'ancient').length;
+  const totalAncients = Math.max(sector.ancientsCount || 0, neutralShipCount);
+  if (totalAncients <= 0) return;
+
+  // Ensure all neutral Ancient ships present in ancientsCount exist in sector.ships before converting
+  for (let i = neutralShipCount; i < totalAncients; i++) {
+    sector.ships.push({
+      id: `ship_ancient_${sector.id}_${Date.now()}_${i}`,
+      ownerId: 'ancient',
+      type: 'ancient',
+      damage: 0,
+    });
+  }
+  let converted = 0;
+  sector.ships = sector.ships.map((sh) => {
+    if (sh.ownerId === 'ancient') {
+      converted++;
+      return {
+        ...sh,
+        ownerId: player.id,
+        type: 'ancient',
+      };
+    }
+    return sh;
+  });
+  sector.ancientsCount = 0;
+  if (sector.prayerTokensByPlayer) {
+    delete sector.prayerTokensByPlayer[player.id];
+    if (Object.keys(sector.prayerTokensByPlayer).length === 0) {
+      sector.prayerTokensByPlayer = undefined;
+    }
+  }
+  addLog(
+    `✨ Holy Crusade: ${converted} Ancient ship(s) in Sector ${sector.sectorNumber} converted to ${player.name}'s command!`,
+    'action'
+  );
+
+  if (!sector.discoveryClaimed && (sector.discoveryTile || sector.hasDiscovery)) {
+    let tile = sector.discoveryTile;
+    if (!tile && state.discoveryBag && state.discoveryBag.length > 0) {
+      tile = state.discoveryBag.pop();
+      sector.discoveryTile = tile;
+    }
+    if (tile && !state.pendingDiscovery) {
+      state.pendingDiscovery = buildPendingDiscoveryForPlayer(
+        state.discoveryBag,
+        player,
+        sector.id,
+        tile,
+        false
+      );
+      addLog(
+        `${player.name} discovered Ancient artifact "${state.pendingDiscovery.discovery.name}" in Sector ${sector.sectorNumber}! Awaiting commander's decision...`
+      );
+    }
+  }
+}
+
+/**
+ * Holy Communion (Children of Light): at the end of each Children turn in Action Phase,
+ * place 1 Prayer token in each uncontrolled Ancient sector per non-Ancient Children ship present.
+ * Once Prayer tokens >= 2x Ancients, queue an immediate settlement prompt.
+ */
+function applyHolyCommunionEndOfTurn(
+  state: GameState,
+  player: PlayerState | undefined,
+  addLog: (msg: string, type?: GameLogEntry['type']) => void
+): boolean {
+  if (!player || player.faction.id !== 'children_of_light' || state.phase !== 'ACTION_PHASE') {
+    return false;
+  }
+  const newlyQualified: import('../types/state').PendingHolyCommunion[] = [];
+  for (const sec of state.sectors) {
+    if (sec.isNebula || sec.isBlackHole || sec.isSupernovaExploded) continue;
+    if (sec.discOwner) continue;
+    const neutralAncients = getNeutralAncientCountInSector(sec);
+    if (neutralAncients <= 0) continue;
+    const nonAncientChildrenShips = sec.ships.filter(
+      (sh) => sh.ownerId === player.id && sh.type !== 'ancient'
+    ).length;
+    if (nonAncientChildrenShips <= 0) continue;
+
+    sec.prayerTokensByPlayer = { ...(sec.prayerTokensByPlayer || {}) };
+    const nextTokens = (sec.prayerTokensByPlayer[player.id] || 0) + nonAncientChildrenShips;
+    sec.prayerTokensByPlayer[player.id] = nextTokens;
+    addLog(
+      `🙏 Holy Communion: ${player.name} placed ${nonAncientChildrenShips} Prayer token(s) in Sector ${sec.sectorNumber} (${nextTokens}/${neutralAncients * 2}).`,
+      'action'
+    );
+
+    const hasBlockingHostiles = Boolean(
+      sec.hasGCDS || sec.ships.some((sh) => sh.ownerId !== player.id && sh.ownerId !== 'ancient')
+    );
+    if (
+      !hasBlockingHostiles &&
+      player.influenceTrack.discsOnTrack > 0 &&
+      nextTokens >= neutralAncients * 2
+    ) {
+      newlyQualified.push({
+        sectorId: sec.id,
+        playerId: player.id,
+        ancientCount: neutralAncients,
+        prayerCount: nextTokens,
+      });
+    }
+  }
+
+  if (newlyQualified.length > 0) {
+    const queue = [...(state.pendingHolyCommunionQueue || []), ...newlyQualified];
+    if (!state.pendingHolyCommunion) {
+      state.pendingHolyCommunion = queue.shift() || null;
+    }
+    state.pendingHolyCommunionQueue = queue.length > 0 ? queue : undefined;
+    return true;
+  }
+  return false;
+}
+
+/**
  * Advances the active player index, automatically executing reaction passes for players who have
  * enabled autoPassReactions and are NOT invaded by another player.
  */
@@ -914,6 +1073,7 @@ export function validateBuildItems(
     dreadnought: 0,
     starbase: 0,
     orbital: 0,
+    ancient: 0,
   };
   const queuedMonolithSectors = new Set<string>();
   const queuedOrbitalSectors = new Set<string>();
@@ -921,6 +1081,12 @@ export function validateBuildItems(
 
   let totalMaterialsCost = 0;
   for (const item of items) {
+    if (item.itemType === 'ancient') {
+      return { valid: false, error: 'Ancient ships cannot be constructed via Build.' };
+    }
+    if (item.itemType === 'cruiser' && player.faction.id === 'children_of_light') {
+      return { valid: false, error: 'Children of Light cannot construct Cruisers.' };
+    }
     if (item.itemType === 'starbase') {
       if (player.faction.id === 'the_exiles') {
         return { valid: false, error: 'The Exiles cannot construct Starbases.' };
@@ -970,9 +1136,9 @@ export function validateBuildItems(
       if (sector.discOwner !== player.id) {
         return { valid: false, error: `Must control sector ${item.sectorId} with an influence disc to build here.` };
       }
-      const isDraco = player.faction.id === 'descendants_of_draco';
+      const peacefulAncients = coexistsPeacefullyWithNeutralAncients(player);
       const hasEnemies = sector.ships.some(
-        (s) => s.ownerId !== player.id && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+        (s) => s.ownerId !== player.id && (!peacefulAncients || s.ownerId !== 'ancient')
       );
       const isStructure = item.itemType === 'orbital' || item.itemType === 'monolith';
       if (hasEnemies && isStructure) {
@@ -1428,7 +1594,7 @@ function validateMovePlan(
 
   // 3. Validate paths, drive speed limits, and pinning
   const pinnedShips = new Set<string>();
-  const isDraco = player.faction.id === 'descendants_of_draco';
+  const peacefulWithAncients = coexistsPeacefullyWithNeutralAncients(player);
 
   const simSectorShips = new Map<string, { id: string; ownerId: string; type: string; subsector?: 1 | 2 | 3 }[]>();
   for (const s of effectiveMoveState.sectors) {
@@ -1443,17 +1609,17 @@ function validateMovePlan(
     const targetSub = subsector ?? 1;
     const filteredList = sec.isNebula ? shipsList.filter((s) => (s.subsector ?? 1) === targetSub) : shipsList;
     let ancients = sec.isNebula
-      ? filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
+      ? filteredList.filter((s) => s.ownerId === 'ancient').length
       : Math.max(
           sec.ancientsCount || 0,
-          filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
+          filteredList.filter((s) => s.ownerId === 'ancient').length
         );
-    if (isDraco) ancients = 0;
+    if (peacefulWithAncients) ancients = 0;
     const gcdsShips = filteredList.filter((s) => s.ownerId === 'gcds' || s.type === 'gcds').length;
     const gcdsCount = sec.hasGCDS && !sec.isNebula && gcdsShips === 0 ? 1 : gcdsShips;
     const guardianShips = filteredList.filter((s) => s.ownerId === 'guardian' || s.type === 'guardian').length;
     const otherPlayerShips = filteredList.filter(
-      (s) => s.ownerId !== player.id && (s.ownerId.startsWith('player_') || state.players.some((p) => p.id === s.ownerId))
+      (s) => s.ownerId !== player.id && s.ownerId !== 'ancient' && s.ownerId !== 'gcds' && s.ownerId !== 'guardian'
     ).length;
     return ancients + gcdsCount + guardianShips + otherPlayerShips;
   };
@@ -1840,6 +2006,18 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       error: 'Legion of Midas commander must choose their starting Gray population cube before taking actions.',
     };
   }
+  if (
+    state.pendingHolyCommunion &&
+    action.type !== 'RESOLVE_HOLY_COMMUNION' &&
+    action.type !== 'SET_AUTO_PASS' &&
+    action.type !== 'SET_PASS_IN_ADVANCE' &&
+    action.type !== 'SET_COMBAT_AUTO_RESOLVE'
+  ) {
+    return {
+      valid: false,
+      error: 'Resolve the pending Holy Communion settlement decision before taking another action.',
+    };
+  }
 
   // Pending diplomacy proposal: initiator/other actions must wait until the target commander accepts or declines
   if (
@@ -1866,6 +2044,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'COMBAT_CONQUEST' &&
       action.type !== 'RESOLVE_COMBAT_STEP' &&
       action.type !== 'CONFIGURE_SPIRAL_SHIFT_PORT' &&
+      action.type !== 'SET_DIVINE_INSPIRATION' &&
+      action.type !== 'RESOLVE_HOLY_COMMUNION' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'COLONIZE' &&
@@ -1907,6 +2087,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'COMBAT_CONQUEST' &&
       action.type !== 'RESOLVE_COMBAT_STEP' &&
       action.type !== 'CONFIGURE_SPIRAL_SHIFT_PORT' &&
+      action.type !== 'SET_DIVINE_INSPIRATION' &&
+      action.type !== 'RESOLVE_HOLY_COMMUNION' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
       action.type !== 'ALLOCATE_ARTIFACT_REWARD' &&
       action.type !== 'ABANDON_SECTOR_BANKRUPTCY' &&
@@ -2409,6 +2591,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       const currentExternalGroup = isModularFaction ? inferModularExternalGroup(player.blueprints, 'muon_source') : null;
       const modifiedClasses = new Set<string>();
       let modifiedCount = 0;
+      let ancientModifiedCount = 0;
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType]!;
         let didModify = false;
@@ -2438,6 +2621,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             modifiedCount += 1;
             didModify = true;
           }
+        }
+        if (didModify && up.shipType === 'ancient') {
+          ancientModifiedCount += 1;
         }
         if (didModify && isBattleFocusFaction) {
           if (modifiedClasses.has(up.shipType)) {
@@ -2475,14 +2661,19 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         : isPassed
         ? 1
         : getMaxUpgradeActivations(player, action.useMidasTouch, hasDnCrossBonus);
-      if (modifiedCount > maxUpgrade) {
+      const freeAncientBonus =
+        player.faction.id === 'children_of_light' && !action.pulsarSectorId && !isPassed
+          ? Math.min(1, ancientModifiedCount)
+          : 0;
+      const effectiveModifiedCount = modifiedCount - freeAncientBonus;
+      if (effectiveModifiedCount > maxUpgrade) {
         return {
           valid: false,
           error: action.pulsarSectorId
             ? 'Pulsar Upgrade allows at most 1 component upgrade.'
             : isPassed
             ? 'Reaction Upgrade allows at most 1 component upgrade.'
-            : `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action. (Attempted ${modifiedCount})`,
+            : `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action${player.faction.id === 'children_of_light' ? ' (+1 free Ancient upgrade)' : ''}. (Attempted ${modifiedCount})`,
         };
       }
 
@@ -2824,11 +3015,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (sec.discOwner) {
           return { valid: false, error: `Sector ${sec.sectorNumber} is already controlled by another player.` };
         }
+        const allowsNeutralAncientsHere = canPlayerClaimAncientSectorWithInfluence(sec, player);
+        const neutralAncientCount = getNeutralAncientCountInSector(sec);
         const hasHostiles =
-          (!isDraco && sec.ancientsCount > 0) ||
+          (!allowsNeutralAncientsHere && neutralAncientCount > 0) ||
           sec.hasGCDS ||
           sec.ships.some(
-            (s) => s.ownerId !== player.id && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+            (s) => s.ownerId !== player.id && (!allowsNeutralAncientsHere || s.ownerId !== 'ancient')
           );
         if (hasHostiles) {
           return { valid: false, error: `Cannot claim Sector ${sec.sectorNumber} while hostile forces are present.` };
@@ -2843,7 +3036,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           abandoned,
           hasWormholeGen,
           state.warpedUniverse?.conduits,
-          isDraco
+          isDraco,
+          player
         );
         if (!validSequence) {
           if (claimed.length === 1) {
@@ -3248,6 +3442,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           error: 'The Spiral must configure Shift Port modes for its ships before combat begins in this sector.',
         };
       }
+      const pendingDivineInspirationId = getPendingDivineInspirationPlayerId(state.players, sector, state.activeCombat);
+      if (pendingDivineInspirationId) {
+        return {
+          valid: false,
+          error: 'Children of Light must choose Divine Inspiration (+1 to Hit or -1 Shield) before combat begins in this sector.',
+        };
+      }
       if ((action as any).autoAssign) {
         return { valid: true };
       }
@@ -3268,7 +3469,8 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         undefined,
         state.neutralShipBlueprints,
         state.expansions,
-        state.activeCombat.spiralShiftModes
+        state.activeCombat.spiralShiftModes,
+        state.activeCombat.divineInspirationChoice
       );
       const defenderId = state.activeCombat.defenderOwnerId || getSectorDefenderOwnerId(sector, state.players);
       const aliveUnits = sortUnitsByInitiative(
@@ -3656,6 +3858,50 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       return { valid: true };
     }
 
+    case 'SET_DIVINE_INSPIRATION': {
+      if (state.phase !== 'COMBAT_PHASE' || !state.activeCombat) {
+        return { valid: false, error: 'No active combat in progress for Divine Inspiration.' };
+      }
+      if (state.activeCombat.sectorId !== action.sectorId) {
+        return { valid: false, error: 'Divine Inspiration sector does not match active combat sector.' };
+      }
+      if (player.faction.id !== 'children_of_light') {
+        return { valid: false, error: 'Only Children of Light possess Divine Inspiration.' };
+      }
+      if (!state.activeCombat.participatingPlayerIds?.includes(player.id)) {
+        return { valid: false, error: 'You are not a participant in this sector engagement.' };
+      }
+      if (action.choice !== 'hit' && action.choice !== 'shield') {
+        return { valid: false, error: 'Invalid Divine Inspiration choice (must be hit or shield).' };
+      }
+      return { valid: true };
+    }
+
+    case 'RESOLVE_HOLY_COMMUNION': {
+      if (!state.pendingHolyCommunion || state.pendingHolyCommunion.playerId !== player.id) {
+        return { valid: false, error: 'No pending Holy Communion settlement prompt for this player.' };
+      }
+      if (state.pendingHolyCommunion.sectorId !== action.sectorId) {
+        return { valid: false, error: 'Holy Communion sector mismatch.' };
+      }
+      const sec = state.sectors.find((s) => s.id === action.sectorId);
+      if (!sec) return { valid: false, error: 'Target sector not found.' };
+      if (action.claim) {
+        if (sec.discOwner) {
+          return { valid: false, error: `Sector ${sec.sectorNumber} is already controlled.` };
+        }
+        if (player.influenceTrack.discsOnTrack <= 0) {
+          return { valid: false, error: 'No influence discs remaining on track to settle this sector.' };
+        }
+        const ancientCount = getNeutralAncientCountInSector(sec);
+        const tokens = sec.prayerTokensByPlayer?.[player.id] || 0;
+        if (ancientCount <= 0 || tokens < ancientCount * 2) {
+          return { valid: false, error: 'Insufficient Prayer tokens to settle this Ancient sector.' };
+        }
+      }
+      return { valid: true };
+    }
+
     case 'CLAIM_MINOR_SPECIES': {
       if (!state.minorSpeciesSupply || state.minorSpeciesSupply.length === 0) {
         return { valid: false, error: 'Minor Species expansion is not active or no species available in supply.' };
@@ -3730,6 +3976,15 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         }
         if (action.build.itemType === 'monolith' && player.faction.id === 'mega_war_inc') {
           return { valid: false, error: 'Mega War Inc. cannot construct Monoliths.' };
+        }
+        if (action.build.itemType === 'ancient') {
+          return { valid: false, error: 'Ancient ships cannot be constructed.' };
+        }
+        if (action.build.itemType === 'cruiser' && player.faction.id === 'children_of_light') {
+          return { valid: false, error: 'Children of Light cannot construct Cruisers.' };
+        }
+        if (action.build.itemType === 'dreadnought' && player.faction.id === 'rho_indi_syndicate') {
+          return { valid: false, error: 'Rho Indi Syndicate cannot construct Dreadnoughts.' };
         }
         if (action.build.itemType === 'starbase') {
           if (player.faction.id === 'the_exiles') {
@@ -4983,7 +5238,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             [],
             hasWormholeGen,
             newState.warpedUniverse?.conduits,
-            isDraco
+            isDraco,
+            player
           ) || action.claimSectors;
 
         for (const secId of seq) {
@@ -4997,6 +5253,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
               newState.galacticEvents.pulsars[sec.id] = { currentSlot: 'move', activatedThisRound: false };
             }
             addLog(`${player.name} claimed control of Sector ${sec.sectorNumber} with an Influence Disc!`);
+            convertSectorAncientsOnInfluence(newState, player, sec, addLog);
             if (sec.discoveryTile && !sec.discoveryClaimed && (!sec.ancientsCount || sec.ancientsCount === 0) && !newState.pendingDiscovery) {
               newState.pendingDiscovery = buildPendingDiscoveryForPlayer(
                 newState.discoveryBag,
@@ -5184,6 +5441,13 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         pd.discovery;
       const grantShip = disc.immediateReward?.grantShipType || (disc.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
       if (!action.keepForVictoryPoints && grantShip) {
+        if (!player.blueprints[grantShip]) {
+          return {
+            success: false,
+            newState: state,
+            error: `Your faction cannot deploy ${grantShip.toUpperCase()} ships. You must keep the tile for 2 VP instead.`,
+          };
+        }
         const currentShips = countPlayerShips(newState.sectors, player.id);
         if (currentShips[grantShip] >= SHIP_LIMITS[grantShip]) {
           return {
@@ -5338,7 +5602,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           }
         }
         const grantShip = disc.immediateReward?.grantShipType || (disc.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
-        if (grantShip && sector) {
+        if (grantShip && sector && player.blueprints[grantShip]) {
           const currentShips = countPlayerShips(newState.sectors, player.id);
           if (currentShips[grantShip] < SHIP_LIMITS[grantShip]) {
             sector.ships.push({
@@ -5438,6 +5702,13 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         return { success: true, newState };
       }
       if (wasSetupDiscovery) {
+        return { success: true, newState };
+      }
+      if (newState.phase === 'ACTION_PHASE' && !wasFromExplore && !newState.pendingDiscovery && newState.pendingHolyCommunionQueue && newState.pendingHolyCommunionQueue.length > 0) {
+        newState.pendingHolyCommunion = newState.pendingHolyCommunionQueue.shift() || null;
+        if (newState.pendingHolyCommunionQueue.length === 0) {
+          newState.pendingHolyCommunionQueue = undefined;
+        }
         return { success: true, newState };
       }
       break;
@@ -5677,6 +5948,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             const remainingOwners = Array.from(new Set(relevantShips.map((s) => s.ownerId)));
             const hasMoreCombatsInSector =
               remainingOwners.length > 1 &&
+              !(remainingOwners.length === 2 && remainingOwners.includes('ancient') && remainingOwners.some((o) => coexistsPeacefullyWithNeutralAncients(newState.players.find((p) => p.id === o)))) &&
               !(remainingOwners.length === 2 && remainingOwners.some((o) => ['ancient', 'guardian', 'gcds'].includes(o)) && remainingOwners.some((o) => newState.players.find((p) => p.id === o)?.faction.id === 'descendants_of_draco'));
 
             if (hasMoreCombatsInSector) {
@@ -5708,7 +5980,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
                 if (subOwners.length === 2 && subOwners.includes('ancient')) {
                   const otherOwner = subOwners.find((o) => o !== 'ancient');
                   const otherPlayer = newState.players.find((p) => p.id === otherOwner);
-                  if (otherPlayer?.faction.id === 'descendants_of_draco') {
+                  if (coexistsPeacefullyWithNeutralAncients(otherPlayer)) {
                     return false;
                   }
                 }
@@ -5807,7 +6079,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
                     playerId: pId,
                     drawnTiles: drawn,
                     sectorId: scopeKey,
-                    isBattleWin: isWin,
+                    isBattleWin: participant?.faction.id === 'kurita_prefecture' ? isWin : undefined,
                   });
                   if (participant?.faction.id === 'rho_indi_syndicate') {
                     const bountyMoney = Math.max(0, drawn.length - 1);
@@ -5839,7 +6111,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             newState.activeCombat.participatingPlayerIds,
             newState.neutralShipBlueprints,
             newState.expansions,
-            newState.activeCombat.spiralShiftModes
+            newState.activeCombat.spiralShiftModes,
+            newState.activeCombat.divineInspirationChoice
           );
 
           // If combat is already in 'resolved' stage or explicitly flagged to conclude:
@@ -5934,9 +6207,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             return s.damage < u.maxHull;
           });
 
-          // Keep ancientsCount and hasGCDS synchronized with surviving sector ships
+          // Keep ancientsCount and hasGCDS synchronized with surviving neutral sector ships
           sector.ancientsCount = sector.ships.filter(
-            (s) => s.ownerId === 'ancient' || s.type === 'ancient'
+            (s) => s.ownerId === 'ancient'
           ).length;
           sector.hasGCDS = sector.ships.some(
             (s) => s.ownerId === 'gcds' || s.type === 'gcds'
@@ -6024,17 +6297,24 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         const keptTile = drawnTiles.splice(action.selectedTileIndex, 1)[0]!;
         const maxRepTiles = getMaxReputationTilesForPlayer(player);
 
-        const battleOutcome: 'win' | 'loss' = newState.pendingReputationDraw?.isBattleWin ? 'win' : 'loss';
-        player.reputationBattleOutcomes = player.reputationBattleOutcomes || [];
-        while (player.reputationBattleOutcomes.length < player.reputationTiles.length) {
-          player.reputationBattleOutcomes.push('loss');
+        // Honour the Victorious (+1/-1 VP per battle win/loss) is exclusive to Kurita Prefecture
+        const isKurita = player.faction.id === 'kurita_prefecture';
+        const battleOutcome: 'win' | 'loss' | undefined = isKurita
+          ? newState.pendingReputationDraw?.isBattleWin
+            ? 'win'
+            : 'loss'
+          : undefined;
+        if (isKurita) {
+          player.reputationBattleOutcomes = player.reputationBattleOutcomes || [];
+          while (player.reputationBattleOutcomes.length < player.reputationTiles.length) {
+            player.reputationBattleOutcomes.push('loss');
+          }
         }
-        const honourTag =
-          player.faction.id === 'kurita_prefecture'
-            ? battleOutcome === 'win'
-              ? ` (+1 Honour Win Dmg Cube = ${keptTile + 1} VP)`
-              : ` (-1 Honour Loss = ${keptTile - 1} VP)`
-            : '';
+        const honourTag = isKurita
+          ? battleOutcome === 'win'
+            ? ` (+1 Honour Win Dmg Cube = ${keptTile + 1} VP)`
+            : ` (-1 Honour Loss = ${keptTile - 1} VP)`
+          : '';
 
         if (
           player.reputationTiles.length >= maxRepTiles &&
@@ -6043,19 +6323,25 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           action.replaceTrackIndex < player.reputationTiles.length
         ) {
           const [oldTile] = player.reputationTiles.splice(action.replaceTrackIndex, 1);
-          player.reputationBattleOutcomes.splice(action.replaceTrackIndex, 1);
+          if (isKurita && player.reputationBattleOutcomes) {
+            player.reputationBattleOutcomes.splice(action.replaceTrackIndex, 1);
+          }
           if (oldTile !== undefined) {
             newState.reputationBag.push(oldTile);
           }
           player.reputationTiles.push(keptTile);
-          player.reputationBattleOutcomes.push(battleOutcome);
+          if (isKurita && battleOutcome && player.reputationBattleOutcomes) {
+            player.reputationBattleOutcomes.push(battleOutcome);
+          }
           addLog(
             `${player.name} placed a ${keptTile} VP Reputation Tile on their track${honourTag} (replaced ${oldTile} VP).`,
             'combat'
           );
         } else if (player.reputationTiles.length < maxRepTiles) {
           player.reputationTiles.push(keptTile);
-          player.reputationBattleOutcomes.push(battleOutcome);
+          if (isKurita && battleOutcome && player.reputationBattleOutcomes) {
+            player.reputationBattleOutcomes.push(battleOutcome);
+          }
           addLog(`${player.name} placed a ${keptTile} VP Reputation Tile on their track${honourTag}.`, 'combat');
         } else {
           newState.reputationBag.push(keptTile);
@@ -6284,6 +6570,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       // Resolve any deferred Act of Aggression alliance break after the Move action is confirmed
       if (conf.betrayalAllyIds && conf.betrayalAllyIds.length > 0 && actingPlayer) {
         resolveAlliancesBreak(newState, actingPlayer, conf.betrayalAllyIds, addLog, true);
+      }
+
+      if (actingPlayer && applyHolyCommunionEndOfTurn(newState, actingPlayer, addLog)) {
+        return { success: true, newState };
       }
 
       // Advance turn or proceed to combat phase if all passed consecutively (with auto-pass reactions)
@@ -6606,6 +6896,58 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       return { success: true, newState };
     }
 
+    case 'SET_DIVINE_INSPIRATION': {
+      if (newState.activeCombat && newState.activeCombat.sectorId === action.sectorId) {
+        newState.activeCombat.divineInspirationChoice = newState.activeCombat.divineInspirationChoice || {};
+        newState.activeCombat.divineInspirationChoice[player.id] = action.choice;
+        const secNum = newState.sectors.find((s) => s.id === action.sectorId)?.sectorNumber || action.sectorId;
+        const label = action.choice === 'hit' ? '+1 to Hit' : '-1 Shield';
+        addLog(
+          `🕊️ Divine Inspiration: ${player.name} chose ${label} for their non-Ancient ships in Sector ${secNum}!`,
+          'combat'
+        );
+        if ((newState.activeCombat.autoResolvePlayerIds?.length || 0) > 0) {
+          return { success: true, newState: advanceAutoResolveCombatSteps(newState) };
+        }
+      }
+      return { success: true, newState };
+    }
+
+    case 'RESOLVE_HOLY_COMMUNION': {
+      const sector = newState.sectors.find((s) => s.id === action.sectorId);
+      newState.pendingHolyCommunion = null;
+      if (action.claim && sector && !sector.discOwner && player.influenceTrack.discsOnTrack > 0) {
+        player.influenceTrack.discsOnTrack -= 1;
+        sector.discOwner = player.id;
+        if (sector.isPulsar) {
+          sector.pulsarSlot = 'move';
+          if (!newState.galacticEvents) newState.galacticEvents = createGalacticEventsState();
+          newState.galacticEvents.pulsars[sector.id] = { currentSlot: 'move', activatedThisRound: false };
+        }
+        addLog(
+          `🙏 ${player.name} settled Sector ${sector.sectorNumber} through Holy Communion with an Influence Disc!`
+        );
+        convertSectorAncientsOnInfluence(newState, player, sector, addLog);
+      } else if (sector) {
+        addLog(
+          `${player.name} chose not to settle Ancient Sector ${sector.sectorNumber} immediately.`,
+          'action'
+        );
+      }
+      if (newState.pendingDiscovery) {
+        return { success: true, newState };
+      }
+      if (newState.pendingHolyCommunionQueue && newState.pendingHolyCommunionQueue.length > 0) {
+        newState.pendingHolyCommunion = newState.pendingHolyCommunionQueue.shift() || null;
+        if (newState.pendingHolyCommunionQueue.length === 0) {
+          newState.pendingHolyCommunionQueue = undefined;
+        }
+        return { success: true, newState };
+      }
+      advanceTurnOrAutoPass(newState);
+      return { success: true, newState };
+    }
+
     case 'CLAIM_MINOR_SPECIES': {
       const tileIndex = (newState.minorSpeciesSupply || []).findIndex((t) => t.id === action.speciesId);
       if (tileIndex === -1) {
@@ -6767,7 +7109,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         startCoord,
         newState.reputationBag,
         newState.discoveryBag,
-        newState.expansions
+        newState.expansions,
+        newState.neutralShipBlueprints
       );
 
       const pIdx = newState.players.findIndex((p) => p.id === action.playerId);
@@ -7094,6 +7437,23 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       };
     }
 
+    const isTurnEndingForHolyCommunion =
+      action.type === 'MOVE' ||
+      action.type === 'EXPLORE' ||
+      action.type === 'FINISH_EXPLORE' ||
+      action.type === 'BUILD' ||
+      action.type === 'UPGRADE' ||
+      action.type === 'RESEARCH' ||
+      action.type === 'INFLUENCE' ||
+      action.type === 'PASS' ||
+      action.type === 'ACTIVATE_PULSAR' ||
+      action.type === 'EXPLORE_CONTROL' ||
+      (action.type === 'DISCOVERY_CHOICE' && Boolean(action.claimInfluence !== undefined || (state.pendingDiscovery?.fromExplore)));
+    if (isTurnEndingForHolyCommunion && applyHolyCommunionEndOfTurn(newState, player, addLog)) {
+      syncExilesOrbitalShips(newState);
+      return { success: true, newState };
+    }
+
     advanceTurnOrAutoPass(newState);
   }
 
@@ -7148,13 +7508,32 @@ function advanceAutoResolveCombatSteps(initialState: GameState): GameState {
       }
     }
 
+    const pendingDivineId = getPendingDivineInspirationPlayerId(current.players, sector, combat);
+    if (pendingDivineId) {
+      if (!autoIds.includes(pendingDivineId)) break;
+      const diRes = executeAction(
+        current,
+        {
+          type: 'SET_DIVINE_INSPIRATION',
+          playerId: pendingDivineId,
+          sectorId: combat.sectorId,
+          choice: 'hit',
+        },
+        true
+      );
+      if (!diRes.success) break;
+      current = diRes.newState;
+      continue;
+    }
+
     const units = buildCombatUnitsForSector(
       sector,
       current.players,
       combat.participatingPlayerIds,
       current.neutralShipBlueprints,
       current.expansions,
-      combat.spiralShiftModes
+      combat.spiralShiftModes,
+      combat.divineInspirationChoice
     );
     const activeHumanParticipants = Array.from(
       new Set([
@@ -8029,7 +8408,7 @@ interface SimSectorShipEntry {
 function createHostilesCounter(
   state: GameState,
   playerId: string,
-  isDraco: boolean
+  peacefulWithAncients: boolean
 ) {
   return (
     sec: SectorTile,
@@ -8039,17 +8418,17 @@ function createHostilesCounter(
     const targetSub = subsector ?? 1;
     const filteredList = sec.isNebula ? shipsList.filter((s) => (s.subsector ?? 1) === targetSub) : shipsList;
     let ancients = sec.isNebula
-      ? filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
+      ? filteredList.filter((s) => s.ownerId === 'ancient').length
       : Math.max(
           sec.ancientsCount || 0,
-          filteredList.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length
+          filteredList.filter((s) => s.ownerId === 'ancient').length
         );
-    if (isDraco) ancients = 0;
+    if (peacefulWithAncients) ancients = 0;
     const gcdsShips = filteredList.filter((s) => s.ownerId === 'gcds' || s.type === 'gcds').length;
     const gcdsCount = sec.hasGCDS && !sec.isNebula && gcdsShips === 0 ? 1 : gcdsShips;
     const guardianShips = filteredList.filter((s) => s.ownerId === 'guardian' || s.type === 'guardian').length;
     const otherPlayerShips = filteredList.filter(
-      (s) => s.ownerId !== playerId && (s.ownerId.startsWith('player_') || state.players.some((p) => p.id === s.ownerId))
+      (s) => s.ownerId !== playerId && s.ownerId !== 'ancient' && s.ownerId !== 'gcds' && s.ownerId !== 'guardian'
     ).length;
     return ancients + gcdsCount + guardianShips + otherPlayerShips;
   };
@@ -8061,7 +8440,7 @@ function replayPlannedMovesForSimulation(
   plannedMoves: { shipId: string; fromSectorId: string; toSectorId: string; targetSubsector?: 1 | 2 | 3 }[]
 ) {
   const player = state.players.find((p) => p.id === playerId);
-  const isDraco = player?.faction.id === 'descendants_of_draco';
+  const peacefulWithAncients = coexistsPeacefullyWithNeutralAncients(player);
   const hasCloaking = Boolean(player?.techTrack.researched.some((t) => t.id === 'cloaking_device'));
   const pinnedShipIds = new Set<string>();
   const sectorById = new Map<string, SectorTile>(state.sectors.map((s) => [s.id, s]));
@@ -8071,7 +8450,7 @@ function replayPlannedMovesForSimulation(
     simSectorShips.set(s.id, s.ships.map((sh) => ({ id: sh.id, ownerId: sh.ownerId, type: sh.type, subsector: sh.subsector })));
   }
 
-  const getHostilesInSec = createHostilesCounter(state, playerId, Boolean(isDraco));
+  const getHostilesInSec = createHostilesCounter(state, playerId, peacefulWithAncients);
 
   // Replay planned moves step by step
   for (const m of plannedMoves) {
@@ -8434,7 +8813,7 @@ function isDracoAncientPeacefulOnly(owners: string[], players: PlayerState[]): b
   if (owners.length !== 2 || !owners.includes('ancient')) return false;
   const otherOwner = owners.find((o) => o !== 'ancient');
   const otherPlayer = players.find((p) => p.id === otherOwner);
-  return otherPlayer?.faction.id === 'descendants_of_draco';
+  return coexistsPeacefullyWithNeutralAncients(otherPlayer);
 }
 
 function getUnresolvedFleetCombatSubsector(state: GameState, sec: SectorTile): 1 | 2 | 3 | undefined {
@@ -8574,13 +8953,13 @@ export function checkAndTriggerCombat(state: GameState): void {
     } else if (
       attackerOwnerId &&
       defenderOwnerId &&
-      ((attackerOwnerId === 'ancient' && state.players.find((p) => p.id === defenderOwnerId)?.faction.id === 'descendants_of_draco') ||
-       (defenderOwnerId === 'ancient' && state.players.find((p) => p.id === attackerOwnerId)?.faction.id === 'descendants_of_draco'))
+      ((attackerOwnerId === 'ancient' && coexistsPeacefullyWithNeutralAncients(state.players.find((p) => p.id === defenderOwnerId))) ||
+       (defenderOwnerId === 'ancient' && coexistsPeacefullyWithNeutralAncients(state.players.find((p) => p.id === attackerOwnerId))))
     ) {
       const otherOpponent = orderedOwners
         .slice(0, orderedOwners.length - 2)
         .reverse()
-        .find((o) => !(o === 'ancient' || state.players.find((p) => p.id === o)?.faction.id === 'descendants_of_draco'));
+        .find((o) => !(o === 'ancient' || coexistsPeacefullyWithNeutralAncients(state.players.find((p) => p.id === o))));
       if (otherOpponent) {
         defenderOwnerId = otherOpponent;
       }
@@ -9347,7 +9726,7 @@ export function computeCurrentScores(state: GameState): {
       speciesBonus += controlledSectors.length * 1;
     } else if (p.faction.id === 'descendants_of_draco') {
       const totalAncientsOnBoard = state.sectors.reduce((sum, s) => {
-        const shipsCount = s.ships.filter((ship) => ship.ownerId === 'ancient' || ship.type === 'ancient').length;
+        const shipsCount = s.ships.filter((ship) => ship.ownerId === 'ancient').length;
         return sum + Math.max(s.ancientsCount, shipsCount);
       }, 0);
       speciesBonus += totalAncientsOnBoard;
@@ -9389,6 +9768,13 @@ export function computeCurrentScores(state: GameState): {
         0
       );
       speciesBonus += dreadnoughtsOnBoard;
+    } else if (p.faction.id === 'children_of_light') {
+      // Holy Crusade: +1 Bonus VP per Ancient ship under your control at end of game
+      const controlledAncientsOnBoard = state.sectors.reduce(
+        (sum, s) => sum + s.ships.filter((sh) => sh.ownerId === p.id && sh.type === 'ancient').length,
+        0
+      );
+      speciesBonus += controlledAncientsOnBoard;
     }
 
     // 9. Traitor Tile Penalty (-2 VP normally, -4 VP for Kurita Prefecture, 0 for Rho Indi)
@@ -9581,7 +9967,8 @@ export function findValidClaimSequence(
   abandonedSectorIds: string[] = [],
   hasWormholeGen: boolean = false,
   warpConduits?: WarpConduit[],
-  isDraco: boolean = false
+  isDraco: boolean = false,
+  player?: PlayerState | null
 ): string[] | null {
   if (claimedSectorIds.length === 0) return [];
 
@@ -9596,11 +9983,13 @@ export function findValidClaimSequence(
     if (!sec) return null;
     if (sec.isNebula || sec.isBlackHole || sec.isSupernovaExploded) return null;
     if (sec.discOwner) return null;
+    const allowsNeutralAncientsHere = player ? canPlayerClaimAncientSectorWithInfluence(sec, player) : isDraco;
+    const neutralAncientCount = getNeutralAncientCountInSector(sec);
     const hasHostiles =
-      (!isDraco && sec.ancientsCount > 0) ||
+      (!allowsNeutralAncientsHere && neutralAncientCount > 0) ||
       sec.hasGCDS ||
       sec.ships.some(
-        (s) => s.ownerId !== playerId && (!isDraco || (s.ownerId !== 'ancient' && s.type !== 'ancient'))
+        (s) => s.ownerId !== playerId && (!allowsNeutralAncientsHere || s.ownerId !== 'ancient')
       );
     if (hasHostiles) return null;
   }
@@ -9653,17 +10042,17 @@ export function getEligibleRetreatSectors(
 ): SectorTile[] {
   const player = state.players.find((p) => p.id === playerId);
   if (!player) return [];
-  const isDraco = player.faction.id === 'descendants_of_draco';
+  const peacefulAncients = coexistsPeacefullyWithNeutralAncients(player);
   const hasWormholeGen = playerHasWormholeGenerator(player);
 
   return state.sectors.filter((s) => {
     if (s.id === combatSector.id) return false;
     if (s.discOwner !== playerId) return false;
-    if (s.hasGCDS || (!isDraco && (s.ancientsCount || 0) > 0)) return false;
+    if (s.hasGCDS || (!peacefulAncients && (s.ancientsCount || 0) > 0)) return false;
     const hasOpponentShips = s.ships.some(
       (sh) =>
         sh.ownerId !== playerId &&
-        (!isDraco || (sh.ownerId !== 'ancient' && sh.type !== 'ancient'))
+        (!peacefulAncients || sh.ownerId !== 'ancient')
     );
     if (hasOpponentShips) return false;
     return areSectorsConnected(combatSector, s, hasWormholeGen, state.warpedUniverse?.conduits);

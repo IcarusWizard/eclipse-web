@@ -193,7 +193,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
     if (owners.length === 2 && owners.includes('ancient')) {
       const otherOwner = owners.find((o) => o !== 'ancient');
       const otherPlayer = players.find((p) => p.id === otherOwner);
-      if (otherPlayer?.faction?.id === 'descendants_of_draco') return false;
+      if (otherPlayer?.faction?.id === 'descendants_of_draco' || otherPlayer?.faction?.id === 'children_of_light') return false;
     }
     return true;
   };
@@ -270,6 +270,30 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
               <span className="text-slate-400 font-medium italic">{l('Unclaimed / Neutral', '未占领 / 中立')}</span>
             )}
           </div>
+
+          {sector.prayerTokensByPlayer && Object.entries(sector.prayerTokensByPlayer).some(([, count]) => count > 0) && (
+            <div className="pt-1.5 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-1.5">
+              <span className="text-[11px] font-bold text-fuchsia-300">
+                🙏 {l('Holy Communion Prayer Tokens:', '神圣共融祈祷标记:')}
+              </span>
+              <div className="flex flex-wrap gap-1">
+                {Object.entries(sector.prayerTokensByPlayer)
+                  .filter(([, c]) => c > 0)
+                  .map(([pid, count]) => {
+                    const pl = players.find((p) => p.id === pid);
+                    const targetCount = Math.max(1, sector.ancientsCount || sector.ships.filter((s) => s.ownerId === 'ancient').length) * 2;
+                    return (
+                      <span
+                        key={pid}
+                        className="px-2 py-0.5 rounded-full bg-fuchsia-950/70 border border-fuchsia-500/60 text-fuchsia-200 font-mono text-[10px] font-bold"
+                      >
+                        {pl ? getPlayerDisplayName(pl, { short: true }) : pid}: {count}/{targetCount}
+                      </span>
+                    );
+                  })}
+              </div>
+            </div>
+          )}
 
           {isBankruptcyActive && sector.discOwner === activePlayer.id && (onToggleAbandonSector || onAbandonInfluence) && (
             <div className="pt-2 border-t border-slate-800">
@@ -788,7 +812,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                         icon: <Sparkles className="w-3.5 h-3.5 text-white" />,
                       }
                     : {
-                        name: l('Standard Wild Habitat (Any Resource)', '标准任意资源栖息地'),
+                        name: l('Standard Wild Habitat', '标准任意资源栖息地'),
                         badge: 'bg-slate-300 text-slate-950 font-extrabold',
                         border: 'border-slate-500/40 bg-slate-900/40',
                         text: 'text-slate-200',
@@ -796,7 +820,9 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                       }
                   : planet.resource === 'money'
                   ? {
-                      name: l('Money (Economy)', '信用点（经济）'),
+                      name: planet.isAdvanced
+                        ? l('Advanced Money', '进阶信用点')
+                        : l('Money (Economy)', '信用点（经济）'),
                       badge: 'bg-yellow-400 text-slate-950 font-extrabold',
                       border: 'border-yellow-500/40 bg-yellow-950/15',
                       text: 'text-yellow-300',
@@ -804,14 +830,18 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                     }
                   : planet.resource === 'science'
                   ? {
-                      name: l('Science (Research)', '科研（研发）'),
+                      name: planet.isAdvanced
+                        ? l('Advanced Science', '进阶科研')
+                        : l('Science (Research)', '科研（研发）'),
                       badge: 'bg-pink-500 text-white font-bold',
                       border: 'border-pink-500/40 bg-pink-950/15',
                       text: 'text-pink-300',
                       icon: <FlaskConical className="w-3.5 h-3.5 text-pink-400" />,
                     }
                   : {
-                      name: l('Materials (Production)', '材料（生产）'),
+                      name: planet.isAdvanced
+                        ? l('Advanced Material', '进阶材料')
+                        : l('Materials (Production)', '材料（生产）'),
                       badge: 'bg-amber-900 text-amber-100 font-bold',
                       border: 'border-amber-700/40 bg-amber-950/20',
                       text: 'text-amber-400',
@@ -821,23 +851,31 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                 return (
                   <div
                     key={planet.id || `planet-${pIdx}`}
-                    className={`p-2.5 rounded-xl border flex flex-col sm:flex-row sm:items-center justify-between gap-2 ${resourceTheme.border}`}
+                    className={`p-2.5 rounded-xl border flex items-center justify-between gap-2 ${resourceTheme.border}`}
                   >
-                    <div className="flex items-center gap-2">
-                      <div className="p-1 rounded-lg bg-slate-900 border border-slate-800">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div className="p-1 rounded-lg bg-slate-900 border border-slate-800 shrink-0">
                         {resourceTheme.icon}
                       </div>
-                      <div>
-                        <div className="flex items-center gap-1.5 font-bold">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-1.5 font-bold flex-wrap">
                           <span className={resourceTheme.text}>{resourceTheme.name}</span>
                           {planet.isAdvanced ? (
                             hasRequiredTech ? (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-slate-800 border border-slate-700 text-slate-300 uppercase font-mono flex items-center gap-1">
-                                <Check className="w-2.5 h-2.5 text-emerald-400" /> {l('Advanced', '进阶')}
+                              <span
+                                data-testid="planet-unlocked-icon"
+                                title={l(`Unlocked (${reqTechName})`, `已解锁（${reqTechName}）`)}
+                                className="inline-flex items-center justify-center p-0.5 rounded bg-slate-800 border border-slate-700"
+                              >
+                                <Check className="w-2.5 h-2.5 text-emerald-400" />
                               </span>
                             ) : (
-                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-rose-950/80 border border-rose-800 text-rose-300 uppercase font-mono flex items-center gap-1">
-                                <Lock className="w-2.5 h-2.5 text-rose-400" /> {l(`Need ${reqTechName}`, `需要 ${reqTechName}`)}
+                              <span
+                                data-testid="planet-locked-icon"
+                                title={l(`Requires ${reqTechName}`, `需要 ${reqTechName}`)}
+                                className="inline-flex items-center justify-center p-1 rounded bg-rose-950/80 border border-rose-800"
+                              >
+                                <Lock className="w-2.5 h-2.5 text-rose-400" />
                               </span>
                             )
                           ) : isRaArt ? (
@@ -879,22 +917,20 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                           </div>
                         ) : (
                           <div className="text-[10px] text-slate-500 italic mt-0.5">
-                            {planet.isAdvanced && !hasRequiredTech
-                              ? l(`Requires ${reqTechName} tech`, `需要科技：${reqTechName}`)
-                              : l('Uncolonized Square', '未殖民格位')}
+                            {l('Uncolonized Square', '未殖民格位')}
                           </div>
                         )}
                       </div>
                     </div>
 
                     {canColonize && onColonizePlanet && (
-                      <div className="flex items-center gap-1.5 shrink-0 self-end sm:self-center">
+                      <div className={`flex shrink-0 ${isWild || isOrb ? 'flex-col gap-1 items-stretch min-w-[92px]' : 'items-center gap-1.5'}`}>
                         {isOrb ? (
                           <>
                             <button
                               disabled={activePlayer.population.money.cubesOnBoard <= 0}
                               onClick={() => onColonizePlanet(sector.id, pIdx, 'money')}
-                              className="px-2 py-1 rounded text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow"
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow text-center"
                               title={l('Colonize with Money Cube', '用信用点方块殖民')}
                             >
                               + {l('Money', '信用点')} ({activePlayer.population.money.cubesOnBoard})
@@ -902,7 +938,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                             <button
                               disabled={activePlayer.population.science.cubesOnBoard <= 0}
                               onClick={() => onColonizePlanet(sector.id, pIdx, 'science')}
-                              className="px-2 py-1 rounded text-[10px] font-bold bg-pink-500 hover:bg-pink-400 disabled:opacity-40 disabled:pointer-events-none text-white shadow"
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-pink-500 hover:bg-pink-400 disabled:opacity-40 disabled:pointer-events-none text-white shadow text-center"
                               title={l('Colonize with Science Cube', '用科研方块殖民')}
                             >
                               + {l('Science', '科研')} ({activePlayer.population.science.cubesOnBoard})
@@ -913,7 +949,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                             <button
                               disabled={activePlayer.population.money.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedEconomy)}
                               onClick={() => onColonizePlanet(sector.id, pIdx, 'money')}
-                              className="px-2 py-1 rounded text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow"
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow text-center"
                               title={l('Colonize with Money Cube', '用信用点方块殖民')}
                             >
                               + {l('Money', '信用点')}
@@ -921,7 +957,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                             <button
                               disabled={activePlayer.population.science.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedLabs)}
                               onClick={() => onColonizePlanet(sector.id, pIdx, 'science')}
-                              className="px-2 py-1 rounded text-[10px] font-bold bg-pink-500 hover:bg-pink-400 disabled:opacity-40 disabled:pointer-events-none text-white shadow"
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-pink-500 hover:bg-pink-400 disabled:opacity-40 disabled:pointer-events-none text-white shadow text-center"
                               title={l('Colonize with Science Cube', '用科研方块殖民')}
                             >
                               + {l('Science', '科研')}
@@ -929,7 +965,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                             <button
                               disabled={activePlayer.population.material.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedMining)}
                               onClick={() => onColonizePlanet(sector.id, pIdx, 'material')}
-                              className="px-2 py-1 rounded text-[10px] font-bold bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:pointer-events-none text-white shadow"
+                              className="px-2 py-1 rounded text-[10px] font-bold bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:pointer-events-none text-white shadow text-center"
                               title={l('Colonize with Material Cube', '用材料方块殖民')}
                             >
                               + {l('Material', '材料')}

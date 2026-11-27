@@ -158,6 +158,7 @@ export function createDefaultSimulatorSide(
     npcVariant?: NeutralShipVariant;
     shipCounts?: Record<string, number>;
     hasAntimatterSplitter?: boolean;
+    neutralShipBlueprints?: Partial<import('./neutralShips').NeutralShipConfig>;
   }
 ): SimulatorSideConfig {
   const isNpc =
@@ -183,7 +184,7 @@ export function createDefaultSimulatorSide(
 
   // Player faction (Terran or Alien)
   const factionInfo = ALL_FACTIONS.find((f) => f.id === factionId) || ALL_FACTIONS[0]!;
-  const defaultBlueprints = createFactionBlueprints(factionId);
+  const defaultBlueprints = createFactionBlueprints(factionId, undefined, options?.neutralShipBlueprints);
 
   // Clone blueprints so edits don't mutate defaults
   const clonedBlueprints: Record<string, ShipBlueprint> = {};
@@ -696,9 +697,15 @@ export function simulateSingleBattle(
 export function isPeacefulCombatPair(factionA?: string, factionB?: string): boolean {
   if (!factionA || !factionB) return false;
   const npcs = ['ancient', 'guardian', 'gcds'];
-  return (
+  if (
     (factionA === 'descendants_of_draco' && npcs.includes(factionB)) ||
     (factionB === 'descendants_of_draco' && npcs.includes(factionA))
+  ) {
+    return true;
+  }
+  return (
+    (factionA === 'children_of_light' && factionB === 'ancient') ||
+    (factionB === 'children_of_light' && factionA === 'ancient')
   );
 }
 
@@ -1191,7 +1198,7 @@ export function findSectorsWithPendingCombat(gameState: GameState): {
         );
 
         const hasAncients = subShips.some(
-          (s) => s.ownerId === 'ancient' || s.type === 'ancient'
+          (s) => s.ownerId === 'ancient'
         );
         const hasGuardian = subShips.some(
           (s) => s.ownerId === 'guardian' || s.type === 'guardian'
@@ -1243,7 +1250,7 @@ export function findSectorsWithPendingCombat(gameState: GameState): {
 
       const hasAncients =
         (sector.ancientsCount || 0) > 0 ||
-        ships.some((s) => s.ownerId === 'ancient' || s.type === 'ancient');
+        ships.some((s) => s.ownerId === 'ancient');
       const hasGuardian = ships.some(
         (s) => s.ownerId === 'guardian' || s.type === 'guardian'
       );
@@ -1326,8 +1333,8 @@ export function loadBattleFromSector(
     : allSectorShips;
 
   const hasAncients = sector.isNebula
-    ? relevantShips.some((s) => s.ownerId === 'ancient' || s.type === 'ancient')
-    : (sector.ancientsCount || 0) > 0 || relevantShips.some((s) => s.ownerId === 'ancient' || s.type === 'ancient');
+    ? relevantShips.some((s) => s.ownerId === 'ancient')
+    : (sector.ancientsCount || 0) > 0 || relevantShips.some((s) => s.ownerId === 'ancient');
   const hasGuardian = relevantShips.some((s) => s.ownerId === 'guardian' || s.type === 'guardian');
   const hasGcds = sector.isNebula
     ? relevantShips.some((s) => s.ownerId === 'gcds' || s.type === 'gcds')
@@ -1408,7 +1415,7 @@ export function loadBattleFromSector(
       const npcCount =
         npcType === 'ancient'
           ? Math.max(
-              relevantShips.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length,
+              relevantShips.filter((s) => s.ownerId === 'ancient').length,
               sector.isNebula ? 0 : (sector.ancientsCount || 0),
               1
             )

@@ -31,7 +31,8 @@ export type FactionId =
   | 'legion_of_midas'
   | 'heralds_of_ragnarok'
   | 'jotunn'
-  | 'kurita_prefecture';
+  | 'kurita_prefecture'
+  | 'children_of_light';
 
 export interface FactionInfo {
   readonly id: FactionId;

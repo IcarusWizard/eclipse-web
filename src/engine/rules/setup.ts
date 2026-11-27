@@ -47,9 +47,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   asgard: '#64748b', // Heralds of Ragnarök
   frost: '#5b8ec9', // Jotunn
   jade: '#34d399', // Kurita Prefecture
+  orchid: '#e879f9', // Children of Light
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade' | 'orchid';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -86,6 +87,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   heralds_of_ragnarok: 'asgard',
   jotunn: 'frost',
   kurita_prefecture: 'jade',
+  children_of_light: 'orchid',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -114,6 +116,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   heralds_of_ragnarok: ECLIPSE_COLOR_PALETTE.asgard,
   jotunn: ECLIPSE_COLOR_PALETTE.frost,
   kurita_prefecture: ECLIPSE_COLOR_PALETTE.jade,
+  children_of_light: ECLIPSE_COLOR_PALETTE.orchid,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -723,6 +726,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 2,
     reputationSlotTypes: ['both', 'both', 'rep_only', 'rep_only'],
   },
+  {
+    id: 'children_of_light',
+    name: 'Children of Light',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.orchid,
+    startingSectorNumber: 237,
+    startingResources: { money: 3, science: 3, materials: 2 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: ['gauss_shield'],
+    traitDescription: 'Holy Communion: Move into Ancient sectors freely without being pinned or fighting Ancients; place 1 Prayer token at the end of each turn per non-Ancient Children ship present, and settle immediately at 2× Ancients. Holy Crusade: Influencing an Ancient sector converts Ancients to your control (own 5-slot 3⚡ blueprint, free +1 UPG activation on Ancient blueprint, +1 Bonus VP per controlled Ancient) and claims its Discovery Tile. Divine Inspiration: In battles with an Ancient, your other ships gain +1 to Hit or -1 Shield. No Cruisers (Ancient instead). Start in Faylenia (#237) with Gauss Shield.',
+    tradeRatio: 4,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 2,
+    reputationSlots: 4,
+    ambassadorSlots: 3,
+    reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -744,7 +770,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture' || factionId === 'children_of_light') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -782,7 +808,7 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   ) {
     return ['both', 'both', 'both', 'both'];
   }
-  if (faction.id === 'the_exiles' || faction.id === 'jotunn') {
+  if (faction.id === 'the_exiles' || faction.id === 'jotunn' || faction.id === 'children_of_light') {
     return ['both', 'both', 'both', 'rep_only'];
   }
   if (faction.id === 'heralds_of_ragnarok') {
@@ -936,11 +962,12 @@ export function getPlayerReputationTrackSlots(
   }
 
   // Then place reputation tiles: into empty 'rep_only' slots first, then into empty 'both' slots (Bug 118)
+  const isKurita = player.faction.id === 'kurita_prefecture';
   let repIdx = 0;
   for (const slot of slots) {
     if (!slot.tile && slot.slotType === 'rep_only' && repIdx < repTiles.length) {
       const vp = repTiles[repIdx];
-      const battleOutcome = player.reputationBattleOutcomes?.[repIdx];
+      const battleOutcome = isKurita ? player.reputationBattleOutcomes?.[repIdx] : undefined;
       slot.tile = {
         type: 'reputation',
         vp,
@@ -955,7 +982,7 @@ export function getPlayerReputationTrackSlots(
   for (const slot of slots) {
     if (!slot.tile && slot.slotType === 'both' && repIdx < repTiles.length) {
       const vp = repTiles[repIdx];
-      const battleOutcome = player.reputationBattleOutcomes?.[repIdx];
+      const battleOutcome = isKurita ? player.reputationBattleOutcomes?.[repIdx] : undefined;
       slot.tile = {
         type: 'reputation',
         vp,
@@ -1007,7 +1034,8 @@ export function buildPlayerAndHomeSector(
   startCoord: HexCoord,
   reputationBag: number[],
   discoveryBag: DiscoveryTile[],
-  expansions: string[] = []
+  expansions: string[] = [],
+  neutralShipBlueprints?: Partial<NeutralShipConfig>
 ): { player: PlayerState; homeSector: SectorTile } {
   const homeConfig =
     ALL_HOME_SECTORS[faction.id] ||
@@ -1201,7 +1229,7 @@ export function buildPlayerAndHomeSector(
     faction,
     color: playerColor,
     resources: { ...faction.startingResources },
-    blueprints: createFactionBlueprints(faction.id),
+    blueprints: createFactionBlueprints(faction.id, expansions, neutralShipBlueprints),
     techTrack: {
       researched: startingTechs,
       militaryCount: startingTechs.filter((t) => (t as any).placedTrack === 'military' || t.category === 'military').length,
@@ -1585,7 +1613,8 @@ export function createInitialGame(
         startCoord,
         reputationBag,
         discoveryBag,
-        expansions
+        expansions,
+        resolvedNeutralBlueprints
       );
 
       sectors.push(homeSector);

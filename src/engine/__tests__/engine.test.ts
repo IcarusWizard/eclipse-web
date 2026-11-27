@@ -33958,6 +33958,655 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(scoreboardHtml).toContain('? (1 tile)');
       expect(scoreboardHtml).not.toContain('>4<');
     });
+
+    test('Test 310: Community Faction: Children of Light (Faylenia #237, No Cruisers / Ancient blueprint, Holy Communion Prayer Tokens, Holy Crusade Conversion + Free Ancient UPG + VP, Divine Inspiration & SSR UI)', async () => {
+      const { isFactionAvailable, getFactionReputationSlotTypes } = await import('../rules/setup');
+      const { calculateBlueprintStats, getRemainingShipSupply } = await import('../rules/shipValidation');
+      const { buildCombatUnitsForSector, getPendingDivineInspirationPlayerId } = await import('../rules/combatEngine');
+      const { getFactionSheetData } = await import('../rules/factionSheets');
+      const React = await import('react');
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+      const { BuildModal } = await import('../../components/actions/BuildModal');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+      const { SectorInspector } = await import('../../components/map/SectorInspector');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+
+      // 1. Expansion availability & initial state
+      expect(isFactionAvailable('children_of_light', [])).toBe(false);
+      expect(isFactionAvailable('children_of_light', ['community_factions'])).toBe(true);
+
+      let game = createInitialGame(2, ['children_of_light', 'terran_federation'], ['community_factions']);
+      game.phase = 'ACTION_PHASE';
+      let col = game.players[0]!;
+      let opp = game.players[1]!;
+
+      expect(col.faction.id).toBe('children_of_light');
+      expect(col.resources).toEqual({ money: 3, science: 3, materials: 2 });
+      expect(col.colonyShips).toEqual({ total: 3, ready: 3 });
+      expect(col.influenceTrack.totalDiscs).toBe(13);
+      expect(col.influenceTrack.discsOnTrack).toBe(12);
+      expect(col.faction.tradeRatio).toBe(4);
+      expect(col.techTrack.researched.map((t) => t.id)).toEqual(['gauss_shield']);
+      expect(col.faction.exploreActivations).toBe(1);
+      expect(col.faction.researchActivations).toBe(1);
+      expect(col.faction.upgradeActivations).toBe(2);
+      expect(col.faction.buildActivations).toBe(2);
+      expect(col.faction.moveActivations).toBe(2);
+      expect(col.faction.influenceActivations).toBe(2);
+      expect(col.faction.influenceColonyShipRefreshes).toBe(2);
+      expect(getFactionReputationSlotTypes(col.faction)).toEqual(['both', 'both', 'both', 'rep_only']);
+
+      const colHome = game.sectors.find((s) => s.discOwner === col.id)!;
+      expect(colHome.sectorNumber).toBe(237);
+      expect(colHome.name).toBe('Faylenia');
+      expect(colHome.hasArtifact).toBe(true);
+      expect(colHome.planets).toHaveLength(2);
+      expect(colHome.planets.every((p) => !p.isAdvanced && p.colonizedBy === col.id)).toBe(true);
+      expect(colHome.planets.map((p) => p.resource)).toEqual(['money', 'science']);
+      expect(colHome.ships).toHaveLength(1);
+      expect(colHome.ships[0]!.type).toBe('interceptor');
+
+      // 2. No Cruisers; Ancient (Holy Ones) initial fillings match the table's selected Ancient blueprint!
+      expect(col.blueprints.cruiser).toBeUndefined();
+      expect(col.blueprints.ancient).toBeDefined();
+      expect(col.blueprints.ancient!.maxSlots).toBe(5);
+      expect(col.blueprints.ancient!.preprintedPower).toBe(3);
+      expect(col.blueprints.ancient!.baseBuildCost).toBe(0);
+      expect(col.blueprints.ancient!.baseInitiative).toBe(1);
+      expect(col.blueprints.ancient!.slots.map((s) => s?.id ?? null)).toEqual([
+        'ion_cannon',
+        'ion_cannon',
+        'hull',
+        'electron_computer',
+        'nuclear_drive',
+      ]);
+      const defaultAncStats = calculateBlueprintStats(col.blueprints.ancient!);
+      expect(defaultAncStats.isValid).toBe(true);
+      expect(defaultAncStats.totalHull).toBe(2);
+      expect(defaultAncStats.totalInitiative).toBe(2);
+      expect(defaultAncStats.computerBonus).toBe(1);
+      expect(defaultAncStats.totalDriveSpeed).toBe(1);
+      expect(defaultAncStats.totalPowerProduced).toBe(3);
+      expect(defaultAncStats.totalPowerConsumed).toBe(3);
+
+      // Verify Advanced Ancient & Remnants (Expert) Ancient fillings + Draft Mode inheritance
+      const advGame = createInitialGame(
+        2,
+        ['children_of_light', 'terran_federation'],
+        ['community_factions'],
+        { ancient: 'advanced', guardian: 'default', gcds: 'default' }
+      );
+      const advCol = advGame.players[0]!;
+      expect(advCol.blueprints.ancient!.baseInitiative).toBe(0);
+      expect(advCol.blueprints.ancient!.slots.map((s) => s?.id ?? null)).toEqual([
+        'plasma_cannon',
+        'electron_computer',
+        'hull',
+        'hull',
+        'nuclear_drive',
+      ]);
+      const advStats = calculateBlueprintStats(advCol.blueprints.ancient!);
+      expect(advStats.isValid).toBe(true);
+      expect(advStats.totalHull).toBe(3);
+      expect(advStats.totalInitiative).toBe(1);
+      expect(advStats.computerBonus).toBe(1);
+      expect(advStats.totalDriveSpeed).toBe(1);
+
+      const expGame = createInitialGame(
+        2,
+        ['children_of_light', 'terran_federation'],
+        ['community_factions', 'remnants_of_worlds_afar'],
+        { ancient: 'expert', guardian: 'default', gcds: 'default' }
+      );
+      const expCol = expGame.players[0]!;
+      expect(expCol.blueprints.ancient!.baseInitiative).toBe(2);
+      expect(expCol.blueprints.ancient!.slots.map((s) => s?.id ?? null)).toEqual([
+        'ion_cannon',
+        'electron_computer',
+        'hull',
+        'electron_computer',
+        'nuclear_drive',
+      ]);
+      const expStats = calculateBlueprintStats(expCol.blueprints.ancient!);
+      expect(expStats.isValid).toBe(true);
+      expect(expStats.totalHull).toBe(2);
+      expect(expStats.totalInitiative).toBe(3);
+      expect(expStats.computerBonus).toBe(2);
+      expect(expStats.totalDriveSpeed).toBe(1);
+
+      // Draft mode inherits table neutralShipBlueprints.ancient
+      let draftGame = createInitialGame(
+        2,
+        undefined,
+        ['community_factions'],
+        { ancient: 'advanced', guardian: 'default', gcds: 'default' },
+        true
+      );
+      const draftRes = executeAction(draftGame, {
+        type: 'DRAFT_FACTION',
+        playerId: draftGame.factionDraft!.draftOrder[0]!,
+        factionId: 'children_of_light',
+      });
+      expect(draftRes.success).toBe(true);
+      const draftedCol = draftRes.newState.players.find((p) => p.faction.id === 'children_of_light')!;
+      expect(draftedCol.blueprints.ancient!.slots.map((s) => s?.id ?? null)).toEqual([
+        'plasma_cannon',
+        'electron_computer',
+        'hull',
+        'hull',
+        'nuclear_drive',
+      ]);
+
+      // Existing empty Round-1 save heals on sanitizeLoadedGameState
+      const { sanitizeLoadedGameState } = await import('../rules/persistence');
+      const staleAdv = structuredClone(advGame);
+      staleAdv.players[0]!.blueprints.ancient = {
+        type: 'ancient',
+        maxSlots: 5,
+        baseInitiative: 0,
+        baseBuildCost: 0,
+        preprintedPower: 3,
+        slots: [null, null, null, null, null],
+      };
+      const healedAdv = sanitizeLoadedGameState(staleAdv);
+      expect(healedAdv.players[0]!.blueprints.ancient!.slots.map((s) => s?.id ?? null)).toEqual([
+        'plasma_cannon',
+        'electron_computer',
+        'hull',
+        'hull',
+        'nuclear_drive',
+      ]);
+
+      const supply = getRemainingShipSupply(game.sectors, col.id, col.faction.id);
+      expect(supply.cruiser).toBe(0);
+      expect(supply.ancient).toBe(0);
+
+      expect(validateAction(game, {
+        type: 'BUILD',
+        playerId: col.id,
+        items: [{ sectorId: colHome.id, itemType: 'cruiser' }],
+      }).valid).toBe(false);
+      expect(validateAction(game, {
+        type: 'BUILD',
+        playerId: col.id,
+        items: [{ sectorId: colHome.id, itemType: 'ancient' }],
+      }).valid).toBe(false);
+
+      // 3. Holy Communion: move freely into Ancient sector (no pinning, no combat) & earn 1 Prayer token/turn per non-Ancient Children ship
+      const ancientSec = game.sectors.find((s) => !s.discOwner && !s.isNebula && !s.isBlackHole && s.id !== 'sector_001') || {
+        ...colHome,
+        id: 'sec_holy_test',
+        sectorNumber: 205,
+        coord: { q: colHome.coord.q + 1, r: colHome.coord.r },
+        wormholes: [true, true, true, true, true, true],
+        discOwner: undefined,
+        ships: [],
+      };
+      if (!game.sectors.some((s) => s.id === ancientSec.id)) {
+        game.sectors.push(ancientSec as any);
+      }
+      colHome.wormholes = [true, true, true, true, true, true];
+      ancientSec.coord = { q: colHome.coord.q + 1, r: colHome.coord.r };
+      ancientSec.wormholes = [true, true, true, true, true, true];
+      ancientSec.ancientsCount = 1;
+      ancientSec.hasDiscovery = true;
+      ancientSec.discoveryClaimed = false;
+      ancientSec.discoveryTile = {
+        id: 'disc_test_ancient',
+        name: '+3 VP & +2 Materials',
+        description: 'Gain 2 Materials or Keep for 2 VP.',
+        immediateReward: { materials: 2 },
+      };
+      ancientSec.ships = [
+        { id: 'npc_anc_1', ownerId: 'ancient', type: 'ancient', damage: 0 },
+      ];
+
+      // Move 1st Interceptor into Ancient sector (and verify a Children ship already in Ancient sector can ALSO move OUT freely without pinning!)
+      const startIntId = colHome.ships[0]!.id;
+      const mv1 = executeAction(game, {
+        type: 'MOVE',
+        playerId: col.id,
+        moves: [{ shipId: startIntId, fromSectorId: colHome.id, toSectorId: ancientSec.id }],
+      }, true);
+      expect(mv1.success).toBe(true);
+      game = mv1.newState;
+      const ancientSecAfterMv1 = game.sectors.find((s) => s.id === ancientSec.id)!;
+      // End of Children's turn placed 1 Prayer token (1 / 2 -> not settled yet!)
+      expect(ancientSecAfterMv1.prayerTokensByPlayer?.[col.id]).toBe(1);
+      expect(game.pendingHolyCommunion).toBeUndefined();
+      expect(ancientSecAfterMv1.discOwner).toBeUndefined();
+
+      // Children-controlled Ancient in the same sector does NOT grant Prayer tokens, and if its Drive was stripped to 0 it cannot move
+      const extraOwnedAncientId = 'col_owned_ancient_extra';
+      ancientSecAfterMv1.ships.push({ id: extraOwnedAncientId, ownerId: col.id, type: 'ancient', damage: 0 });
+      const savedAncDrive = game.players[0]!.blueprints.ancient!.slots[4];
+      game.players[0]!.blueprints.ancient!.slots[4] = null;
+      expect(validateAction(game, {
+        type: 'MOVE',
+        playerId: col.id,
+        moves: [{ shipId: extraOwnedAncientId, fromSectorId: ancientSec.id, toSectorId: colHome.id }],
+      }).valid).toBe(false);
+      game.players[0]!.blueprints.ancient!.slots[4] = savedAncDrive;
+
+      // Opponent passes so Children gets Turn 2
+      const oppPass = executeAction(game, { type: 'PASS', playerId: opp.id }, true);
+      expect(oppPass.success).toBe(true);
+      game = oppPass.newState;
+
+      // Turn 2: Children uses PASS -> end of turn places +1 Prayer token (only for non-Ancient ship -> 2/2 -> triggers Holy Communion prompt!)
+      const colPass = executeAction(game, { type: 'PASS', playerId: col.id }, true);
+      expect(colPass.success).toBe(true);
+      game = colPass.newState;
+      expect(game.pendingHolyCommunion).toBeTruthy();
+      expect(game.pendingHolyCommunion!.sectorId).toBe(ancientSec.id);
+      expect(game.pendingHolyCommunion!.prayerCount).toBe(2);
+
+      // Settle via Holy Communion -> places disc, converts neutral Ancient to Children, opens Discovery Choice
+      const discsBefore = game.players[0]!.influenceTrack.discsOnTrack;
+      const settleRes = executeAction(game, {
+        type: 'RESOLVE_HOLY_COMMUNION',
+        playerId: col.id,
+        sectorId: ancientSec.id,
+        claim: true,
+      }, true);
+      expect(settleRes.success).toBe(true);
+      game = settleRes.newState;
+      const settledSec = game.sectors.find((s) => s.id === ancientSec.id)!;
+      expect(settledSec.discOwner).toBe(col.id);
+      expect(settledSec.ancientsCount).toBe(0);
+      expect(game.players[0]!.influenceTrack.discsOnTrack).toBe(discsBefore - 1);
+      expect(settledSec.ships.filter((s) => s.ownerId === col.id && s.type === 'ancient')).toHaveLength(2);
+      expect(game.pendingDiscovery?.sectorId).toBe(ancientSec.id);
+
+      // Resolve Discovery Choice (Keep for 2 VP) -> game advances cleanly into Combat Phase (without triggering false combat in other Peaceful sectors)
+      const discRes = executeAction(game, {
+        type: 'DISCOVERY_CHOICE',
+        playerId: col.id,
+        keepForVictoryPoints: true,
+      }, true);
+      expect(discRes.success).toBe(true);
+      game = discRes.newState;
+
+      // 4. Holy Crusade: +1 Bonus VP per Children-controlled Ancient ship
+      const scores = computeCurrentScores(game).scores;
+      expect(scores[col.id]!.speciesBonus).toBe(2); // 2 Children-controlled Ancients
+
+      // 5. Holy Crusade: +1 Free Upgrade activation spendable only on Ancient blueprint
+      game.phase = 'ACTION_PHASE';
+      game.activePlayerIndex = 0;
+      game.players[0]!.hasPassed = false;
+      game.passedPlayerIds = [];
+      game.players[0]!.influenceTrack.discsOnTrack = 5;
+
+      // 3 Interceptor changes (0 Ancient) MUST fail
+      expect(validateAction(game, {
+        type: 'UPGRADE',
+        playerId: col.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 3, partId: 'hull' },
+          { shipType: 'interceptor', slotIndex: 0, partId: 'hull' },
+          { shipType: 'interceptor', slotIndex: 2, partId: 'hull' },
+        ],
+      }).valid).toBe(false);
+
+      // 2 standard upgrades on Interceptor + 1 free upgrade on Ancient MUST succeed (with Fusion Source / Ion Cannon / Hull on Ancient, 0 Drive allowed!)
+      const upgRes = executeAction(game, {
+        type: 'UPGRADE',
+        playerId: col.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 3, partId: 'hull' },
+          { shipType: 'interceptor', slotIndex: 2, partId: 'fusion_drive' } as any, // wait: swap standard hull/ion_cannon so no unresearched tech needed!
+        ].filter(Boolean) as any,
+      });
+      expect(upgRes).toBeDefined();
+      const validUpgRes = executeAction(game, {
+        type: 'UPGRADE',
+        playerId: col.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 3, partId: 'hull' },
+          { shipType: 'dreadnought', slotIndex: 0, partId: 'hull' },
+          { shipType: 'ancient', slotIndex: 0, partId: 'hull' },
+        ],
+      }, true);
+      expect(validUpgRes.success).toBe(true);
+      game = validUpgRes.newState;
+      expect(game.players[0]!.blueprints.ancient!.slots[0]?.id).toBe('hull');
+
+      // 6. Divine Inspiration: Start of Battle choice (+1 Hit or -1 Shield) on non-Ancient Children ships when an Ancient participates
+      const battleSec = game.sectors.find((s) => s.id === ancientSec.id)!;
+      battleSec.ships.push({ id: 'opp_int_1', ownerId: opp.id, type: 'interceptor', damage: 0 });
+      game.phase = 'COMBAT_PHASE';
+      game.resolvedCombatSectorIds = [];
+      game.activeCombat = {
+        sectorId: battleSec.id,
+        attackerOwnerId: opp.id,
+        defenderOwnerId: col.id,
+        participatingPlayerIds: [opp.id, col.id],
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        missileFiredShipIds: [],
+        roundActedGroupKeys: [],
+      };
+      expect(getPendingDivineInspirationPlayerId(game.players, battleSec, game.activeCombat)).toBe(col.id);
+      // Blocked before Divine Inspiration choice
+      expect(validateAction(game, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: opp.id,
+        sectorId: battleSec.id,
+      }).valid).toBe(false);
+
+      // Choosing 'hit' applies +1 computer to non-Ancient Children ships only
+      const diHitRes = executeAction(game, {
+        type: 'SET_DIVINE_INSPIRATION',
+        playerId: col.id,
+        sectorId: battleSec.id,
+        choice: 'hit',
+      }, true);
+      expect(diHitRes.success).toBe(true);
+      const hitUnits = buildCombatUnitsForSector(
+        battleSec,
+        diHitRes.newState.players,
+        [opp.id, col.id],
+        undefined,
+        diHitRes.newState.expansions,
+        undefined,
+        diHitRes.newState.activeCombat!.divineInspirationChoice
+      );
+      const colIntHit = hitUnits.find((u) => u.ownerId === col.id && u.type === 'interceptor')!;
+      const colAncHit = hitUnits.find((u) => u.ownerId === col.id && u.type === 'ancient')!;
+      expect(colIntHit.computerBonus).toBe(1);
+      expect(colAncHit.computerBonus).toBe(1); // Inherent Electron Computer (+1) only; Divine Inspiration applies only to non-Ancients
+
+      // Choosing 'shield' applies +1 shield bonus (-1 Shield) to non-Ancient Children ships only
+      const diShieldGame = {
+        ...game,
+        activeCombat: {
+          ...game.activeCombat!,
+          divineInspirationChoice: { [col.id]: 'shield' as const },
+        },
+      };
+      const shieldUnits = buildCombatUnitsForSector(
+        battleSec,
+        diShieldGame.players,
+        [opp.id, col.id],
+        undefined,
+        diShieldGame.expansions,
+        undefined,
+        diShieldGame.activeCombat.divineInspirationChoice
+      );
+      const colIntShield = shieldUnits.find((u) => u.ownerId === col.id && u.type === 'interceptor')!;
+      const colAncShield = shieldUnits.find((u) => u.ownerId === col.id && u.type === 'ancient')!;
+      expect(colIntShield.shieldBonus).toBe(1);
+      expect(colAncShield.shieldBonus).toBe(0);
+
+      // 7. UI SSR Verification across FactionSheetCard, ShipBlueprintEditor, BuildModal, CombatModal, SectorInspector, PhysicalPlayerBoardModal
+      const sheetData = getFactionSheetData(game.players[0]!.faction);
+      expect(sheetData.activations.upgrade).toBe(2);
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FactionSheetCard, { faction: game.players[0]!.faction })
+        )
+      );
+      expect(sheetHtml).toContain('Children of Light');
+      expect(sheetHtml).toContain('Holy Communion');
+      expect(sheetHtml).toContain('No Cruisers');
+
+      const editorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ShipBlueprintEditor, {
+            player: game.players[0]!,
+            onSaveBlueprint: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(editorHtml).toContain('Holy Crusade: +1 Free Ancient Upgrade');
+      expect(editorHtml).toContain('(Holy Ones)');
+      expect(editorHtml).not.toContain('Cruiser');
+
+      const buildHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(BuildModal, {
+            player: game.players[0]!,
+            sectors: game.sectors,
+            eligibleSectors: [colHome],
+            slots: [{ sectorId: colHome.id, itemType: 'interceptor' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(buildHtml).toContain('Children of Light have no Cruisers');
+
+      const combatPromptHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(CombatModal, {
+            state: game,
+            combat: game.activeCombat!,
+            onStepCombat: () => {},
+            onSetDivineInspiration: () => {},
+          })
+        )
+      );
+      expect(combatPromptHtml).toContain('data-testid="children-divine-inspiration-panel"');
+      expect(combatPromptHtml).toContain('+1 to Hit');
+      expect(combatPromptHtml).toContain('-1 Shield');
+
+      const physicalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            isOpen: true,
+            player: game.players[0]!,
+            players: game.players,
+            sectors: game.sectors,
+            onClose: () => {},
+          })
+        )
+      );
+      expect(physicalHtml).toContain('Cost: --');
+      expect(physicalHtml).toContain('Converted:');
+
+      const prayerSecView = {
+        ...battleSec,
+        prayerTokensByPlayer: { [col.id]: 1 },
+      };
+      const inspectorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(SectorInspector, {
+            sector: prayerSecView,
+            players: game.players,
+            activePlayer: game.players[0]!,
+            onClose: () => {},
+          })
+        )
+      );
+      expect(inspectorHtml).toContain('Holy Communion Prayer Tokens:');
+
+      // HexGalaxyMap renders the Prayer Token pill in the bottom disc slot (painted after fleet pills so ships never cover it)
+      const { HexGalaxyMap } = await import('../../components/map/HexGalaxyMap');
+      const prayerMapState = {
+        ...game,
+        sectors: game.sectors.map((s) =>
+          s.id === battleSec.id
+            ? {
+                ...s,
+                discOwner: undefined,
+                ancientsCount: 1,
+                prayerTokensByPlayer: { [col.id]: 1 },
+              }
+            : s
+        ),
+      };
+      const prayerMapHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(HexGalaxyMap, {
+            state: prayerMapState,
+            selectedSector: null,
+            onSelectSector: () => {},
+          })
+        )
+      );
+      expect(prayerMapHtml).toContain(`data-testid="hex-prayer-badge-${battleSec.sectorNumber}"`);
+      expect(prayerMapHtml).toContain('🙏 1/2');
+      // Verify Prayer badge comes after fleet pill markup in SVG paint order
+      expect(prayerMapHtml.lastIndexOf(`data-testid="hex-prayer-badge-${battleSec.sectorNumber}"`)).toBeGreaterThan(
+        prayerMapHtml.lastIndexOf('translate(0, 8.5)')
+      );
+
+      // Normal neutral Ancient keeps 3-block triangle icon; Children-converted Ancient uses normal 6-block Cruiser icon
+      const { getShipIconBoxes } = await import('../../components/common/ShipTypeIcon');
+      const neutralAncientIcon = getShipIconBoxes('ancient');
+      expect(neutralAncientIcon.isNeutral).toBe(true);
+      expect(neutralAncientIcon.boxes).toHaveLength(3);
+      const convertedAncientIcon = getShipIconBoxes('ancient', 'children_of_light');
+      expect(convertedAncientIcon.isNeutral).toBe(false);
+      expect(convertedAncientIcon.boxes).toHaveLength(6);
+
+      // DiscoveryChoiceModal renders available ship tabs (Interceptor, Dreadnought, Starbase, Ancient — NOT broken on missing Cruiser) and supports equipping on Ancient
+      const { DiscoveryChoiceModal } = await import('../../components/discovery/DiscoveryChoiceModal');
+      const discPartHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(DiscoveryChoiceModal, {
+            discovery: {
+              id: 'disc_flux_shield',
+              name: 'Flux Shield',
+              description: 'Grants Flux Shield',
+              shipPartId: 'flux_shield',
+            },
+            player: game.players[0]!,
+            sectors: game.sectors,
+            onChoice: () => {},
+          })
+        )
+      );
+      expect(discPartHtml).toContain('Equip Immediately to Ship');
+      expect(discPartHtml).toContain('ancient');
+      expect(discPartHtml).not.toContain('cruiser</button>');
+
+      const discEquipState = structuredClone(game);
+      discEquipState.phase = 'ACTION_PHASE';
+      discEquipState.pendingDiscovery = {
+        sectorId: colHome.id,
+        playerId: col.id,
+        discovery: {
+          id: 'disc_flux_shield',
+          name: 'Flux Shield',
+          description: 'Grants Flux Shield',
+          shipPartId: 'flux_shield',
+        },
+        fromExplore: false,
+      };
+      const equipOnAncRes = executeAction(discEquipState, {
+        type: 'DISCOVERY_CHOICE',
+        playerId: col.id,
+        keepForVictoryPoints: false,
+        equipShipType: 'ancient',
+        equipSlotIndex: 1,
+      }, true);
+      expect(equipOnAncRes.success).toBe(true);
+      expect(equipOnAncRes.newState.players[0]!.blueprints.ancient!.slots[1]?.id).toBe('flux_shield');
+
+      // SectorInspector compact Advanced Material lock + vertical Wild Habitat colonize options
+      const advInspectorSec = {
+        ...battleSec,
+        discOwner: col.id,
+        planets: [
+          { id: 'adv_mat_p', resource: 'material' as const, isAdvanced: true },
+          { id: 'adv_wild_p', resource: 'any' as const, isAdvanced: true },
+        ],
+      };
+      const advInspectorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(SectorInspector, {
+            sector: advInspectorSec,
+            players: game.players,
+            activePlayer: {
+              ...game.players[0]!,
+              colonyShips: { total: 3, ready: 3 },
+            },
+            onColonizePlanet: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(advInspectorHtml).toContain('Advanced Material');
+      expect(advInspectorHtml).toContain('data-testid="planet-locked-icon"');
+      expect(advInspectorHtml).not.toContain('Need Advanced Mining');
+      expect(advInspectorHtml).not.toContain('Requires Advanced Mining tech');
+      expect(advInspectorHtml).toContain('flex-col gap-1');
+
+      // Kurita Honour reputation (+1/-1 Win/Loss outcome) must NEVER apply or render for Children of Light
+      const colRepState = structuredClone(game);
+      colRepState.phase = 'COMBAT_PHASE';
+      colRepState.pendingReputationDraw = {
+        playerId: col.id,
+        drawnTiles: [3],
+        sectorId: colHome.id,
+        isBattleWin: true,
+      };
+      const colRepClaim = executeAction(colRepState, {
+        type: 'CLAIM_REPUTATION_TILE',
+        playerId: col.id,
+        selectedTileIndex: 0,
+      });
+      expect(colRepClaim.success).toBe(true);
+      const colAfterRep = colRepClaim.newState.players[0]!;
+      expect(colAfterRep.reputationTiles).toEqual([3]);
+      expect(colAfterRep.reputationBattleOutcomes).toEqual([]);
+      const colRepSlots = getPlayerReputationTrackSlots(
+        { ...colAfterRep, reputationBattleOutcomes: ['win'] },
+        colRepClaim.newState.players
+      );
+      const colClaimedSlot = colRepSlots.find((s) => s.tile?.type === 'reputation');
+      expect(colClaimedSlot?.tile?.type === 'reputation' ? colClaimedSlot.tile.battleOutcome : undefined).toBeUndefined();
+
+      const { PlayerBoard: ColBoard } = await import('../../components/dashboard/PlayerBoard');
+      const colBoardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ColBoard, {
+            player: colAfterRep,
+            isActive: true,
+            sectors: colRepClaim.newState.sectors,
+            allPlayers: colRepClaim.newState.players,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(colBoardHtml).not.toContain('Honour Win');
+      expect(colBoardHtml).not.toContain('Honour Loss');
+    });
   });
 });
 

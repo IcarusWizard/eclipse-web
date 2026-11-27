@@ -39,7 +39,7 @@ export interface FactionBlueprintBadge {
 }
 
 export interface FactionBlueprintModifier {
-  shipType: 'interceptor' | 'cruiser' | 'dreadnought' | 'starbase' | 'orbital';
+  shipType: 'interceptor' | 'cruiser' | 'dreadnought' | 'starbase' | 'orbital' | 'ancient';
   badges: FactionBlueprintBadge[];
 }
 
@@ -91,6 +91,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   heralds_of_ragnarok: '/factions/heralds_of_ragnarok.jpg',
   jotunn: '/factions/jotunn.jpg',
   kurita_prefecture: '/factions/kurita_prefecture.jpg',
+  children_of_light: '/factions/children_of_light.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -641,6 +642,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
       },
     ],
   },
+  children_of_light: {
+    historyEn:
+      'The "Children of Light" as they call themselves, or the Zealots as everyone else calls them, are a religious group who revere the Ancients as their Gods, believing them responsible for bringing life to the galaxy. Whether it is the Ancients directing their followers, or the Children of Light calling the shots, the sight of Ancients going into battle alongside the ships of the Children can be a daunting sight.',
+    historyZh:
+      '自称“光明之子”（外人则称他们为狂热者）的这一宗教势力将先驱者奉为神明，深信正是远古文明孕育了银河中的生命。无论是由先驱者在幕后指引信徒，还是光明之子统筹战局，先驱战舰与光明之子舰队并肩作战的景象都令人望而生畏。',
+    portraitUrl: '/factions/children_of_light.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'col_holy_communion',
+        icon: 'ship',
+        en: 'Holy Communion: You may move into Ancient sectors freely, neither pinned nor fighting Ancient ships. Place 1 Prayer token at the end of each turn per non-Ancient Children ship present; once tokens reach 2× Ancients, you may immediately settle the sector.',
+        zh: '神圣共融：可自由进出远古星区，不被远古舰牵制也不与之交战。每回合结束时，每艘在场的非远古本族战舰可放置 1 枚祈祷标记；当标记数达到远古舰数量的 2 倍时，可立即占领该星区。',
+      },
+      {
+        id: 'col_holy_crusade',
+        icon: 'vp',
+        en: 'Holy Crusade: Influencing an Ancient sector converts its Ancients to your command (5-slot 3⚡ blueprint, no Cruiser chassis) and claims its Discovery Tile. Each UPG action grants +1 free Upgrade activation on your Ancient blueprint. +1 Bonus VP per controlled Ancient at game end.',
+        zh: '神圣远征：影响远古星区后，其中的远古舰归你指挥（独立 5 槽 3⚡ 蓝图，无巡洋舰），并同时获取发现板块。每次【升级】行动额外赠送 1 次仅限远古蓝图的免费升级；终局每艘受控远古舰额外 +1 VP。',
+      },
+      {
+        id: 'col_divine_inspiration',
+        icon: 'tech',
+        en: 'Divine Inspiration & Setup: In any battle featuring an Ancient, your other ships choose +1 to Hit or -1 Shield at Start of Battle. Start in Faylenia (#237) with Gauss Shield, 3 Money / 3 Science / 2 Materials, 3 Colony Ships, 4:1 Trade, and 4 Reputation slots (3 Amb).',
+        zh: '神圣启迪与开局：任何有远古舰参战的战斗开始时，你的其他战舰可选 +1 命中或 -1 护盾。开局位于法伊莱尼亚（237 号星区），自带高斯护盾、3 金钱/3 科研/2 材料、3 艘殖民船、4:1 贸易与 4 格声望轨。',
+      },
+    ],
+  },
 };
 
 function buildTerranHistory(faction: FactionInfo): { en: string; zh: string } {
@@ -677,12 +706,13 @@ function buildTerranRules(faction: FactionInfo): FactionRuleEntry[] {
 export function computeFactionBlueprintModifiers(factionId: string): FactionBlueprintModifier[] {
   const baseline = createDefaultHumanBlueprints();
   const factionBps = createFactionBlueprints(factionId);
-  const order: ('interceptor' | 'cruiser' | 'dreadnought' | 'starbase' | 'orbital')[] = [
+  const order: ('interceptor' | 'cruiser' | 'dreadnought' | 'starbase' | 'orbital' | 'ancient')[] = [
     'interceptor',
     'cruiser',
     'dreadnought',
     'starbase',
     'orbital',
+    'ancient',
   ];
 
   const modifiers: FactionBlueprintModifier[] = [];
@@ -700,7 +730,25 @@ export function computeFactionBlueprintModifiers(factionId: string): FactionBlue
           shipType: 'dreadnought',
           badges: [{ en: 'Cannot Build', zh: '无法建造', tone: 'negative' }],
         });
+      } else if (factionId === 'children_of_light' && shipType === 'cruiser') {
+        modifiers.push({
+          shipType: 'cruiser',
+          badges: [{ en: 'No Cruisers', zh: '无巡洋舰', tone: 'negative' }],
+        });
       }
+      continue;
+    }
+
+    if (shipType === 'ancient') {
+      modifiers.push({
+        shipType: 'ancient',
+        badges: [
+          { en: `${bp.maxSlots} Slots`, zh: `${bp.maxSlots} 槽位`, tone: 'neutral' },
+          { en: 'Cost -- (Convert)', zh: '造价 --（转化）', tone: 'neutral' },
+          { en: `+${bp.preprintedPower ?? 3} ⚡`, zh: `+${bp.preprintedPower ?? 3} ⚡`, tone: 'positive' },
+          { en: '+1 UPG / Action', zh: '每次升级+1免费', tone: 'positive' },
+        ],
+      });
       continue;
     }
 

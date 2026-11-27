@@ -60,10 +60,27 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   const isControlledOrStandalone = sector ? sector.discOwner === player.id : true;
   const showNextStepControlNote = fromExplore && sector && !isSectorAlreadyControlled;
 
+  const availableEquipShipTypes = React.useMemo(
+    () => (Object.keys(player.blueprints) as ShipType[]).filter((st) => Boolean(player.blueprints[st])),
+    [player.blueprints]
+  );
+
   const [isMinimized, setIsMinimized] = React.useState<boolean>(false);
-  const [selectedShipType, setSelectedShipType] = React.useState<ShipType>('cruiser');
+  const [selectedShipType, setSelectedShipType] = React.useState<ShipType>(() =>
+    availableEquipShipTypes.includes('cruiser')
+      ? 'cruiser'
+      : availableEquipShipTypes[0] || 'interceptor'
+  );
+  React.useEffect(() => {
+    if (!availableEquipShipTypes.includes(selectedShipType) && availableEquipShipTypes[0]) {
+      setSelectedShipType(availableEquipShipTypes[0]);
+    }
+  }, [availableEquipShipTypes, selectedShipType]);
   const [selectedSlotIndex, setSelectedSlotIndex] = React.useState<number>(() => {
-    const bp = player.blueprints['cruiser'];
+    const initType = availableEquipShipTypes.includes('cruiser')
+      ? 'cruiser'
+      : availableEquipShipTypes[0] || 'interceptor';
+    const bp = player.blueprints[initType];
     if (!bp) return 0;
     const emptyIdx = bp.slots.findIndex((s) => s === null);
     return emptyIdx !== -1 ? emptyIdx : 0;
@@ -133,11 +150,13 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
   }, [tiedTechs, selectedTechId]);
 
   const grantShipType = activeDiscovery.immediateReward?.grantShipType || (activeDiscovery.id === 'disc_ancient_cruiser' ? 'cruiser' : undefined);
+  const isGrantShipForbidden = Boolean(grantShipType && !player.blueprints[grantShipType]);
   const isShipSupplyDepleted = Boolean(
     grantShipType &&
     sectors &&
     countPlayerShips(sectors, player.id)[grantShipType] >= SHIP_LIMITS[grantShipType]
   );
+  const isRewardBlocked = isGrantShipForbidden || isShipSupplyDepleted;
 
   // Minimized floating banner at top
   if (isMinimized) {
@@ -561,7 +580,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
             {/* Ship Class Tabs */}
             <div className="grid grid-cols-4 gap-1.5 mb-2.5">
-              {(['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).map((st) => (
+              {availableEquipShipTypes.map((st) => (
                 <button
                   key={st}
                   type="button"
@@ -751,11 +770,20 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
           </div>
         ) : (
           <div className="w-full">
-            {isShipSupplyDepleted && grantShipType && (
+            {(isGrantShipForbidden || isShipSupplyDepleted) && grantShipType && (
               <div className="w-full mb-3 p-2.5 rounded-xl bg-amber-950/70 border border-amber-600/70 text-amber-200 text-xs flex items-center gap-2 text-left">
                 <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0" />
                 <span>
-                  <strong>{l('Supply Depleted:', '供应已耗尽：')}</strong> {l(`All ${SHIP_LIMITS[grantShipType]} ${grantShipType.toUpperCase()}s are already deployed. You cannot take another ${grantShipType}; you must keep this tile for 2 VP instead.`, `全部 ${SHIP_LIMITS[grantShipType]} 艘${translateShipType(grantShipType, language)}均已部署，无法再领取，只能保留此板块作为 2 分。`)}
+                  {isGrantShipForbidden ? (
+                    <>
+                      <strong>{l('Ship Class Unavailable:', '无法部署该舰型：')}</strong>{' '}
+                      {l(`Your faction has no ${grantShipType.toUpperCase()} blueprint and must keep this tile for 2 VP instead.`, `你的种族没有${translateShipType(grantShipType, language)}蓝图，只能保留此板块作为 2 分。`)}
+                    </>
+                  ) : (
+                    <>
+                      <strong>{l('Supply Depleted:', '供应已耗尽：')}</strong> {l(`All ${SHIP_LIMITS[grantShipType]} ${grantShipType.toUpperCase()}s are already deployed. You cannot take another ${grantShipType}; you must keep this tile for 2 VP instead.`, `全部 ${SHIP_LIMITS[grantShipType]} 艘${translateShipType(grantShipType, language)}均已部署，无法再领取，只能保留此板块作为 2 分。`)}
+                    </>
+                  )}
                 </span>
               </div>
             )}
@@ -777,7 +805,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
 
               <button
                 type="button"
-                disabled={isShipSupplyDepleted}
+                disabled={isRewardBlocked}
                 onClick={() =>
                   onChoice(
                     false,
@@ -790,17 +818,25 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                   )
                 }
                 className={`flex flex-col items-center justify-center p-3.5 rounded-xl border transition group cursor-pointer ${
-                  isShipSupplyDepleted
+                  isRewardBlocked
                     ? 'border-slate-800 bg-slate-900/50 opacity-40 cursor-not-allowed'
                     : 'border-cyan-500/50 bg-cyan-500/10 hover:bg-cyan-500/25'
                 }`}
-                title={isShipSupplyDepleted ? l(`Cannot claim: maximum limit of ${SHIP_LIMITS[grantShipType!]} reached`, `无法领取：已达上限 ${SHIP_LIMITS[grantShipType!]}`) : undefined}
+                title={
+                  isGrantShipForbidden
+                    ? l(`Your faction cannot deploy ${grantShipType!.toUpperCase()} ships`, `你的种族无法部署${translateShipType(grantShipType!, language)}`)
+                    : isShipSupplyDepleted
+                    ? l(`Cannot claim: maximum limit of ${SHIP_LIMITS[grantShipType!]} reached`, `无法领取：已达上限 ${SHIP_LIMITS[grantShipType!]}`)
+                    : undefined
+                }
               >
-                <div className={`flex items-center gap-1.5 font-bold text-sm mb-1 ${isShipSupplyDepleted ? 'text-slate-400' : 'text-cyan-400 group-hover:scale-105 transition-transform'}`}>
-                  <Zap className={`w-4 h-4 ${isShipSupplyDepleted ? 'text-slate-500' : 'text-cyan-400'}`} /> {l('Take Immediate Reward', '领取立即奖励')}
+                <div className={`flex items-center gap-1.5 font-bold text-sm mb-1 ${isRewardBlocked ? 'text-slate-400' : 'text-cyan-400 group-hover:scale-105 transition-transform'}`}>
+                  <Zap className={`w-4 h-4 ${isRewardBlocked ? 'text-slate-500' : 'text-cyan-400'}`} /> {l('Take Immediate Reward', '领取立即奖励')}
                 </div>
                 <span className="text-xs text-slate-400">
-                  {isShipSupplyDepleted
+                  {isGrantShipForbidden
+                    ? l(`${grantShipType!.toUpperCase()} unavailable`, `无${translateShipType(grantShipType!, language)}`)
+                    : isShipSupplyDepleted
                     ? l(`Max supply reached (${SHIP_LIMITS[grantShipType!]} deployed)`, `已达供应上限（已部署 ${SHIP_LIMITS[grantShipType!]} 艘）`)
                     : activeDiscovery.immediateReward?.grantShipType
                     ? l(`Deploy free ${activeDiscovery.immediateReward.grantShipType} to sector`, `向该星区免费部署 1 艘${translateShipType(activeDiscovery.immediateReward.grantShipType, language)}`)

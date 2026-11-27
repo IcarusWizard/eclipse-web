@@ -96,21 +96,51 @@ export function getPendingSpiralShiftPlayerId(
   return null;
 }
 
+export function getPendingDivineInspirationPlayerId(
+  players: PlayerState[],
+  sector: SectorTile,
+  combat: CombatState | null | undefined
+): string | null {
+  if (!combat || combat.stage === 'resolved') return null;
+  const activeSub = sector.isNebula ? combat.subsector : undefined;
+  const scopedShips = activeSub
+    ? sector.ships.filter((s) => (s.subsector ?? 1) === activeSub)
+    : sector.ships;
+  const participants = combat.participatingPlayerIds || [];
+  const hasAncientInBattle =
+    scopedShips.some((s) => s.type === 'ancient' && (!combat.participatingPlayerIds || participants.includes(s.ownerId))) ||
+    (!sector.isNebula && (sector.ancientsCount || 0) > 0 && (!combat.participatingPlayerIds || participants.includes('ancient')));
+  if (!hasAncientInBattle) return null;
+
+  for (const pId of participants) {
+    if (combat.divineInspirationChoice?.[pId]) continue;
+    const p = players.find((pl) => pl.id === pId);
+    if (p?.faction?.id !== 'children_of_light') continue;
+    const hasOtherShips = scopedShips.some((sh) => sh.ownerId === pId && sh.type !== 'ancient');
+    if (hasOtherShips) return pId;
+  }
+  return null;
+}
+
 export function buildCombatUnitsForSector(
   sector: SectorTile,
   players: PlayerState[],
   filterOwnerIds?: string[],
   neutralShipBlueprints?: Partial<NeutralShipConfig>,
   activeExpansions?: string[],
-  spiralShiftModes?: Record<string, Partial<Record<ShipType, ShiftPortMode>>>
+  spiralShiftModes?: Record<string, Partial<Record<ShipType, ShiftPortMode>>>,
+  divineInspirationChoice?: Partial<Record<string, 'hit' | 'shield'>>
 ): CombatUnit[] {
   const units: CombatUnit[] = [];
+  const hasAncientInBattle =
+    sector.ships.some((s) => s.type === 'ancient' && (!filterOwnerIds || filterOwnerIds.includes(s.ownerId))) ||
+    (!sector.isNebula && (sector.ancientsCount || 0) > 0 && (!filterOwnerIds || filterOwnerIds.includes('ancient')));
 
   for (const ship of sector.ships) {
     if (filterOwnerIds && !filterOwnerIds.includes(ship.ownerId)) {
       continue;
     }
-    if (ship.type === 'ancient' || ship.type === 'guardian' || ship.type === 'gcds') {
+    if (!ship.ownerId.startsWith('player_') && (ship.type === 'ancient' || ship.type === 'guardian' || ship.type === 'gcds')) {
       const bp = getNeutralShipBlueprint(
         ship.type as NeutralShipType,
         neutralShipBlueprints?.[ship.type as NeutralShipType]
@@ -160,6 +190,10 @@ export function buildCombatUnitsForSector(
         player.techTrack?.researched?.some((t) => t.id === 'antimatter_splitter')
       );
       const hasUnmodifiedSixBurstDamage = player.faction?.id === 'the_horde';
+      const diChoice =
+        hasAncientInBattle && player.faction?.id === 'children_of_light' && ship.type !== 'ancient'
+          ? divineInspirationChoice?.[ship.ownerId]
+          : undefined;
 
       units.push({
         id: ship.id,
@@ -168,8 +202,8 @@ export function buildCombatUnitsForSector(
         initiative: stats.totalInitiative,
         maxHull: stats.totalHull,
         currentDamage: ship.damage,
-        computerBonus: stats.computerBonus,
-        shieldBonus: stats.shieldBonus,
+        computerBonus: stats.computerBonus + (diChoice === 'hit' ? 1 : 0),
+        shieldBonus: stats.shieldBonus + (diChoice === 'shield' ? 1 : 0),
         weapons,
         hasMorphShield,
         hasAntimatterSplitter,

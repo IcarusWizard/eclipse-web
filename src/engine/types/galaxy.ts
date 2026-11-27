@@ -31,7 +31,7 @@ export interface PlanetSlot {
   shrineOwner?: string; // Player ID who built a shrine next to this planet (Enlightened of Lyra)
 }
 
-export type ShipType = 'interceptor' | 'cruiser' | 'dreadnought' | 'starbase' | 'orbital';
+export type ShipType = 'interceptor' | 'cruiser' | 'dreadnought' | 'starbase' | 'orbital' | 'ancient';
 
 export interface SectorShip {
   readonly id: string;
@@ -63,6 +63,8 @@ export interface SectorTile {
   hasRareWarpPortal?: boolean; // Placed via Rare Tech Warp Portal (+1 VP to controller at game end)
   hasDiscoveryWarpPortal?: boolean; // Placed via Discovery Tile (+2 VP to controller at game end)
   playerEntryOrder?: string[]; // Order players entered this sector for multi-player combat resolution
+  /** Children of Light (Holy Communion): Prayer tokens placed on this Ancient sector per player ID. */
+  prayerTokensByPlayer?: Record<string, number>;
   discOwner?: string; // Player ID holding influence on this sector
   shrineOwner?: string; // Player ID of Lyra shrine placed in this sector
   ships: SectorShip[];

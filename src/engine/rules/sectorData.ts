@@ -432,6 +432,18 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'kp_p4', resource: 'science', isAdvanced: true },
     ],
   },
+  children_of_light: {
+    sectorNumber: 237,
+    name: 'Faylenia',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'col_p1', resource: 'money', isAdvanced: false },
+      { id: 'col_p2', resource: 'science', isAdvanced: false },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

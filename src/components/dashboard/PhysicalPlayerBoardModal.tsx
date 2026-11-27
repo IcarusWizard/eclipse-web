@@ -691,7 +691,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const isRepSlot = Boolean(repTileObj);
                       const repTile = repTileObj?.vp;
                       const repEffectiveVp = repTileObj ? (repTileObj.effectiveVp ?? repTile) : undefined;
-                      const repOutcome = repTileObj?.battleOutcome;
+                      const repOutcome = player.faction.id === 'kurita_prefecture' ? repTileObj?.battleOutcome : undefined;
                       const hasRepTile = isRepSlot;
 
                       return (
@@ -1668,7 +1668,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       {/* Ship Header */}
                       <div className="flex items-center justify-between border-b border-slate-800/80 pb-2">
                         <div className="flex items-center gap-2">
-                          {shouldShowShipTypeIcon(sc.type, player.faction.id) && ['interceptor', 'cruiser', 'dreadnought', 'starbase', 'orbital'].includes(sc.type) ? (
+                          {shouldShowShipTypeIcon(sc.type, player.faction.id) && ['interceptor', 'cruiser', 'dreadnought', 'starbase', 'orbital', 'ancient'].includes(sc.type) ? (
                             <ShipTypeIcon shipType={sc.type} factionId={player.faction.id} size={15} className="text-cyan-400" />
                           ) : (
                             <Rocket className="w-4 h-4 text-cyan-400" />
@@ -1677,15 +1677,25 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             {language === 'zh' ? shipLabel : sc.name}
                           </h3>
                           <span className="text-[10px] font-mono px-1.5 py-0.2 rounded bg-slate-800 text-slate-300 border border-slate-700">
-                            {l(`Cost: ${sc.baseCost} Mats`, `造价: ${sc.baseCost} 材料`)}
+                            {sc.type === 'ancient'
+                              ? l('Cost: --', '造价: --')
+                              : l(`Cost: ${sc.baseCost} Mats`, `造价: ${sc.baseCost} 材料`)}
                           </span>
                         </div>
 
                         <div className="flex items-center gap-2">
                           <span className="text-xs font-mono text-slate-400">
-                            {l('Supply:', '库存:')} <strong className={sc.deployedCount >= sc.limit ? 'text-amber-400' : 'text-cyan-300'}>
-                              {sc.deployedCount}
-                            </strong> / {sc.limit}
+                            {sc.type === 'ancient' ? (
+                              <>
+                                {l('Converted:', '已转化:')} <strong className="text-fuchsia-300">{sc.deployedCount}</strong>
+                              </>
+                            ) : (
+                              <>
+                                {l('Supply:', '库存:')} <strong className={sc.deployedCount >= sc.limit ? 'text-amber-400' : 'text-cyan-300'}>
+                                  {sc.deployedCount}
+                                </strong> / {sc.limit}
+                              </>
+                            )}
                           </span>
                           <button
                             onClick={() => onOpenBlueprintEditor(sc.type)}

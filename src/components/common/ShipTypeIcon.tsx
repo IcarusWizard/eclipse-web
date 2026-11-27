@@ -50,10 +50,13 @@ function buildNeutralBoxes(rowCounts: number[]): ShipIconBox[] {
  * Returns the miniature box coordinates for a ship type using the exact
  * Terran / Standard blueprint hull cubes (excluding extraCube / external parts)
  * and Exile's Orbital own blueprint cubes.
+ * Children of Light converted 'ancient' ships use the standard 6-block Cruiser icon,
+ * while neutral Ancients keep their 3-block triangle icon.
  */
-export function getShipIconBoxes(shipType: string): ShipIconLayout {
+export function getShipIconBoxes(shipType: string, factionId?: string): ShipIconLayout {
   const key = shipType.toLowerCase();
-  const standardLayout = SHIP_LAYOUTS_STANDARD[key];
+  const effectiveKey = key === 'ancient' && factionId === 'children_of_light' ? 'cruiser' : key;
+  const standardLayout = SHIP_LAYOUTS_STANDARD[effectiveKey];
 
   let rawBoxes: ShipIconBox[];
   let isNeutral = false;
@@ -94,6 +97,7 @@ export function getShipIconBoxes(shipType: string): ShipIconLayout {
 
 export interface ShipTypeSvgBoxesProps {
   shipType: string;
+  factionId?: string;
   x?: number;
   y?: number;
   height?: number;
@@ -109,6 +113,7 @@ export interface ShipTypeSvgBoxesProps {
  */
 export const ShipTypeSvgBoxes: React.FC<ShipTypeSvgBoxesProps> = ({
   shipType,
+  factionId,
   x = 0,
   y = 0,
   height = 10,
@@ -117,7 +122,7 @@ export const ShipTypeSvgBoxes: React.FC<ShipTypeSvgBoxesProps> = ({
   fillOpacity = 0.28,
   strokeWidth = 1.6,
 }) => {
-  const layout = getShipIconBoxes(shipType);
+  const layout = getShipIconBoxes(shipType, factionId);
   const scale = layout.height > 0 ? height / layout.height : 1;
 
   return (
@@ -181,7 +186,7 @@ export const ShipTypeIcon: React.FC<ShipTypeIconProps> = ({
     return null;
   }
 
-  const layout = getShipIconBoxes(shipType);
+  const layout = getShipIconBoxes(shipType, factionId);
   const scale = size / REFERENCE_UNIT_HEIGHT;
   const pad = 1.5;
   const vbWidth = layout.width + pad * 2;

@@ -402,6 +402,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       npcVariant: attacker.npcVariant,
       shipCounts: attacker.shipCounts,
       hasAntimatterSplitter: attacker.hasAntimatterSplitter,
+      neutralShipBlueprints: gameState?.neutralShipBlueprints,
     });
     setAttacker(fresh);
     setSimulationResult(null);
@@ -415,6 +416,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
       npcVariant: def.npcVariant,
       shipCounts: def.shipCounts,
       hasAntimatterSplitter: def.hasAntimatterSplitter,
+      neutralShipBlueprints: gameState?.neutralShipBlueprints,
     });
     setDefenders((prev) => {
       const next = [...prev];
@@ -595,6 +597,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
               onResetBlueprints={handleResetAttackerBlueprints}
               onSwapWithAttacker={() => handleSwapWithAttacker(0)}
               activeExpansions={activeExpansions}
+              neutralShipBlueprints={gameState?.neutralShipBlueprints}
             />
 
             {/* DEFENDERS COLUMN (Single or Multi-Wave) */}
@@ -644,6 +647,7 @@ export const CombatSimulatorModal: React.FC<CombatSimulatorModalProps> = ({
                   onRemove={() => handleRemoveDefender(idx)}
                   onSwapWithAttacker={() => handleSwapWithAttacker(idx)}
                   activeExpansions={activeExpansions}
+                  neutralShipBlueprints={gameState?.neutralShipBlueprints}
                 />
               ))}
             </div>
@@ -783,6 +787,7 @@ interface SideConfigCardProps {
   onRemove?: () => void;
   onSwapWithAttacker?: () => void;
   activeExpansions?: string[];
+  neutralShipBlueprints?: Partial<import('../../engine/rules/neutralShips').NeutralShipConfig>;
 }
 
 export const SideConfigCard: React.FC<SideConfigCardProps> = ({
@@ -800,6 +805,7 @@ export const SideConfigCard: React.FC<SideConfigCardProps> = ({
   onRemove,
   onSwapWithAttacker,
   activeExpansions,
+  neutralShipBlueprints,
 }) => {
   const { l, language } = useLanguage();
   const isAttacker = role === 'attacker';
@@ -820,7 +826,11 @@ export const SideConfigCard: React.FC<SideConfigCardProps> = ({
     } else {
       shipCounts = isNpc ? { [val]: 0 } : { interceptor: 0, cruiser: 0, dreadnought: 0, starbase: 0 };
     }
-    const fresh = createDefaultSimulatorSide(val, { isNpc, shipCounts });
+    const fresh = createDefaultSimulatorSide(val, {
+      isNpc,
+      shipCounts,
+      neutralShipBlueprints,
+    });
     onChangeSideConfig(fresh);
   };
 

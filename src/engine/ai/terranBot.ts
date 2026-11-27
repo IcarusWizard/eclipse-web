@@ -47,6 +47,7 @@ import {
   getCombatShipTypeGroups,
   getActiveCombatGroup,
   getPendingSpiralShiftPlayerId,
+  getPendingDivineInspirationPlayerId,
   getDefaultShiftPortMode,
 } from '../rules/combatEngine';
 import {
@@ -191,6 +192,9 @@ export function getPriorityActorId(state: GameState): string | null {
   if (state.pendingMidasStartingCubeSetup) {
     return state.pendingMidasStartingCubeSetup.playerId;
   }
+  if (state.pendingHolyCommunion) {
+    return state.pendingHolyCommunion.playerId;
+  }
   if (state.phase === 'DRAFT_PHASE' && state.factionDraft) {
     return state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] || null;
   }
@@ -227,6 +231,12 @@ export function getPriorityActorId(state: GameState): string | null {
         if (spiralPlayer?.isBot) return spiralPlayer.id;
         return null;
       }
+      const pendingDivineId = getPendingDivineInspirationPlayerId(state.players, sec, combat);
+      if (pendingDivineId) {
+        const colPlayer = state.players.find((p) => p.id === pendingDivineId);
+        if (colPlayer?.isBot) return colPlayer.id;
+        return null;
+      }
       const scopedSec =
         sec.isNebula && activeSub
           ? { ...sec, ships: sec.ships.filter((s) => (s.subsector ?? 1) === activeSub) }
@@ -237,7 +247,8 @@ export function getPriorityActorId(state: GameState): string | null {
         combat.participatingPlayerIds,
         state.neutralShipBlueprints,
         state.expansions,
-        combat.spiralShiftModes
+        combat.spiralShiftModes,
+        combat.divineInspirationChoice
       );
       const defenderId = combat.defenderOwnerId || getSectorDefenderOwnerId(scopedSec, state.players);
       const aliveUnits = sortUnitsByInitiative(
@@ -396,6 +407,14 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
       type: 'CHOOSE_MIDAS_STARTING_CUBE',
       playerId: player.id,
       resource: bestTrack,
+    };
+  }
+  if (state.pendingHolyCommunion?.playerId === player.id) {
+    return {
+      type: 'RESOLVE_HOLY_COMMUNION',
+      playerId: player.id,
+      sectorId: state.pendingHolyCommunion.sectorId,
+      claim: player.influenceTrack.discsOnTrack >= 2 || (state.round >= 4 && player.influenceTrack.discsOnTrack >= 1),
     };
   }
   if (state.phase === 'DRAFT_PHASE' && state.factionDraft) {
@@ -1152,6 +1171,14 @@ function handleActiveCombat(state: GameState, player: PlayerState): GameAction {
       choices,
     };
   }
+  if (combatSec && getPendingDivineInspirationPlayerId(state.players, combatSec, combat) === player.id) {
+    return {
+      type: 'SET_DIVINE_INSPIRATION',
+      playerId: player.id,
+      sectorId: combat.sectorId,
+      choice: 'hit',
+    };
+  }
   if (combat.stage === 'resolved') {
     return {
       type: 'RESOLVE_COMBAT_STEP',
@@ -1174,7 +1201,9 @@ function handleActiveCombat(state: GameState, player: PlayerState): GameAction {
           state.players,
           combat.participatingPlayerIds,
           state.neutralShipBlueprints,
-          state.expansions
+          state.expansions,
+          combat.spiralShiftModes,
+          combat.divineInspirationChoice
         )
       : [];
     const enemyUnits = units
@@ -1462,14 +1491,14 @@ function findBestUpgradeAction(
   const deployed = countPlayerShips(state.sectors, player.id);
   const maxUpgrades = isReaction ? 1 : getMaxUpgradeActivations(player);
 
-  // Target Cruiser and Interceptor (or Dreadnought if deployed / affordable)
-  const shipTypes: ShipType[] = ['cruiser', 'interceptor', 'dreadnought'];
+  // Target Cruiser and Interceptor (or Dreadnought/Ancient if available)
+  const shipTypes: ShipType[] = ['cruiser', 'interceptor', 'dreadnought', 'ancient'];
   const bestSingleSwaps: Array<CandidateBlueprintUpgrade & { gain: number; weightByFleet: number }> = [];
 
   for (const st of shipTypes) {
     const bp = player.blueprints[st];
     if (!bp) continue;
-    const weightByFleet = (deployed[st] || 0) > 0 ? 1 + (deployed[st] || 0) * 0.25 : st === 'cruiser' ? 0.9 : 0.6;
+    const weightByFleet = (deployed[st] || 0) > 0 ? 1 + (deployed[st] || 0) * 0.25 : st === 'cruiser' ? 0.9 : st === 'ancient' ? 0.75 : 0.6;
     const baseScore = scoreBlueprintCombatPower(bp, st);
 
     // Muon Source must be placed outside the blueprint grid (external slot)
@@ -1797,7 +1826,7 @@ function findShortestWormholePath(
       const hasHostiles = nextSec.ships.some(
         (sh) =>
           sh.ownerId !== player.id &&
-          !(player.faction.id === 'descendants_of_draco' && (sh.ownerId === 'ancient' || sh.type === 'ancient'))
+          !((player.faction.id === 'descendants_of_draco' || player.faction.id === 'children_of_light') && sh.ownerId === 'ancient')
       );
       if (!hasHostiles) {
         visited.add(nextSec.id);
@@ -1840,7 +1869,7 @@ function buildEnemySimDefenders(
       const npcType = ownerId as NeutralShipType;
       const count =
         npcType === 'ancient'
-          ? Math.max(sector.ships.filter((s) => s.ownerId === 'ancient' || s.type === 'ancient').length, sector.ancientsCount || 0, 1)
+          ? Math.max(sector.ships.filter((s) => s.ownerId === 'ancient').length, sector.ancientsCount || 0, 1)
           : 1;
       defenders.push(
         createDefaultSimulatorSide(npcType, {
