@@ -3333,9 +3333,11 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(planta.blueprints.interceptor.preprintedComputer).toBe(1);
         expect(planta.blueprints.interceptor.preprintedPower).toBe(2);
         expect(planta.blueprints.starbase.preprintedPower).toBe(5);
-        // Base initiative is lower (-1 compared to Human)
-        expect(planta.blueprints.interceptor.baseInitiative).toBe(1);
+        // Base initiative: Int/Cru/Dra = 0, Starbase = 2
+        expect(planta.blueprints.interceptor.baseInitiative).toBe(0);
         expect(planta.blueprints.cruiser.baseInitiative).toBe(0);
+        expect(planta.blueprints.dreadnought.baseInitiative).toBe(0);
+        expect(planta.blueprints.starbase.baseInitiative).toBe(2);
 
         // Score bonus: +1 VP per controlled sector
         calculateFinalScores(game);
@@ -28090,6 +28092,10 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(headerHtml).toContain(`data-presence="offline"`);
       expect(headerHtml).toContain('• Online');
       expect(headerHtml).toContain('• Offline');
+      // Offline Orion (#18181b / black) renders a dark masked crescent inside a light #cbd5e1 circle
+      expect(headerHtml).toContain('mask="url(#presence-eclipse-');
+      expect(headerHtml).toContain('fill="#cbd5e1"');
+      expect(headerHtml).toContain(`fill="${game.players[1]!.color}"`);
 
       const offlineBoardHtml = renderToString(
         React.createElement(
@@ -28502,7 +28508,7 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       game.activeCombat.roundActedGroupKeys = [`${orion.id}_cruiser`];
       expect(getEffectiveDecisionSeat(game)).toBe(3);
 
-      // PvP initiative handoff: Planta Starbase (Init 4) acts before Draco Cruiser (Init 1)
+      // PvP initiative handoff: Planta Starbase (Init 2) acts before Draco Cruiser (Init 1)
       const pvpSec = game.sectors.find((s) => s.id !== battleSec.id && s.ring > 0)!;
       pvpSec.discOwner = planta.id;
       pvpSec.ancientsCount = 0;
@@ -33300,6 +33306,657 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         checkAndTriggerCombat(game);
         expect(game.activeCombat?.sectorId).toBe(sec001.id);
       }
+    });
+
+    test('Test 307: Kurita Prefecture (Edo #251) setup, Elite Warriors (+1 Comp & Starbase +1 Hull), First-Shot Honour Round 1 ordering, Win/Loss Rep (+1/-1 & retreat=0), Traitor -4 VP, and SSR UI', async () => {
+      const { isFactionAvailable, getFactionReputationSlotTypes, getPlayerReputationVP, getPlayerReputationTrackSlots } = await import('../rules/setup');
+      const { getActiveCombatGroup, buildCombatUnitsForSector, getCombatShipTypeGroups } = await import('../rules/combatEngine');
+      const { computeFactionBlueprintModifiers, getFactionSheetData } = await import('../rules/factionSheets');
+      const { SHIP_PARTS } = await import('../rules/partData');
+
+      const activeGroupOf = (st: GameState) => {
+        const ac = st.activeCombat!;
+        const sec = st.sectors.find((x) => x.id === ac.sectorId)!;
+        const units = buildCombatUnitsForSector(sec, st.players, ac.participatingPlayerIds);
+        const groups = getCombatShipTypeGroups(units, ac.attackerOwnerId);
+        return getActiveCombatGroup(ac, groups);
+      };
+
+      // 1. Expansion availability & setup verification
+      expect(isFactionAvailable('kurita_prefecture', [])).toBe(false);
+      expect(isFactionAvailable('kurita_prefecture', ['community_factions'])).toBe(true);
+
+      const game = createInitialGame(2, ['kurita_prefecture', 'terran_federation'], ['community_factions']);
+      const kurita = game.players[0]!;
+      const terran = game.players[1]!;
+
+      expect(kurita.faction.id).toBe('kurita_prefecture');
+      expect(kurita.color).toBe('#34d399');
+      expect(kurita.resources).toEqual({ money: 2, science: 3, materials: 4 });
+      expect(kurita.colonyShips).toEqual({ ready: 3, total: 3 });
+      expect(kurita.influenceTrack.totalDiscs).toBe(13);
+      expect(kurita.influenceTrack.discsOnTrack).toBe(12);
+      expect(kurita.faction.tradeRatio).toBe(3);
+      expect(kurita.faction.researchActivations).toBe(1);
+      expect(kurita.techTrack.researched.map((t) => t.id)).toEqual(['phase_shield']);
+      expect(getFactionReputationSlotTypes(kurita.faction)).toEqual(['both', 'both', 'rep_only', 'rep_only']);
+
+      const edo = game.sectors.find((s) => s.sectorNumber === 251)!;
+      expect(edo).toBeDefined();
+      expect(edo.name).toBe('Edo');
+      expect(edo.ring).toBe(2);
+      expect(edo.victoryPoints).toBe(3);
+      expect(edo.hasArtifact).toBe(true);
+      expect(edo.wormholes).toEqual([true, false, true, true, false, true]);
+      expect(edo.planets.map((p) => ({ r: p.resource, adv: p.isAdvanced, col: p.colonizedBy }))).toEqual([
+        { r: 'science', adv: false, col: kurita.id },
+        { r: 'money', adv: false, col: kurita.id },
+        { r: 'material', adv: true, col: undefined },
+        { r: 'science', adv: true, col: undefined },
+      ]);
+      expect(edo.ships.filter((s) => s.ownerId === kurita.id).map((s) => s.type)).toEqual(['interceptor']);
+
+      // 2. Elite Warriors (+1 Comp off-board on all ships, Starbase extra Hull => 4 HP)
+      for (const st of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as const) {
+        expect(kurita.blueprints[st].preprintedComputer).toBe(1);
+      }
+      expect(kurita.blueprints.starbase.preprintedHull).toBe(1);
+      expect(calculateBlueprintStats(kurita.blueprints.interceptor).computerBonus).toBe(1);
+      expect(calculateBlueprintStats(kurita.blueprints.starbase).computerBonus).toBe(2);
+      expect(calculateBlueprintStats(kurita.blueprints.starbase).totalHull).toBe(3);
+      const starbaseCombatUnit = buildCombatUnitsForSector(
+        { ...edo, ships: [{ id: 'k_sb_test', ownerId: kurita.id, type: 'starbase', damage: 0 }] },
+        game.players,
+        [kurita.id]
+      )[0]!;
+      expect(starbaseCombatUnit.maxHull).toBe(3);
+      expect(starbaseCombatUnit.computerBonus).toBe(2);
+
+      const bpMods = computeFactionBlueprintModifiers('kurita_prefecture');
+      expect(bpMods.find((m) => m.shipType === 'interceptor')?.badges.some((b) => b.en === '+1 Comp')).toBe(true);
+      expect(bpMods.find((m) => m.shipType === 'starbase')?.badges.some((b) => b.en === '+1 Hull')).toBe(true);
+
+      // 3. Honour your enemy with the first shot (2nd):
+      // Even when Kurita has higher initiative and Missiles, Terran fires BOTH Missiles and Regular Round 1 BEFORE Kurita!
+      const fullHonourGame = createInitialGame(2, ['kurita_prefecture', 'terran_federation'], ['community_factions']);
+      const kf = fullHonourGame.players[0]!;
+      const tf = fullHonourGame.players[1]!;
+      kf.blueprints.interceptor.maxSlots = 5;
+      kf.blueprints.interceptor.slots = [
+        SHIP_PARTS.nuclear_source,
+        SHIP_PARTS.ion_cannon,
+        SHIP_PARTS.plasma_missile,
+        SHIP_PARTS.tachyon_drive, // +3 init => faster than Terran
+        SHIP_PARTS.hull,
+      ];
+      tf.blueprints.interceptor.slots = [
+        SHIP_PARTS.nuclear_source,
+        SHIP_PARTS.ion_cannon,
+        SHIP_PARTS.plasma_missile,
+        SHIP_PARTS.hull,
+      ];
+      const fs = fullHonourGame.sectors.find((s) => s.sectorNumber === 251)!;
+      fs.ships = [
+        { id: 'kf_int_1', ownerId: kf.id, type: 'interceptor', damage: 0 },
+        { id: 'tf_int_1', ownerId: tf.id, type: 'interceptor', damage: 0 },
+      ];
+      fullHonourGame.phase = 'COMBAT_PHASE';
+      fullHonourGame.resolvedCombatSectorIds = [];
+      fullHonourGame.activeCombat = null;
+      fullHonourGame.pendingCombatConquest = null;
+      fullHonourGame.reputationPool = [4, 3, 2, 1];
+
+      const origRandom = Math.random;
+      Math.random = () => 0.0; // all dice roll 1 (miss)
+      try {
+        checkAndTriggerCombat(fullHonourGame);
+        expect(fullHonourGame.activeCombat).not.toBeNull();
+        expect(fullHonourGame.activeCombat!.kuritaDelayedPlayerIds).toEqual([kf.id]);
+        expect(fullHonourGame.activeCombat!.stage).toBe('missile');
+        expect(activeGroupOf(fullHonourGame)?.ownerId).toBe(tf.id);
+
+        let s = executeAction(fullHonourGame, { type: 'RESOLVE_COMBAT_STEP', playerId: tf.id, sectorId: fs.id, autoAssign: true }).newState;
+        expect(s.activeCombat!.roundNumber).toBe(1);
+        expect(s.activeCombat!.stage).toBe('regular');
+        expect(activeGroupOf(s)?.ownerId).toBe(tf.id);
+
+        s = executeAction(s, { type: 'RESOLVE_COMBAT_STEP', playerId: tf.id, sectorId: fs.id, autoAssign: true }).newState;
+        expect(s.activeCombat!.roundNumber).toBe(1);
+        expect(s.activeCombat!.stage).toBe('missile');
+        expect(activeGroupOf(s)?.ownerId).toBe(kf.id);
+
+        s = executeAction(s, { type: 'RESOLVE_COMBAT_STEP', playerId: kf.id, sectorId: fs.id, autoAssign: true }).newState;
+        expect(s.activeCombat!.roundNumber).toBe(1);
+        expect(s.activeCombat!.stage).toBe('regular');
+        expect(activeGroupOf(s)?.ownerId).toBe(kf.id);
+
+        s = executeAction(s, { type: 'RESOLVE_COMBAT_STEP', playerId: kf.id, sectorId: fs.id, autoAssign: true }).newState;
+        // Round 2 begins: normal speed applies, so Kurita (Init 6) MUST fire BEFORE Terran (Init 2)!
+        expect(s.activeCombat!.roundNumber).toBe(2);
+        expect(s.activeCombat!.stage).toBe('regular');
+        expect(activeGroupOf(s)?.ownerId).toBe(kf.id);
+      } finally {
+        Math.random = origRandom;
+      }
+
+      // 4. Retreat forfeits ALL Battle Reputation tiles for Kurita (even if Kurita destroyed ships before retreating)
+      const retreatGame = createInitialGame(2, ['kurita_prefecture', 'terran_federation'], ['community_factions']);
+      const kr = retreatGame.players[0]!;
+      const tr = retreatGame.players[1]!;
+      const rSec = retreatGame.sectors.find((s) => s.sectorNumber === 251)!;
+      const adjFriendly = retreatGame.sectors.find((s) => s.sectorNumber === 250 || s.ring === 2 && s.id !== rSec.id) || rSec;
+      adjFriendly.discOwner = kr.id;
+      rSec.ships = [
+        { id: 'kr_int_1', ownerId: kr.id, type: 'interceptor', damage: 0 },
+        { id: 'kr_int_2', ownerId: kr.id, type: 'interceptor', damage: 0 },
+        { id: 'tr_int_1', ownerId: tr.id, type: 'interceptor', damage: 0 },
+      ];
+      retreatGame.phase = 'COMBAT_PHASE';
+      retreatGame.resolvedCombatSectorIds = [];
+      retreatGame.activeCombat = {
+        sectorId: rSec.id,
+        attackerOwnerId: kr.id,
+        defenderOwnerId: tr.id,
+        participatingPlayerIds: [kr.id, tr.id],
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: { kr_int_1: adjFriendly.id },
+        retreatAttemptedPlayerIds: [],
+        retreatedPlayerIds: [],
+        killsByPlayer: { [kr.id]: 1 },
+        participatedPlayerIds: [kr.id, tr.id],
+        missileFiredShipIds: [],
+        roundActedGroupKeys: [tr.id + '_interceptor'],
+      };
+      // Kurita retreats kr_int_1 while kr_int_2 finishes off tr_int_1
+      Math.random = () => 0.99; // roll 6 (hit)
+      let afterRetreatWin: GameState;
+      try {
+        const res = executeAction(retreatGame, {
+          type: 'RESOLVE_COMBAT_STEP',
+          playerId: kr.id,
+          sectorId: rSec.id,
+          retreatShipIds: ['kr_int_1'],
+          retreatDestinationSectorId: adjFriendly.id,
+          autoAssign: true,
+        });
+        expect(res.success).toBe(true);
+        afterRetreatWin = res.newState;
+      } finally {
+        Math.random = origRandom;
+      }
+      // Terran (no ships left, didn't retreat) can draw 1 rep tile, but Kurita MUST NOT get a rep draw because kr_int_1 retreated!
+      const kuritaDrawsAfterRetreat = [
+        afterRetreatWin.pendingReputationDraw,
+        ...(afterRetreatWin.pendingReputationDrawQueue || []),
+      ].filter((d) => d && d.playerId === kr.id);
+      expect(kuritaDrawsAfterRetreat.length).toBe(0);
+
+      // 5. Honour the Victorious: +1 VP on Win (Dmg Cube), -1 VP on Loss, and Traitor Card = -4 VP
+      const scoreGame = createInitialGame(2, ['kurita_prefecture', 'terran_federation'], ['community_factions']);
+      const ks = scoreGame.players[0]!;
+      const scoreSec = scoreGame.sectors.find((s) => s.sectorNumber === 251)!;
+      scoreGame.phase = 'COMBAT_PHASE';
+      scoreGame.pendingReputationDraw = {
+        playerId: ks.id,
+        drawnTiles: [2, 1],
+        sectorId: scoreSec.id,
+        isBattleWin: true,
+      };
+      const winClaim = executeAction(scoreGame, {
+        type: 'CLAIM_REPUTATION_TILE',
+        playerId: ks.id,
+        selectedTileIndex: 0, // base 2 VP + 1 win = 3 VP
+      });
+      expect(winClaim.success).toBe(true);
+      let s5 = winClaim.newState;
+      expect(s5.players[0]!.reputationTiles).toEqual([2]);
+      expect(s5.players[0]!.reputationBattleOutcomes).toEqual(['win']);
+      expect(getPlayerReputationVP(s5.players[0]!)).toBe(3);
+
+      // Second battle: Loss with a 3 VP tile => 3 - 1 = 2 VP
+      s5.phase = 'COMBAT_PHASE';
+      s5.pendingReputationDraw = {
+        playerId: ks.id,
+        drawnTiles: [3],
+        sectorId: scoreSec.id,
+        isBattleWin: false,
+      };
+      const lossClaim = executeAction(s5, {
+        type: 'CLAIM_REPUTATION_TILE',
+        playerId: ks.id,
+        selectedTileIndex: 0,
+      });
+      expect(lossClaim.success).toBe(true);
+      s5 = lossClaim.newState;
+      expect(s5.players[0]!.reputationTiles).toEqual([2, 3]);
+      expect(s5.players[0]!.reputationBattleOutcomes).toEqual(['win', 'loss']);
+      expect(getPlayerReputationVP(s5.players[0]!)).toBe(5); // (2+1) + (3-1) = 5
+
+      // Traitor card penalty is -4 VP for Kurita
+      s5.traitorPlayerId = ks.id;
+      const bd = computeCurrentScores(s5).scores[ks.id]!;
+      expect(bd.reputation).toBe(5);
+      expect(bd.traitor).toBe(-4);
+
+      // 6. SSR Verification of UI components
+      const trackSlots = getPlayerReputationTrackSlots(s5.players[0]!, s5.players);
+      const repSlot0 = trackSlots[2]?.tile;
+      const repSlot1 = trackSlots[3]?.tile;
+      expect(repSlot0?.type === 'reputation' ? repSlot0.effectiveVp : undefined).toBe(3);
+      expect(repSlot0?.type === 'reputation' ? repSlot0.battleOutcome : undefined).toBe('win');
+      expect(repSlot1?.type === 'reputation' ? repSlot1.effectiveVp : undefined).toBe(2);
+      expect(repSlot1?.type === 'reputation' ? repSlot1.battleOutcome : undefined).toBe('loss');
+
+      const React = await import('react');
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { ReputationTileModal } = await import('../../components/combat/ReputationTileModal');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FactionSheetCard, { faction: ks.faction })
+        )
+      );
+      expect(sheetHtml).toContain('Kurita Prefecture');
+      expect(sheetHtml).toContain('Honour your enemy with the first shot');
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PlayerBoard, {
+            player: s5.players[0]!,
+            isActive: true,
+            sectors: s5.sectors,
+            allPlayers: s5.players,
+            traitorPlayerId: ks.id,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('5 VP');
+      expect(boardHtml).toContain('-4');
+
+      const physicalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            isOpen: true,
+            player: s5.players[0]!,
+            players: s5.players,
+            sectors: s5.sectors,
+            traitorPlayerId: ks.id,
+            onClose: () => {},
+          })
+        )
+      );
+      expect(physicalHtml).toContain('■+1');
+      expect(physicalHtml).toContain('-4 VP Penalty');
+
+      const repModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ReputationTileModal, {
+            state: s5,
+            pendingDraw: {
+              playerId: ks.id,
+              drawnTiles: [4, 2],
+              sectorId: scoreSec.id,
+              isBattleWin: true,
+            },
+            onClaimTile: () => {},
+          })
+        )
+      );
+      expect(repModalHtml).toContain('Honour the Victorious: Battle Won (+1 VP Dmg Cube)');
+      expect(repModalHtml).toContain('5 VP'); // 4 + 1
+
+      // CombatModal Round 1 First Shot Honour banner
+      fullHonourGame.activeCombat!.roundNumber = 1;
+      fullHonourGame.activeCombat!.kuritaDelayedPlayerIds = [kf.id];
+      const combatHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(CombatModal, {
+            state: fullHonourGame,
+            combat: fullHonourGame.activeCombat!,
+            onStepCombat: () => {},
+          })
+        )
+      );
+      expect(combatHtml).toContain('data-testid="kurita-first-shot-banner"');
+      expect(combatHtml).toContain('Honour your enemy with the first shot');
+
+      const sheetMeta = getFactionSheetData(ks.faction);
+      expect(sheetMeta.activations.research).toBe(1);
+    });
+
+    test('Test 308: Non-clickable readonly diplomacy on other PlayerBoard, SectorInspector special features (Warp Portal, Shrines, Orbital, GCDS) + Player Ship Blueprints, and Top-Left Initiative Bonus outside ShipBlueprintSlotsLayout', async () => {
+      const React = await import('react');
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { SectorInspector } = await import('../../components/map/SectorInspector');
+      const { ShipBlueprintSlotsLayout } = await import('../../components/blueprints/ShipBlueprintSlotsLayout');
+
+      // 1. PlayerBoard diplomacy must NOT appear clickable when viewing another player / without onInitiateDiplomacy
+      const diploGame = createInitialGame(4, [
+        'terran_federation',
+        'enlightened_of_lyra',
+        'orion_hegemony',
+        'planta',
+      ]);
+      diploGame.phase = 'ACTION_PHASE';
+      const p1 = diploGame.players[0]!;
+      const lyra = diploGame.players[1]!;
+      const p1Home = diploGame.sectors.find((s) => s.discOwner === p1.id)!;
+      const lyraHome = diploGame.sectors.find((s) => s.discOwner === lyra.id)!;
+      // Place adjacent connected wormholes between p1 and lyra
+      p1Home.coord = { q: 1, r: -1 };
+      p1Home.wormholes = [true, true, true, true, true, true];
+      lyraHome.coord = { q: 2, r: -1 };
+      lyraHome.wormholes = [true, true, true, true, true, true];
+
+      // Active viewer WITH onInitiateDiplomacy sees clickable Exchange button
+      const clickableBoardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PlayerBoard, {
+            player: p1,
+            isActive: true,
+            sectors: diploGame.sectors,
+            allPlayers: diploGame.players,
+            traitorPlayerId: diploGame.traitorPlayerId,
+            gamePhase: diploGame.phase,
+            warpedUniverse: diploGame.warpedUniverse,
+            onInitiateDiplomacy: () => {},
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(clickableBoardHtml).toContain('Exchange');
+      expect(clickableBoardHtml).toContain('cursor-pointer');
+
+      // Viewing another player (isActive=false OR onInitiateDiplomacy=undefined) MUST NOT show Exchange button or cursor-pointer
+      const readonlyOtherHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PlayerBoard, {
+            player: p1,
+            isActive: false,
+            sectors: diploGame.sectors,
+            allPlayers: diploGame.players,
+            traitorPlayerId: diploGame.traitorPlayerId,
+            gamePhase: diploGame.phase,
+            warpedUniverse: diploGame.warpedUniverse,
+            onInitiateDiplomacy: undefined,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(readonlyOtherHtml).toContain(`data-testid="diplomacy-readonly-eligible-${lyra.id}"`);
+      expect(readonlyOtherHtml).toContain('Connected');
+      expect(readonlyOtherHtml).not.toContain('>Exchange<');
+
+      // Even if isActive=true on an opponent's screen (locked / no handler), still non-clickable
+      const lockedActiveHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PlayerBoard, {
+            player: p1,
+            isActive: true,
+            sectors: diploGame.sectors,
+            allPlayers: diploGame.players,
+            traitorPlayerId: diploGame.traitorPlayerId,
+            gamePhase: diploGame.phase,
+            warpedUniverse: diploGame.warpedUniverse,
+            onInitiateDiplomacy: undefined,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(lockedActiveHtml).toContain(`data-testid="diplomacy-readonly-eligible-${lyra.id}"`);
+      expect(lockedActiveHtml).not.toContain('>Exchange<');
+
+      // 2 & 3. SectorInspector shows ALL special features (Warp Portal, Shrines, Orbital, GCDS, Ancients) AND Player Ship Blueprints
+      const showcaseSector = {
+        ...lyraHome,
+        victoryPoints: 2,
+        hasDiscoveryWarpPortal: true,
+        hasWarpPortal: true,
+        hasGCDS: true,
+        ancientsCount: 1,
+        structures: { monolith: true, orbital: true },
+        planets: [
+          {
+            id: 'shrine_planet',
+            resource: 'science' as const,
+            isAdvanced: false,
+            colonizedBy: lyra.id,
+            colonizedResource: 'science' as const,
+            shrineOwner: lyra.id,
+          },
+          ...lyraHome.planets,
+        ],
+        ships: [
+          { id: 'lyra_int_insp', ownerId: lyra.id, type: 'interceptor' as const, damage: 0 },
+          { id: 'ancient_insp', ownerId: 'ancient', type: 'ancient' as const, damage: 0 },
+        ],
+      };
+
+      const inspectorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(SectorInspector, {
+            sector: showcaseSector,
+            players: diploGame.players,
+            activePlayer: p1,
+            expansions: diploGame.expansions,
+            allSectors: diploGame.sectors,
+            onClose: () => {},
+          })
+        )
+      );
+      expect(inspectorHtml).toContain('data-testid="sector-feature-warp-portal"');
+      expect(inspectorHtml).toContain('Warp Portal (Discovery Tile)');
+      expect(inspectorHtml).toContain('+2 Discovery Warp Portal');
+      expect(inspectorHtml).toContain('data-testid="sector-feature-shrine"');
+      expect(inspectorHtml).toContain('Lyra Shrine');
+      expect(inspectorHtml).toContain('data-testid="sector-feature-orbital"');
+      expect(inspectorHtml).not.toContain('data-testid="sector-feature-gcds"');
+      expect(inspectorHtml).not.toContain('data-testid="sector-feature-ancients"');
+      expect(inspectorHtml).toContain(`data-testid="sector-player-blueprint-${lyra.id}-interceptor"`);
+      expect(inspectorHtml).toContain('data-testid="npc-blueprint-grid"');
+      expect(inspectorHtml).toContain('data-testid="blueprint-init-bonus"');
+
+      // 4. ShipBlueprintSlotsLayout attaches single chevron Init symbol (no number, no double box) to top-left of top-most leftmost box, hidden when 0
+      // Interceptor: leftmost top-most box is Left Wing at offsetY: 70 (top: 42px at md) -> Init badge attaches at left:0;top:42px
+      const intHtml = renderToStaticMarkup(
+        React.createElement(ShipBlueprintSlotsLayout, {
+          shipType: 'interceptor',
+          factionId: p1.faction.id,
+          slots: p1.blueprints.interceptor!.slots,
+          maxSlots: 4,
+          baseInitiative: 2,
+          size: 'md',
+        })
+      );
+      expect(intHtml).toContain('data-testid="blueprint-init-bonus"');
+      expect(intHtml).toContain('data-initiative-arrows="2"');
+      expect(intHtml).toContain('left:0;top:42px');
+      expect(intHtml).not.toContain('>+2<');
+
+      // Starbase: leftmost top-most box is Slot 0 at top:0 -> 4 chevrons at left:0;top:0, slots shift right by initBadgeW+gap (20px at md)
+      const sbHtml = renderToStaticMarkup(
+        React.createElement(ShipBlueprintSlotsLayout, {
+          shipType: 'starbase',
+          factionId: p1.faction.id,
+          slots: p1.blueprints.starbase!.slots,
+          maxSlots: 5,
+          preprintedPower: 3,
+          baseInitiative: 4,
+          size: 'md',
+        })
+      );
+      expect(sbHtml).toContain('data-testid="blueprint-init-bonus"');
+      expect(sbHtml).toContain('data-initiative-arrows="4"');
+      expect(sbHtml).toContain('left:0;top:0');
+      expect(sbHtml).not.toContain('>+4<');
+      expect(sbHtml).toContain('left:20px;top:0');
+
+      // When baseInitiative is 0 (e.g. Dreadnought or Planta Int/Cru/Dra), no mini-box renders
+      const zeroInitHtml = renderToStaticMarkup(
+        React.createElement(ShipBlueprintSlotsLayout, {
+          shipType: 'dreadnought',
+          factionId: p1.faction.id,
+          slots: p1.blueprints.dreadnought!.slots,
+          maxSlots: 8,
+          baseInitiative: 0,
+          size: 'md',
+        })
+      );
+      expect(zeroInitHtml).not.toContain('data-testid="blueprint-init-bonus"');
+
+      // 5. Load-time normalization fixes legacy Planta baseInitiative values (1/0/-1/3 -> 0/0/0/2)
+      const legacyPlantaGame = createInitialGame(2, ['planta', 'terran_federation']);
+      const lp = legacyPlantaGame.players[0]!;
+      (lp.blueprints.interceptor as any).baseInitiative = 1;
+      (lp.blueprints.cruiser as any).baseInitiative = 0;
+      (lp.blueprints.dreadnought as any).baseInitiative = -1;
+      (lp.blueprints.starbase as any).baseInitiative = 3;
+      const normalizedGame = sanitizeLoadedGameState(legacyPlantaGame);
+      expect(normalizedGame.players[0]!.blueprints.interceptor.baseInitiative).toBe(0);
+      expect(normalizedGame.players[0]!.blueprints.cruiser.baseInitiative).toBe(0);
+      expect(normalizedGame.players[0]!.blueprints.dreadnought.baseInitiative).toBe(0);
+      expect(normalizedGame.players[0]!.blueprints.starbase.baseInitiative).toBe(2);
+    });
+
+    test('Test 309: Spectators cannot bypass hidden reputation tile privacy by switching player views', async () => {
+      const React = await import('react');
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { shouldHideReputationTiles, computeCurrentScores } = await import('../rules/gameReducer');
+      const { Header } = await import('../../components/layout/Header');
+      const { PlayerBoard } = await import('../../components/dashboard/PlayerBoard');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+      const { LiveScoreboardModal } = await import('../../components/dashboard/LiveScoreboardModal');
+
+      const game = createInitialGame(2, ['terran_federation', 'orion_hegemony']);
+      const p1 = game.players[0]!;
+      const p2 = game.players[1]!;
+      p1.reputationTiles = [4];
+      p2.reputationTiles = [3];
+
+      // 1. Spectators must ALWAYS hide reputation tiles while game is active regardless of selectedViewIndex
+      expect(shouldHideReputationTiles('spectator', p1.id, game.players, 'ACTION_PHASE')).toBe(true);
+      expect(shouldHideReputationTiles('spectator', p2.id, game.players, 'ACTION_PHASE')).toBe(true);
+      expect(shouldHideReputationTiles('spectator', p1.id, game.players, 'GAME_OVER')).toBe(false);
+
+      // Seated player only sees their own, hides opponent; local hotseat ('all') sees viewed player
+      expect(shouldHideReputationTiles(0, p1.id, game.players, 'ACTION_PHASE')).toBe(false);
+      expect(shouldHideReputationTiles(0, p2.id, game.players, 'ACTION_PHASE')).toBe(true);
+      expect(shouldHideReputationTiles('all', p2.id, game.players, 'ACTION_PHASE')).toBe(false);
+
+      // 2. Header hides both players' reputation VP when currentSeat === 'spectator', even if selectedViewIndex=0
+      const p1Known = computeCurrentScores(game).scores[p1.id]!.total - 4;
+      const p2Known = computeCurrentScores(game).scores[p2.id]!.total - 3;
+      const headerHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(Header, {
+            state: game,
+            currentUser: { id: 'spec', username: 'spec', name: 'Spectator', role: 'guest', createdAt: 0, lastActiveAt: 0 },
+            currentSeat: 'spectator',
+            selectedViewIndex: 0,
+            onSelectActiveViewPlayer: () => {},
+            onNewGame: () => {},
+            onOpenGallery: () => {},
+          })
+        )
+      );
+      expect(headerHtml).toContain(`${p1Known}★+?`);
+      expect(headerHtml).toContain(`${p2Known}★+?`);
+      expect(headerHtml).not.toContain(`${p1Known + 4}★`);
+      expect(headerHtml).not.toContain(`${p2Known + 3}★`);
+
+      // 3. PlayerBoard & PhysicalPlayerBoardModal mask P1's secret 4 VP tile when viewed by spectator
+      const hideP1ForSpec = shouldHideReputationTiles('spectator', p1.id, game.players, game.phase);
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PlayerBoard, {
+            player: p1,
+            isActive: false,
+            sectors: game.sectors,
+            allPlayers: game.players,
+            hideOpponentReputation: hideP1ForSpec,
+            onOpenBlueprints: () => {},
+            onOpenTechMarket: () => {},
+            onOpenTrade: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('? VP');
+      expect(boardHtml).not.toContain('4 VP');
+
+      const physicalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            isOpen: true,
+            player: p1,
+            players: game.players,
+            sectors: game.sectors,
+            hideOpponentReputation: hideP1ForSpec,
+            onClose: () => {},
+          })
+        )
+      );
+      expect(physicalHtml).toContain('Secret Tile');
+      expect(physicalHtml).not.toContain('+4 VP');
+
+      // 4. LiveScoreboardModal hides all players' secret reputation VP when viewerPlayerId is '__spectator__'
+      const scoreboardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(LiveScoreboardModal, {
+            state: game,
+            viewerPlayerId: '__spectator__',
+            onClose: () => {},
+          })
+        )
+      );
+      expect(scoreboardHtml).toContain('? (1 tile)');
+      expect(scoreboardHtml).not.toContain('>4<');
     });
   });
 });

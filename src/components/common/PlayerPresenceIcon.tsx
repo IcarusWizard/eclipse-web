@@ -1,4 +1,28 @@
-import React from 'react';
+import React, { useId } from 'react';
+import { getFactionDisplayColor } from '../../engine/rules/gameReducer';
+
+function isDarkHexColor(color: string): boolean {
+  const c = color.trim().toLowerCase();
+  if (!c.startsWith('#')) return false;
+  let r = 0;
+  let g = 0;
+  let b = 0;
+  if (c.length === 4) {
+    r = parseInt(c[1] + c[1], 16);
+    g = parseInt(c[2] + c[2], 16);
+    b = parseInt(c[3] + c[3], 16);
+  } else if (c.length === 7) {
+    r = parseInt(c.slice(1, 3), 16);
+    g = parseInt(c.slice(3, 5), 16);
+    b = parseInt(c.slice(5, 7), 16);
+  } else {
+    return false;
+  }
+  if (Number.isNaN(r) || Number.isNaN(g) || Number.isNaN(b)) return false;
+  // Relative luminance threshold so black/charcoal faction colors stay legible as an eclipse crescent
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance < 0.22;
+}
 
 export interface PlayerPresenceIconProps {
   color: string;
@@ -42,7 +66,10 @@ export const PlayerPresenceIcon: React.FC<PlayerPresenceIconProps> = ({
   className = '',
   testId,
 }) => {
+  const maskId = `presence-eclipse-${useId().replace(/[^a-zA-Z0-9_-]/g, '')}`;
   const safeColor = color || '#38bdf8';
+  const mappedColor = getFactionDisplayColor(safeColor);
+  const isDarkColor = mappedColor !== safeColor || isDarkHexColor(safeColor);
 
   if (isOnline) {
     return (
@@ -79,16 +106,42 @@ export const PlayerPresenceIcon: React.FC<PlayerPresenceIconProps> = ({
       aria-label={title || 'Offline (Eclipse)'}
     >
       {title && <title>{title}</title>}
-      <circle cx="8" cy="8" r="6" fill={safeColor} opacity="0.85" />
-      <circle cx="10.2" cy="7" r="5.1" fill="#020617" />
-      <circle
-        cx="8"
-        cy="8"
-        r="6"
-        fill="none"
-        stroke="rgba(203,213,225,0.65)"
-        strokeWidth="1"
-      />
+      <defs>
+        <mask id={maskId}>
+          <rect x="0" y="0" width="16" height="16" fill="white" />
+          <circle cx="10.4" cy="6.8" r={isDarkColor ? 4.7 : 5.1} fill="black" />
+        </mask>
+      </defs>
+      {isDarkColor ? (
+        <>
+          <circle
+            cx="8"
+            cy="8"
+            r="6"
+            fill="#cbd5e1"
+            stroke="rgba(241,245,249,0.7)"
+            strokeWidth="0.9"
+          />
+          <g mask={`url(#${maskId})`}>
+            <circle cx="8" cy="8" r="5.5" fill={safeColor} />
+          </g>
+        </>
+      ) : (
+        <>
+          <circle cx="10.4" cy="6.8" r="4.8" fill="#020617" opacity="0.55" />
+          <g mask={`url(#${maskId})`}>
+            <circle
+              cx="8"
+              cy="8"
+              r="6"
+              fill={safeColor}
+              opacity="0.92"
+              stroke="rgba(255,255,255,0.5)"
+              strokeWidth="0.9"
+            />
+          </g>
+        </>
+      )}
     </svg>
   );
 };

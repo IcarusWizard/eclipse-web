@@ -82,12 +82,16 @@ export interface CombatState {
   autoResolvePlayerIds?: string[];
   spiralShiftModes?: Record<string, Partial<Record<import('./galaxy').ShipType, ShiftPortMode>>>;
   spiralShiftConfiguredPlayerIds?: string[];
+  /** Kurita Prefecture ("Honour your enemy with the first shot"): Round 1 delayed player IDs who shoot Missiles + Regular AFTER non-Kurita opponents. */
+  kuritaDelayedPlayerIds?: string[];
 }
 
 export interface PendingReputationDraw {
   playerId: string;
   drawnTiles: number[];
   sectorId: string;
+  /** Whether this draw came from winning the battle (used for Kurita Prefecture Honour +1/-1 VP). */
+  isBattleWin?: boolean;
 }
 
 export interface GameLogEntry {

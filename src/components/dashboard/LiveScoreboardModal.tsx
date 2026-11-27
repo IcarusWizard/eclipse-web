@@ -190,7 +190,7 @@ export const LiveScoreboardModal: React.FC<LiveScoreboardModalProps> = ({
                               )}
                               {Boolean(b.traitor && b.traitor < 0) && (
                                 <span className="text-[10px] text-rose-300 font-semibold px-1.5 py-0.2 bg-rose-950/80 border border-rose-800 rounded">
-                                  {l('Traitor (-2 VP)', '叛徒 (-2 VP)')}
+                                  {l(`Traitor (${b.traitor} VP)`, `叛徒 (${b.traitor} VP)`)}
                                 </span>
                               )}
                             </div>

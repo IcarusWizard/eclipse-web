@@ -314,7 +314,7 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
         interceptor: {
           type: 'interceptor',
           maxSlots: 3,
-          baseInitiative: 1,
+          baseInitiative: 0,
           baseBuildCost: 3,
           preprintedComputer: 1,
           preprintedPower: 2,
@@ -342,7 +342,7 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
         dreadnought: {
           type: 'dreadnought',
           maxSlots: 7,
-          baseInitiative: -1,
+          baseInitiative: 0,
           baseBuildCost: 8,
           preprintedComputer: 1,
           preprintedPower: 2,
@@ -359,7 +359,7 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
         starbase: {
           type: 'starbase',
           maxSlots: 4,
-          baseInitiative: 3,
+          baseInitiative: 2,
           baseBuildCost: 3,
           preprintedComputer: 1,
           preprintedPower: 5,
@@ -825,6 +825,16 @@ function getRawFactionBlueprints(factionId: string): Record<string, ShipBlueprin
             null,
           ],
         },
+      };
+    }
+
+    case 'kurita_prefecture': {
+      const base = createDefaultHumanBlueprints();
+      return {
+        interceptor: { ...base.interceptor, preprintedComputer: 1 },
+        cruiser: { ...base.cruiser, preprintedComputer: 1 },
+        dreadnought: { ...base.dreadnought, preprintedComputer: 1 },
+        starbase: { ...base.starbase, preprintedComputer: 1, preprintedHull: 1 },
       };
     }
 

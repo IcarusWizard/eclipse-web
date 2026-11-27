@@ -46,9 +46,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   gold: '#d4af37', // Legion of Midas
   asgard: '#64748b', // Heralds of Ragnarök
   frost: '#5b8ec9', // Jotunn
+  jade: '#34d399', // Kurita Prefecture
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -84,6 +85,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   legion_of_midas: 'gold',
   heralds_of_ragnarok: 'asgard',
   jotunn: 'frost',
+  kurita_prefecture: 'jade',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -111,6 +113,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   legion_of_midas: ECLIPSE_COLOR_PALETTE.gold,
   heralds_of_ragnarok: ECLIPSE_COLOR_PALETTE.asgard,
   jotunn: ECLIPSE_COLOR_PALETTE.frost,
+  kurita_prefecture: ECLIPSE_COLOR_PALETTE.jade,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -697,6 +700,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 3,
     reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
   },
+  {
+    id: 'kurita_prefecture',
+    name: 'Kurita Prefecture',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.jade,
+    startingSectorNumber: 251,
+    startingResources: { money: 2, science: 3, materials: 4 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: ['phase_shield'],
+    traitDescription: 'Honour your enemy with the first shot: In Round 1, opponents take their Missile and 1st Engagement rounds before you shoot; normal speed applies from Round 2+. Honour the Victorious, Fight to the Death: +1 VP on Battle Rep tiles from wins (Dmg Cube) and -1 VP on losses; draw 0 Battle Rep if you retreat any ship; Traitor card is -4 VP. Elite Warriors: +1 to Hit off-board on all ships; Starbases have +1 Hull. Start in Edo (#251) with Phase Shields.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 2,
+    reputationSlots: 4,
+    ambassadorSlots: 2,
+    reputationSlotTypes: ['both', 'both', 'rep_only', 'rep_only'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -718,7 +744,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -768,6 +794,9 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   if (faction.id === 'rho_indi_syndicate') {
     return ['both', 'both', 'rep_only', 'rep_only', 'rep_only'];
   }
+  if (faction.id === 'kurita_prefecture') {
+    return ['both', 'both', 'rep_only', 'rep_only'];
+  }
   const total = faction.reputationSlots ?? (faction.isHuman ? 5 : 4);
   const amb = faction.ambassadorSlots ?? 3;
   const types: ReputationSlotType[] = [];
@@ -798,6 +827,28 @@ export function getMaxReputationTilesForPlayer(player: PlayerState): number {
   return repSlotsAvailable;
 }
 
+export function getReputationTileEffectiveVP(
+  player: Pick<PlayerState, 'faction' | 'reputationBattleOutcomes'>,
+  tileVP: number,
+  repIndex: number,
+  overrideOutcome?: 'win' | 'loss'
+): number {
+  if (player.faction.id !== 'kurita_prefecture') return tileVP;
+  const outcome = overrideOutcome ?? player.reputationBattleOutcomes?.[repIndex];
+  if (outcome === 'win') return tileVP + 1;
+  if (outcome === 'loss') return tileVP - 1;
+  return tileVP;
+}
+
+export function getPlayerReputationVP(
+  player: Pick<PlayerState, 'faction' | 'reputationTiles' | 'reputationBattleOutcomes'>
+): number {
+  return (player.reputationTiles || []).reduce(
+    (sum, val, idx) => sum + getReputationTileEffectiveVP(player, val, idx),
+    0
+  );
+}
+
 export interface ReputationTrackSlotInfo {
   slotIndex: number;
   slotType: ReputationSlotType;
@@ -812,6 +863,8 @@ export interface ReputationTrackSlotInfo {
     | {
         type: 'reputation';
         vp: number;
+        effectiveVp?: number;
+        battleOutcome?: 'win' | 'loss';
         repIndex: number;
       };
 }
@@ -887,9 +940,12 @@ export function getPlayerReputationTrackSlots(
   for (const slot of slots) {
     if (!slot.tile && slot.slotType === 'rep_only' && repIdx < repTiles.length) {
       const vp = repTiles[repIdx];
+      const battleOutcome = player.reputationBattleOutcomes?.[repIdx];
       slot.tile = {
         type: 'reputation',
         vp,
+        effectiveVp: getReputationTileEffectiveVP(player, vp, repIdx),
+        battleOutcome,
         repIndex: repIdx,
       };
       repIdx++;
@@ -899,9 +955,12 @@ export function getPlayerReputationTrackSlots(
   for (const slot of slots) {
     if (!slot.tile && slot.slotType === 'both' && repIdx < repTiles.length) {
       const vp = repTiles[repIdx];
+      const battleOutcome = player.reputationBattleOutcomes?.[repIdx];
       slot.tile = {
         type: 'reputation',
         vp,
+        effectiveVp: getReputationTileEffectiveVP(player, vp, repIdx),
+        battleOutcome,
         repIndex: repIdx,
       };
       repIdx++;
@@ -1163,6 +1222,7 @@ export function buildPlayerAndHomeSector(
       material: { cubesOnBoard: materialCubesRemaining },
     },
     reputationTiles: startingRepTiles,
+    reputationBattleOutcomes: [],
     ambassadorTiles: [],
     ambassadorCubes: {},
     keptDiscoveryTiles: [],

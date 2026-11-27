@@ -267,6 +267,8 @@ export const Header: React.FC<HeaderProps> = ({
               const viewerPlayerId =
                 typeof currentSeat === 'number'
                   ? state.players[currentSeat]?.id
+                  : currentSeat === 'spectator'
+                  ? '__spectator__'
                   : state.players[selectedViewIndex]?.id;
               const isSecretRep =
                 state.phase !== 'GAME_OVER' &&

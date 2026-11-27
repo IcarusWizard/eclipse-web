@@ -63,6 +63,7 @@ import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } 
 import { PlayerState } from '../types/player';
 import {
   getMaxReputationTilesForPlayer,
+  getPlayerReputationVP,
   buildPlayerAndHomeSector,
   getWarpedUniverseStartingCoords,
   STARTING_COORDS_BY_COUNT,
@@ -203,6 +204,24 @@ export function getFactionDisplayColor(color?: string | null, factionName?: stri
 }
 
 /**
+ * Determines whether a viewed player's secret Reputation Tiles must be masked for the current viewer.
+ * Spectators must never bypass hidden reputation privacy by switching between player views.
+ */
+export function shouldHideReputationTiles(
+  currentSeat: number | 'all' | 'spectator',
+  viewedPlayerId: string,
+  players: Pick<PlayerState, 'id'>[],
+  phase: string
+): boolean {
+  if (phase === 'GAME_OVER') return false;
+  if (currentSeat === 'spectator') return true;
+  if (typeof currentSeat === 'number') {
+    return viewedPlayerId !== players[currentSeat]?.id;
+  }
+  return false;
+}
+
+/**
  * Resolves the actual human/player name (e.g. "Alice", "Bob", "Player 1")
  * instead of duplicating the faction's name (which would result in "Faction (Faction)").
  */
@@ -328,6 +347,13 @@ export function canColonizePlanetSlot(
   return { canColonize: true };
 }
 
+export function getTraitorTilePenalty(player?: Pick<PlayerState, 'faction'> | null): number {
+  if (!player) return -2;
+  if (player.faction.id === 'rho_indi_syndicate') return 0;
+  if (player.faction.id === 'kurita_prefecture') return -4;
+  return -2;
+}
+
 export function canExchangeAmbassadors(
   state: { phase?: string; traitorPlayerId?: string | null; players: PlayerState[]; sectors: SectorTile[]; warpedUniverse?: { conduits: any } },
   p1Id: string,
@@ -351,7 +377,8 @@ export function canExchangeAmbassadors(
     return { canExchange: false, reason: 'Already allied (+1 VP).' };
   }
   if (state.traitorPlayerId === p1.id) {
-    return { canExchange: false, reason: `${p1.name} holds the Traitor Tile (-2 VP).` };
+    const pen = getTraitorTilePenalty(p1);
+    return { canExchange: false, reason: `${p1.name} holds the Traitor Tile (${pen} VP).` };
   }
   if (state.traitorPlayerId === p2.id) {
     return { canExchange: false, reason: `${p2.name} holds the Traitor Tile.` };
@@ -516,8 +543,9 @@ function resolveAlliancesBreak(
     }
 
     state.traitorPlayerId = aggressor.id;
+    const traitorPenalty = getTraitorTilePenalty(aggressor);
     addLog(
-      `⚔️ ${aggressor.name} ended movement in allied space of ${allyPlayer?.name || allyId}, breaking the alliance and claiming the Traitor Tile (-2 VP)!`,
+      `⚔️ ${aggressor.name} ended movement in allied space of ${allyPlayer?.name || allyId}, breaking the alliance and claiming the Traitor Tile (${traitorPenalty} VP)!`,
       'combat'
     );
 
@@ -4862,8 +4890,9 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       }
 
       newState.traitorPlayerId = player.id;
+      const traitorPenalty = getTraitorTilePenalty(player);
       addLog(
-        `⚔️ ${player.name} betrayed and broke diplomatic relations with ${targetPlayer.name}, claiming the Traitor Tile (-2 VP)!`,
+        `⚔️ ${player.name} betrayed and broke diplomatic relations with ${targetPlayer.name}, claiming the Traitor Tile (${traitorPenalty} VP)!`,
         'combat'
       );
       return { success: true, newState };
@@ -5709,40 +5738,46 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             newState.activeCombat = null;
 
             // 3. Compute reputation tiles for participating players across all battles in this sector (Bug 170 & Bug 187)
-            const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string }[] = [];
+            const repDrawQueue: { playerId: string; drawnTiles: number[]; sectorId: string; isBattleWin?: boolean }[] = [];
 
             for (const pId of secRecord.participatingPlayerIds) {
+              const participant = newState.players.find((p) => p.id === pId);
+              const isKurita = participant?.faction.id === 'kurita_prefecture';
+              const isWin = Boolean(winnerId && pId === winnerId);
               const isLoser = Boolean(winnerId && pId !== winnerId);
               const playerKills = secRecord.destroyedShips.filter(
                 (casualty) => casualty.killerId === pId && casualty.ownerId !== pId
               );
               const attemptedRetreat = secRecord.retreatedPlayerIds.includes(pId) && !relevantShips.some((s) => s.ownerId === pId);
 
-              // Official Rulebook p. 21 & p. 30:
-              // "RETREAT PENALTY: If all of your remaining Ships attempt to Retreat from a battle,
-              // you do not draw a Reputation Tile for participating in the battle, but still draw
-              // Reputation Tiles for any Ships you destroyed."
-              let tilesCount = attemptedRetreat ? 0 : 1;
-
-              if (isLoser && playerKills.length === 0) {
-                tilesCount = attemptedRetreat ? 0 : 1;
+              // Kurita Prefecture Fight to the Death: retreating ANY ship yields 0 Battle Reputation regardless of kills.
+              // Standard factions (Rulebook p. 21 & p. 30): lose participation tile on full retreat, still draw for kills.
+              let tilesCount = 0;
+              if (isKurita && secRecord.retreatedPlayerIds.includes(pId)) {
+                tilesCount = 0;
               } else {
-                for (const casualty of playerKills) {
-                  if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient' || casualty.type === 'orbital') {
-                    tilesCount += 1;
-                  } else if (casualty.type === 'cruiser' || casualty.type === 'guardian') {
-                    tilesCount += 2;
-                  } else if (casualty.type === 'dreadnought' || casualty.type === 'gcds') {
-                    tilesCount += 3;
+                tilesCount = attemptedRetreat ? 0 : 1;
+
+                if (isLoser && playerKills.length === 0) {
+                  tilesCount = attemptedRetreat ? 0 : 1;
+                } else {
+                  for (const casualty of playerKills) {
+                    if (casualty.type === 'interceptor' || casualty.type === 'starbase' || casualty.type === 'ancient' || casualty.type === 'orbital') {
+                      tilesCount += 1;
+                    } else if (casualty.type === 'cruiser' || casualty.type === 'guardian') {
+                      tilesCount += 2;
+                    } else if (casualty.type === 'dreadnought' || casualty.type === 'gcds') {
+                      tilesCount += 3;
+                    }
                   }
                 }
-              }
 
-              if (attemptedRetreat && playerKills.length === 0) {
-                tilesCount = 0;
-              }
+                if (attemptedRetreat && playerKills.length === 0) {
+                  tilesCount = 0;
+                }
 
-              tilesCount = Math.min(5, tilesCount); // Maximum 5 tiles drawn per sector
+                tilesCount = Math.min(5, tilesCount); // Maximum 5 tiles drawn per sector
+              }
 
               if (tilesCount > 0 && newState.reputationBag.length > 0) {
                 const isCommunityBalance = Boolean(newState.expansions && newState.expansions.includes('community_balance'));
@@ -5772,8 +5807,8 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
                     playerId: pId,
                     drawnTiles: drawn,
                     sectorId: scopeKey,
+                    isBattleWin: isWin,
                   });
-                  const participant = newState.players.find((p) => p.id === pId);
                   if (participant?.faction.id === 'rho_indi_syndicate') {
                     const bountyMoney = Math.max(0, drawn.length - 1);
                     if (bountyMoney > 0) {
@@ -5849,7 +5884,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           }
 
           if (combatRes.completedRetreats && combatRes.completedRetreats.length > 0) {
+            newState.activeCombat.retreatAttemptedPlayerIds = newState.activeCombat.retreatAttemptedPlayerIds || [];
             for (const cr of combatRes.completedRetreats) {
+              if (!newState.activeCombat.retreatAttemptedPlayerIds.includes(cr.ownerId)) {
+                newState.activeCombat.retreatAttemptedPlayerIds.push(cr.ownerId);
+              }
               const destSec = newState.sectors.find((s) => s.id === cr.destinationSectorId);
               const sIdx = sector.ships.findIndex((s) => s.id === cr.shipId);
               if (sIdx >= 0 && destSec) {
@@ -5866,6 +5905,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
               'combat'
             );
           } else if (combatRes.completedRetreat) {
+            newState.activeCombat.retreatAttemptedPlayerIds = newState.activeCombat.retreatAttemptedPlayerIds || [];
+            if (!newState.activeCombat.retreatAttemptedPlayerIds.includes(combatRes.completedRetreat.ownerId)) {
+              newState.activeCombat.retreatAttemptedPlayerIds.push(combatRes.completedRetreat.ownerId);
+            }
             const p = newState.players.find((pl) => pl.id === combatRes.completedRetreat!.ownerId);
             const destSec = newState.sectors.find((s) => s.id === combatRes.completedRetreat!.destinationSectorId);
             const sIdx = sector.ships.findIndex((s) => s.id === combatRes.completedRetreat!.shipId);
@@ -5981,6 +6024,18 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         const keptTile = drawnTiles.splice(action.selectedTileIndex, 1)[0]!;
         const maxRepTiles = getMaxReputationTilesForPlayer(player);
 
+        const battleOutcome: 'win' | 'loss' = newState.pendingReputationDraw?.isBattleWin ? 'win' : 'loss';
+        player.reputationBattleOutcomes = player.reputationBattleOutcomes || [];
+        while (player.reputationBattleOutcomes.length < player.reputationTiles.length) {
+          player.reputationBattleOutcomes.push('loss');
+        }
+        const honourTag =
+          player.faction.id === 'kurita_prefecture'
+            ? battleOutcome === 'win'
+              ? ` (+1 Honour Win Dmg Cube = ${keptTile + 1} VP)`
+              : ` (-1 Honour Loss = ${keptTile - 1} VP)`
+            : '';
+
         if (
           player.reputationTiles.length >= maxRepTiles &&
           action.replaceTrackIndex !== undefined &&
@@ -5988,17 +6043,20 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           action.replaceTrackIndex < player.reputationTiles.length
         ) {
           const [oldTile] = player.reputationTiles.splice(action.replaceTrackIndex, 1);
+          player.reputationBattleOutcomes.splice(action.replaceTrackIndex, 1);
           if (oldTile !== undefined) {
             newState.reputationBag.push(oldTile);
           }
           player.reputationTiles.push(keptTile);
+          player.reputationBattleOutcomes.push(battleOutcome);
           addLog(
-            `${player.name} placed a ${keptTile} VP Reputation Tile on their track (replaced ${oldTile} VP).`,
+            `${player.name} placed a ${keptTile} VP Reputation Tile on their track${honourTag} (replaced ${oldTile} VP).`,
             'combat'
           );
         } else if (player.reputationTiles.length < maxRepTiles) {
           player.reputationTiles.push(keptTile);
-          addLog(`${player.name} placed a ${keptTile} VP Reputation Tile on their track.`, 'combat');
+          player.reputationBattleOutcomes.push(battleOutcome);
+          addLog(`${player.name} placed a ${keptTile} VP Reputation Tile on their track${honourTag}.`, 'combat');
         } else {
           newState.reputationBag.push(keptTile);
           addLog(
@@ -8537,6 +8595,16 @@ export function checkAndTriggerCombat(state: GameState): void {
       state.expansions
     );
     const hasMissiles = combatUnits.some((u) => u.weapons.some((w) => w.isMissile));
+    const kuritaDelayedPlayerIds = duelParticipants.filter(
+      (id) => state.players.find((p) => p.id === id)?.faction.id === 'kurita_prefecture'
+    );
+    const hasKuritaFirstShotDelay =
+      kuritaDelayedPlayerIds.length > 0 && kuritaDelayedPlayerIds.length < duelParticipants.length;
+    const hasInitialMissiles = hasKuritaFirstShotDelay
+      ? combatUnits.some(
+          (u) => !kuritaDelayedPlayerIds.includes(u.ownerId) && u.weapons.some((w) => w.isMissile)
+        )
+      : hasMissiles;
 
       state.activeCombat = {
         sectorId: sector.id,
@@ -8545,13 +8613,14 @@ export function checkAndTriggerCombat(state: GameState): void {
         defenderOwnerId: defenderOwnerId || getSectorDefenderOwnerId(sector, state.players),
         participatingPlayerIds: duelParticipants,
         roundNumber: 1,
-        stage: hasMissiles ? 'missile' : 'regular',
+        stage: hasInitialMissiles ? 'missile' : 'regular',
         initiativeOrder: [],
         currentTurnIndex: 0,
         lastRolls: [],
         retreatDeclared: {},
         missileFiredShipIds: [],
         roundActedGroupKeys: [],
+        kuritaDelayedPlayerIds: hasKuritaFirstShotDelay ? kuritaDelayedPlayerIds : undefined,
       };
       state.phase = 'COMBAT_PHASE';
       return;
@@ -9214,8 +9283,8 @@ export function computeCurrentScores(state: GameState): {
     const monolithCount = controlledSectors.filter((s) => s.structures?.monolith || s.hasMonolith).length;
     const monolithVP = monolithCount * 3;
 
-    // 3. Reputation tiles (sum of tiles)
-    const repVP = p.reputationTiles.reduce((sum, val) => sum + val, 0);
+    // 3. Reputation tiles (sum of tiles, including Kurita Prefecture +1 win / -1 loss modifiers)
+    const repVP = getPlayerReputationVP(p);
 
     // 4. Technology VP: Track VP (1/2/3/5 VP for 4/5/6/7 techs per track) + printed tile VP
     const mCount = Math.max(
@@ -9322,9 +9391,8 @@ export function computeCurrentScores(state: GameState): {
       speciesBonus += dreadnoughtsOnBoard;
     }
 
-    // 9. Traitor Tile Penalty (-2 VP)
-    const isRhoIndi = p.faction.id === 'rho_indi_syndicate';
-    const traitorVP = state.traitorPlayerId === p.id && !isRhoIndi ? -2 : 0;
+    // 9. Traitor Tile Penalty (-2 VP normally, -4 VP for Kurita Prefecture, 0 for Rho Indi)
+    const traitorVP = state.traitorPlayerId === p.id ? getTraitorTilePenalty(p) : 0;
 
     const total = sectorVP + monolithVP + repVP + techVP + ambassadorVP + discoveryVP + discoveryWarpPortalVP + artifactCodexVP + ancientMightVP + speciesBonus + traitorVP;
 

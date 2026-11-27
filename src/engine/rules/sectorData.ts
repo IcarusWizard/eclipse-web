@@ -418,6 +418,20 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'jt_p3', resource: 'material', isAdvanced: true },
     ],
   },
+  kurita_prefecture: {
+    sectorNumber: 251,
+    name: 'Edo',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'kp_p1', resource: 'science', isAdvanced: false },
+      { id: 'kp_p2', resource: 'money', isAdvanced: false },
+      { id: 'kp_p3', resource: 'material', isAdvanced: true },
+      { id: 'kp_p4', resource: 'science', isAdvanced: true },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

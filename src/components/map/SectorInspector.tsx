@@ -23,9 +23,14 @@ export function getSubsectorEdgesDescription(subIdx: 1 | 2 | 3, rotation: number
   const boardEdgeB = ((eB + rot) % 6) as HexEdge;
   return `Edges ${EDGE_NAMES[boardEdgeA]} & ${EDGE_NAMES[boardEdgeB]}`;
 }
-import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
+import { calculateBlueprintStats, inferModularExternalGroup } from '../../engine/rules/shipValidation';
+import { getEffectiveShipPart } from '../../engine/rules/partData';
 import { getPlayerDisplayName } from '../../engine/rules/gameReducer';
 import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
+import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
+import type { WarpedUniverseState } from '../../engine/rules/warpedUniverse';
+import { getWarpConduitForSectorEdge } from '../../engine/rules/warpedUniverse';
+import { areCoordsEqual, hasWormholeOnEdge } from '../../engine/rules/hexMath';
 import {
   Rocket,
   Shield,
@@ -68,6 +73,9 @@ interface SectorInspectorProps {
   players: PlayerState[];
   activePlayer: PlayerState;
   neutralShipBlueprints?: Partial<NeutralShipConfig>;
+  expansions?: string[];
+  warpedUniverse?: WarpedUniverseState | null;
+  allSectors?: SectorTile[];
   onColonizePlanet?: (
     sectorId: string,
     planetIndex: number,
@@ -90,6 +98,9 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   players,
   activePlayer,
   neutralShipBlueprints,
+  expansions,
+  warpedUniverse,
+  allSectors,
   onColonizePlanet,
   onAbandonInfluence,
   onClose,
@@ -111,6 +122,62 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
   const isPulsar = Boolean(sector.isPulsar || sector.sectorNumber === 393 || sector.sectorNumber === 394);
   const isBlackHole = Boolean(sector.isBlackHole || sector.sectorNumber === 396 || sector.sectorNumber === 399);
   const isSupernova = Boolean(sector.isSupernova || sector.sectorNumber === 397 || sector.sectorNumber === 398);
+
+  const hasWarpPortal = Boolean(
+    sector.hasWarpPortal ||
+      (sector as any).structures?.warpPortal ||
+      sector.hasRareWarpPortal ||
+      sector.hasDiscoveryWarpPortal ||
+      sector.sectorNumber === 281 ||
+      sector.sectorNumber === 381 ||
+      sector.sectorNumber === 382
+  );
+  const warpPortalVP = sector.hasRareWarpPortal ? 1 : sector.hasDiscoveryWarpPortal ? 2 : 0;
+  const monolithVP = sector.structures?.monolith || (sector as any).hasMonolith ? 3 : 0;
+  const totalSectorVP = (sector.victoryPoints || 0) + monolithVP + warpPortalVP;
+  const vpDetailParts: string[] = [];
+  if (monolithVP > 0) {
+    vpDetailParts.push(l('+3 Monolith', '+3 巨石柱'));
+  }
+  if (warpPortalVP > 0) {
+    vpDetailParts.push(
+      sector.hasRareWarpPortal
+        ? l('+1 Rare Warp Portal', '+1 稀有传送门')
+        : l('+2 Discovery Warp Portal', '+2 探索传送门')
+    );
+  }
+
+  const hasOrbitalStructure = Boolean(
+    sector.structures?.orbital || sector.planets.some((p) => p.isOrbital)
+  );
+  const shrineEntries: { ownerId: string; planetIndex?: number; resource?: string }[] = [];
+  sector.planets.forEach((p, idx) => {
+    if (p.shrineOwner) {
+      shrineEntries.push({ ownerId: p.shrineOwner, planetIndex: idx + 1, resource: p.resource });
+    }
+  });
+  if (shrineEntries.length === 0 && sector.shrineOwner) {
+    shrineEntries.push({ ownerId: sector.shrineOwner });
+  }
+
+  const warpedConduitLinks = React.useMemo(() => {
+    if (!warpedUniverse?.conduits?.length) return [];
+    const links: { edge: HexEdge; targetCoord: { q: number; r: number }; targetSectorNum?: number }[] = [];
+    for (let e = 0; e < 6; e++) {
+      const edge = e as HexEdge;
+      if (!hasWormholeOnEdge(sector, edge)) continue;
+      const conduit = getWarpConduitForSectorEdge(sector.coord, edge, warpedUniverse.conduits);
+      if (!conduit) continue;
+      const targetSec = allSectors?.find((s) => areCoordsEqual(s.coord, conduit.targetCoord));
+      if (targetSec && !hasWormholeOnEdge(targetSec, conduit.targetEdge)) continue;
+      links.push({
+        edge,
+        targetCoord: conduit.targetCoord,
+        targetSectorNum: targetSec?.sectorNumber,
+      });
+    }
+    return links;
+  }, [warpedUniverse, sector, allSectors]);
 
   // Group ships by owner
   const shipsByOwner = new Map<string, SectorShip[]>();
@@ -168,8 +235,8 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
             </div>
             <div className="text-[10px] text-slate-400">
               {l(
-                `${isCenter ? 'Galactic Center' : `Ring ${sector.ring} Orbit`} • Coord: (${sector.coord.q}, ${sector.coord.r}) • ${sector.victoryPoints + (sector.structures?.monolith ? 3 : 0)} Victory Points${sector.structures?.monolith ? ` (${sector.victoryPoints} Base + 3 Monolith)` : ''}`,
-                `${isCenter ? '银河中心' : `第 ${sector.ring} 环轨道`} • 坐标: (${sector.coord.q}, ${sector.coord.r}) • ${sector.victoryPoints + (sector.structures?.monolith ? 3 : 0)} VP${sector.structures?.monolith ? ` (${sector.victoryPoints} 基础 + 3 巨石柱)` : ''}`
+                `${isCenter ? 'Galactic Center' : `Ring ${sector.ring} Orbit`} • Coord: (${sector.coord.q}, ${sector.coord.r}) • ${totalSectorVP} Victory Points${vpDetailParts.length > 0 ? ` (${sector.victoryPoints} Base ${vpDetailParts.join(' ')})` : ''}`,
+                `${isCenter ? '银河中心' : `第 ${sector.ring} 环轨道`} • 坐标: (${sector.coord.q}, ${sector.coord.r}) • ${totalSectorVP} VP${vpDetailParts.length > 0 ? ` (${sector.victoryPoints} 基础 ${vpDetailParts.join(' ')})` : ''}`
               )}
             </div>
           </div>
@@ -517,7 +584,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                         const firstShip = typeShips[0]!;
                         const pl = players.find((p) => p.id === ownerId);
                         const bp = pl ? pl.blueprints[type] : null;
-                        const stats = bp ? calculateBlueprintStats(bp) : null;
+                        const stats = bp ? calculateBlueprintStats(bp, expansions) : null;
 
                         const isNpcBlueprint = isNpc && (type === 'ancient' || type === 'guardian' || type === 'gcds');
                         const npcVariant = neutralShipBlueprints?.[type as NeutralShipType] || 'standard';
@@ -597,7 +664,32 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                               </span>
                             </div>
 
-                            {/* Square-Box Blueprint View for NPCs */}
+                            {/* Square-Box Blueprint View for Player Ships & NPCs */}
+                            {bp && pl && (
+                              <div
+                                data-testid={`sector-player-blueprint-${pl.id}-${type}`}
+                                className="p-2 rounded-lg bg-slate-900/70 border border-slate-800/80 flex items-center justify-center overflow-x-auto"
+                              >
+                                <ShipBlueprintSlotsLayout
+                                  shipType={bp.type}
+                                  factionId={pl.faction.id}
+                                  slots={(bp.slots || []).map((s) => (s ? getEffectiveShipPart(s, expansions) : null))}
+                                  maxSlots={bp.maxSlots}
+                                  preprintedPower={bp.preprintedPower}
+                                  preprintedComputer={bp.preprintedComputer}
+                                  preprintedShield={bp.preprintedShield}
+                                  preprintedHull={bp.preprintedHull}
+                                  baseInitiative={bp.baseInitiative}
+                                  externalParts={(bp.externalParts || []).map((p) => getEffectiveShipPart(p, expansions))}
+                                  externalModularGroup={
+                                    pl.faction.id === 'mega_war_inc'
+                                      ? inferModularExternalGroup(pl.blueprints as any, 'muon_source')
+                                      : null
+                                  }
+                                  size="sm"
+                                />
+                              </div>
+                            )}
                             {npcBp && (
                               <div className="p-2 rounded-lg bg-slate-900/70 border border-slate-800/80 flex items-center justify-center">
                                 <NeutralShipBlueprintLayout blueprint={npcBp} size="sm" />
@@ -757,6 +849,18 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                               {isOrb ? l('Orbital', '轨道站') : isWild ? l('Wild', '任意') : l('Standard', '标准')}
                             </span>
                           )}
+                          {planet.shrineOwner && (() => {
+                            const shrinePl = players.find((p) => p.id === planet.shrineOwner);
+                            return (
+                              <span className="text-[9px] px-1.5 py-0.2 rounded bg-orange-950/90 border border-orange-500/60 text-orange-200 font-bold flex items-center gap-1">
+                                <span
+                                  className="w-2 h-2 rounded-full shrink-0"
+                                  style={{ backgroundColor: shrinePl?.color || '#f97316' }}
+                                />
+                                {l('Shrine', '圣殿')}
+                              </span>
+                            );
+                          })()}
                         </div>
 
                         {colonizer ? (
@@ -851,12 +955,120 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
         )}
 
         {/* Special Features & Structures */}
-        {(isPulsar || isBlackHole || sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile || sector.structures?.monolith || (sector.guardiansCount && sector.guardiansCount > 0)) && (
-          <div className="pt-2 border-t border-slate-800/80 space-y-2">
+        {(isPulsar || isBlackHole || hasWarpPortal || warpedConduitLinks.length > 0 || shrineEntries.length > 0 || hasOrbitalStructure || sector.hasArtifact || sector.hasDiscovery || sector.discoveryTile || sector.structures?.monolith || (sector as any).hasMonolith) && (
+          <div data-testid="sector-special-features" className="pt-2 border-t border-slate-800/80 space-y-2">
             <h4 className="font-bold text-slate-300 uppercase tracking-wider text-[11px] flex items-center gap-1.5">
               <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               {l('Special Features & Structures', '特殊地形与建筑')}
             </h4>
+
+            {hasWarpPortal && (
+              <div
+                data-testid="sector-feature-warp-portal"
+                className="p-2.5 rounded-lg bg-purple-950/40 border border-purple-600/60 space-y-1"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-purple-300 font-bold flex items-center gap-1.5">
+                    <Radio className="w-3.5 h-3.5 text-purple-400" />
+                    {sector.hasRareWarpPortal
+                      ? l('Warp Portal (Rare Tech)', '折跃传送门（稀有科技）')
+                      : sector.hasDiscoveryWarpPortal
+                      ? l('Warp Portal (Discovery Tile)', '折跃传送门（探索板块）')
+                      : l('Warp Portal (Sector Wormhole)', '折跃传送门（星区内置）')}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-purple-900/60 text-purple-200 font-mono font-bold border border-purple-500/60">
+                    {warpPortalVP > 0 ? l(`+${warpPortalVP} VP`, `+${warpPortalVP} VP`) : l('Warp Network', '传送网络')}
+                  </span>
+                </div>
+                <p className="text-[10px] text-slate-300">
+                  {l(
+                    'All sectors containing a Warp Portal are treated as directly connected via wormhole for movement, exploration, and diplomatic supply.',
+                    '所有拥有折跃传送门的星区均视为通过虫洞直接相连，可用于移动、探索及外交连通。'
+                  )}
+                </p>
+              </div>
+            )}
+
+            {warpedConduitLinks.length > 0 && (
+              <div
+                data-testid="sector-feature-warped-conduit"
+                className="p-2.5 rounded-lg bg-fuchsia-950/35 border border-fuchsia-600/50 space-y-1"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-fuchsia-300 font-bold flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-fuchsia-400" />
+                    {l('Warped Sector Wormhole Conduit', '扭曲宇宙虫洞流线')}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-fuchsia-900/60 text-fuchsia-200 font-mono font-bold border border-fuchsia-500/60">
+                    {warpedConduitLinks.length} {l('Link(s)', '条流线')}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-300 space-y-0.5">
+                  {warpedConduitLinks.map((lnk) => (
+                    <div key={lnk.edge} className="font-mono">
+                      • {EDGE_NAMES[lnk.edge]} ➔{' '}
+                      {lnk.targetSectorNum !== undefined
+                        ? l(`Sector ${lnk.targetSectorNum}`, `星区 ${lnk.targetSectorNum}`)
+                        : `(${lnk.targetCoord.q}, ${lnk.targetCoord.r})`}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {shrineEntries.length > 0 && (
+              <div
+                data-testid="sector-feature-shrine"
+                className="p-2.5 rounded-lg bg-orange-950/40 border border-orange-600/60 space-y-1"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-orange-300 font-bold flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-orange-400" />
+                    {l(
+                      shrineEntries.length > 1 ? `Lyra Shrines (${shrineEntries.length})` : 'Lyra Shrine',
+                      shrineEntries.length > 1 ? `天琴座圣殿 (${shrineEntries.length})` : '天琴座圣殿'
+                    )}
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-orange-900/60 text-orange-200 font-mono font-bold border border-orange-500/60">
+                    {l('Sacred Matrix', '神圣矩阵')}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-300 space-y-0.5">
+                  {shrineEntries.map((entry, idx) => {
+                    const ownerPl = players.find((p) => p.id === entry.ownerId);
+                    return (
+                      <div key={`${entry.ownerId}_${idx}`} className="flex items-center gap-1.5">
+                        <span
+                          className="w-2 h-2 rounded-full shrink-0"
+                          style={{ backgroundColor: ownerPl?.color || '#f97316' }}
+                        />
+                        <span>
+                          {ownerPl ? getPlayerDisplayName(ownerPl) : l('Enlightened of Lyra', '天琴开悟者')}
+                          {entry.planetIndex !== undefined
+                            ? ` • ${l(`Planet #${entry.planetIndex}`, `行星 #${entry.planetIndex}`)} (${translateResourceType(entry.resource || 'any', language)})`
+                            : ''}
+                        </span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {hasOrbitalStructure && (
+              <div
+                data-testid="sector-feature-orbital"
+                className="p-2 rounded-lg bg-cyan-950/35 border border-cyan-700/60 flex items-center justify-between"
+              >
+                <span className="text-cyan-300 font-bold flex items-center gap-1.5">
+                  <CircleDot className="w-3.5 h-3.5 text-cyan-400" />
+                  {l('Orbital Structure', '轨道站建筑')}
+                </span>
+                <span className="text-[10px] px-2 py-0.5 rounded bg-cyan-900/50 text-cyan-200 font-mono font-bold border border-cyan-700/60">
+                  {l('Money / Science Habitat', '信用点/科研栖息位')}
+                </span>
+              </div>
+            )}
 
             {isPulsar && (
               <div className="p-3 rounded-xl bg-cyan-950/40 border border-cyan-600/60 space-y-2.5">
@@ -1006,18 +1218,6 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                 </span>
                 <span className="text-[10px] px-2 py-0.5 rounded bg-indigo-900/60 text-indigo-200 font-mono font-bold border border-indigo-600">
                   {l('+3 Victory Points', '+3 VP')}
-                </span>
-              </div>
-            )}
-
-            {Boolean(sector.guardiansCount && sector.guardiansCount > 0) && (
-              <div className="p-2 rounded-lg bg-pink-950/40 border border-pink-700/60 flex items-center justify-between">
-                <span className="text-pink-300 font-bold flex items-center gap-1.5">
-                  <Shield className="w-3.5 h-3.5 text-pink-400" />
-                  {l(`Guardian Defender (Sector ${sector.sectorNumber})`, `守护者防卫舰 (星区 ${sector.sectorNumber})`)}
-                </span>
-                <span className="text-[10px] px-2 py-0.5 rounded bg-pink-900/60 text-pink-200 font-mono font-bold border border-pink-600">
-                  {l('3 Hull • 3 Ion Dice • 2 VP', '3 耐久 • 3 离子骰 • 2 VP')}
                 </span>
               </div>
             )}

@@ -619,6 +619,23 @@ export function sanitizeLoadedGameState(state: GameState): GameState {
       }
     }
   }
+  for (const p of state.players) {
+    if (p?.faction?.id === 'kurita_prefecture') {
+      (p.faction as any).researchActivations = 1;
+      if (p.color?.toLowerCase() === '#e11d48') {
+        (p as any).color = '#34d399';
+      }
+      if (p.faction.defaultColor?.toLowerCase() === '#e11d48') {
+        (p.faction as any).defaultColor = '#34d399';
+      }
+    }
+    if (p?.faction?.id === 'planta' && p.blueprints) {
+      if (p.blueprints.interceptor) (p.blueprints.interceptor as any).baseInitiative = 0;
+      if (p.blueprints.cruiser) (p.blueprints.cruiser as any).baseInitiative = 0;
+      if (p.blueprints.dreadnought) (p.blueprints.dreadnought as any).baseInitiative = 0;
+      if (p.blueprints.starbase) (p.blueprints.starbase as any).baseInitiative = 2;
+    }
+  }
   return state;
 }
 

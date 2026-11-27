@@ -55,12 +55,14 @@ export const LightningPip: React.FC<{
 export const InitiativeBadge: React.FC<{
   init: number;
   size?: 'xs' | 'sm' | 'md';
+  maxChevrons?: number;
+  testId?: string;
   className?: string;
-}> = ({ init, size = 'md', className = '' }) => {
+}> = ({ init, size = 'md', maxChevrons = 3, testId, className = '' }) => {
   if (init === 0) return null;
   const absInit = Math.abs(init);
   const isPositive = init > 0;
-  const chevronCount = Math.min(absInit, 3);
+  const chevronCount = Math.min(absInit, maxChevrons);
   const paddingClass =
     size === 'xs'
       ? 'px-0.5 py-[1px] -space-y-[2px]'
@@ -74,6 +76,7 @@ export const InitiativeBadge: React.FC<{
     <div
       title={`${isPositive ? `+${init}` : init} Initiative`}
       data-initiative-arrows={chevronCount}
+      data-testid={testId}
       className={`inline-flex flex-col items-center justify-center ${paddingClass} rounded-[3px] bg-slate-950/95 border ${
         isPositive ? 'border-amber-400/80 text-amber-300' : 'border-rose-500/80 text-rose-400'
       } shadow-xs select-none shrink-0 ${className}`}

@@ -30,7 +30,8 @@ export type FactionId =
   | 'the_spiral'
   | 'legion_of_midas'
   | 'heralds_of_ragnarok'
-  | 'jotunn';
+  | 'jotunn'
+  | 'kurita_prefecture';
 
 export interface FactionInfo {
   readonly id: FactionId;
@@ -117,6 +118,8 @@ export interface PlayerState {
     material: PopulationTrack;
   };
   reputationTiles: number[]; // Array of victory points drawn from bag (e.g. 1, 2, 3, 4)
+  /** Kurita Prefecture Honour: tracks whether each kept Reputation Tile came from winning ('win', +1 VP) or losing ('loss', -1 VP) a battle. */
+  reputationBattleOutcomes?: ('win' | 'loss')[];
   ambassadorTiles: string[]; // Player IDs of alliances
   ambassadorCubes?: Record<string, 'money' | 'science' | 'material'>; // Population cube assigned to each alliance
   keptDiscoveryTiles: DiscoveryTile[]; // 2 VP each at game end

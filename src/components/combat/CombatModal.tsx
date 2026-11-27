@@ -207,6 +207,7 @@ export const CombatShipBlueprintPreview: React.FC<{
       preprintedComputer={bp.preprintedComputer}
       preprintedShield={bp.preprintedShield}
       preprintedHull={bp.preprintedHull}
+      baseInitiative={bp.baseInitiative}
       externalParts={effectiveExternal}
       size="sm"
     />
@@ -868,6 +869,30 @@ export const CombatModal: React.FC<CombatModalProps> = ({
 
         {/* Combat Field */}
         <div className="p-6 space-y-6 overflow-y-auto">
+          {!isResolved &&
+            combat.roundNumber === 1 &&
+            combat.kuritaDelayedPlayerIds &&
+            combat.kuritaDelayedPlayerIds.length > 0 && (
+              <div
+                data-testid="kurita-first-shot-banner"
+                className="flex items-start gap-2.5 px-3.5 py-2.5 rounded-xl bg-rose-950/50 border border-rose-500/60 text-xs text-rose-200"
+              >
+                <span className="px-1.5 py-0.5 rounded bg-amber-500/20 border border-amber-400/70 text-amber-300 font-black font-mono text-[10px] shrink-0">
+                  2nd
+                </span>
+                <div>
+                  <div className="font-bold text-rose-100">
+                    {l('Honour your enemy with the first shot', '礼让先手（栗田武士荣耀法则）')}
+                  </div>
+                  <div className="text-[11px] text-rose-200/90 mt-0.5">
+                    {l(
+                      'In Round 1, opponents execute their Missile round and first Engagement cannons BEFORE Kurita shoots Missiles or cannons. Normal initiative speed applies from Round 2.',
+                      '战斗第 1 回合中，对手先执行导弹阶段与首轮常规炮击，随后才轮到栗田幕府发射导弹与常规炮击。自第 2 回合起恢复正常先攻速度规则。'
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           {/* Opposing Forces Fleet Roster: Attacker (Left) vs Defender (Right) */}
           <div className="space-y-3">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2">

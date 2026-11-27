@@ -31,8 +31,8 @@ import { TechTileIconography, ShipPartSlotGraphic, getPartTooltip, TechHoverTool
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
 import { MegaWarModularStrip } from '../blueprints/MegaWarModularStrip';
 import { ShipTypeIcon, shouldShowShipTypeIcon } from '../common/ShipTypeIcon';
-import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
-import { getPlayerShortName, getPlayerDisplayName, playerHasWormholeGenerator, canExchangeAmbassadors } from '../../engine/rules/gameReducer';
+import { getPlayerReputationTrackSlots, getPlayerReputationVP } from '../../engine/rules/setup';
+import { getPlayerShortName, getPlayerDisplayName, getTraitorTilePenalty, playerHasWormholeGenerator, canExchangeAmbassadors } from '../../engine/rules/gameReducer';
 import {
   X,
   Zap,
@@ -619,7 +619,9 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
           {(activeTab === 'all' || activeTab === 'reputation') && (
             <div className="bg-slate-950/80 border border-slate-800 rounded-xl p-4 sm:p-5 shadow-lg space-y-4">
               {/* Traitor Tile Warning Banner */}
-              {traitorPlayerId === player.id && (
+              {traitorPlayerId === player.id && (() => {
+                const traitorPenalty = getTraitorTilePenalty(player);
+                return (
                 <div className="bg-rose-950/70 border-2 border-rose-500 rounded-xl p-3.5 shadow-xl shadow-rose-950/50 flex items-center justify-between gap-4">
                   <div className="flex items-center gap-3">
                     <div className="w-10 h-10 rounded-xl bg-rose-600/30 border border-rose-500 flex items-center justify-center text-rose-300 shrink-0">
@@ -629,19 +631,20 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       <div className="text-sm font-extrabold font-display text-rose-200 flex items-center gap-2">
                         {l('TRAITOR TILE IN POSSESSION', '持有背叛者板块')}
                         <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-rose-900 border border-rose-700 text-rose-300">
-                          {l('-2 VP Penalty', '-2 VP 惩罚')}
+                          {l(`${traitorPenalty} VP Penalty`, `${traitorPenalty} VP 惩罚`)}
                         </span>
                       </div>
                       <p className="text-xs text-rose-300/90 mt-0.5">
                         {l(
-                          'This commander entered allied territory, breaking diplomatic relations. Suffers a -2 VP endgame penalty and cannot establish new alliances while holding this tile.',
-                          '该指挥官侵入了盟友星区并打破了外交关系。持有此板块期间终局 -2 VP，且无法建立新的同盟。'
+                          `This commander entered allied territory, breaking diplomatic relations. Suffers a ${traitorPenalty} VP endgame penalty and cannot establish new alliances while holding this tile.`,
+                          `该指挥官侵入了盟友星区并打破了外交关系。持有此板块期间终局 ${traitorPenalty} VP，且无法建立新的同盟。`
                         )}
                       </p>
                     </div>
                   </div>
                 </div>
-              )}
+                );
+              })()}
 
               <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-800/80 pb-3">
                 <div className="flex items-center gap-2">
@@ -652,7 +655,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-amber-950/60 border border-amber-600/60 text-amber-300">
                         {l('Total:', '总计:')} {hideOpponentReputation
                           ? l(`${player.ambassadorTiles?.length || 0} Amb VP + ? Rep VP`, `${player.ambassadorTiles?.length || 0} 大使 VP + ? 声望 VP`)
-                          : `${(player.ambassadorTiles?.length || 0) + player.reputationTiles.reduce((a, b) => a + b, 0)} VP`}
+                          : `${(player.ambassadorTiles?.length || 0) + getPlayerReputationVP(player)} VP`}
                       </span>
                     </h2>
                     <p className="text-xs text-slate-400">
@@ -684,8 +687,11 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       const allyId = isAmbassadorSlot ? slot.tile?.allyId : null;
                       const ally = allyId ? players.find((p) => p.id === allyId) : null;
 
-                      const isRepSlot = slot.tile?.type === 'reputation';
-                      const repTile = isRepSlot ? slot.tile?.vp : undefined;
+                      const repTileObj = slot.tile?.type === 'reputation' ? slot.tile : null;
+                      const isRepSlot = Boolean(repTileObj);
+                      const repTile = repTileObj?.vp;
+                      const repEffectiveVp = repTileObj ? (repTileObj.effectiveVp ?? repTile) : undefined;
+                      const repOutcome = repTileObj?.battleOutcome;
                       const hasRepTile = isRepSlot;
 
                       return (
@@ -745,14 +751,43 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             </div>
                           ) : hasRepTile ? (
                             <div className="flex flex-col items-center">
-                              <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300 shadow-md">
-                                <Trophy className="w-5 h-5 text-amber-400" />
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-9 h-9 rounded-lg bg-amber-500/20 border border-amber-400 flex items-center justify-center text-amber-300 shadow-md">
+                                  <Trophy className="w-5 h-5 text-amber-400" />
+                                </div>
+                                {player.faction.id === 'kurita_prefecture' && (
+                                  <div
+                                    data-testid={`kurita-rep-honour-slot-${slot.slotIndex}`}
+                                    className={`w-6 h-6 rounded border flex items-center justify-center text-[9px] font-black font-mono ${
+                                      repOutcome === 'win'
+                                        ? 'bg-rose-600/80 border-rose-300 text-white shadow'
+                                        : repOutcome === 'loss'
+                                        ? 'bg-slate-900 border-rose-500/70 text-rose-300'
+                                        : 'bg-slate-950/80 border-slate-800 text-slate-600'
+                                    }`}
+                                    title={
+                                      repOutcome === 'win'
+                                        ? l('Dmg Cube placed: +1 VP Honour Win bonus', '已放置伤害方块：胜战荣耀 +1 VP')
+                                        : repOutcome === 'loss'
+                                        ? l('Battle Lost: -1 VP Honour penalty', '战败：荣耀 -1 VP')
+                                        : l('Honour Dmg Cube slot', '荣耀胜负方块格')
+                                    }
+                                  >
+                                    {repOutcome === 'win' ? '■+1' : repOutcome === 'loss' ? '-1' : '□'}
+                                  </div>
+                                )}
                               </div>
                               <span className="text-base font-extrabold font-display text-amber-300 mt-0.5">
-                                {hideOpponentReputation ? '? VP' : `+${repTile} VP`}
+                                {hideOpponentReputation ? '? VP' : `+${repEffectiveVp} VP`}
                               </span>
                               <span className="text-[10px] text-slate-400">
-                                {hideOpponentReputation ? l('Secret Tile', '保密板块') : l(`${repTile} Rep`, `${repTile} 声望`)}
+                                {hideOpponentReputation
+                                  ? l('Secret Tile', '保密板块')
+                                  : repOutcome === 'win'
+                                  ? l(`${repTile} + 1 Win`, `${repTile} + 1 胜`)
+                                  : repOutcome === 'loss'
+                                  ? l(`${repTile} - 1 Loss`, `${repTile} - 1 败`)
+                                  : l(`${repTile} Rep`, `${repTile} 声望`)}
                               </span>
                             </div>
                           ) : (
@@ -794,8 +829,8 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                     </h3>
                     <p className="text-[11px] text-slate-400">
                       {l(
-                        'Exchange ambassadors with connected species in games with 4+ players (+1 VP each). Moving into allied space or betraying breaks the alliance and claims the Traitor Tile (-2 VP).',
-                        '在 4 人及以上对局中可与连通星区的玩家交换大使（双方各 +1 VP）。进入盟友领地或主动背叛将打破同盟并拿取背叛者板块 (-2 VP)。'
+                        `Exchange ambassadors with connected species in games with 4+ players (+1 VP each). Moving into allied space or betraying breaks the alliance and claims the Traitor Tile (${getTraitorTilePenalty(player)} VP).`,
+                        `在 4 人及以上对局中可与连通星区的玩家交换大使（双方各 +1 VP）。进入盟友领地或主动背叛将打破同盟并拿取背叛者板块 (${getTraitorTilePenalty(player)} VP)。`
                       )}
                     </p>
                   </div>
@@ -1770,6 +1805,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             preprintedComputer={bp?.preprintedComputer}
                             preprintedShield={bp?.preprintedShield}
                             preprintedHull={bp?.preprintedHull}
+                            baseInitiative={bp?.baseInitiative}
                             externalParts={bp?.externalParts || []}
                             externalModularGroup={
                               player.faction.id === 'mega_war_inc'

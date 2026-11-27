@@ -23,8 +23,8 @@ import {
   Handshake,
   Swords,
 } from 'lucide-react';
-import { canExchangeAmbassadors, getPlayerDisplayName } from '../../engine/rules/gameReducer';
-import { getPlayerReputationTrackSlots } from '../../engine/rules/setup';
+import { canExchangeAmbassadors, getPlayerDisplayName, getTraitorTilePenalty } from '../../engine/rules/gameReducer';
+import { getPlayerReputationTrackSlots, getPlayerReputationVP } from '../../engine/rules/setup';
 import { ALL_MINOR_SPECIES_TILES, MinorSpeciesTile } from '../../engine/rules/minorSpecies';
 import { useLanguage } from '../../i18n/LanguageContext';
 import { ShipTypeIcon } from '../common/ShipTypeIcon';
@@ -109,7 +109,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
   const sciForecast = getIncomeForecast(player.population.science.cubesOnBoard);
   const matForecast = getIncomeForecast(player.population.material.cubesOnBoard);
 
-  const reputationVP = player.reputationTiles.reduce((a, b) => a + b, 0);
+  const reputationVP = getPlayerReputationVP(player);
   const trackSlots = getPlayerReputationTrackSlots(player, allPlayers);
   const occupiedSlotCount = trackSlots.filter((s) => Boolean(s.tile)).length;
   const totalShipsDeployed = deployed.interceptor + deployed.cruiser + deployed.dreadnought + deployed.starbase;
@@ -118,7 +118,7 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
     ? allPlayers.find((p) => p.id === traitorPlayerId) || (traitorPlayerId === player.id ? player : null)
     : null;
   const isSelfTraitor = traitorPlayer?.id === player.id;
-  const traitorVpPenalty = traitorPlayer?.faction.id === 'rho_indi_syndicate' ? 0 : -2;
+  const traitorVpPenalty = getTraitorTilePenalty(traitorPlayer);
   const traitorSelfBadgeText = l(`🗡️ Traitor (${traitorVpPenalty})`, `🗡️ 背叛者 (${traitorVpPenalty})`);
   const traitorSelfTooltip = l(
     `Traitor Tile: ${traitorVpPenalty} VP penalty. Diplomacy broken.`,
@@ -596,8 +596,10 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
           <div className="flex items-center gap-0.5 mt-0.5 overflow-hidden">
             {trackSlots.map((slot) => {
               const isAmbassador = slot.tile?.type === 'ambassador';
-              const isRep = slot.tile?.type === 'reputation';
-              const repVal = isRep ? slot.tile.vp : undefined;
+              const repTileObj = slot.tile?.type === 'reputation' ? slot.tile : null;
+              const isRep = Boolean(repTileObj);
+              const repVal = repTileObj ? (repTileObj.effectiveVp ?? repTileObj.vp) : undefined;
+              const repOutcome = repTileObj?.battleOutcome;
 
               if (isAmbassador) {
                 const allyId = slot.tile?.allyId;
@@ -622,16 +624,35 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
               return (
                 <span
                   key={`hud_rep_slot_${slot.slotIndex}`}
-                  className={`w-3.5 h-3.5 rounded-sm border text-[8px] font-bold flex items-center justify-center font-mono shrink-0 ${
+                  className={`w-3.5 h-3.5 rounded-sm border text-[8px] font-bold flex items-center justify-center font-mono shrink-0 relative ${
                     isRep
-                      ? 'bg-amber-500/20 border-amber-400 text-amber-300'
+                      ? repOutcome === 'win'
+                        ? 'bg-emerald-500/20 border-emerald-400 text-emerald-300'
+                        : repOutcome === 'loss'
+                        ? 'bg-rose-500/20 border-rose-400 text-rose-300'
+                        : 'bg-amber-500/20 border-amber-400 text-amber-300'
                       : 'border-dashed border-slate-800 text-slate-700'
                   }`}
                   title={
                     isRep
                       ? hideOpponentReputation
                         ? l('Facedown Reputation Tile (Secret)', '暗置声望板块（保密）')
-                        : l(`Reputation Tile: +${repVal} VP (Slot #${slot.slotIndex + 1})`, `声望板块：+${repVal} VP（槽位 #${slot.slotIndex + 1}）`)
+                        : l(
+                            `Reputation Tile: +${repVal} VP (Slot #${slot.slotIndex + 1})${
+                              repOutcome === 'win'
+                                ? ' • Honour Win (+1 Dmg Cube)'
+                                : repOutcome === 'loss'
+                                ? ' • Honour Loss (-1)'
+                                : ''
+                            }`,
+                            `声望板块：+${repVal} VP（槽位 #${slot.slotIndex + 1}）${
+                              repOutcome === 'win'
+                                ? ' • 荣耀胜战 (+1 伤害方块)'
+                                : repOutcome === 'loss'
+                                ? ' • 战败减分 (-1)'
+                                : ''
+                            }`
+                          )
                       : l(
                           `Empty Slot #${slot.slotIndex + 1} (${
                             slot.slotType === 'amb_only'
@@ -780,7 +801,8 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                     player.id,
                     other.id
                   );
-                  const isEligible = check.canExchange && isActive && gamePhase === 'ACTION_PHASE';
+                  const canControlDiplomacy = isActive && gamePhase === 'ACTION_PHASE' && Boolean(onInitiateDiplomacy);
+                  const isEligible = check.canExchange && canControlDiplomacy;
                   const cubeIconEl = renderResourceCubeIcon(player.ambassadorCubes?.[other.id], `ambassador-cube-${other.id}`) || <span>★</span>;
                   const otherFactionName = translateFactionName(other.faction.id, other.faction.name, language);
 
@@ -844,8 +866,34 @@ export const PlayerBoard: React.FC<PlayerBoardProps> = ({
                     );
                   }
 
+                  if (!canControlDiplomacy && check.canExchange) {
+                    return (
+                      <div
+                        key={other.id}
+                        data-testid={`diplomacy-readonly-eligible-${other.id}`}
+                        className="flex items-center justify-between px-2 py-1 rounded bg-slate-950/60 border border-slate-800/80 text-slate-400 text-[10.5px] cursor-default"
+                        title={l(
+                          `Diplomatic connection available with ${other.name} (switch to active player's turn to exchange)`,
+                          `与 ${other.name} 外交连通（需切换至当前行动玩家回合方可交换）`
+                        )}
+                      >
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <span
+                            className="w-2.5 h-2.5 rounded-full shrink-0 opacity-75"
+                            style={{ backgroundColor: other.color }}
+                          />
+                          <span className="truncate text-slate-300">{other.name}</span>
+                          <span className="text-[9px] text-slate-500 truncate">({otherFactionName})</span>
+                        </div>
+                        <span className="text-[9px] text-slate-400 font-mono shrink-0">
+                          {l('Connected', '已连通')}
+                        </span>
+                      </div>
+                    );
+                  }
+
                   const isOtherTraitor = other.id === traitorPlayerId;
-                  const otherTraitorPenalty = other.faction.id === 'rho_indi_syndicate' ? 0 : -2;
+                  const otherTraitorPenalty = getTraitorTilePenalty(other);
                   return (
                     <div
                       key={other.id}

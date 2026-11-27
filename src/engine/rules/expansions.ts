@@ -274,7 +274,10 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'yggdrasil' ||
     norm === 'jotunn' ||
     norm === 'frost giants' ||
-    norm === 'ark ships'
+    norm === 'ark ships' ||
+    norm === 'kurita_prefecture' ||
+    norm === 'kurita prefecture' ||
+    norm === 'edo'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }

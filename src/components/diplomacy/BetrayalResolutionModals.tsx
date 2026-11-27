@@ -9,6 +9,7 @@ import { translateFactionName } from '../../i18n/catalogTranslations';
 interface BetrayalConfirmationModalProps {
   isOpen: boolean;
   allies: PlayerState[];
+  traitorPenalty?: number;
   onCancel: () => void;
   onConfirm: () => void;
 }
@@ -16,6 +17,7 @@ interface BetrayalConfirmationModalProps {
 export const BetrayalConfirmationModal: React.FC<BetrayalConfirmationModalProps> = ({
   isOpen,
   allies,
+  traitorPenalty = -2,
   onCancel,
   onConfirm,
 }) => {
@@ -53,8 +55,8 @@ export const BetrayalConfirmationModal: React.FC<BetrayalConfirmationModalProps>
           </p>
           <p className="text-slate-400 text-[11px]">
             {l(
-              'You will lose their Ambassador (+1 VP), take the Traitor Tile (-2 VP), and both players will choose which Population Track receives their returned Ambassador cube.',
-              '你将失去其大使板块（+1 VP）并获得背叛者板块（-2 VP），随后双方将选择把退回的使节人口方块放回哪一条人口轨道。'
+              `You will lose their Ambassador (+1 VP), take the Traitor Tile (${traitorPenalty} VP), and both players will choose which Population Track receives their returned Ambassador cube.`,
+              `你将失去其大使板块（+1 VP）并获得背叛者板块（${traitorPenalty} VP），随后双方将选择把退回的使节人口方块放回哪一条人口轨道。`
             )}
           </p>
         </div>

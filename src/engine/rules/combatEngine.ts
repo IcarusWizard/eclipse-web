@@ -456,6 +456,108 @@ export function getCombatShipTypeGroups(
   return groups;
 }
 
+function isKuritaRound1Delayed(combat: CombatState): boolean {
+  return Boolean(
+    combat.roundNumber === 1 &&
+      combat.kuritaDelayedPlayerIds &&
+      combat.kuritaDelayedPlayerIds.length > 0
+  );
+}
+
+/**
+ * Kurita Prefecture ("Honour your enemy with the first shot"):
+ * In Round 1, non-Kurita opponents execute their Missile round AND 1st Engagement regular round
+ * BEFORE Kurita shoots Missiles and 1st Engagement regular round. From Round 2 onwards normal speed applies.
+ */
+function selectKuritaRound1Turn(
+  combat: CombatState,
+  groups: CombatShipGroup[]
+): { group: CombatShipGroup; isMissile: boolean } | null {
+  const delayed = new Set(combat.kuritaDelayedPlayerIds || []);
+  const actedKeys = combat.roundActedGroupKeys || [];
+  const firedIds = combat.missileFiredShipIds || [];
+
+  const nonDelayedMissile = groups.find(
+    (g) =>
+      !delayed.has(g.ownerId) &&
+      g.weapons.some((w) => w.isMissile) &&
+      !g.shipIds.every((id) => firedIds.includes(id))
+  );
+  if (nonDelayedMissile) return { group: nonDelayedMissile, isMissile: true };
+
+  const nonDelayedRegular = groups.find(
+    (g) => !delayed.has(g.ownerId) && !actedKeys.includes(g.groupKey)
+  );
+  if (nonDelayedRegular) return { group: nonDelayedRegular, isMissile: false };
+
+  const delayedMissile = groups.find(
+    (g) =>
+      delayed.has(g.ownerId) &&
+      g.weapons.some((w) => w.isMissile) &&
+      !g.shipIds.every((id) => firedIds.includes(id))
+  );
+  if (delayedMissile) return { group: delayedMissile, isMissile: true };
+
+  const delayedRegular = groups.find(
+    (g) => delayed.has(g.ownerId) && !actedKeys.includes(g.groupKey)
+  );
+  if (delayedRegular) return { group: delayedRegular, isMissile: false };
+
+  return null;
+}
+
+function advanceKuritaOrStandardRoundState(
+  activeCombat: CombatState,
+  remainingAlive: CombatUnit[],
+  remainingGroups: CombatShipGroup[]
+): void {
+  if (isKuritaRound1Delayed(activeCombat)) {
+    const nextTurn = selectKuritaRound1Turn(activeCombat, remainingGroups);
+    if (nextTurn) {
+      activeCombat.stage = nextTurn.isMissile ? 'missile' : 'regular';
+      return;
+    }
+    // Round 1 complete for both sides -> advance to Round 2 normal speed rules
+    activeCombat.stage = 'regular';
+    activeCombat.roundNumber += 1;
+    activeCombat.roundActedGroupKeys = [];
+    for (const u of remainingAlive) {
+      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
+        u.currentDamage = Math.max(0, u.currentDamage - 1);
+      }
+    }
+    return;
+  }
+
+  if (activeCombat.stage === 'missile') {
+    const nextPendingMissileGroups = remainingGroups.filter(
+      (g) =>
+        g.weapons.some((w) => w.isMissile) &&
+        !g.shipIds.every((id) => activeCombat.missileFiredShipIds!.includes(id))
+    );
+    if (nextPendingMissileGroups.length === 0) {
+      activeCombat.stage = 'regular';
+      activeCombat.roundNumber = 1;
+      activeCombat.currentTurnIndex = -1;
+      activeCombat.roundActedGroupKeys = [];
+    }
+    return;
+  }
+
+  const nextPending = remainingGroups.filter(
+    (g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey)
+  );
+  if (nextPending.length === 0) {
+    activeCombat.roundNumber += 1;
+    activeCombat.roundActedGroupKeys = [];
+    for (const u of remainingAlive) {
+      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
+        u.currentDamage = Math.max(0, u.currentDamage - 1);
+      }
+    }
+  }
+}
+
 export function getActiveCombatGroup(
   combat: CombatState,
   groups: CombatShipGroup[]
@@ -467,6 +569,10 @@ export function getActiveCombatGroup(
     const key = `${combat.pendingDamageAssignment.attackerOwnerId}_${combat.pendingDamageAssignment.attackerShipType}`;
     const found = groups.find((g) => g.groupKey === key);
     if (found) return found;
+  }
+  if (isKuritaRound1Delayed(combat)) {
+    const turn = selectKuritaRound1Turn(combat, groups);
+    if (turn) return turn.group;
   }
   if (combat.stage === 'missile') {
     const pendingMissileGroups = groups.filter(
@@ -815,17 +921,7 @@ export function executeCombatStep(
       }
 
       const groups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
-      const nextPendingMissileGroups = groups.filter(
-        (g) =>
-          g.weapons.some((w) => w.isMissile) &&
-          !g.shipIds.every((id) => activeCombat.missileFiredShipIds!.includes(id))
-      );
-      if (nextPendingMissileGroups.length === 0) {
-        activeCombat.stage = 'regular';
-        activeCombat.roundNumber = 1;
-        activeCombat.currentTurnIndex = -1;
-        activeCombat.roundActedGroupKeys = [];
-      }
+      advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, groups);
       return {
         updatedUnits: units,
         rolls: appliedRolls,
@@ -850,18 +946,7 @@ export function executeCombatStep(
       }
 
       const groups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
-      const nextPending = groups.filter(
-        (g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey)
-      );
-      if (nextPending.length === 0) {
-        activeCombat.roundNumber += 1;
-        activeCombat.roundActedGroupKeys = [];
-        for (const u of remainingAlive) {
-          if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
-            u.currentDamage = Math.max(0, u.currentDamage - 1);
-          }
-        }
-      }
+      advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, groups);
 
       return {
         updatedUnits: units,
@@ -875,6 +960,12 @@ export function executeCombatStep(
   // Group units by (ownerId, type) for coordinated ship type activations
   // -------------------------------------------------------------
   const groups = getCombatShipTypeGroups(aliveUnits, effectiveDefenderId);
+  const kuritaR1Turn = isKuritaRound1Delayed(activeCombat)
+    ? selectKuritaRound1Turn(activeCombat, groups)
+    : null;
+  if (kuritaR1Turn) {
+    activeCombat.stage = kuritaR1Turn.isMissile ? 'missile' : 'regular';
+  }
 
   // =========================================================================
   // STAGE 1: MISSILE COMBAT STAGE (Fired once by ship type, Rulebook p. 20)
@@ -882,11 +973,13 @@ export function executeCombatStep(
   if (activeCombat.stage === 'missile') {
     activeCombat.missileFiredShipIds = activeCombat.missileFiredShipIds || [];
 
-    const pendingMissileGroups = groups.filter(
-      (g) =>
-        g.weapons.some((w) => w.isMissile) &&
-        !g.shipIds.every((id) => activeCombat.missileFiredShipIds!.includes(id))
-    );
+    const pendingMissileGroups = kuritaR1Turn && kuritaR1Turn.isMissile
+      ? [kuritaR1Turn.group]
+      : groups.filter(
+          (g) =>
+            g.weapons.some((w) => w.isMissile) &&
+            !g.shipIds.every((id) => activeCombat.missileFiredShipIds!.includes(id))
+        );
 
     if (pendingMissileGroups.length === 0) {
       activeCombat.stage = 'regular';
@@ -995,18 +1088,8 @@ export function executeCombatStep(
         };
       }
 
-      const nextPendingMissileGroups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId).filter(
-        (g) =>
-          g.weapons.some((w) => w.isMissile) &&
-          !g.shipIds.every((id) => activeCombat.missileFiredShipIds!.includes(id))
-      );
-
-      if (nextPendingMissileGroups.length === 0) {
-        activeCombat.stage = 'regular';
-        activeCombat.roundNumber = 1;
-        activeCombat.currentTurnIndex = -1;
-        activeCombat.roundActedGroupKeys = [];
-      }
+      const nextGroupsAfterMissile = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
+      advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, nextGroupsAfterMissile);
 
       return {
         updatedUnits: units,
@@ -1024,8 +1107,13 @@ export function executeCombatStep(
   const hasAnyCannons = aliveUnits.some((u) =>
     u.weapons.some((w) => !w.isMissile && w.count > 0 && (w.damage > 0 || w.color === 'purple'))
   );
+  const hasAnyUnfiredMissiles = aliveUnits.some(
+    (u) =>
+      u.weapons.some((w) => w.isMissile) &&
+      !(activeCombat.missileFiredShipIds || []).includes(u.id)
+  );
 
-  if (!hasAnyCannons) {
+  if (!hasAnyCannons && !hasAnyUnfiredMissiles) {
     const defenderId = effectiveDefenderId || aliveUnits[0]?.ownerId;
     const attackerUnits = aliveUnits.filter((u) => u.ownerId !== defenderId);
     for (const att of attackerUnits) {
@@ -1047,7 +1135,9 @@ export function executeCombatStep(
   }
 
   activeCombat.roundActedGroupKeys = activeCombat.roundActedGroupKeys || [];
-  let pendingGroups = groups.filter((g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey));
+  let pendingGroups = kuritaR1Turn && !kuritaR1Turn.isMissile
+    ? [kuritaR1Turn.group]
+    : groups.filter((g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey));
   if (pendingGroups.length === 0) {
     activeCombat.roundNumber += 1;
     activeCombat.roundActedGroupKeys = [];
@@ -1227,18 +1317,7 @@ export function executeCombatStep(
   // Check round completion
   const survivingAlive = aliveUnits.filter((u) => u.currentDamage < u.maxHull);
   const remainingGroups = getCombatShipTypeGroups(survivingAlive, effectiveDefenderId);
-  const remainingPending = remainingGroups.filter(
-    (g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey)
-  );
-  if (remainingPending.length === 0) {
-    activeCombat.roundNumber += 1;
-    activeCombat.roundActedGroupKeys = [];
-    for (const u of survivingAlive) {
-      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
-        u.currentDamage = Math.max(0, u.currentDamage - 1);
-      }
-    }
-  }
+  advanceKuritaOrStandardRoundState(activeCombat, survivingAlive, remainingGroups);
 
   const remainingOwners = Array.from(
     new Set(aliveUnits.filter((u) => u.currentDamage < u.maxHull).map((u) => u.ownerId))

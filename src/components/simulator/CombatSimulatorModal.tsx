@@ -1362,6 +1362,7 @@ export const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 preprintedComputer={activeBp.preprintedComputer}
                 preprintedShield={activeBp.preprintedShield}
                 preprintedHull={activeBp.preprintedHull}
+                baseInitiative={activeBp.baseInitiative}
                 externalParts={activeBp.externalParts || []}
                 externalModularGroup={
                   sideConfig.factionId === 'mega_war_inc'

@@ -879,6 +879,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   preprintedComputer={baseBp.preprintedComputer}
                   preprintedShield={baseBp.preprintedShield}
                   preprintedHull={baseBp.preprintedHull}
+                  baseInitiative={baseBp.baseInitiative}
                   externalParts={currentExternal}
                   externalModularGroup={draftExternalGroup}
                   interactive={true}

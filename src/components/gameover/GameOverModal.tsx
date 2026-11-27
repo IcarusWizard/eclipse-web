@@ -122,7 +122,7 @@ export const GameOverModal: React.FC<GameOverModalProps> = ({ state, onExitToLob
                           <span>{p.name}</span>
                           {s?.traitor ? (
                             <span className="text-[10px] text-rose-300 font-bold px-1.5 py-0.2 bg-rose-950/80 border border-rose-800 rounded">
-                              {l('Traitor (-2 VP)', '叛徒 (-2 VP)')}
+                              {l(`Traitor (${s.traitor} VP)`, `叛徒 (${s.traitor} VP)`)}
                             </span>
                           ) : null}
                         </div>

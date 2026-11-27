@@ -177,7 +177,9 @@ export const getChassisName = (
   factionId?: string
 ): string => {
   if (shipType === 'starbase') {
-    return factionId === 'planta' ? 'Planta Defense Core' : 'Starbase Power Core';
+    if (factionId === 'planta') return 'Planta Defense Core';
+    if (factionId === 'kurita_prefecture') return 'Kurita Fortress Core';
+    return 'Starbase Power Core';
   }
   if (shipType === 'orbital') {
     return 'Exiles Orbital Chassis';
@@ -193,6 +195,9 @@ export const getChassisName = (
   }
   if (factionId === 'rho_indi_syndicate') {
     return 'Gauss Shield System';
+  }
+  if (factionId === 'kurita_prefecture') {
+    return 'Kurita Elite Warriors';
   }
   return 'Integrated Chassis System';
 };
@@ -236,6 +241,7 @@ export interface ShipBlueprintSlotsLayoutProps {
   preprintedComputer?: number;
   preprintedShield?: number;
   preprintedHull?: number;
+  baseInitiative?: number;
   externalParts?: ShipPart[];
   externalModularGroup?: MegaWarModularGroupId | null;
   // Interactive options
@@ -260,6 +266,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
   preprintedComputer,
   preprintedShield,
   preprintedHull,
+  baseInitiative,
   externalParts = [],
   externalModularGroup = null,
   interactive = false,
@@ -322,10 +329,33 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
     }
   });
 
+  // Off-board Initiative symbol (only shown when non-zero) attached cleanly to the top-left
+  // of the top-most box in the leftmost column (left priority: flush to its left, single badge layer).
+  const hasBaseInit = baseInitiative !== undefined && baseInitiative !== 0;
+  const initBadgeW = size === 'sm' ? 14 : size === 'lg' ? 18 : 16;
+  let anchorY = 0;
+  if (hasBaseInit && totalSlotsCount > 0) {
+    let minCol = Infinity;
+    for (let i = 0; i < totalSlotsCount; i++) {
+      const c = layout.cubes[i] || { col: i, row: 0, offsetY: 0 };
+      if (c.col < minCol) minCol = c.col;
+    }
+    let bestY = Infinity;
+    for (let i = 0; i < totalSlotsCount; i++) {
+      const c = layout.cubes[i] || { col: i, row: 0, offsetY: 0 };
+      if (c.col === minCol) {
+        const cy = c.row * (cubeSize + gap) + (c.offsetY / 100) * cubeSize;
+        if (cy < bestY) bestY = cy;
+      }
+    }
+    anchorY = Number.isFinite(bestY) ? bestY : 0;
+  }
+  const gridOffsetX = hasBaseInit ? initBadgeW + gap : 0;
+
   let maxX = 0;
   let maxY = 0;
   for (const c of allCoordinates) {
-    const x = c.col * (cubeSize + gap) + cubeSize;
+    const x = gridOffsetX + c.col * (cubeSize + gap) + cubeSize;
     const y = c.row * (cubeSize + gap) + (c.offsetY / 100) * cubeSize + cubeSize;
     if (x > maxX) maxX = x;
     if (y > maxY) maxY = y;
@@ -346,12 +376,27 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
       className={`relative select-none ${className}`}
       style={{ width: maxX, height: maxY }}
     >
+      {/* 0. Off-board Chassis Initiative Symbol attached to top-left of top-most leftmost box */}
+      {hasBaseInit && (
+        <div
+          className="absolute flex justify-end select-none"
+          style={{ left: 0, top: anchorY, width: initBadgeW }}
+        >
+          <InitiativeBadge
+            init={baseInitiative}
+            size={size === 'lg' ? 'sm' : 'xs'}
+            maxChevrons={6}
+            testId="blueprint-init-bonus"
+          />
+        </div>
+      )}
+
       {/* 1. Main Customizable Blueprint Slots */}
       {Array.from({ length: totalSlotsCount }).map((_, idx) => {
         const part = slots[idx] || null;
         const isShiftLocked = part?.id === 'shift_port';
         const coord = layout.cubes[idx] || { col: idx, row: 0, offsetY: 0 };
-        const left = coord.col * (cubeSize + gap);
+        const left = gridOffsetX + coord.col * (cubeSize + gap);
         const top = coord.row * (cubeSize + gap) + (coord.offsetY / 100) * cubeSize;
 
         const isSelected = selectedSlotIndex === idx;
@@ -459,7 +504,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
       {/* 2. Additional Preprinted / Innate Chassis Component Square (e.g. Orion, Starbase, Planta) */}
       {hasPreprinted && (() => {
         const coord = layout.extraCube;
-        const left = coord.col * (cubeSize + gap);
+        const left = gridOffsetX + coord.col * (cubeSize + gap);
         const top = coord.row * (cubeSize + gap) + (coord.offsetY / 100) * cubeSize;
 
         return (
@@ -523,7 +568,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
               row: layout.extraCube.row + (hasPreprinted ? extIdx + 1 : extIdx),
               offsetY: layout.extraCube.offsetY,
             };
-        const left = coord.col * (cubeSize + gap);
+        const left = gridOffsetX + coord.col * (cubeSize + gap);
         const top =
           coord.row * (cubeSize + gap) +
           (coord.offsetY / 100) * cubeSize;

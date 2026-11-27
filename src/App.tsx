@@ -21,6 +21,8 @@ import {
   applyBuildItemsToPreviewState,
   isRaidFaction,
   isRegroupFaction,
+  getTraitorTilePenalty,
+  shouldHideReputationTiles,
 } from './engine/rules/gameReducer';
 import { playTurnNotificationSound } from './engine/rules/soundUtils';
 import { SHIP_PARTS } from './engine/rules/partData';
@@ -806,12 +808,12 @@ const AppContent: React.FC = () => {
       : viewedPlayer
   ) || activePlayer;
 
-  const hideOpponentReputation =
-    currentSeat !== 'all' &&
-    currentSeat !== 'spectator' &&
-    typeof currentSeat === 'number' &&
-    viewedPlayer.id !== state.players[currentSeat]?.id &&
-    state.phase !== 'GAME_OVER';
+  const hideOpponentReputation = shouldHideReputationTiles(
+    currentSeat,
+    viewedPlayer.id,
+    state.players,
+    state.phase
+  );
 
   // Play hint chime sound: only triggered at the beginning of the turn, or when an off-turn decision switches to this player (Bugs 216, 219, 223)
   const lastChimedTurnKeyRef = useRef<string>('');
@@ -4379,13 +4381,13 @@ const AppContent: React.FC = () => {
             onOpenTrade={() => setIsTradeOpen(true)}
             onOpenPhysicalBoard={() => setIsPhysicalBoardOpen(true)}
             onOpenCombatSimulator={() => setIsCombatSimulatorOpen(true)}
-            onConvertColonyShip={!isActionsLocked ? handleConvertColonyShip : undefined}
+            onConvertColonyShip={!isActionsLocked && canActForPlayer(viewedPlayer.id) ? handleConvertColonyShip : undefined}
             hideOpponentReputation={hideOpponentReputation}
             allPlayers={state.players}
             traitorPlayerId={state.traitorPlayerId}
             gamePhase={state.phase}
             warpedUniverse={state.warpedUniverse}
-            onInitiateDiplomacy={!isActionsLocked ? handleExchangeAmbassador : undefined}
+            onInitiateDiplomacy={!isActionsLocked && canActForPlayer(viewedPlayer.id) ? handleExchangeAmbassador : undefined}
             delayedBlackHoleShips={state.galacticEvents?.blackHoleDelayedShips}
             onOpenMinorSpecies={() => setIsMinorSpeciesOpen(true)}
             minorSpeciesSupply={state.minorSpeciesSupply}
@@ -4405,6 +4407,9 @@ const AppContent: React.FC = () => {
               players={state.players}
               activePlayer={effectiveColonizingPlayer}
               neutralShipBlueprints={state.neutralShipBlueprints}
+              expansions={state.expansions}
+              warpedUniverse={state.warpedUniverse}
+              allSectors={state.sectors}
               onColonizePlanet={!isActionsLocked ? handleColonizePlanet : undefined}
               onAbandonInfluence={!isActionsLocked ? handleAbandonInfluence : undefined}
               onClose={() => setSelectedSector(null)}
@@ -5274,7 +5279,13 @@ const AppContent: React.FC = () => {
       {isScoreboardOpen && (
         <LiveScoreboardModal
           state={state}
-          viewerPlayerId={typeof currentSeat === 'number' ? state.players[currentSeat]?.id : viewedPlayer.id}
+          viewerPlayerId={
+            typeof currentSeat === 'number'
+              ? state.players[currentSeat]?.id
+              : isSpectator
+              ? '__spectator__'
+              : viewedPlayer.id
+          }
           onClose={() => setIsScoreboardOpen(false)}
           onSelectPlayer={(idx) => {
             setSelectedViewIndex(idx);
@@ -5499,6 +5510,10 @@ const AppContent: React.FC = () => {
         allies={(state.pendingActionConfirmation?.betrayalAllyIds || [])
           .map((id) => state.players.find((p) => p.id === id))
           .filter((p): p is NonNullable<typeof p> => Boolean(p))}
+        traitorPenalty={getTraitorTilePenalty(
+          state.players.find((p) => p.id === state.pendingActionConfirmation?.playerId) ||
+            state.players[state.activePlayerIndex]
+        )}
         onCancel={() => setShowBetrayalConfirmModal(false)}
         onConfirm={executeConfirmTurnAction}
       />

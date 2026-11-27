@@ -90,6 +90,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   legion_of_midas: '/factions/legion_of_midas.jpg',
   heralds_of_ragnarok: '/factions/heralds_of_ragnarok.jpg',
   jotunn: '/factions/jotunn.jpg',
+  kurita_prefecture: '/factions/kurita_prefecture.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -612,6 +613,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
       },
     ],
   },
+  kurita_prefecture: {
+    historyEn:
+      'The Kurita Prefecture is united under seven warrior clans led by Shoguns sworn to an Emperor, governed by a strict martial code of personal and House honour. Holding that true superiority is proved when a foe shoots first and fails, Kuritan Samurai enter combat with lethal precision, scorn retreat, and guard their diplomatic oaths at all cost.',
+    historyZh:
+      '栗田幕府（Kurita Prefecture）由效忠皇帝、各自奉行将军制的七大武士氏族组成，全族恪守严苛的个人与家族荣誉准则。栗田武士深信让敌人先拔刀才足以印证真正的强者之道：他们以精妙射击在先让一招后反败为胜，鄙视怯战撤退，并将背弃盟约视为莫大耻辱。',
+    portraitUrl: '/factions/kurita_prefecture.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'kurita_first_shot',
+        icon: 'ship',
+        en: 'Honour your enemy with the first shot (2nd): In Round 1, opponents take their Missile round AND first Engagement round before you shoot Missiles or regular cannons. Normal initiative rules apply from Round 2 onwards.',
+        zh: '礼让先手：战斗第 1 回合中，对手先执行完导弹阶段与第 1 轮常规炮击，随后才轮到你执行导弹与第 1 轮常规炮击；自第 2 回合起恢复常规先攻顺序。',
+      },
+      {
+        id: 'kurita_honour',
+        icon: 'vp',
+        en: 'Honour the Victorious, Fight to the Death: Battle Reputation tiles score +1 VP if won (marked with a Dmg Cube) or -1 VP if lost. If you retreat any ship, draw 0 Battle Reputation tiles regardless of kills. The Traitor card is worth -4 VPs.',
+        zh: '胜荣败辱、死战不退：获胜获得的战斗声望板块额外 +1 VP（旁置伤害方块标记），战败获得的声望板块 -1 VP；只要在战斗中撤退任何一艘飞船，无论击毁多少敌舰均无法抽取声望板块；背叛者板块改为 -4 VP。',
+      },
+      {
+        id: 'kurita_elite_warriors',
+        icon: 'ship',
+        en: 'Elite Warriors & Setup: +1 to Hit off-board computer bonus on all ships; Starbases have +1 extra Hull (4 HP base). Begin in Edo (#251) with Phase Shields, 2 Money / 3 Science / 4 Materials, 3 Colony Ships, 3:1 Trade, and 4 Reputation slots.',
+        zh: '精锐武士与开局：所有飞船自带面板外 +1 电脑命中，星际基地额外 +1 船体。开局位于江户（251 号星区），自带相位护盾、2 金钱/3 科研/4 材料、3 艘殖民船、3:1 贸易率与 4 格声望轨。',
+      },
+    ],
+  },
 };
 
 function buildTerranHistory(faction: FactionInfo): { en: string; zh: string } {
@@ -732,6 +761,16 @@ export function computeFactionBlueprintModifiers(factionId: string): FactionBlue
         en: `-${shieldDelta} Shield`,
         zh: `-${shieldDelta} 护盾`,
         tone: 'positive',
+      });
+    }
+
+    const hullDelta = (bp.preprintedHull || 0) - (baseBp.preprintedHull || 0);
+    if (hullDelta !== 0) {
+      const sign = hullDelta > 0 ? '+' : '';
+      badges.push({
+        en: `${sign}${hullDelta} Hull`,
+        zh: `${sign}${hullDelta} 船体`,
+        tone: hullDelta > 0 ? 'positive' : 'negative',
       });
     }
 

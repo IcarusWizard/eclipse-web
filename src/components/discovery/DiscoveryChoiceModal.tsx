@@ -599,6 +599,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                     preprintedComputer={currentBlueprint.preprintedComputer}
                     preprintedShield={currentBlueprint.preprintedShield}
                     preprintedHull={currentBlueprint.preprintedHull}
+                    baseInitiative={currentBlueprint.baseInitiative}
                     externalParts={[...(currentBlueprint.externalParts || []), part]}
                     size="sm"
                   />
@@ -625,6 +626,7 @@ export const DiscoveryChoiceModal: React.FC<DiscoveryChoiceModalProps> = ({
                     preprintedComputer={currentBlueprint.preprintedComputer}
                     preprintedShield={currentBlueprint.preprintedShield}
                     preprintedHull={currentBlueprint.preprintedHull}
+                    baseInitiative={currentBlueprint.baseInitiative}
                     externalParts={currentBlueprint.externalParts}
                     interactive={true}
                     canModify={true}

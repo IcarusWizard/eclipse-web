@@ -4,6 +4,7 @@ import { Trophy, Shield, CheckCircle2, ArrowRight, RotateCcw, X, Users, Minimize
 import {
   getMaxReputationTilesForPlayer,
   getPlayerReputationTrackSlots,
+  getReputationTileEffectiveVP,
 } from '../../engine/rules/setup';
 import { useLanguage } from '../../i18n/LanguageContext';
 
@@ -166,6 +167,26 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
             </div>
           )}
 
+          {player.faction.id === 'kurita_prefecture' && pendingDraw.isBattleWin !== undefined && (
+            <div
+              data-testid="kurita-honour-rep-banner"
+              className={`rounded-xl p-2.5 text-xs border flex items-center justify-between ${
+                pendingDraw.isBattleWin
+                  ? 'bg-emerald-950/40 border-emerald-500/50 text-emerald-200'
+                  : 'bg-rose-950/40 border-rose-500/50 text-rose-200'
+              }`}
+            >
+              <span className="font-bold">
+                {pendingDraw.isBattleWin
+                  ? l('Honour the Victorious: Battle Won (+1 VP Dmg Cube)', '胜战荣耀：战斗获胜（+1 VP 伤害方块）')
+                  : l('Honour the Victorious: Battle Lost (-1 VP Penalty)', '败战受辱：战斗失利（-1 VP 惩罚）')}
+              </span>
+              <span className="font-mono text-[11px] px-2 py-0.5 rounded font-black bg-slate-950/70 border border-current/30">
+                {pendingDraw.isBattleWin ? '+1 VP' : '-1 VP'}
+              </span>
+            </div>
+          )}
+
           {/* Drawn Tiles Options */}
           <div>
             <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">
@@ -174,6 +195,13 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
               {pendingDraw.drawnTiles.map((vp, idx) => {
                 const isSelected = selectedIndex === idx;
+                const kuritaOutcome =
+                  player.faction.id === 'kurita_prefecture' && pendingDraw.isBattleWin !== undefined
+                    ? pendingDraw.isBattleWin
+                      ? 'win'
+                      : 'loss'
+                    : undefined;
+                const effectiveVp = getReputationTileEffectiveVP(player, vp, -1, kuritaOutcome);
                 return (
                   <button
                     key={idx}
@@ -186,10 +214,14 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
                     }`}
                   >
                     <span className="text-2xl font-black font-display text-amber-300">
-                      {vp} VP
+                      {effectiveVp} VP
                     </span>
                     <span className="text-[10px] uppercase font-mono text-slate-400">
-                      {l('Reputation Tile', '声望板块')}
+                      {kuritaOutcome === 'win'
+                        ? l(`Tile ${vp} + 1 Win Cube`, `原 ${vp} + 1 胜战`)
+                        : kuritaOutcome === 'loss'
+                        ? l(`Tile ${vp} - 1 Loss`, `原 ${vp} - 1 败战`)
+                        : l('Reputation Tile', '声望板块')}
                     </span>
                     {isSelected && (
                       <span className="text-[9px] font-bold px-1.5 py-0.2 rounded bg-amber-400 text-slate-950 uppercase tracking-tight">
@@ -287,11 +319,21 @@ export const ReputationTileModal: React.FC<ReputationTileModalProps> = ({
                           {l('+1 VP Amb', '+1 VP 大使')}
                         </span>
                       </div>
-                    ) : isReputation ? (
+                    ) : slot.tile?.type === 'reputation' ? (
                       <div className="flex flex-col items-center justify-center my-0.5">
                         <span className="text-base font-black font-display text-amber-300">
-                          {slot.tile?.vp} VP
+                          {slot.tile.effectiveVp ?? slot.tile.vp} VP
                         </span>
+                        {slot.tile.battleOutcome === 'win' && (
+                          <span className="text-[8px] font-bold text-emerald-300 font-mono">
+                            {l(`${slot.tile.vp}+1 Cube`, `${slot.tile.vp}+1 胜`)}
+                          </span>
+                        )}
+                        {slot.tile.battleOutcome === 'loss' && (
+                          <span className="text-[8px] font-bold text-rose-300 font-mono">
+                            {l(`${slot.tile.vp}-1 Loss`, `${slot.tile.vp}-1 败`)}
+                          </span>
+                        )}
                       </div>
                     ) : (
                       <span className="text-[10px] text-slate-600 italic my-auto">{l('Empty', '空位')}</span>

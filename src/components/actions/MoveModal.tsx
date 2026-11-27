@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
-import { getEffectiveMoveActivationLimit, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
+import { getEffectiveMoveActivationLimit, getTraitorTilePenalty, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { JotunnDreadNoughtBanner, JotunnDreadNoughtTarget } from '../common/JotunnDreadNoughtBanner';
@@ -640,7 +640,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                             {willBreakAlly && (
                               <span
                                 className="text-[9px] px-1 py-0.5 rounded bg-rose-900/90 text-rose-200 border border-rose-500/70 font-mono"
-                                title={l('Ending movement here breaks diplomacy & gives Traitor Tile (-2 VP)', '在此结束移动将打破外交同盟并获得背叛者板块 (-2 VP)')}
+                                title={l(`Ending movement here breaks diplomacy & gives Traitor Tile (${getTraitorTilePenalty(player)} VP)`, `在此结束移动将打破外交同盟并获得背叛者板块 (${getTraitorTilePenalty(player)} VP)`)}
                               >
                                 {l('⚔️ Breaks Alliance', '⚔️ 破盟')}
                               </span>
@@ -740,8 +740,8 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
             <span>
               {l(
-                'Act of Aggression: Ending movement in an allied sector (ship or control disc) will break your diplomatic alliance and give you the Traitor Tile (-2 VP).',
-                '侵略行为警告：在盟友飞船或控制圆片所在星区结束移动将打破外交同盟，并使你获得背叛者板块（-2 VP）。'
+                `Act of Aggression: Ending movement in an allied sector (ship or control disc) will break your diplomatic alliance and give you the Traitor Tile (${getTraitorTilePenalty(player)} VP).`,
+                `侵略行为警告：在盟友飞船或控制圆片所在星区结束移动将打破外交同盟，并使你获得背叛者板块（${getTraitorTilePenalty(player)} VP）。`
               )}
             </span>
           </div>
