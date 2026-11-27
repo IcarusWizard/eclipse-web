@@ -33829,6 +33829,22 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       expect(sbHtml).not.toContain('>+4<');
       expect(sbHtml).toContain('left:20px;top:0');
 
+      // All three InitiativeBadge locations (off-board chassis, Drive slot, Muon Source EXT) render identical chevron sizes
+      const cruiserMuonHtml = renderToStaticMarkup(
+        React.createElement(ShipBlueprintSlotsLayout, {
+          shipType: 'cruiser',
+          factionId: p1.faction.id,
+          slots: p1.blueprints.cruiser!.slots,
+          maxSlots: 6,
+          baseInitiative: 1,
+          externalParts: [SHIP_PARTS.muon_source!],
+          size: 'lg',
+        })
+      );
+      expect(cruiserMuonHtml).toContain('width="11" height="6.5"');
+      expect(cruiserMuonHtml).not.toContain('width="7" height="4.5"');
+      expect(cruiserMuonHtml).not.toContain('width="8" height="5"');
+
       // When baseInitiative is 0 (e.g. Dreadnought or Planta Int/Cru/Dra), no mini-box renders
       const zeroInitHtml = renderToStaticMarkup(
         React.createElement(ShipBlueprintSlotsLayout, {
@@ -34606,6 +34622,484 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       );
       expect(colBoardHtml).not.toContain('Honour Win');
       expect(colBoardHtml).not.toContain('Honour Loss');
+    });
+
+    test('Test 311: Community Faction: Techno-Mages (Artemis VII #244, Pre-Game Optional Tech Buy, Limited Manufacturing, Technology finds a Way, Techno-Magic Combat + Bombardment + Immediate Cleanup & Timing vs Spiral)', async () => {
+      const { getExpansionForItem } = await import('../rules/expansions');
+      const { getFactionReputationSlotTypes } = await import('../rules/setup');
+      const {
+        getPendingSpiralShiftPlayerId,
+        getPendingTechnoMagicPlayerId,
+        buildCombatUnitsForSector,
+      } = await import('../rules/combatEngine');
+      const { getColonizablePlanetsForPlayer } = await import('../rules/gameReducer');
+      const { getPriorityActorId, computeBotAction } = await import('../ai/terranBot');
+
+      expect(getExpansionForItem('techno_mages')?.id).toBe('community_factions');
+      expect(isFactionAvailable('techno_mages', [])).toBe(false);
+      expect(isFactionAvailable('techno_mages', ['community_factions'])).toBe(true);
+
+      // 1. Setup & Stats
+      let game = createInitialGame(2, ['techno_mages', 'terran_federation'], ['community_factions']);
+      const tm = game.players[0]!;
+      const p2 = game.players[1]!;
+      expect(tm.faction.id).toBe('techno_mages');
+      expect(tm.resources).toEqual({ money: 3, science: 6, materials: 2 });
+      expect(tm.colonyShips).toEqual({ ready: 3, total: 3 });
+      expect(tm.influenceTrack).toEqual({ totalDiscs: 13, discsOnTrack: 12 });
+      expect(tm.techTrack.researched).toEqual([]);
+      expect(tm.faction.tradeRatio).toBe(3);
+      expect(tm.faction.buildActivations).toBe(1);
+      expect(tm.faction.influenceColonyShipRefreshes).toBe(1);
+      expect(getFactionReputationSlotTypes(tm.faction)).toEqual(['amb_only', 'both', 'both', 'both']);
+
+      const tmHome = game.sectors.find((s) => s.id === `home_sector_${tm.id}`)!;
+      expect(tmHome.sectorNumber).toBe(244);
+      expect(tmHome.name).toBe('Artemis VII');
+      expect(tmHome.planets.map((p) => ({ r: p.resource, adv: p.isAdvanced, col: p.colonizedBy }))).toEqual([
+        { r: 'science', adv: false, col: tm.id },
+        { r: 'science', adv: false, col: tm.id },
+      ]);
+      expect(tmHome.ships.map((s) => s.type)).toEqual(['interceptor']);
+
+      // 2. Pre-game optional starting Tech purchase (blocks Round 1 actions until chosen or skipped)
+      expect(game.pendingTechnoMagesTechSetup).toEqual({ playerId: tm.id });
+      const blockedPass = executeAction(game, { type: 'PASS', playerId: tm.id });
+      expect(blockedPass.success).toBe(false);
+      expect(getPriorityActorId(game)).toBe(tm.id);
+
+      // Ensure an affordable tech (<= 6 Science) is in techSupply and purchase it pre-game without spending a disc
+      const gaussTech = TECH_CATALOG.find((t) => t.id === 'gauss_shield')!;
+      if (!game.techSupply.some((t) => t.id === 'gauss_shield')) {
+        game.techSupply.push(gaussTech);
+      }
+      const buyStartRes = executeAction(game, {
+        type: 'CHOOSE_TECHNOMAGES_STARTING_TECH',
+        playerId: tm.id,
+        techId: 'gauss_shield',
+        targetTrack: 'grid',
+      });
+      expect(buyStartRes.success).toBe(true);
+      game = buyStartRes.newState;
+      expect(game.pendingTechnoMagesTechSetup).toBeNull();
+      expect(game.players[0]!.resources.science).toBe(4); // 6 - 2 = 4
+      expect(game.players[0]!.techTrack.researched.map((t) => t.id)).toContain('gauss_shield');
+      expect(game.players[0]!.influenceTrack.discsOnTrack).toBe(12); // no disc spent
+
+      // Also verify Skip option (keep all 6 Science) & Draft Mode trigger
+      const skipState = createInitialGame(2, ['techno_mages', 'terran_federation'], ['community_factions']);
+      const skipRes = executeAction(skipState, {
+        type: 'CHOOSE_TECHNOMAGES_STARTING_TECH',
+        playerId: skipState.players[0]!.id,
+        techId: null,
+      });
+      expect(skipRes.success).toBe(true);
+      expect(skipRes.newState.pendingTechnoMagesTechSetup).toBeNull();
+      expect(skipRes.newState.players[0]!.resources.science).toBe(6);
+      expect(skipRes.newState.players[0]!.techTrack.researched).toEqual([]);
+
+      let draftGame = createInitialGame(
+        2,
+        ['terran_federation', 'techno_mages'],
+        ['community_factions'],
+        undefined,
+        true
+      );
+      draftGame = executeAction(draftGame, {
+        type: 'DRAFT_FACTION',
+        playerId: draftGame.factionDraft!.draftOrder[0]!,
+        factionId: 'terran_federation',
+      }).newState;
+      draftGame = executeAction(draftGame, {
+        type: 'DRAFT_FACTION',
+        playerId: draftGame.factionDraft!.draftOrder[1]!,
+        factionId: 'techno_mages',
+      }).newState;
+      expect(draftGame.pendingTechnoMagesTechSetup?.playerId).toBe(
+        draftGame.players.find((p) => p.faction.id === 'techno_mages')!.id
+      );
+
+      // 3. Limited Manufacturing (1 Build activation, 1 Colony Ship flip on Influence)
+      const failDoubleBuild = executeAction(
+        {
+          ...game,
+          players: game.players.map((p, idx) =>
+            idx === 0 ? { ...p, resources: { ...p.resources, materials: 20 } } : p
+          ),
+        },
+        {
+          type: 'BUILD',
+          playerId: tm.id,
+          items: [
+            { sectorId: tmHome.id, itemType: 'interceptor' },
+            { sectorId: tmHome.id, itemType: 'interceptor' },
+          ],
+        }
+      );
+      expect(failDoubleBuild.success).toBe(false);
+
+      const infTestState = structuredClone(game);
+      infTestState.players[0]!.colonyShips.ready = 0;
+      const infRes = executeAction(infTestState, {
+        type: 'INFLUENCE',
+        playerId: tm.id,
+        refreshColonyShips: true,
+      });
+      expect(infRes.success).toBe(true);
+      expect(infRes.newState.players[0]!.colonyShips.ready).toBe(1);
+
+      // 4. Technology finds a Way: 2 Colony Ships to populate Advanced planet without tech (1 Ship with tech)
+      const colWayState = structuredClone(game);
+      colWayState.sectors[0] = {
+        ...colWayState.sectors[0]!,
+        discOwner: tm.id,
+        planets: [
+          { id: 'adv_mat_tm', resource: 'material', isAdvanced: true },
+          { id: 'adv_wild_tm', resource: 'any', isAdvanced: true },
+        ],
+      };
+      // Only 1 ready colony ship -> fails both engine validation and getColonizablePlanetsForPlayer
+      colWayState.players[0]!.colonyShips.ready = 1;
+      expect(getColonizablePlanetsForPlayer(colWayState, tm.id)).toEqual([]);
+      const colFailOneShip = executeAction(colWayState, {
+        type: 'COLONIZE',
+        playerId: tm.id,
+        sectorId: colWayState.sectors[0]!.id,
+        planetIndex: 0,
+      });
+      expect(colFailOneShip.success).toBe(false);
+
+      // With 2 ready colony ships -> succeeds and spends 2 Colony Ships!
+      colWayState.players[0]!.colonyShips.ready = 3;
+      expect(getColonizablePlanetsForPlayer(colWayState, tm.id).length).toBe(2);
+      const colOkTwoShips = executeAction(colWayState, {
+        type: 'COLONIZE',
+        playerId: tm.id,
+        sectorId: colWayState.sectors[0]!.id,
+        planetIndex: 0,
+      });
+      expect(colOkTwoShips.success).toBe(true);
+      expect(colOkTwoShips.newState.players[0]!.colonyShips.ready).toBe(1);
+      expect(colOkTwoShips.newState.sectors[0]!.planets[0]!.colonizedBy).toBe(tm.id);
+
+      // 5. Techno-Magic Timing vs The Spiral ("Defender chooses last")
+      const timingGame = createInitialGame(
+        2,
+        ['techno_mages', 'the_spiral'],
+        ['community_factions']
+      );
+      const tmA = timingGame.players[0]!;
+      const spB = timingGame.players[1]!;
+      const clashSec = timingGame.sectors.find((s) => s.sectorNumber === 255)!;
+      clashSec.ships.push({
+        id: 'tm_clash_int',
+        ownerId: tmA.id,
+        type: 'interceptor',
+        damage: 0,
+      });
+      // Case A: Techno-Mages is Attacker, The Spiral is Defender -> Techno-Mages goes first, Spiral goes last!
+      timingGame.phase = 'COMBAT_PHASE';
+      timingGame.pendingTechnoMagesTechSetup = null;
+      timingGame.pendingSpiralTechSetup = null;
+      timingGame.activeCombat = {
+        sectorId: clashSec.id,
+        attackerOwnerId: tmA.id,
+        defenderOwnerId: spB.id,
+        participatingPlayerIds: [tmA.id, spB.id],
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        missileFiredShipIds: [],
+        roundActedGroupKeys: [],
+      };
+      expect(getPendingTechnoMagicPlayerId(timingGame.players, clashSec, timingGame.activeCombat)).toBe(tmA.id);
+      expect(getPendingSpiralShiftPlayerId(timingGame.players, clashSec, timingGame.activeCombat)).toBeNull();
+      const spiralEarlyReject = executeAction(timingGame, {
+        type: 'CONFIGURE_SPIRAL_SHIFT_PORT',
+        playerId: spB.id,
+        sectorId: clashSec.id,
+        choices: { interceptor: 'hull' },
+      });
+      expect(spiralEarlyReject.success).toBe(false);
+
+      // Case B: The Spiral is Attacker, Techno-Mages is Defender -> Spiral goes first, Techno-Mages goes last!
+      timingGame.activeCombat.attackerOwnerId = spB.id;
+      timingGame.activeCombat.defenderOwnerId = tmA.id;
+      expect(getPendingSpiralShiftPlayerId(timingGame.players, clashSec, timingGame.activeCombat)).toBe(spB.id);
+      expect(getPendingTechnoMagicPlayerId(timingGame.players, clashSec, timingGame.activeCombat)).toBeNull();
+      const tmEarlyReject = executeAction(timingGame, {
+        type: 'SET_TECHNO_MAGIC_UPGRADES',
+        playerId: tmA.id,
+        sectorId: clashSec.id,
+        upgrades: [],
+      });
+      expect(tmEarlyReject.success).toBe(false);
+
+      // 6. Techno-Magic Rules: Reject Ancient parts, removing parts, non-combat ship classes, and insufficient power; ALLOW upgrading occupied slots!
+      const tmBattleGame = structuredClone(game);
+      tmBattleGame.players[0]!.unlockedAncientParts = ['flux_shield'];
+      const battleSec = tmBattleGame.sectors[1]!;
+      battleSec.discOwner = p2.id;
+      battleSec.planets = [{ id: 'def_cube_p', resource: 'money', isAdvanced: false, colonizedBy: p2.id, colonizedResource: 'money' }];
+      battleSec.ships = [
+        { id: 'tm_cr_1', ownerId: tm.id, type: 'cruiser', damage: 0 },
+        { id: 'def_int_1', ownerId: p2.id, type: 'interceptor', damage: 0 },
+      ];
+      tmBattleGame.phase = 'COMBAT_PHASE';
+      tmBattleGame.activeCombat = {
+        sectorId: battleSec.id,
+        attackerOwnerId: tm.id,
+        defenderOwnerId: p2.id,
+        participatingPlayerIds: [tm.id, p2.id],
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        missileFiredShipIds: [],
+        roundActedGroupKeys: [],
+      };
+
+      // Ancient part rejected
+      expect(
+        executeAction(tmBattleGame, {
+          type: 'SET_TECHNO_MAGIC_UPGRADES',
+          playerId: tm.id,
+          sectorId: battleSec.id,
+          upgrades: [{ shipType: 'cruiser', slotIndex: 5, partId: 'flux_shield' }],
+        }).success
+      ).toBe(false);
+
+      // Non-participating ship class (Interceptor is NOT in battleSec.ships) rejected
+      expect(
+        executeAction(tmBattleGame, {
+          type: 'SET_TECHNO_MAGIC_UPGRADES',
+          playerId: tm.id,
+          sectorId: battleSec.id,
+          upgrades: [{ shipType: 'interceptor', slotIndex: 3, partId: 'electron_computer' }],
+        }).success
+      ).toBe(false);
+
+      // Removing part (empty partId) rejected
+      expect(
+        executeAction(tmBattleGame, {
+          type: 'SET_TECHNO_MAGIC_UPGRADES',
+          playerId: tm.id,
+          sectorId: battleSec.id,
+          upgrades: [{ shipType: 'cruiser', slotIndex: 0, partId: '' }],
+        }).success
+      ).toBe(false);
+
+      // Cruiser has 3⚡ produced (Nuclear Source) - 1⚡ (Nuclear Drive) - 1⚡ (Ion Cannon at slot 0) = 1⚡ spare:
+      // Adding Plasma Cannon (2⚡) to empty slot #5 fails power check (4⚡ > 3⚡),
+      // BUT upgrading occupied slot #0 (Ion Cannon 1⚡ -> Plasma Cannon 2⚡) SUCCEEDS (1 + 2 = 3⚡)!
+      tmBattleGame.players[0]!.techTrack.researched.push(TECH_CATALOG.find((t) => t.id === 'plasma_cannon')!);
+      expect(
+        executeAction(tmBattleGame, {
+          type: 'SET_TECHNO_MAGIC_UPGRADES',
+          playerId: tm.id,
+          sectorId: battleSec.id,
+          upgrades: [{ shipType: 'cruiser', slotIndex: 5, partId: 'plasma_cannon' }],
+        }).success
+      ).toBe(false);
+
+      const validTmRes = executeAction(tmBattleGame, {
+        type: 'SET_TECHNO_MAGIC_UPGRADES',
+        playerId: tm.id,
+        sectorId: battleSec.id,
+        upgrades: [{ shipType: 'cruiser', slotIndex: 0, partId: 'plasma_cannon' }],
+      });
+      expect(validTmRes.success).toBe(true);
+      const afterTm = validTmRes.newState;
+      expect(afterTm.players[0]!.blueprints.cruiser!.slots[0]?.id).toBe('plasma_cannon');
+
+      const tmUnits = buildCombatUnitsForSector(battleSec, afterTm.players, [tm.id, p2.id]);
+      const tmCruiserUnit = tmUnits.find((u) => u.id === 'tm_cr_1')!;
+      expect(tmCruiserUnit.weapons.some((w) => w.color === 'orange' && w.damage === 2)).toBe(true);
+
+      // Finish combat with Techno-Mages winning -> verify Planetary Bombardment uses the temporary Plasma Cannon AND slot #0 restores to Ion Cannon immediately after!
+      const preEndState = structuredClone(afterTm);
+      preEndState.sectors[1]!.ships = [{ id: 'tm_cr_1', ownerId: tm.id, type: 'cruiser', damage: 0 }];
+      (preEndState.activeCombat as any).winnerOwnerId = tm.id;
+      preEndState.activeCombat!.stage = 'resolved';
+      const endRes = executeAction(preEndState, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: tm.id,
+        sectorId: battleSec.id,
+        concludeCombat: true,
+      });
+      expect(endRes.success).toBe(true);
+      // Bombardment used the temporary orange Plasma Cannon die before removal
+      expect(endRes.newState.pendingCombatConquest?.bombardmentSummary?.rolls.length).toBe(1);
+      expect(endRes.newState.pendingCombatConquest?.bombardmentSummary?.rolls[0]?.diceColor).toBe('orange');
+      // Immediately after combat + bombardment settled, occupied slot #0 is restored back to original Ion Cannon!
+      expect(endRes.newState.players[0]!.blueprints.cruiser!.slots[0]?.id).toBe('ion_cannon');
+      expect(endRes.newState.activeTechnoMagicCleanups || []).toEqual([]);
+
+      // 7. Bot AI test for Pre-game Setup + Start-of-Combat Techno-Magic
+      const botInit = createInitialGame(2, ['techno_mages', 'terran_federation'], ['community_factions']);
+      botInit.players[0]!.isBot = true;
+      const botSetupAct = computeBotAction(botInit, botInit.players[0]!.id);
+      expect(botSetupAct?.type).toBe('CHOOSE_TECHNOMAGES_STARTING_TECH');
+
+      // 8. SSR UI Rendering (FactionSheetCard, GalacticGalleryModal, TechnoMagesStartingTechModal, CombatModal, SectorInspector)
+      const React = await import('react');
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { TechnoMagesStartingTechModal } = await import('../../components/setup/TechnoMagesStartingTechModal');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+      const { SectorInspector } = await import('../../components/map/SectorInspector');
+
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FactionSheetCard, { faction: tm.faction })
+        )
+      );
+      expect(sheetHtml).toContain('/factions/techno_mages.jpg');
+      expect(sheetHtml).toContain('object-top');
+      expect(sheetHtml).toContain('Technology finds a Way');
+      expect(sheetHtml).toContain('Techno-Magic');
+
+      const startModalHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(TechnoMagesStartingTechModal, {
+            player: createInitialGame(2, ['techno_mages', 'terran_federation'], ['community_factions']).players[0]!,
+            techSupply: [gaussTech],
+            onChooseTech: () => {},
+          })
+        )
+      );
+      expect(startModalHtml).toContain('data-testid="technomages-starting-tech-modal"');
+      expect(startModalHtml).toContain('Skip');
+
+      const combatPanelHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(CombatModal, {
+            state: tmBattleGame,
+            combat: tmBattleGame.activeCombat!,
+            onStepCombat: () => {},
+            onSetTechnoMagicUpgrades: () => {},
+          })
+        )
+      );
+      expect(combatPanelHtml).toContain('data-testid="techno-magic-panel"');
+      expect(combatPanelHtml).toContain('data-testid="techno-magic-tab-cruiser"');
+      expect(combatPanelHtml).toContain('data-testid="techno-magic-blueprint-cruiser"');
+      expect(combatPanelHtml).toContain('data-testid="techno-magic-part-ion_cannon"');
+      expect(combatPanelHtml).not.toContain('data-testid="techno-magic-tab-interceptor"');
+      expect(combatPanelHtml).not.toContain('data-testid="techno-magic-tab-dreadnought"');
+      expect(combatPanelHtml).not.toContain('data-testid="techno-magic-part-flux_shield"');
+
+      const secWayHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(SectorInspector, {
+            sector: colWayState.sectors[0]!,
+            players: colWayState.players,
+            activePlayer: colWayState.players[0]!,
+            onColonizePlanet: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(secWayHtml).toContain('Colonize (2 Ships)');
+    });
+
+    it('refreshes colony ships only once at Cleanup after bankruptcy resolution and blocks colonization during pendingBankruptcy', async () => {
+      const game = createInitialGame(2, ['terran_federation', 'orion_hegemony']);
+      const p0 = game.players[0]!;
+      const p1 = game.players[1]!;
+
+      // Give p0 an uncolonized planet in their home sector and spend colony ships for both players
+      const p0Home = game.sectors.find((s) => s.discOwner === p0.id)!;
+      p0Home.planets.push({ id: 'bankrupt_test_planet', resource: 'money' });
+      p0.colonyShips = { total: 3, ready: 1 };
+      p1.colonyShips = { total: 3, ready: 0 };
+
+      // Force p0 into a money deficit at upkeep (upkeep > money + income)
+      p0.resources.money = 0;
+      p0.influenceTrack.discsOnTrack = 5; // high upkeep
+      p1.resources.money = 20;
+      p1.influenceTrack.discsOnTrack = 13;
+
+      game.phase = 'UPKEEP_PHASE';
+      game.upkeepReadyPlayers = { [p1.id]: true };
+
+      // P0 clicks Ready for Upkeep -> executeUpkeepCalculations -> P0 enters pendingBankruptcy
+      const upkeepRes = executeAction(game, { type: 'READY_FOR_UPKEEP', playerId: p0.id });
+      expect(upkeepRes.success).toBe(true);
+      const bankruptState = upkeepRes.newState;
+      expect(bankruptState.pendingBankruptcy?.playerId).toBe(p0.id);
+      expect((bankruptState.pendingBankruptcy?.deficit ?? 0) > 0).toBe(true);
+
+      // Neither player's colony ships should be refreshed yet while bankruptcy is pending!
+      expect(bankruptState.players[0]!.colonyShips.ready).toBe(1);
+      expect(bankruptState.players[1]!.colonyShips.ready).toBe(0);
+
+      // Colonization must be blocked for everyone while pendingBankruptcy is active
+      const colAttempt = executeAction(bankruptState, {
+        type: 'COLONIZE',
+        playerId: p0.id,
+        sectorId: p0Home.id,
+        planetIndex: p0Home.planets.length - 1,
+      });
+      expect(colAttempt.success).toBe(false);
+      expect(colAttempt.error).toContain('resolving bankruptcy');
+
+      // UI SectorInspector must hide Colonize buttons during pendingBankruptcy
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { SectorInspector } = await import('../../components/map/SectorInspector');
+
+      const inspectorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(SectorInspector, {
+            sector: bankruptState.sectors.find((s) => s.id === p0Home.id)!,
+            players: bankruptState.players,
+            activePlayer: bankruptState.players[0]!,
+            pendingBankruptcy: bankruptState.pendingBankruptcy,
+            onColonizePlanet: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(inspectorHtml).not.toContain('>Colonize<');
+      expect(inspectorHtml).not.toContain('>Colonize (2 Ships)<');
+      expect(inspectorHtml).not.toContain('title="Colonize');
+
+      // Resolve bankruptcy via abandoning home sector (eliminating deficit or trading materials -> money)
+      bankruptState.players[0]!.resources.materials = 60;
+      const tradeRes = executeAction(bankruptState, {
+        type: 'TRADE',
+        playerId: p0.id,
+        fromResource: 'materials',
+        toResource: 'money',
+        amount: 60,
+      });
+      expect(tradeRes.success).toBe(true);
+      const afterBankrupt = tradeRes.newState;
+      expect(afterBankrupt.pendingBankruptcy).toBeNull();
+      expect(afterBankrupt.round).toBe(2);
+      expect(afterBankrupt.phase).toBe('ACTION_PHASE');
+
+      // NOW colony ships have refreshed once at the end of Cleanup!
+      expect(afterBankrupt.players[0]!.colonyShips.ready).toBe(afterBankrupt.players[0]!.colonyShips.total);
+      expect(afterBankrupt.players[1]!.colonyShips.ready).toBe(afterBankrupt.players[1]!.colonyShips.total);
     });
   });
 });

@@ -92,6 +92,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   jotunn: '/factions/jotunn.jpg',
   kurita_prefecture: '/factions/kurita_prefecture.jpg',
   children_of_light: '/factions/children_of_light.jpg',
+  techno_mages: '/factions/techno_mages.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -667,6 +668,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
         icon: 'tech',
         en: 'Divine Inspiration & Setup: In any battle featuring an Ancient, your other ships choose +1 to Hit or -1 Shield at Start of Battle. Start in Faylenia (#237) with Gauss Shield, 3 Money / 3 Science / 2 Materials, 3 Colony Ships, 4:1 Trade, and 4 Reputation slots (3 Amb).',
         zh: '神圣启迪与开局：任何有远古舰参战的战斗开始时，你的其他战舰可选 +1 命中或 -1 护盾。开局位于法伊莱尼亚（237 号星区），自带高斯护盾、3 金钱/3 科研/2 材料、3 艘殖民船、4:1 贸易与 4 格声望轨。',
+      },
+    ],
+  },
+  techno_mages: {
+    historyEn:
+      'The Techno-Mages are a mystical monastic order treating advanced science and technology almost as a religion. Shunning petty politics while hoarding esoteric knowledge, their order rises whenever a dark age threatens—punishing enemies of enlightenment with dazzling mid-battle adaptations and arcane shipcraft. "Magic? That is how a simple mind explains that which it does not understand." — Technomage Galen',
+    historyZh:
+      '科技法师（Techno-Mages）是一支将高阶科学与技术奉若神明的神秘修道秩序。平日避世钻研、远离星际政争；但每当黑暗纪元临近或有势力阻挠知识进步，这支学社便会挺身而出，在战场上以近乎魔术般的瞬时舰装改装惩戒顽敌。“魔法？那是浅薄心智用来解释无法理解之物的托辞。”——高伦导师',
+    portraitUrl: '/factions/techno_mages.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'tm_technology_finds_a_way',
+        icon: 'colony',
+        en: 'Technology finds a Way: You may spend 2 Colony Ships to populate an Advanced planet habitat of the matching type even if you lack the required Advanced technology.',
+        zh: '科技总有出路：即使未研发对应高阶科技，也可消耗 2 艘殖民船向高级行星居住位放置匹配资源的人口方块。',
+      },
+      {
+        id: 'tm_techno_magic',
+        icon: 'ship',
+        en: 'Techno-Magic: At the start of each combat, you may temporarily upgrade 1 slot (empty or occupied) on each participating ship blueprint with an unlocked non-Ancient part (normal power/drive restrictions apply; cannot remove parts; Defender chooses last). Remains active through Planetary Bombardment, then removed immediately after combat.',
+        zh: '科技魔法：每场战斗开始前，可为每型参战战舰蓝图的任一槽位（空槽或已有配件槽）临时升级 1 件已解锁的非远古配件（遵守能量与驱动限制，不可单纯移除配件；后手防守方最后抉择）。临时配件延续至行星轰炸结束，战后立即恢复原状。',
+      },
+      {
+        id: 'tm_limited_manufacturing_setup',
+        icon: 'tech',
+        en: 'Limited Manufacturing & Setup: Build has 1 activation and Influence flips only 1 Colony Ship. Start with 0 Techs, 3 Money / 6 Science / 2 Materials in Artemis VII (#244), 3:1 Trade, and 4 Reputation slots (1 Amb-only + 3 Amb/Rep); before the game begins you may spend initial Science to buy 1 Tech Tile from the tray.',
+        zh: '受限制造与开局：建造行动仅 1 次激活，影响力行动仅翻正 1 艘殖民船。开局位于阿尔忒弥斯 VII（244 号星区），3 金钱/6 科研/2 材料、3:1 贸易与 4 格声望轨；无初始科技，但开局前可选择用起始科研从科技盘购买 1 项科技。',
       },
     ],
   },

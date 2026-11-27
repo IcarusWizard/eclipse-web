@@ -55,10 +55,12 @@ import {
   MEGA_WAR_EXTERNAL_GROUPS,
   canBlueprintPowerShiftMode,
   getShiftPortSlotIndex,
+  STANDARD_SHIP_PART_IDS,
+  getEligibleTechnoMagicParts,
 } from './shipValidation';
-import { SHIP_PARTS, ANCIENT_PART_IDS, isSpiralPhase2, getShiftPortResolvedPart } from './partData';
+import { SHIP_PARTS, ANCIENT_PART_IDS, ALL_ANCIENT_PART_IDS, isSpiralPhase2, getShiftPortResolvedPart } from './partData';
 import { applyUpkeepPhase, abandonSectorForUpkeep, getIncomeForTrack, getUpkeepForDiscs, UPKEEP_TABLE, resolveCubeReturnTrack, getAllowedReturnTracksForPlanet, syncRemnantsOfRaArtifactWildSlots, getTradeRateForResource } from './economyEngine';
-import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId, getPendingDivineInspirationPlayerId, resolveBlueprintWithShiftPort, getDefaultShiftPortMode } from './combatEngine';
+import { buildCombatUnitsForSector, executeCombatStep, getSectorDefenderOwnerId, rollD6, rollPurpleDie, applyRiftSelfDamage, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId, getPendingTechnoMagicPlayerId, getPendingDivineInspirationPlayerId, resolveBlueprintWithShiftPort, getDefaultShiftPortMode } from './combatEngine';
 import { SectorTile, ShipType, PlanetSlot, SectorShip, DiscoveryTile, HexEdge } from '../types/galaxy';
 import { PlayerState } from '../types/player';
 import {
@@ -284,9 +286,47 @@ export interface ActionResult {
   error?: string;
 }
 
+export function playerHasAdvancedPlanetTech(
+  player: PlayerState,
+  planet: PlanetSlot,
+  chosenResource?: 'money' | 'science' | 'material'
+): boolean {
+  if (!planet.isAdvanced) return true;
+  const hasMeta = player.techTrack.researched.some((t) => t.id === 'metasynthesis');
+  const hasAdvEco = hasMeta || player.techTrack.researched.some((t) => t.id === 'advanced_economy');
+  const hasAdvSci = hasMeta || player.techTrack.researched.some((t) => t.id === 'advanced_labs');
+  const hasAdvMat = hasMeta || player.techTrack.researched.some((t) => t.id === 'advanced_mining');
+  if (planet.resource === 'money') return hasAdvEco;
+  if (planet.resource === 'science') return hasAdvSci;
+  if (planet.resource === 'material') return hasAdvMat;
+  if (planet.resource === 'any') {
+    if (chosenResource === 'money') return hasAdvEco;
+    if (chosenResource === 'science') return hasAdvSci;
+    if (chosenResource === 'material') return hasAdvMat;
+    return hasAdvEco || hasAdvSci || hasAdvMat;
+  }
+  return true;
+}
+
+/**
+ * Colony ships required to populate a habitat slot.
+ * Techno-Mages ("Technology finds a Way") may spend 2 Colony Ships to colonize an Advanced planet
+ * they could not normally populate without the matching Advanced technology.
+ */
+export function getColonizeColonyShipCost(
+  player: PlayerState,
+  planet: PlanetSlot,
+  chosenResource?: 'money' | 'science' | 'material'
+): number {
+  if (!planet.isAdvanced || planet.isOrbital) return 1;
+  if (playerHasAdvancedPlanetTech(player, planet, chosenResource)) return 1;
+  return player.faction.id === 'techno_mages' ? 2 : 1;
+}
+
 export function canColonizePlanetSlot(
   player: PlayerState,
-  planet: PlanetSlot
+  planet: PlanetSlot,
+  chosenResource?: 'money' | 'science' | 'material'
 ): { canColonize: boolean; reason?: string } {
   if (planet.colonizedBy) {
     return { canColonize: false, reason: 'Planet is already colonized.' };
@@ -295,6 +335,7 @@ export function canColonizePlanetSlot(
   const hasAdvEco = hasMeta || player.techTrack.researched.some((t) => t.id === 'advanced_economy');
   const hasAdvSci = hasMeta || player.techTrack.researched.some((t) => t.id === 'advanced_labs');
   const hasAdvMat = hasMeta || player.techTrack.researched.some((t) => t.id === 'advanced_mining');
+  const isTechnoMages = player.faction.id === 'techno_mages';
 
   if (planet.isOrbital) {
     const canMoney = player.population.money.cubesOnBoard > 0;
@@ -307,9 +348,22 @@ export function canColonizePlanetSlot(
 
   if (planet.resource === 'any') {
     if (planet.isAdvanced) {
-      const canMoney = hasAdvEco && player.population.money.cubesOnBoard > 0;
-      const canSci = hasAdvSci && player.population.science.cubesOnBoard > 0;
-      const canMat = hasAdvMat && player.population.material.cubesOnBoard > 0;
+      if (chosenResource) {
+        if (player.population[chosenResource].cubesOnBoard <= 0) {
+          return { canColonize: false, reason: `No ${chosenResource} cubes left on player board.` };
+        }
+        const hasResTech = playerHasAdvancedPlanetTech(player, planet, chosenResource);
+        if (!hasResTech && !isTechnoMages) {
+          return {
+            canColonize: false,
+            reason: 'Requires Advanced tech (Economy, Labs, or Mining) or Metasynthesis.',
+          };
+        }
+        return { canColonize: true };
+      }
+      const canMoney = (hasAdvEco || isTechnoMages) && player.population.money.cubesOnBoard > 0;
+      const canSci = (hasAdvSci || isTechnoMages) && player.population.science.cubesOnBoard > 0;
+      const canMat = (hasAdvMat || isTechnoMages) && player.population.material.cubesOnBoard > 0;
       if (!canMoney && !canSci && !canMat) {
         return {
           canColonize: false,
@@ -328,7 +382,7 @@ export function canColonizePlanetSlot(
     }
   }
 
-  if (planet.isAdvanced) {
+  if (planet.isAdvanced && !isTechnoMages) {
     if (planet.resource === 'money' && !hasAdvEco) {
       return { canColonize: false, reason: 'Requires Advanced Economy or Metasynthesis' };
     }
@@ -346,6 +400,109 @@ export function canColonizePlanetSlot(
   }
 
   return { canColonize: true };
+}
+
+/**
+ * Removes temporary Techno-Magic parts installed on ship blueprints once combat
+ * (including any planetary bombardment) concludes for `sectorId` (or all cleanups if omitted),
+ * restoring whatever part (or empty slot) was originally in each upgraded slot.
+ */
+export function cleanupTechnoMagicUpgrades(state: GameState, sectorId?: string): void {
+  const cleanups = state.activeTechnoMagicCleanups;
+  if (!cleanups || cleanups.length === 0) return;
+  const remaining: typeof cleanups = [];
+  for (const rec of cleanups) {
+    if (sectorId && rec.sectorId !== sectorId) {
+      remaining.push(rec);
+      continue;
+    }
+    const player = state.players.find((p) => p.id === rec.playerId);
+    if (player && player.blueprints) {
+      const removedLabels: string[] = [];
+      for (const item of rec.entries) {
+        const bp = player.blueprints[item.shipType];
+        if (bp && bp.slots[item.slotIndex]?.id === item.partId) {
+          const prevPart = item.previousPartId ? SHIP_PARTS[item.previousPartId] || null : null;
+          removedLabels.push(
+            `${item.shipType.toUpperCase()}: ${bp.slots[item.slotIndex]!.name} -> ${prevPart ? prevPart.name : 'Empty'}`
+          );
+          bp.slots[item.slotIndex] = prevPart;
+        }
+      }
+      if (removedLabels.length > 0) {
+        state.log.unshift({
+          id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+          timestamp: Date.now(),
+          round: state.round,
+          phase: state.phase,
+          playerId: player.id,
+          message: `🪄 Techno-Magic faded: restored ${player.name}'s blueprints (${removedLabels.join(', ')}).`,
+          type: 'combat',
+        });
+      }
+    }
+  }
+  state.activeTechnoMagicCleanups = remaining;
+}
+
+/**
+ * Selects sensible non-Ancient unlocked temporary upgrades for Techno-Mages bots/auto-resolve,
+ * scoped strictly to ship classes participating in the combat.
+ */
+export function buildDefaultTechnoMagicUpgrades(
+  player: PlayerState,
+  activeExpansions?: string[],
+  combatShips?: { ownerId: string; type: string }[]
+): { shipType: ShipType; slotIndex: number; partId: string }[] {
+  const eligible = getEligibleTechnoMagicParts(player, activeExpansions);
+  const priorityOrder = [
+    'positron_computer',
+    'gluon_computer',
+    'plasma_cannon',
+    'antimatter_cannon',
+    'gauss_shield',
+    'phase_shield',
+    'improved_hull',
+    'electron_computer',
+    'ion_cannon',
+    'hull',
+  ];
+  const ranked = [...eligible].sort((a, b) => {
+    const ia = priorityOrder.indexOf(a.id);
+    const ib = priorityOrder.indexOf(b.id);
+    return (ia === -1 ? 999 : ia) - (ib === -1 ? 999 : ib);
+  });
+
+  const upgrades: { shipType: ShipType; slotIndex: number; partId: string }[] = [];
+  for (const st of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]) {
+    if (combatShips && !combatShips.some((sh) => sh.ownerId === player.id && sh.type === st)) {
+      continue;
+    }
+    const bp = player.blueprints?.[st];
+    if (!bp) continue;
+    const emptyIdx = bp.slots.findIndex((sl) => sl === null);
+    const candidateIndices =
+      emptyIdx !== -1
+        ? [emptyIdx]
+        : bp.slots.map((_, idx) => idx);
+    let chosen: { shipType: ShipType; slotIndex: number; partId: string } | null = null;
+    for (const part of ranked) {
+      for (const sIdx of candidateIndices) {
+        if (bp.slots[sIdx]?.id === part.id) continue;
+        const candidateBp = {
+          ...bp,
+          slots: bp.slots.map((sl, idx) => (idx === sIdx ? part : sl)),
+        };
+        if (calculateBlueprintStats(candidateBp, activeExpansions).isValid) {
+          chosen = { shipType: st, slotIndex: sIdx, partId: part.id };
+          break;
+        }
+      }
+      if (chosen) break;
+    }
+    if (chosen) upgrades.push(chosen);
+  }
+  return upgrades;
 }
 
 export function getTraitorTilePenalty(player?: Pick<PlayerState, 'faction'> | null): number {
@@ -1050,14 +1207,15 @@ export function advanceTurnOrAutoPass(state: GameState, checkCurrentPlayerFirst:
 export function hasPendingPreGameCubeSetup(
   state: Pick<
     GameState,
-    'pendingExilesOrbitalSetup' | 'pendingRaArtifactSetup' | 'pendingSpiralTechSetup' | 'pendingMidasStartingCubeSetup'
+    'pendingExilesOrbitalSetup' | 'pendingRaArtifactSetup' | 'pendingSpiralTechSetup' | 'pendingMidasStartingCubeSetup' | 'pendingTechnoMagesTechSetup'
   >
 ): boolean {
   return Boolean(
     state.pendingExilesOrbitalSetup ||
       state.pendingRaArtifactSetup ||
       state.pendingSpiralTechSetup ||
-      state.pendingMidasStartingCubeSetup
+      state.pendingMidasStartingCubeSetup ||
+      state.pendingTechnoMagesTechSetup
   );
 }
 
@@ -1976,12 +2134,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return { valid: false, error: 'Player not found.' };
   }
 
-  // Pending Exiles / Remnants of Ra / The Spiral / Legion of Midas starting setup choices must complete before taking normal actions
+  // Pending pre-game starting setup choices must complete before taking normal actions
   const isPreGameSetupAction =
     action.type === 'CHOOSE_EXILES_ORBITAL_CUBE' ||
     action.type === 'CHOOSE_RA_ARTIFACT_CUBE' ||
     action.type === 'CHOOSE_SPIRAL_STARTING_TECH' ||
-    action.type === 'CHOOSE_MIDAS_STARTING_CUBE';
+    action.type === 'CHOOSE_MIDAS_STARTING_CUBE' ||
+    action.type === 'CHOOSE_TECHNOMAGES_STARTING_TECH';
   if (state.pendingExilesOrbitalSetup && !isPreGameSetupAction) {
     return {
       valid: false,
@@ -2004,6 +2163,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     return {
       valid: false,
       error: 'Legion of Midas commander must choose their starting Gray population cube before taking actions.',
+    };
+  }
+  if (state.pendingTechnoMagesTechSetup && !isPreGameSetupAction) {
+    return {
+      valid: false,
+      error: 'Techno-Mages commander must decide whether to purchase a starting technology before taking actions.',
     };
   }
   if (
@@ -2035,6 +2200,16 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     };
   }
 
+  // Block colonization while any player is resolving bankruptcy (colony ships only refresh once at Cleanup after bankruptcy clears)
+  if (state.pendingBankruptcy && action.type === 'COLONIZE') {
+    const bankruptName =
+      state.players.find((p) => p.id === state.pendingBankruptcy!.playerId)?.name || 'Bankrupt player';
+    return {
+      valid: false,
+      error: `Cannot colonize planets while ${bankruptName} is resolving bankruptcy.`,
+    };
+  }
+
   // If an action is pending confirmation, only CONFIRM_TURN_ACTION, REVERT_TURN_ACTION, or intermediate choices (like COLONIZE) are permitted
   if (state.pendingActionConfirmation) {
     if (
@@ -2044,6 +2219,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'COMBAT_CONQUEST' &&
       action.type !== 'RESOLVE_COMBAT_STEP' &&
       action.type !== 'CONFIGURE_SPIRAL_SHIFT_PORT' &&
+      action.type !== 'SET_TECHNO_MAGIC_UPGRADES' &&
       action.type !== 'SET_DIVINE_INSPIRATION' &&
       action.type !== 'RESOLVE_HOLY_COMMUNION' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
@@ -2061,6 +2237,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
       action.type !== 'CHOOSE_SPIRAL_STARTING_TECH' &&
       action.type !== 'CHOOSE_MIDAS_STARTING_CUBE' &&
+      action.type !== 'CHOOSE_TECHNOMAGES_STARTING_TECH' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'RETURN_AMBASSADOR_CUBE' &&
@@ -2087,6 +2264,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'COMBAT_CONQUEST' &&
       action.type !== 'RESOLVE_COMBAT_STEP' &&
       action.type !== 'CONFIGURE_SPIRAL_SHIFT_PORT' &&
+      action.type !== 'SET_TECHNO_MAGIC_UPGRADES' &&
       action.type !== 'SET_DIVINE_INSPIRATION' &&
       action.type !== 'RESOLVE_HOLY_COMMUNION' &&
       action.type !== 'CLAIM_REPUTATION_TILE' &&
@@ -2107,6 +2285,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       action.type !== 'CHOOSE_RA_ARTIFACT_CUBE' &&
       action.type !== 'CHOOSE_SPIRAL_STARTING_TECH' &&
       action.type !== 'CHOOSE_MIDAS_STARTING_CUBE' &&
+      action.type !== 'CHOOSE_TECHNOMAGES_STARTING_TECH' &&
       action.type !== 'CLAIM_MINOR_SPECIES' &&
       action.type !== 'BETRAY_ALLIANCE' &&
       action.type !== 'RETURN_AMBASSADOR_CUBE' &&
@@ -3065,9 +3244,6 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         state.pendingActionConfirmation.playerId === player.id
           ? state.pendingActionConfirmation.influenceRefreshesRemaining || 0
           : 0);
-      if (effectiveReady <= 0) {
-        return { valid: false, error: 'No ready colony ships available.' };
-      }
       const sector = state.sectors.find((s) => s.id === action.sectorId);
       if (!sector) return { valid: false, error: 'Sector not found.' };
       if (sector.discOwner !== action.playerId) {
@@ -3077,8 +3253,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!planet) return { valid: false, error: 'Planet not found.' };
       if (planet.colonizedBy) return { valid: false, error: 'Planet slot is already colonized.' };
 
+      const isTechnoMages = player.faction.id === 'techno_mages';
+
       // Orbitals accept only Money or Science
       if (planet.isOrbital) {
+        if (effectiveReady <= 0) {
+          return { valid: false, error: 'No ready colony ships available.' };
+        }
         const chosen = action.chosenResource || 'science';
         if (chosen !== 'money' && chosen !== 'science') {
           return { valid: false, error: 'Orbitals can only produce Money or Science.' };
@@ -3098,7 +3279,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (player.population[chosen].cubesOnBoard <= 0) {
           return { valid: false, error: `No ${chosen} population cubes left on player board.` };
         }
-        if (planet.isAdvanced) {
+        if (planet.isAdvanced && !isTechnoMages) {
           const hasMeta = player.techTrack.researched.some((t) => t.id === 'metasynthesis');
           if (chosen === 'money' && !hasMeta && !player.techTrack.researched.some((t) => t.id === 'advanced_economy')) {
             return { valid: false, error: 'Requires Advanced Economy or Metasynthesis to place Money cube on this gray advanced slot.' };
@@ -3110,12 +3291,16 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             return { valid: false, error: 'Requires Advanced Mining or Metasynthesis to place Material cube on this gray advanced slot.' };
           }
         }
+        const shipCost = getColonizeColonyShipCost(player, planet, chosen);
+        if (effectiveReady < shipCost) {
+          return { valid: false, error: shipCost > 1 ? `Requires ${shipCost} ready colony ships to colonize this Advanced planet without the matching tech.` : 'No ready colony ships available.' };
+        }
         return { valid: true };
       }
 
       // Standard single-resource slot
       const resType = planet.resource as 'money' | 'science' | 'material';
-      if (planet.isAdvanced) {
+      if (planet.isAdvanced && !isTechnoMages) {
         const hasMeta = player.techTrack.researched.some((t) => t.id === 'metasynthesis');
         if (resType === 'money' && !hasMeta && !player.techTrack.researched.some((t) => t.id === 'advanced_economy')) {
           return { valid: false, error: 'Requires Advanced Economy tech to colonize this gray slot.' };
@@ -3129,6 +3314,15 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       }
       if (player.population[resType].cubesOnBoard <= 0) {
         return { valid: false, error: `No ${resType} cubes left on player board.` };
+      }
+      const shipCost = getColonizeColonyShipCost(player, planet, resType);
+      if (effectiveReady < shipCost) {
+        return {
+          valid: false,
+          error: shipCost > 1
+            ? `Requires ${shipCost} ready colony ships to colonize this Advanced planet without the matching tech.`
+            : 'No ready colony ships available.',
+        };
       }
       return { valid: true };
     }
@@ -3330,17 +3524,12 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (!willControl) {
           return { valid: false, error: 'Must control sector with an Influence Disc to colonize planets.' };
         }
-        if (action.colonizePlanetIndices.length > player.colonyShips.ready) {
-          return {
-            valid: false,
-            error: `Cannot colonize ${action.colonizePlanetIndices.length} planets: only ${player.colonyShips.ready} colony ships ready.`,
-          };
-        }
         const hasRaPreviewWild =
           player.faction.id === 'remnants_of_ra' &&
           Boolean(sector.hasArtifact) &&
           willControl &&
           !sector.planets.some((p) => p.isRaArtifactSlot);
+        let totalShipCost = 0;
         for (const pIdx of action.colonizePlanetIndices) {
           const planet =
             sector.planets[pIdx] ||
@@ -3353,10 +3542,18 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
                 }
               : undefined);
           if (!planet) return { valid: false, error: `Invalid planet index ${pIdx}.` };
-          const check = canColonizePlanetSlot(player, planet);
+          const chosenRes = action.planetResourceChoices?.[pIdx];
+          const check = canColonizePlanetSlot(player, planet, chosenRes);
           if (!check.canColonize) {
             return { valid: false, error: check.reason || 'Cannot colonize planet slot.' };
           }
+          totalShipCost += getColonizeColonyShipCost(player, planet, chosenRes);
+        }
+        if (totalShipCost > player.colonyShips.ready) {
+          return {
+            valid: false,
+            error: `Cannot colonize selected planets: requires ${totalShipCost} colony ships, only ${player.colonyShips.ready} ready.`,
+          };
         }
       }
       return { valid: true };
@@ -3440,6 +3637,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return {
           valid: false,
           error: 'The Spiral must configure Shift Port modes for its ships before combat begins in this sector.',
+        };
+      }
+      const pendingTechnoMagicId = getPendingTechnoMagicPlayerId(state.players, sector, state.activeCombat);
+      if (pendingTechnoMagicId) {
+        return {
+          valid: false,
+          error: 'Techno-Mages must resolve Techno-Magic temporary combat upgrades before combat begins in this sector.',
         };
       }
       const pendingDivineInspirationId = getPendingDivineInspirationPlayerId(state.players, sector, state.activeCombat);
@@ -3838,6 +4042,22 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       if (!isParticipant) {
         return { valid: false, error: 'You are not a participant in this sector engagement.' };
       }
+      const sector = state.sectors.find((s) => s.id === action.sectorId);
+      if (sector) {
+        const expectedSpiralId = getPendingSpiralShiftPlayerId(state.players, sector, state.activeCombat);
+        if (expectedSpiralId && expectedSpiralId !== player.id) {
+          return {
+            valid: false,
+            error: 'Waiting for earlier attacker pre-combat configuration before Shift Port selection.',
+          };
+        }
+        if (!expectedSpiralId && getPendingTechnoMagicPlayerId(state.players, sector, state.activeCombat)) {
+          return {
+            valid: false,
+            error: 'Defender chooses last: attacker must finish Techno-Magic before defender Shift Port configuration.',
+          };
+        }
+      }
       const phase2 = isSpiralPhase2(player.techTrack.researched);
       for (const [shipType, mode] of Object.entries(action.choices || {})) {
         if (mode !== 'cannon' && mode !== 'computer' && mode !== 'hull') {
@@ -3852,6 +4072,114 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           return {
             valid: false,
             error: `${shipType.toUpperCase()} cannot power ${check.part.name} (requires ${check.requiredPower}⚡, only ${check.sparePower}⚡ spare power available).`,
+          };
+        }
+      }
+      return { valid: true };
+    }
+
+    case 'CHOOSE_TECHNOMAGES_STARTING_TECH': {
+      if (!state.pendingTechnoMagesTechSetup) {
+        return { valid: false, error: 'No pending Techno-Mages starting tech decision.' };
+      }
+      if (state.pendingTechnoMagesTechSetup.playerId !== action.playerId) {
+        return { valid: false, error: 'Only the Techno-Mages commander can make this starting tech decision.' };
+      }
+      if (action.techId === null) {
+        return { valid: true };
+      }
+      const tech = state.techSupply.find((t) => t.id === action.techId);
+      if (!tech) {
+        return { valid: false, error: 'Selected technology is not available in the Tech Tray.' };
+      }
+      const targetTrack: 'military' | 'grid' | 'nano' =
+        tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano'
+          ? tech.category
+          : action.targetTrack || 'nano';
+      const cost = Math.max(
+        tech.minCost,
+        calculateTechCost(tech, 0, targetTrack, player.faction.id) - getMinorSpeciesTechDiscount(player)
+      );
+      if (player.resources.science < cost) {
+        return {
+          valid: false,
+          error: `Insufficient starting Science (${player.resources.science}) to purchase ${tech.name} (costs ${cost} Science).`,
+        };
+      }
+      return { valid: true };
+    }
+
+    case 'SET_TECHNO_MAGIC_UPGRADES': {
+      if (state.phase !== 'COMBAT_PHASE' || !state.activeCombat) {
+        return { valid: false, error: 'No active combat in progress for Techno-Magic.' };
+      }
+      if (state.activeCombat.sectorId !== action.sectorId) {
+        return { valid: false, error: 'Techno-Magic sector does not match active combat sector.' };
+      }
+      if (player.faction.id !== 'techno_mages') {
+        return { valid: false, error: 'Only Techno-Mages possess Techno-Magic.' };
+      }
+      if (!state.activeCombat.participatingPlayerIds?.includes(player.id)) {
+        return { valid: false, error: 'You are not a participant in this sector engagement.' };
+      }
+      const sector = state.sectors.find((s) => s.id === action.sectorId);
+      if (sector) {
+        const expectedTmId = getPendingTechnoMagicPlayerId(state.players, sector, state.activeCombat);
+        if (expectedTmId !== action.playerId) {
+          return {
+            valid: false,
+            error: 'Defender chooses last: waiting for attacker pre-combat configuration first.',
+          };
+        }
+      }
+      const activeSub = sector?.isNebula ? state.activeCombat.subsector : undefined;
+      const scopedCombatShips = sector
+        ? activeSub
+          ? sector.ships.filter((sh) => (sh.subsector ?? 1) === activeSub)
+          : sector.ships
+        : [];
+      const eligibleIds = new Set(getEligibleTechnoMagicParts(player, state.expansions).map((p) => p.id));
+      const seenTypes = new Set<ShipType>();
+      for (const upg of action.upgrades || []) {
+        if (seenTypes.has(upg.shipType)) {
+          return { valid: false, error: `Can only temporarily upgrade 1 slot per ship blueprint (${upg.shipType}).` };
+        }
+        seenTypes.add(upg.shipType);
+        if (sector && !scopedCombatShips.some((sh) => sh.ownerId === player.id && sh.type === upg.shipType)) {
+          return {
+            valid: false,
+            error: `Techno-Magic only applies to ship classes participating in this combat (${upg.shipType} has no ships in battle).`,
+          };
+        }
+        const bp = player.blueprints[upg.shipType];
+        if (!bp) {
+          return { valid: false, error: `Blueprint ${upg.shipType} not found.` };
+        }
+        if (upg.slotIndex < 0 || upg.slotIndex >= bp.slots.length) {
+          return { valid: false, error: `Invalid slot index ${upg.slotIndex} on ${upg.shipType}.` };
+        }
+        if (!upg.partId) {
+          return { valid: false, error: 'Techno-Magic cannot remove ship parts; select a part to install.' };
+        }
+        if (ALL_ANCIENT_PART_IDS.has(upg.partId)) {
+          return { valid: false, error: 'Techno-Magic cannot place Ancient ship parts.' };
+        }
+        if (!eligibleIds.has(upg.partId)) {
+          return { valid: false, error: `Part ${upg.partId} is not unlocked for Techno-Magic.` };
+        }
+        const rawPart = SHIP_PARTS[upg.partId];
+        if (!rawPart) {
+          return { valid: false, error: `Part ${upg.partId} does not exist.` };
+        }
+        const candidateBp = {
+          ...bp,
+          slots: bp.slots.map((sl, i) => (i === upg.slotIndex ? rawPart : sl)),
+        };
+        const stats = calculateBlueprintStats(candidateBp, state.expansions);
+        if (!stats.isValid) {
+          return {
+            valid: false,
+            error: `Invalid temporary upgrade on ${upg.shipType.toUpperCase()}: ${stats.errors.join(' ')}`,
           };
         }
       }
@@ -5271,7 +5599,6 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
     }
 
     case 'COLONIZE': {
-      player.colonyShips.ready -= 1;
       const sector = newState.sectors.find((s) => s.id === action.sectorId)!;
       const planet = sector.planets[action.planetIndex]!;
       planet.colonizedBy = player.id;
@@ -5285,9 +5612,16 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         placedRes = planet.resource as 'money' | 'science' | 'material';
       }
 
+      const shipCost = getColonizeColonyShipCost(player, planet, placedRes);
+      player.colonyShips.ready -= shipCost;
+
       planet.colonizedResource = placedRes;
       player.population[placedRes].cubesOnBoard = Math.max(0, player.population[placedRes].cubesOnBoard - 1);
-      addLog(`${player.name} colonized a ${placedRes.toUpperCase()} slot in Sector ${sector.sectorNumber}.`);
+      addLog(
+        shipCost > 1
+          ? `🪄 ${player.name} used Technology finds a Way (${shipCost} Colony Ships) to colonize an Advanced ${placedRes.toUpperCase()} slot in Sector ${sector.sectorNumber}.`
+          : `${player.name} colonized a ${placedRes.toUpperCase()} slot in Sector ${sector.sectorNumber}.`
+      );
 
       if (planet.isOrbital && player.faction.id === 'the_exiles') {
         const hasOrbitalShip = sector.ships.some((s) => s.ownerId === player.id && s.type === 'orbital');
@@ -5302,17 +5636,18 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       }
 
       // Bug 96: If an Influence action is pending confirmation and has remaining colony ship refreshes,
-      // flip the used colony ship back face-up (or apply unused refresh)
+      // flip the used colony ship(s) back face-up (up to shipCost)
       if (
         newState.pendingActionConfirmation?.actionType === 'INFLUENCE' &&
         newState.pendingActionConfirmation.playerId === player.id &&
         newState.pendingActionConfirmation.influenceRefreshesRemaining &&
         newState.pendingActionConfirmation.influenceRefreshesRemaining > 0
       ) {
-        newState.pendingActionConfirmation.influenceRefreshesRemaining -= 1;
-        player.colonyShips.ready = Math.min(player.colonyShips.total, player.colonyShips.ready + 1);
+        const usedRefreshes = Math.min(shipCost, newState.pendingActionConfirmation.influenceRefreshesRemaining);
+        newState.pendingActionConfirmation.influenceRefreshesRemaining -= usedRefreshes;
+        player.colonyShips.ready = Math.min(player.colonyShips.total, player.colonyShips.ready + usedRefreshes);
         addLog(
-          `${player.name} flipped back a Colony Ship face-up from the Influence action (${newState.pendingActionConfirmation.influenceRefreshesRemaining} refresh(es) remaining).`,
+          `${player.name} flipped back ${usedRefreshes} Colony Ship(s) face-up from the Influence action (${newState.pendingActionConfirmation.influenceRefreshesRemaining} refresh(es) remaining).`,
           'action'
         );
       }
@@ -5781,6 +6116,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           Boolean(newState.pendingCombatConquest.bombardmentSummary.attackerFleetWipedOut)
         );
       }
+      cleanupTechnoMagicUpgrades(newState, sector.id);
 
       const conquestInfo = newState.pendingCombatConquest!;
       const canClaim = conquestInfo.canClaimInfluence !== false;
@@ -5810,9 +6146,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
       if (action.colonizePlanetIndices && action.colonizePlanetIndices.length > 0 && sector.discOwner === player.id) {
         for (const pIdx of action.colonizePlanetIndices) {
           const planet = sector.planets[pIdx];
-          if (planet && !planet.colonizedBy && player.colonyShips.ready > 0) {
-            planet.colonizedBy = player.id;
-            player.colonyShips.ready = Math.max(0, player.colonyShips.ready - 1);
+          if (planet && !planet.colonizedBy) {
             let placedRes: 'money' | 'science' | 'material';
             if (action.planetResourceChoices && action.planetResourceChoices[pIdx]) {
               placedRes = action.planetResourceChoices[pIdx];
@@ -5823,6 +6157,10 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             } else {
               placedRes = planet.resource as 'money' | 'science' | 'material';
             }
+            const shipCost = getColonizeColonyShipCost(player, planet, placedRes);
+            if (player.colonyShips.ready < shipCost) continue;
+            planet.colonizedBy = player.id;
+            player.colonyShips.ready = Math.max(0, player.colonyShips.ready - shipCost);
             planet.colonizedResource = placedRes;
             player.population[placedRes].cubesOnBoard = Math.max(0, player.population[placedRes].cubesOnBoard - 1);
             addLog(`${player.name} colonized a ${placedRes.toUpperCase()} habitat in Sector ${sector.sectorNumber} using a Colony Ship!`, 'action');
@@ -5954,6 +6292,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             if (hasMoreCombatsInSector) {
               // Winner continues to fight the next player WITHOUT repairing ship damage!
               // Do not carry over autoResolvePlayerIds to the next duel stage so the surviving commander can re-evaluate (e.g. retreat).
+              cleanupTechnoMagicUpgrades(newState, sector.id);
               addLog(
                 `⚔️ Duel in Sector ${sector.sectorNumber}${activeSub ? ` (Subsector ${activeSub})` : ''} resolved. Victor ${winnerId || 'Unknown'} advances to fight the next opponent without repairing ship damage!`,
                 'combat'
@@ -6001,10 +6340,17 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             if (!sector.isNebula) {
               const winnerShiftModes = winnerId ? newState.activeCombat?.spiralShiftModes?.[winnerId] : undefined;
               resolveAttackingPopulationAndConquest(newState, sector, winnerId, winnerShiftModes);
+              if (
+                !newState.pendingCombatConquest?.bombardmentSummary?.isPendingConfirm &&
+                !newState.pendingCombatConquest?.bombardmentSummary?.isPendingTargetSelection
+              ) {
+                cleanupTechnoMagicUpgrades(newState, sector.id);
+              }
             } else {
               for (const ship of relevantShips) {
                 ship.damage = 0;
               }
+              cleanupTechnoMagicUpgrades(newState, sector.id);
             }
 
             newState.activeCombat = null;
@@ -6879,14 +7225,111 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
         if (!newState.activeCombat.spiralShiftConfiguredPlayerIds.includes(player.id)) {
           newState.activeCombat.spiralShiftConfiguredPlayerIds.push(player.id);
         }
+        const sec = newState.sectors.find((s) => s.id === action.sectorId);
         const phase2 = isSpiralPhase2(player.techTrack.researched);
         const summaryParts = Object.entries(action.choices).map(([st, mode]) => {
           const partName = mode ? getShiftPortResolvedPart(mode, phase2).name : 'Default';
           return `${st.toUpperCase()}: ${partName}`;
         });
-        const secNum = newState.sectors.find((s) => s.id === action.sectorId)?.sectorNumber || action.sectorId;
+        const secNum = sec?.sectorNumber || action.sectorId;
         addLog(
           `🌀 ${player.name} configured Shift Ports for combat in Sector ${secNum} (${summaryParts.join(', ') || 'No ships'}).`,
+          'combat'
+        );
+        if ((newState.activeCombat.autoResolvePlayerIds?.length || 0) > 0) {
+          return { success: true, newState: advanceAutoResolveCombatSteps(newState) };
+        }
+      }
+      return { success: true, newState };
+    }
+
+    case 'CHOOSE_TECHNOMAGES_STARTING_TECH': {
+      if (!newState.pendingTechnoMagesTechSetup) {
+        return { success: false, newState: state, error: 'No pending Techno-Mages starting tech decision.' };
+      }
+      if (action.techId) {
+        const techIdx = newState.techSupply.findIndex((t) => t.id === action.techId);
+        if (techIdx >= 0) {
+          const tech = newState.techSupply.splice(techIdx, 1)[0]!;
+          const targetTrack: 'military' | 'grid' | 'nano' =
+            tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano'
+              ? tech.category
+              : action.targetTrack || 'nano';
+          const cost = Math.max(
+            tech.minCost,
+            calculateTechCost(tech, 0, targetTrack, player.faction.id) - getMinorSpeciesTechDiscount(player)
+          );
+          player.resources.science = Math.max(0, player.resources.science - cost);
+          player.techTrack.researched.push({ ...tech, placedTrack: targetTrack });
+          if (targetTrack === 'military') player.techTrack.militaryCount += 1;
+          else if (targetTrack === 'grid') player.techTrack.gridCount += 1;
+          else player.techTrack.nanoCount += 1;
+
+          if (tech.id === 'warp_portal') {
+            const targetSec = newState.sectors.find((s) => s.discOwner === player.id) || null;
+            if (targetSec) {
+              targetSec.hasWarpPortal = true;
+              targetSec.hasRareWarpPortal = true;
+            }
+          } else if (tech.id === 'quantum_grid') {
+            player.influenceTrack.totalDiscs += 2;
+            player.influenceTrack.discsOnTrack += 2;
+          } else if (tech.id === 'advanced_robotics') {
+            player.influenceTrack.totalDiscs += 1;
+            player.influenceTrack.discsOnTrack += 1;
+          }
+
+          addLog(
+            `🪄 ${player.name} spent ${cost} initial Science before the game began to acquire "${tech.name}".`,
+            'action'
+          );
+        }
+      } else {
+        addLog(
+          `🪄 ${player.name} kept all ${player.resources.science} initial Science instead of purchasing a starting Tech.`,
+          'action'
+        );
+      }
+      newState.pendingTechnoMagesTechSetup = null;
+      triggerPendingAtlantiansStartingLabsDiscovery(newState);
+      return { success: true, newState };
+    }
+
+    case 'SET_TECHNO_MAGIC_UPGRADES': {
+      if (newState.activeCombat && newState.activeCombat.sectorId === action.sectorId) {
+        const applied: { shipType: ShipType; slotIndex: number; partId: string; previousPartId: string | null }[] = [];
+        const labels: string[] = [];
+        for (const upg of action.upgrades || []) {
+          const bp = player.blueprints[upg.shipType];
+          const part = SHIP_PARTS[upg.partId];
+          if (bp && part && upg.slotIndex >= 0 && upg.slotIndex < bp.slots.length) {
+            const previousPartId = bp.slots[upg.slotIndex]?.id || null;
+            bp.slots[upg.slotIndex] = part;
+            applied.push({ shipType: upg.shipType, slotIndex: upg.slotIndex, partId: upg.partId, previousPartId });
+            labels.push(`${upg.shipType.toUpperCase()} Slot #${upg.slotIndex + 1}: +${part.name}`);
+          }
+        }
+        newState.activeCombat.technoMagicConfiguredPlayerIds =
+          newState.activeCombat.technoMagicConfiguredPlayerIds || [];
+        if (!newState.activeCombat.technoMagicConfiguredPlayerIds.includes(player.id)) {
+          newState.activeCombat.technoMagicConfiguredPlayerIds.push(player.id);
+        }
+        newState.activeCombat.technoMagicAppliedUpgrades =
+          newState.activeCombat.technoMagicAppliedUpgrades || {};
+        newState.activeCombat.technoMagicAppliedUpgrades[player.id] = applied;
+        if (applied.length > 0) {
+          newState.activeTechnoMagicCleanups = newState.activeTechnoMagicCleanups || [];
+          newState.activeTechnoMagicCleanups.push({
+            playerId: player.id,
+            sectorId: action.sectorId,
+            entries: applied,
+          });
+        }
+        const secNum = newState.sectors.find((s) => s.id === action.sectorId)?.sectorNumber || action.sectorId;
+        addLog(
+          applied.length > 0
+            ? `🪄 Techno-Magic (${player.name}) temporarily upgraded blueprints for Sector ${secNum}: ${labels.join(', ')}.`
+            : `🪄 Techno-Magic (${player.name}) entered combat in Sector ${secNum} with no temporary blueprint upgrades.`,
           'combat'
         );
         if ((newState.activeCombat.autoResolvePlayerIds?.length || 0) > 0) {
@@ -7205,6 +7648,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           }
         }
 
+        const tmPlayer = newState.players.find((p) => p.faction.id === 'techno_mages');
+        if (tmPlayer) {
+          newState.pendingTechnoMagesTechSetup = { playerId: tmPlayer.id };
+        }
+
         triggerPendingAtlantiansStartingLabsDiscovery(newState);
 
         addLog(
@@ -7504,6 +7952,32 @@ function advanceAutoResolveCombatSteps(initialState: GameState): GameState {
         );
         if (!cfgRes.success) break;
         current = cfgRes.newState;
+        continue;
+      }
+    }
+
+    const pendingTechnoMagicId = getPendingTechnoMagicPlayerId(current.players, sector, combat);
+    if (pendingTechnoMagicId) {
+      if (!autoIds.includes(pendingTechnoMagicId)) break;
+      const tmPl = current.players.find((p) => p.id === pendingTechnoMagicId);
+      if (tmPl) {
+        const activeSub = sector.isNebula ? combat.subsector : undefined;
+        const scopedShips = activeSub
+          ? sector.ships.filter((sh) => (sh.subsector ?? 1) === activeSub)
+          : sector.ships;
+        const upgrades = buildDefaultTechnoMagicUpgrades(tmPl, current.expansions, scopedShips);
+        const tmRes = executeAction(
+          current,
+          {
+            type: 'SET_TECHNO_MAGIC_UPGRADES',
+            playerId: pendingTechnoMagicId,
+            sectorId: combat.sectorId,
+            upgrades,
+          },
+          true
+        );
+        if (!tmRes.success) break;
+        current = tmRes.newState;
         continue;
       }
     }
@@ -7977,6 +8451,7 @@ function applySelectedBombardmentDestruction(
       state.pendingCombatConquest = null;
     }
   }
+  cleanupTechnoMagicUpgrades(state, sector.id);
 }
 
 function finalizeBombardmentAndOverthrow(
@@ -8107,6 +8582,9 @@ export function finalizePendingBombardmentConquest(
     pending.bombardmentSummary.rolls,
     Boolean(pending.bombardmentSummary.neutronAbsorberActive)
   );
+  if (!state.pendingCombatConquest?.bombardmentSummary?.isPendingTargetSelection) {
+    cleanupTechnoMagicUpgrades(state, sector.id);
+  }
 }
 
 export function resolveAttackingPopulationAndConquest(
@@ -9181,23 +9659,19 @@ export function getColonizablePlanetsForPlayer(
   const player = state.players.find((p) => p.id === playerId);
   if (!player || player.isEliminated || player.colonyShips.ready <= 0) return [];
 
+  const isTechnoMages = player.faction.id === 'techno_mages';
   const colonizable: { sectorId: string; planetIndex: number }[] = [];
   for (const sector of state.sectors) {
     if (sector.discOwner !== playerId) continue;
     for (let i = 0; i < sector.planets.length; i++) {
       const planet = sector.planets[i];
       if (planet.colonizedBy) continue;
-      // Check advanced requirement
+      // Check advanced requirement (Techno-Mages may populate without tech for 2 Colony Ships)
       if (planet.isAdvanced) {
-        const hasAdvTech =
-          (planet.resource === 'money' &&
-            player.techTrack.researched.some((t) => t.id === 'advanced_economy')) ||
-          (planet.resource === 'science' &&
-            player.techTrack.researched.some((t) => t.id === 'advanced_labs')) ||
-          (planet.resource === 'material' &&
-            player.techTrack.researched.some((t) => t.id === 'advanced_mining')) ||
-          player.techTrack.researched.some((t) => t.id === 'metasynthesis');
-        if (!hasAdvTech) continue;
+        const hasAdvTech = playerHasAdvancedPlanetTech(player, planet);
+        if (!hasAdvTech) {
+          if (!isTechnoMages || player.colonyShips.ready < 2) continue;
+        }
       }
       // Check population cubes available
       const res = planet.resource;
@@ -9220,6 +9694,7 @@ export function getColonizablePlanetsForPlayer(
 }
 
 export function transitionToUpkeep(state: GameState, immediate: boolean = false): void {
+  cleanupTechnoMagicUpgrades(state);
   state.phase = 'UPKEEP_PHASE';
   state.upkeepReadyPlayers = {};
 
@@ -9280,15 +9755,9 @@ export function executeUpkeepCalculations(state: GameState): void {
       message: `💰 UPKEEP: ${p.name} earned ${moneyIncome} Credits income, paid ${upkeep} Upkeep (Net: ${moneyIncome - upkeep >= 0 ? '+' : ''}${moneyIncome - upkeep}, Treasury: ${p.resources.money}).`,
       type: 'economy',
     });
-
-    // 2. Ready colony ships
-    p.colonyShips = {
-      total: p.colonyShips.total,
-      ready: p.colonyShips.total,
-    };
   }
 
-  // Check if any player entered tactical bankruptcy
+  // Check if any player entered tactical bankruptcy (colony ships refresh only once in Cleanup after bankruptcy clears)
   checkNextBankruptcyOrCleanup(state);
 }
 

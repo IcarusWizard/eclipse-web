@@ -769,6 +769,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                   ? translateTechName('advanced_labs', 'Advanced Labs', language)
                   : translateTechName('advanced_mining', 'Advanced Mining', language);
 
+                const isTechnoMages = activePlayer.faction.id === 'techno_mages';
                 const hasRequiredTech =
                   !planet.isAdvanced ||
                   (isWild
@@ -782,6 +783,7 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                     : true);
 
                 const canColonize =
+                  !pendingBankruptcy &&
                   !planet.colonizedBy &&
                   sector.discOwner === activePlayer.id &&
                   activePlayer.colonyShips.ready > 0;
@@ -947,37 +949,68 @@ export const SectorInspector: React.FC<SectorInspectorProps> = ({
                         ) : isWild ? (
                           <>
                             <button
-                              disabled={activePlayer.population.money.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedEconomy)}
+                              disabled={
+                                activePlayer.population.money.cubesOnBoard <= 0 ||
+                                (planet.isAdvanced && !hasAdvancedEconomy && (!isTechnoMages || activePlayer.colonyShips.ready < 2))
+                              }
                               onClick={() => onColonizePlanet(sector.id, pIdx, 'money')}
                               className="px-2 py-1 rounded text-[10px] font-bold bg-yellow-500 hover:bg-yellow-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow text-center"
-                              title={l('Colonize with Money Cube', '用信用点方块殖民')}
+                              title={
+                                planet.isAdvanced && !hasAdvancedEconomy && isTechnoMages
+                                  ? l('Technology finds a Way: 2 Colony Ships', '科技总有出路：消耗 2 艘殖民船')
+                                  : l('Colonize with Money Cube', '用信用点方块殖民')
+                              }
                             >
-                              + {l('Money', '信用点')}
+                              + {l('Money', '信用点')}{planet.isAdvanced && !hasAdvancedEconomy && isTechnoMages ? ' (2🚢)' : ''}
                             </button>
                             <button
-                              disabled={activePlayer.population.science.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedLabs)}
+                              disabled={
+                                activePlayer.population.science.cubesOnBoard <= 0 ||
+                                (planet.isAdvanced && !hasAdvancedLabs && (!isTechnoMages || activePlayer.colonyShips.ready < 2))
+                              }
                               onClick={() => onColonizePlanet(sector.id, pIdx, 'science')}
                               className="px-2 py-1 rounded text-[10px] font-bold bg-pink-500 hover:bg-pink-400 disabled:opacity-40 disabled:pointer-events-none text-white shadow text-center"
-                              title={l('Colonize with Science Cube', '用科研方块殖民')}
+                              title={
+                                planet.isAdvanced && !hasAdvancedLabs && isTechnoMages
+                                  ? l('Technology finds a Way: 2 Colony Ships', '科技总有出路：消耗 2 艘殖民船')
+                                  : l('Colonize with Science Cube', '用科研方块殖民')
+                              }
                             >
-                              + {l('Science', '科研')}
+                              + {l('Science', '科研')}{planet.isAdvanced && !hasAdvancedLabs && isTechnoMages ? ' (2🚢)' : ''}
                             </button>
                             <button
-                              disabled={activePlayer.population.material.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedMining)}
+                              disabled={
+                                activePlayer.population.material.cubesOnBoard <= 0 ||
+                                (planet.isAdvanced && !hasAdvancedMining && (!isTechnoMages || activePlayer.colonyShips.ready < 2))
+                              }
                               onClick={() => onColonizePlanet(sector.id, pIdx, 'material')}
                               className="px-2 py-1 rounded text-[10px] font-bold bg-amber-700 hover:bg-amber-600 disabled:opacity-40 disabled:pointer-events-none text-white shadow text-center"
-                              title={l('Colonize with Material Cube', '用材料方块殖民')}
+                              title={
+                                planet.isAdvanced && !hasAdvancedMining && isTechnoMages
+                                  ? l('Technology finds a Way: 2 Colony Ships', '科技总有出路：消耗 2 艘殖民船')
+                                  : l('Colonize with Material Cube', '用材料方块殖民')
+                              }
                             >
-                              + {l('Material', '材料')}
+                              + {l('Material', '材料')}{planet.isAdvanced && !hasAdvancedMining && isTechnoMages ? ' (2🚢)' : ''}
                             </button>
                           </>
                         ) : (
                           <button
-                            disabled={!hasRequiredTech || activePlayer.population[planet.resource as 'money' | 'science' | 'material'].cubesOnBoard <= 0}
+                            disabled={
+                              (!hasRequiredTech && (!isTechnoMages || activePlayer.colonyShips.ready < 2)) ||
+                              activePlayer.population[planet.resource as 'money' | 'science' | 'material'].cubesOnBoard <= 0
+                            }
                             onClick={() => onColonizePlanet(sector.id, pIdx, planet.resource as any)}
                             className="px-2.5 py-1 rounded-lg text-[11px] font-bold bg-cyan-500 hover:bg-cyan-400 disabled:opacity-40 disabled:pointer-events-none text-slate-950 shadow transition-all font-sans"
+                            title={
+                              !hasRequiredTech && isTechnoMages
+                                ? l('Technology finds a Way: Spend 2 Colony Ships to colonize without Advanced tech', '科技总有出路：无对应科技时消耗 2 艘殖民船殖民')
+                                : undefined
+                            }
                           >
-                            {l('Colonize', '殖民')}
+                            {!hasRequiredTech && isTechnoMages
+                              ? l('Colonize (2 Ships)', '殖民 (2 船)')
+                              : l('Colonize', '殖民')}
                           </button>
                         )}
                       </div>

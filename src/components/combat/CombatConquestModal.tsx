@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { GameState, PendingCombatConquest } from '../../engine/types/state';
-import { canColonizePlanetSlot } from '../../engine/rules/gameReducer';
+import { canColonizePlanetSlot, getColonizeColonyShipCost } from '../../engine/rules/gameReducer';
 import {
   Trophy,
   CircleDot,
@@ -152,14 +152,42 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
   );
 
   const readyColonyShips = winner.colonyShips.ready;
-  const remainingColonyShips = readyColonyShips - selectedPlanetIndices.length;
+  const isTechnoMages = winner.faction.id === 'techno_mages';
+
+  const getPlannedPlanetResource = (pIdx: number): 'money' | 'science' | 'material' | undefined => {
+    const p = sector.planets[pIdx];
+    if (!p) return undefined;
+    if (p.isOrbital) {
+      return planetResourceChoices[pIdx] || (winner.population.money.cubesOnBoard > 0 ? 'money' : 'science');
+    }
+    if (p.resource === 'any') {
+      return (
+        planetResourceChoices[pIdx] ||
+        (winner.population.money.cubesOnBoard > 0
+          ? 'money'
+          : winner.population.science.cubesOnBoard > 0
+          ? 'science'
+          : 'material')
+      );
+    }
+    return p.resource as 'money' | 'science' | 'material';
+  };
+
+  const spentColonyShips = selectedPlanetIndices.reduce((sum, idx) => {
+    const p = sector.planets[idx];
+    if (!p) return sum + 1;
+    return sum + getColonizeColonyShipCost(winner, p, getPlannedPlanetResource(idx));
+  }, 0);
+  const remainingColonyShips = Math.max(0, readyColonyShips - spentColonyShips);
 
   const handleTogglePlanet = (idx: number) => {
     if (!canControl) return;
     if (selectedPlanetIndices.includes(idx)) {
       setSelectedPlanetIndices(selectedPlanetIndices.filter((i) => i !== idx));
     } else {
-      if (remainingColonyShips > 0) {
+      const p = sector.planets[idx];
+      const cost = p ? getColonizeColonyShipCost(winner, p, getPlannedPlanetResource(idx)) : 1;
+      if (remainingColonyShips >= cost) {
         setSelectedPlanetIndices([...selectedPlanetIndices, idx]);
       }
     }
@@ -666,13 +694,8 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                         {conquestPlanets.map((planet, pIdx) => {
                         const isColonized = !!planet.colonizedBy;
                         const isSelected = selectedPlanetIndices.includes(pIdx);
-                        const check = canColonizePlanetSlot(winner, planet);
-                        const canSelect = isSelected || (check.canColonize && remainingColonyShips > 0);
-
                         const isWild = planet.resource === 'any';
                         const isOrb = !!planet.isOrbital;
-
-                        // Default resource selection if not chosen yet
                         const defaultRes: 'money' | 'science' | 'material' = isOrb
                           ? winner.population.money.cubesOnBoard > 0
                             ? 'money'
@@ -682,9 +705,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                           : winner.population.science.cubesOnBoard > 0
                           ? 'science'
                           : 'material';
-
                         const chosenRes = planetResourceChoices[pIdx] || defaultRes;
                         const displayResource = isWild || isOrb ? chosenRes : planet.resource;
+                        const check = canColonizePlanetSlot(winner, planet, chosenRes);
+                        const shipCost = getColonizeColonyShipCost(winner, planet, chosenRes);
+                        const canSelect = isSelected || (check.canColonize && remainingColonyShips >= shipCost);
 
                         return (
                           <div
@@ -733,7 +758,7 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     : l(`${planet.resource} Planet`, `${translateResourceType(planet.resource, language)}星球`)}
                                   {planet.isAdvanced && (
                                     <span className="text-[9px] font-mono px-1 rounded bg-slate-800 border border-slate-700 text-slate-400">
-                                      {l('Adv', '高级')}
+                                      {shipCost > 1 ? l('Adv • 2 Ships', '高级 • 2船') : l('Adv', '高级')}
                                     </span>
                                   )}
                                 </span>
@@ -742,11 +767,13 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     ? l('Already Colonized', '已被殖民')
                                     : isSelected
                                     ? l(
-                                        `Deploying Colony Ship (${chosenRes.toUpperCase()})`,
-                                        `部署殖民船 (${translateResourceType(chosenRes, language)})`
+                                        `Deploying ${shipCost} Colony Ship${shipCost > 1 ? 's' : ''} (${chosenRes.toUpperCase()})`,
+                                        `部署 ${shipCost} 艘殖民船 (${translateResourceType(chosenRes, language)})`
                                       )
                                     : !check.canColonize
                                     ? check.reason
+                                    : remainingColonyShips < shipCost
+                                    ? l(`Needs ${shipCost} Colony Ships`, `需要 ${shipCost} 艘殖民船`)
                                     : l('Ready to Colonize', '可殖民')}
                                 </span>
 
@@ -759,10 +786,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     {/* Money Button */}
                                     <button
                                       type="button"
-                                      disabled={!canControl || winner.population.money.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedEconomy)}
+                                      disabled={!canControl || winner.population.money.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedEconomy && (!isTechnoMages || (!isSelected && remainingColonyShips < 2)))}
                                       onClick={() => {
+                                        const needed = getColonizeColonyShipCost(winner, planet, 'money');
                                         setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'money' }));
-                                        if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
+                                        if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips >= needed) {
                                           setSelectedPlanetIndices((prev) => [...prev, pIdx]);
                                         }
                                       }}
@@ -780,10 +808,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     {/* Science Button */}
                                     <button
                                       type="button"
-                                      disabled={!canControl || winner.population.science.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedLabs)}
+                                      disabled={!canControl || winner.population.science.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedLabs && (!isTechnoMages || (!isSelected && remainingColonyShips < 2)))}
                                       onClick={() => {
+                                        const needed = getColonizeColonyShipCost(winner, planet, 'science');
                                         setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'science' }));
-                                        if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
+                                        if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips >= needed) {
                                           setSelectedPlanetIndices((prev) => [...prev, pIdx]);
                                         }
                                       }}
@@ -802,10 +831,11 @@ export const CombatConquestModal: React.FC<CombatConquestModalProps> = ({
                                     {!isOrb && (
                                       <button
                                         type="button"
-                                        disabled={!canControl || winner.population.material.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedMining)}
+                                        disabled={!canControl || winner.population.material.cubesOnBoard <= 0 || (planet.isAdvanced && !hasAdvancedMining && (!isTechnoMages || (!isSelected && remainingColonyShips < 2)))}
                                         onClick={() => {
+                                          const needed = getColonizeColonyShipCost(winner, planet, 'material');
                                           setPlanetResourceChoices((prev) => ({ ...prev, [pIdx]: 'material' }));
-                                          if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips > 0) {
+                                          if (!selectedPlanetIndices.includes(pIdx) && remainingColonyShips >= needed) {
                                             setSelectedPlanetIndices((prev) => [...prev, pIdx]);
                                           }
                                         }}

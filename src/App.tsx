@@ -29,7 +29,7 @@ import { SHIP_PARTS } from './engine/rules/partData';
 import { getPriorityActorId, computeBotAction } from './engine/ai/terranBot';
 import { calculateBlueprintStats } from './engine/rules/shipValidation';
 import { getRingFromCoord, findLegalExploreRotation, findNextLegalExploreRotation, findPreviousLegalExploreRotation, areCoordsEqual } from './engine/rules/hexMath';
-import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId, getPendingDivineInspirationPlayerId } from './engine/rules/combatEngine';
+import { buildCombatUnitsForSector, getSectorDefenderOwnerId, sortUnitsByInitiative, getCombatShipTypeGroups, getActiveCombatGroup, getPendingSpiralShiftPlayerId, getPendingTechnoMagicPlayerId, getPendingDivineInspirationPlayerId } from './engine/rules/combatEngine';
 import type { NeutralShipSelectionConfig } from './engine/rules/neutralShips';
 import { X, Sparkles, Coins, Rocket, CheckCircle2, Check } from 'lucide-react';
 
@@ -59,6 +59,7 @@ import { ExilesOrbitalSetupModal } from './components/setup/ExilesOrbitalSetupMo
 import { RaArtifactSetupModal } from './components/setup/RaArtifactSetupModal';
 import { SpiralStartingTechModal } from './components/setup/SpiralStartingTechModal';
 import { MidasStartingCubeModal } from './components/setup/MidasStartingCubeModal';
+import { TechnoMagesStartingTechModal } from './components/setup/TechnoMagesStartingTechModal';
 import { DiscoveryChoiceModal } from './components/discovery/DiscoveryChoiceModal';
 import { ExploreSectorControlModal } from './components/actions/ExploreSectorControlModal';
 import { BlackHoleReturnModal } from './components/actions/BlackHoleReturnModal';
@@ -356,6 +357,7 @@ const AppContent: React.FC = () => {
     state.pendingRaArtifactSetup,
     state.pendingSpiralTechSetup,
     state.pendingMidasStartingCubeSetup,
+    state.pendingTechnoMagesTechSetup,
     state.pendingHolyCommunion,
     isBuildOpen,
     isMoveOpen,
@@ -900,6 +902,8 @@ const AppContent: React.FC = () => {
       offTurnDecisionKey = `spiral_setup:${state.pendingSpiralTechSetup.playerId}`;
     } else if (state.pendingMidasStartingCubeSetup && (currentSeat === 'all' || state.pendingMidasStartingCubeSetup.playerId === myId)) {
       offTurnDecisionKey = `midas_setup:${state.pendingMidasStartingCubeSetup.playerId}`;
+    } else if (state.pendingTechnoMagesTechSetup && (currentSeat === 'all' || state.pendingTechnoMagesTechSetup.playerId === myId)) {
+      offTurnDecisionKey = `techno_mages_setup:${state.pendingTechnoMagesTechSetup.playerId}`;
     } else if (state.pendingHolyCommunion && (currentSeat === 'all' || state.pendingHolyCommunion.playerId === myId)) {
       offTurnDecisionKey = `holy_communion:${state.pendingHolyCommunion.sectorId}:${state.pendingHolyCommunion.playerId}`;
     } else if (state.isDraftMode && state.factionDraft && (currentSeat === 'all' || state.factionDraft.draftOrder[state.factionDraft.currentDraftIndex] === myId)) {
@@ -944,6 +948,7 @@ const AppContent: React.FC = () => {
     state.pendingRaArtifactSetup,
     state.pendingSpiralTechSetup,
     state.pendingMidasStartingCubeSetup,
+    state.pendingTechnoMagesTechSetup,
     state.pendingHolyCommunion,
     state.isDraftMode,
     state.factionDraft,
@@ -3741,6 +3746,59 @@ const AppContent: React.FC = () => {
     }
   };
 
+  // Techno-Mages Optional Pre-Game Starting Tech Purchase
+  const handleChooseTechnoMagesStartingTech = (
+    techId: string | null,
+    targetTrack?: 'military' | 'grid' | 'nano'
+  ) => {
+    if (!state.pendingTechnoMagesTechSetup) return;
+    if (!canActForPlayer(state.pendingTechnoMagesTechSetup.playerId)) {
+      showToast('Spectators cannot perform actions.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'CHOOSE_TECHNOMAGES_STARTING_TECH',
+      playerId: state.pendingTechnoMagesTechSetup.playerId,
+      techId,
+      targetTrack,
+    });
+    if (res.success) {
+      setState(res.newState);
+      showToast(techId ? 'Purchased starting technology for Techno-Mages.' : 'Skipped starting technology purchase.');
+    } else {
+      showToast(res.error || 'Failed to resolve Techno-Mages starting technology.');
+    }
+  };
+
+  // Techno-Mages Techno-Magic Pre-Combat Temporary Upgrades
+  const handleSetTechnoMagicUpgrades = (
+    sectorId: string,
+    upgrades: { shipType: ShipType; slotIndex: number; partId: string }[],
+    targetPlayerId?: string
+  ) => {
+    if (isSpectator || !state.activeCombat) return;
+    const sec = state.sectors.find((s) => s.id === sectorId);
+    const playerId =
+      targetPlayerId ||
+      (sec ? getPendingTechnoMagicPlayerId(state.players, sec, state.activeCombat) : null);
+    if (!playerId) return;
+    if (!canActForPlayer(playerId)) {
+      showToast('Only the Techno-Mages commander can configure Techno-Magic upgrades.');
+      return;
+    }
+    const res = executeAction(state, {
+      type: 'SET_TECHNO_MAGIC_UPGRADES',
+      playerId,
+      sectorId,
+      upgrades,
+    });
+    if (res.success) {
+      setState(res.newState);
+    } else {
+      showToast(res.error || 'Failed to apply Techno-Magic upgrades.');
+    }
+  };
+
   // Children of Light Holy Communion Settlement Choice
   const handleResolveHolyCommunion = (sectorId: string, claim: boolean) => {
     if (isSpectator || !state.pendingHolyCommunion) return;
@@ -4334,7 +4392,7 @@ const AppContent: React.FC = () => {
           onSelectSector={(s) => setSelectedSector(s)}
           isExploreMode={effectiveExploreMode}
           onExploreTarget={handleExploreTarget}
-          onColonizePlanet={!isActionsLocked ? handleColonizePlanet : undefined}
+          onColonizePlanet={!isActionsLocked && !state.pendingBankruptcy ? handleColonizePlanet : undefined}
           effectivePlayerId={effectiveColonizingPlayer.id}
           currentSeat={currentSeat}
           pendingExplore={
@@ -4471,7 +4529,7 @@ const AppContent: React.FC = () => {
               expansions={state.expansions}
               warpedUniverse={state.warpedUniverse}
               allSectors={state.sectors}
-              onColonizePlanet={!isActionsLocked ? handleColonizePlanet : undefined}
+              onColonizePlanet={!isActionsLocked && !state.pendingBankruptcy ? handleColonizePlanet : undefined}
               onAbandonInfluence={!isActionsLocked ? handleAbandonInfluence : undefined}
               onClose={() => setSelectedSector(null)}
               pendingBankruptcy={state.pendingBankruptcy}
@@ -4990,6 +5048,7 @@ const AppContent: React.FC = () => {
           onRerollDie={handleRerollCombatDie}
           onAutoResolve={handleAutoResolveCombat}
           onConfigureSpiralShiftPort={handleConfigureSpiralShiftPort}
+          onSetTechnoMagicUpgrades={handleSetTechnoMagicUpgrades}
           onSetDivineInspiration={handleSetDivineInspiration}
           currentSeat={currentSeat}
         />
@@ -5128,6 +5187,44 @@ const AppContent: React.FC = () => {
                 {state.players.find((p) => p.id === state.pendingMidasStartingCubeSetup!.playerId)?.name || 'Legion of Midas'}
               </strong>{' '}
               is choosing starting Gray planet population cube...
+            </span>
+          </div>
+        )
+      )}
+
+      {state.pendingTechnoMagesTechSetup &&
+        !(
+          (state.pendingExilesOrbitalSetup &&
+            canActForPlayer(state.pendingExilesOrbitalSetup.playerId) &&
+            canActForPlayer(state.pendingTechnoMagesTechSetup.playerId)) ||
+          (state.pendingRaArtifactSetup &&
+            canActForPlayer(state.pendingRaArtifactSetup.playerId) &&
+            canActForPlayer(state.pendingTechnoMagesTechSetup.playerId)) ||
+          (state.pendingSpiralTechSetup &&
+            canActForPlayer(state.pendingSpiralTechSetup.playerId) &&
+            canActForPlayer(state.pendingTechnoMagesTechSetup.playerId)) ||
+          (state.pendingMidasStartingCubeSetup &&
+            canActForPlayer(state.pendingMidasStartingCubeSetup.playerId) &&
+            canActForPlayer(state.pendingTechnoMagesTechSetup.playerId))
+        ) && (
+        canActForPlayer(state.pendingTechnoMagesTechSetup.playerId) ? (
+          <TechnoMagesStartingTechModal
+            player={
+              state.players.find((p) => p.id === state.pendingTechnoMagesTechSetup!.playerId) ||
+              activePlayer
+            }
+            techSupply={state.techSupply}
+            onChooseTech={handleChooseTechnoMagesStartingTech}
+          />
+        ) : (
+          <div className="fixed bottom-20 left-1/2 -translate-x-1/2 z-40 bg-slate-900/95 border border-violet-600/80 px-4 py-2 rounded-xl text-xs text-slate-300 shadow-xl backdrop-blur-md flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-violet-400 animate-pulse" />
+            <span>
+              Commander{' '}
+              <strong className="text-violet-300">
+                {state.players.find((p) => p.id === state.pendingTechnoMagesTechSetup!.playerId)?.name || 'Techno-Mages'}
+              </strong>{' '}
+              is deciding on optional starting technology purchase...
             </span>
           </div>
         )

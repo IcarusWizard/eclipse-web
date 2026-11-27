@@ -351,8 +351,9 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
 
   // Off-board Initiative symbol (only shown when non-zero) attached cleanly to the top-left
   // of the top-most box in the leftmost column (left priority: flush to its left, single badge layer).
+  const initBadgeSize: 'sm' | 'md' = size === 'lg' ? 'md' : 'sm';
   const hasBaseInit = baseInitiative !== undefined && baseInitiative !== 0;
-  const initBadgeW = size === 'sm' ? 14 : size === 'lg' ? 18 : 16;
+  const initBadgeW = size === 'lg' ? 22 : 16;
   let anchorY = 0;
   if (hasBaseInit && totalSlotsCount > 0) {
     let minCol = Infinity;
@@ -404,7 +405,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
         >
           <InitiativeBadge
             init={baseInitiative}
-            size={size === 'lg' ? 'sm' : 'xs'}
+            size={initBadgeSize}
             maxChevrons={6}
             testId="blueprint-init-bonus"
           />
@@ -465,7 +466,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
                 {/* Top-Left: Initiative Badge for ship parts granting Initiative (Symmetrical to Trash Bin on Top-Right) */}
                 {part.initiativeBonus !== 0 && (
                   <div className="absolute top-0.5 left-0.5 flex items-center z-20 select-none pointer-events-none">
-                    <InitiativeBadge init={part.initiativeBonus} size="xs" />
+                    <InitiativeBadge init={part.initiativeBonus} size={initBadgeSize} />
                   </div>
                 )}
 
@@ -618,7 +619,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
               {/* Top-Left: Initiative Badge for external parts if granting Initiative */}
               {extPart.initiativeBonus !== 0 && (
                 <div className="absolute top-0.5 left-0.5 flex items-center z-20 select-none pointer-events-none">
-                  <InitiativeBadge init={extPart.initiativeBonus} size={size === 'lg' ? 'md' : 'sm'} />
+                  <InitiativeBadge init={extPart.initiativeBonus} size={initBadgeSize} />
                 </div>
               )}
 

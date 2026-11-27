@@ -86,6 +86,13 @@ export interface CombatState {
   kuritaDelayedPlayerIds?: string[];
   /** Children of Light (Divine Inspiration): Start-of-battle choice ('hit' = +1 to Hit, 'shield' = -1 Shield) on non-Ancient ships in battles featuring an Ancient. */
   divineInspirationChoice?: Partial<Record<string, 'hit' | 'shield'>>;
+  /** Techno-Mages (Techno-Magic): Player IDs who have already completed start-of-combat temporary upgrades in this battle. */
+  technoMagicConfiguredPlayerIds?: string[];
+  /** Techno-Mages (Techno-Magic): Temporary upgrades installed for this combat (removed immediately after combat + bombardment). */
+  technoMagicAppliedUpgrades?: Record<
+    string,
+    { shipType: import('./galaxy').ShipType; slotIndex: number; partId: string; previousPartId: string | null }[]
+  >;
 }
 
 export interface PendingHolyCommunion {
@@ -318,6 +325,13 @@ export interface GameState {
   pendingRaArtifactSetup?: { playerId: string; sectorId: string; planetId: string } | null;
   pendingSpiralTechSetup?: { playerId: string } | null;
   pendingMidasStartingCubeSetup?: { playerId: string; sectorId: string; planetId: string } | null;
+  pendingTechnoMagesTechSetup?: { playerId: string } | null;
+  /** Techno-Mages (Techno-Magic): Active temporary blueprint parts awaiting removal after combat & planetary bombardment conclude. */
+  activeTechnoMagicCleanups?: {
+    playerId: string;
+    sectorId: string;
+    entries: { shipType: import('./galaxy').ShipType; slotIndex: number; partId: string; previousPartId: string | null }[];
+  }[];
   pendingHolyCommunion?: PendingHolyCommunion | null;
   pendingHolyCommunionQueue?: PendingHolyCommunion[];
   lastConfirmedAction?: ConfirmedActionHighlight | null;

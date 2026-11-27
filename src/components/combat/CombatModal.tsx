@@ -12,13 +12,19 @@ import {
   SHIP_SIZE_RANK,
   CombatUnit,
   getPendingSpiralShiftPlayerId,
+  getPendingTechnoMagicPlayerId,
   getPendingDivineInspirationPlayerId,
   getDefaultShiftPortMode,
 } from '../../engine/rules/combatEngine';
-import { canBlueprintPowerShiftMode, getShiftPortSlotIndex } from '../../engine/rules/shipValidation';
-import { getShiftPortResolvedPart, isSpiralPhase2 } from '../../engine/rules/partData';
+import {
+  canBlueprintPowerShiftMode,
+  getShiftPortSlotIndex,
+  getEligibleTechnoMagicParts,
+  calculateBlueprintStats,
+} from '../../engine/rules/shipValidation';
+import { SHIP_PARTS, getShiftPortResolvedPart, isSpiralPhase2 } from '../../engine/rules/partData';
 import { getEligibleRetreatSectors, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor } from '../../engine/rules/gameReducer';
-import { CombatDieFaceGraphic } from '../common/PhysicalTileIconography';
+import { CombatDieFaceGraphic, ShipPartSlotGraphic, getPartTooltip } from '../common/PhysicalTileIconography';
 import { getEffectiveShipPart } from '../../engine/rules/partData';
 import { getNeutralShipBlueprint, NeutralShipType } from '../../engine/rules/neutralShips';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
@@ -233,6 +239,11 @@ interface CombatModalProps {
     choices: Partial<Record<ShipType, ShiftPortMode>>,
     playerId?: string
   ) => void;
+  onSetTechnoMagicUpgrades?: (
+    sectorId: string,
+    upgrades: { shipType: ShipType; slotIndex: number; partId: string }[],
+    playerId?: string
+  ) => void;
   onSetDivineInspiration?: (
     sectorId: string,
     choice: 'hit' | 'shield',
@@ -248,6 +259,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   onRerollDie,
   onAutoResolve,
   onConfigureSpiralShiftPort,
+  onSetTechnoMagicUpgrades,
   onSetDivineInspiration,
   currentSeat = 'all',
 }) => {
@@ -266,12 +278,29 @@ export const CombatModal: React.FC<CombatModalProps> = ({
   const pendingSpiralPlayer = pendingSpiralShiftId
     ? state.players.find((p) => p.id === pendingSpiralShiftId) || null
     : null;
+  const pendingTechnoMagicId = sector
+    ? getPendingTechnoMagicPlayerId(state.players, sector, combat)
+    : null;
+  const pendingTechnoMagicPlayer = pendingTechnoMagicId
+    ? state.players.find((p) => p.id === pendingTechnoMagicId) || null
+    : null;
   const pendingDivineInspirationId = sector
     ? getPendingDivineInspirationPlayerId(state.players, sector, combat)
     : null;
   const pendingDivinePlayer = pendingDivineInspirationId
     ? state.players.find((p) => p.id === pendingDivineInspirationId) || null
     : null;
+
+  const [technoMagicDraft, setTechnoMagicDraft] = useState<
+    Partial<Record<ShipType, { slotIndex: number; partId: string }>>
+  >({});
+  const [activeTmShipType, setActiveTmShipType] = useState<ShipType | null>(null);
+  const [tmSelectedSlots, setTmSelectedSlots] = useState<Partial<Record<ShipType, number | null>>>({});
+  React.useEffect(() => {
+    setTechnoMagicDraft({});
+    setActiveTmShipType(null);
+    setTmSelectedSlots({});
+  }, [combat.sectorId, combat.subsector, pendingTechnoMagicId]);
   const spiralActiveShipClasses: ShipType[] = React.useMemo(() => {
     if (!pendingSpiralPlayer || !scopedSectorForCombat) return [];
     return (['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).filter(
@@ -1170,6 +1199,306 @@ export const CombatModal: React.FC<CombatModalProps> = ({
             </div>
           )}
 
+          {/* Pre-Combat Techno-Magic Temporary Upgrades for Techno-Mages */}
+          {pendingTechnoMagicPlayer && !isResolved && (
+            <div
+              data-testid="techno-magic-panel"
+              className="p-4 rounded-xl bg-slate-950/90 border-2 border-violet-400/80 shadow-xl space-y-3"
+            >
+              {(() => {
+                const canConfigure =
+                  !isSpectator &&
+                  (currentSeat === 'all' || (myPlayer && myPlayer.id === pendingTechnoMagicPlayer.id));
+                const eligibleParts = getEligibleTechnoMagicParts(pendingTechnoMagicPlayer, state.expansions);
+                const shipClasses = (['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).filter(
+                  (st) =>
+                    Boolean(pendingTechnoMagicPlayer.blueprints?.[st]) &&
+                    scopedSectorForCombat.ships.some(
+                      (sh) => sh.ownerId === pendingTechnoMagicPlayer.id && sh.type === st
+                    )
+                );
+                return (
+                  <>
+                    <div className="flex flex-wrap items-center justify-between gap-2 border-b border-violet-900/70 pb-2">
+                      <div>
+                        <h3 className="text-xs font-black text-violet-300 uppercase tracking-wider font-display flex items-center gap-1.5">
+                          <Zap className="w-4 h-4 text-violet-400" />
+                          {l(
+                            `Techno-Magic — Temporary Combat Upgrades (${pendingTechnoMagicPlayer.name})`,
+                            `科技魔法 — 战前临时改装 (${pendingTechnoMagicPlayer.name})`
+                          )}
+                        </h3>
+                        <p className="text-[11px] text-slate-400 mt-0.5">
+                          {l(
+                            'Optionally upgrade 1 slot (empty or occupied) on each participating ship blueprint with an unlocked non-Ancient part (normal power/drive rules apply; cannot remove parts; restored after combat and bombardment).',
+                            '可为每型参战战舰蓝图的任一槽位（空槽或已有配件槽）临时升级 1 件已解锁的非远古配件（遵守能量/驱动限制，不可单纯移除配件，将在战斗与行星轰炸结束后恢复原状）。'
+                          )}
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Box-based Ship Tabs + Blueprint + Graphical Part Palette */}
+                    {shipClasses.length > 0 && (() => {
+                      const activeTmShip =
+                        activeTmShipType && shipClasses.includes(activeTmShipType)
+                          ? activeTmShipType
+                          : shipClasses[0]!;
+                      const bp = pendingTechnoMagicPlayer.blueprints[activeTmShip]!;
+                      const draftedForShip = technoMagicDraft[activeTmShip];
+                      const firstEmptyIdx = bp.slots.findIndex((sl) => sl === null);
+                      const fallbackSlotIdx = firstEmptyIdx !== -1 ? firstEmptyIdx : 0;
+                      const selectedTmSlot =
+                        tmSelectedSlots[activeTmShip] !== undefined
+                          ? tmSelectedSlots[activeTmShip]!
+                          : draftedForShip?.slotIndex ?? fallbackSlotIdx;
+
+                      const previewRawSlots = bp.slots.map((sl, idx) =>
+                        draftedForShip && draftedForShip.slotIndex === idx && SHIP_PARTS[draftedForShip.partId]
+                          ? SHIP_PARTS[draftedForShip.partId]!
+                          : sl
+                      );
+                      const previewEffectiveSlots = previewRawSlots.map((sl) =>
+                        sl ? getEffectiveShipPart(sl, state.expansions) : null
+                      );
+                      const previewEffectiveExternal = (bp.externalParts || []).map((p) =>
+                        getEffectiveShipPart(p, state.expansions)
+                      );
+                      const previewStats = calculateBlueprintStats(
+                        { ...bp, slots: previewRawSlots },
+                        state.expansions
+                      );
+                      const freePower = previewStats.totalPowerProduced - previewStats.totalPowerConsumed;
+
+                      return (
+                        <div className="space-y-3">
+                          {/* Participating Ship Class Tabs */}
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            {shipClasses.map((st) => {
+                              const count = scopedSectorForCombat.ships.filter(
+                                (sh) => sh.ownerId === pendingTechnoMagicPlayer.id && sh.type === st
+                              ).length;
+                              const hasTemp = Boolean(technoMagicDraft[st]?.partId);
+                              const isSelectedTab = st === activeTmShip;
+                              return (
+                                <button
+                                  key={`tm_tab_${st}`}
+                                  type="button"
+                                  data-testid={`techno-magic-tab-${st}`}
+                                  onClick={() => setActiveTmShipType(st)}
+                                  className={`px-2.5 py-1.5 rounded-lg border text-xs font-bold flex items-center gap-1.5 transition cursor-pointer ${
+                                    isSelectedTab
+                                      ? 'bg-violet-950/80 border-violet-400 text-violet-100 shadow ring-1 ring-violet-400/50'
+                                      : 'bg-slate-900/70 border-slate-700 text-slate-300 hover:border-slate-500'
+                                  }`}
+                                >
+                                  {shouldShowShipTypeIcon(st) && (
+                                    <ShipTypeIcon
+                                      shipType={st}
+                                      factionId={pendingTechnoMagicPlayer.faction.id}
+                                      color={pendingTechnoMagicPlayer.color}
+                                      size={14}
+                                    />
+                                  )}
+                                  <span className="uppercase">{count}× {translateShipType(st, language)}</span>
+                                  {hasTemp && (
+                                    <span className="px-1 py-0.2 rounded text-[9px] bg-violet-500 text-slate-950 font-black">
+                                      +1
+                                    </span>
+                                  )}
+                                </button>
+                              );
+                            })}
+                          </div>
+
+                          {/* Blueprint Box Diagram + Live Stats (Left) and Part Tile Palette (Right) */}
+                          <div className="grid grid-cols-1 lg:grid-cols-12 gap-3 p-3 rounded-xl bg-slate-900/75 border border-slate-800">
+                            <div className="lg:col-span-6 flex flex-col justify-between gap-2.5">
+                              {/* Mini Stats Strip */}
+                              <div className="grid grid-cols-5 gap-1.5 p-2 rounded-lg bg-slate-950/90 border border-slate-800 text-center font-mono">
+                                <div>
+                                  <div className="text-[8.5px] text-slate-500 uppercase">{l('Hull', '船体')}</div>
+                                  <div className="text-xs font-bold text-rose-300">{previewStats.totalHull} HP</div>
+                                </div>
+                                <div>
+                                  <div className="text-[8.5px] text-slate-500 uppercase">{l('Init', '先攻')}</div>
+                                  <div className="text-xs font-bold text-amber-300">+{previewStats.totalInitiative}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[8.5px] text-slate-500 uppercase">{l('Comp', '命中')}</div>
+                                  <div className="text-xs font-bold text-indigo-300">+{previewStats.computerBonus}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[8.5px] text-slate-500 uppercase">{l('Shield', '护盾')}</div>
+                                  <div className="text-xs font-bold text-teal-300">-{previewStats.shieldBonus}</div>
+                                </div>
+                                <div>
+                                  <div className="text-[8.5px] text-slate-500 uppercase">{l('Power', '能量')}</div>
+                                  <div className={`text-xs font-bold ${freePower >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
+                                    +{previewStats.totalPowerProduced}/-{previewStats.totalPowerConsumed}
+                                  </div>
+                                </div>
+                              </div>
+
+                              {/* Interactive Ship Blueprint Box Grid */}
+                              <div
+                                data-testid={`techno-magic-blueprint-${activeTmShip}`}
+                                className="flex flex-col items-center justify-center p-2.5 rounded-xl bg-slate-950/70 border border-slate-800/80 overflow-x-auto"
+                              >
+                                <ShipBlueprintSlotsLayout
+                                  shipType={bp.type}
+                                  factionId={pendingTechnoMagicPlayer.faction.id}
+                                  slots={previewEffectiveSlots}
+                                  maxSlots={bp.maxSlots}
+                                  preprintedPower={bp.preprintedPower}
+                                  preprintedComputer={bp.preprintedComputer}
+                                  preprintedShield={bp.preprintedShield}
+                                  preprintedHull={bp.preprintedHull}
+                                  baseInitiative={bp.baseInitiative}
+                                  externalParts={previewEffectiveExternal}
+                                  interactive={canConfigure}
+                                  selectedSlotIndex={selectedTmSlot}
+                                  onSelectSlot={(idx) =>
+                                    setTmSelectedSlots((prev) => ({ ...prev, [activeTmShip]: idx }))
+                                  }
+                                  modifiedSlotIndices={draftedForShip?.partId ? [draftedForShip.slotIndex] : []}
+                                  onRevertSlot={() =>
+                                    setTechnoMagicDraft((prev) => {
+                                      const next = { ...prev };
+                                      delete next[activeTmShip];
+                                      return next;
+                                    })
+                                  }
+                                  size="md"
+                                />
+                              </div>
+
+                              <div className="flex items-center justify-between text-[10.5px] text-slate-400 px-0.5">
+                                <span>
+                                  {selectedTmSlot !== null
+                                    ? l(
+                                        `Selected Box #${selectedTmSlot + 1} (${bp.slots[selectedTmSlot]?.name || 'Empty'})`,
+                                        `已选格位 #${selectedTmSlot + 1}（${bp.slots[selectedTmSlot]?.name || '空槽'}）`
+                                      )
+                                    : l('Click a slot box above to upgrade', '请点击上方蓝图格位进行改装')}
+                                </span>
+                                {draftedForShip?.partId && (
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      setTechnoMagicDraft((prev) => {
+                                        const next = { ...prev };
+                                        delete next[activeTmShip];
+                                        return next;
+                                      })
+                                    }
+                                    className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-600 text-[10px] font-semibold flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <RotateCcw className="w-2.5 h-2.5" />
+                                    {l('Revert', '撤回')}
+                                  </button>
+                                )}
+                              </div>
+                            </div>
+
+                            {/* Graphical Ship Part Palette Boxes */}
+                            <div className="lg:col-span-6 flex flex-col justify-between gap-2">
+                              <div className="text-[10.5px] font-bold uppercase tracking-wider text-slate-400">
+                                {l(
+                                  'Click a Part Tile to Install Temporarily (Non-Ancient)',
+                                  '点击下方配件方块临时安装到选中格位（禁远古配件）'
+                                )}
+                              </div>
+                              <div className="grid grid-cols-[repeat(auto-fill,64px)] gap-2 content-start max-h-[240px] overflow-y-auto p-1">
+                                {eligibleParts.map((part) => {
+                                  const canTest = selectedTmSlot !== null && selectedTmSlot >= 0 && selectedTmSlot < bp.slots.length;
+                                  const candidateSlots = canTest
+                                    ? bp.slots.map((sl, idx) => (idx === selectedTmSlot ? part : sl))
+                                    : bp.slots;
+                                  const candStats = calculateBlueprintStats(
+                                    { ...bp, slots: candidateSlots },
+                                    state.expansions
+                                  );
+                                  const isAllowed = canConfigure && canTest && candStats.isValid;
+                                  const isCurrentlyChosen =
+                                    Boolean(draftedForShip?.partId === part.id && draftedForShip?.slotIndex === selectedTmSlot);
+                                  return (
+                                    <button
+                                      key={part.id}
+                                      type="button"
+                                      disabled={!isAllowed}
+                                      data-testid={`techno-magic-part-${part.id}`}
+                                      onClick={() => {
+                                        if (selectedTmSlot === null) return;
+                                        setTechnoMagicDraft((prev) => {
+                                          const next = { ...prev };
+                                          if (isCurrentlyChosen) {
+                                            delete next[activeTmShip];
+                                          } else {
+                                            next[activeTmShip] = { slotIndex: selectedTmSlot, partId: part.id };
+                                          }
+                                          return next;
+                                        });
+                                      }}
+                                      className={`relative w-[64px] h-[64px] p-0.5 rounded-lg border transition-all flex items-center justify-center overflow-hidden shrink-0 ${
+                                        isCurrentlyChosen
+                                          ? 'border-2 border-violet-400 ring-2 ring-violet-400/50 bg-violet-950/60 shadow-lg'
+                                          : isAllowed
+                                          ? 'border-slate-700 bg-slate-950/90 hover:border-cyan-400 hover:ring-2 hover:ring-cyan-400/40 cursor-pointer'
+                                          : 'border-slate-800 bg-slate-950/50 opacity-35 cursor-not-allowed'
+                                      }`}
+                                      title={
+                                        isAllowed
+                                          ? getPartTooltip(part)
+                                          : `${part.name}: ${candStats.errors.join(' ') || l('Cannot install on selected slot', '无法安装至当前格位')}`
+                                      }
+                                    >
+                                      <span className="sr-only">{part.name}</span>
+                                      <ShipPartSlotGraphic part={part} size="md" className="w-full h-full" />
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    <div className="flex items-center justify-end pt-1">
+                      {canConfigure && onSetTechnoMagicUpgrades ? (
+                        <button
+                          type="button"
+                          data-testid="techno-magic-confirm-btn"
+                          onClick={() => {
+                            const list = Object.entries(technoMagicDraft)
+                              .filter(([, v]) => Boolean(v && v.partId && SHIP_PARTS[v.partId]))
+                              .map(([shipType, v]) => ({
+                                shipType: shipType as ShipType,
+                                slotIndex: v!.slotIndex,
+                                partId: v!.partId,
+                              }));
+                            onSetTechnoMagicUpgrades(combat.sectorId, list, pendingTechnoMagicPlayer.id);
+                          }}
+                          className="flex items-center gap-2 px-5 py-2 rounded-lg bg-violet-500 hover:bg-violet-400 text-slate-950 font-black text-xs tracking-wider uppercase shadow-lg transition cursor-pointer"
+                        >
+                          <CheckCircle2 className="w-4 h-4" />
+                          {l('Confirm Techno-Magic & Begin Combat', '确认临时改装并开始战斗')}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-violet-300 font-semibold">
+                          {l(
+                            `Waiting for ${pendingTechnoMagicPlayer.name} to configure Techno-Magic...`,
+                            `正在等待 ${pendingTechnoMagicPlayer.name} 选择科技魔法临时改装...`
+                          )}
+                        </span>
+                      )}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+          )}
+
           {/* Pre-Combat Divine Inspiration Selection for Children of Light */}
           {pendingDivinePlayer && !isResolved && (
             <div
@@ -1734,6 +2063,11 @@ export const CombatModal: React.FC<CombatModalProps> = ({
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-sky-950/60 border border-sky-700/70 text-xs text-sky-200">
                 <Zap className="w-3.5 h-3.5 text-sky-400" />
                 <span>{l(`Configure Shift Ports above for ${pendingSpiralPlayer.name} before firing.`, `开火前请先在上方为 ${pendingSpiralPlayer.name} 配置转换接口。`)}</span>
+              </div>
+            ) : pendingTechnoMagicPlayer ? (
+              <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-violet-950/60 border border-violet-700/70 text-xs text-violet-200">
+                <Zap className="w-3.5 h-3.5 text-violet-400" />
+                <span>{l(`Confirm Techno-Magic above for ${pendingTechnoMagicPlayer.name} before firing.`, `开火前请先在上方为 ${pendingTechnoMagicPlayer.name} 确认科技魔法临时改装。`)}</span>
               </div>
             ) : pendingDivinePlayer ? (
               <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-fuchsia-950/60 border border-fuchsia-700/70 text-xs text-fuchsia-200">

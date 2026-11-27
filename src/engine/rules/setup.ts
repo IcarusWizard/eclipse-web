@@ -48,9 +48,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   frost: '#5b8ec9', // Jotunn
   jade: '#34d399', // Kurita Prefecture
   orchid: '#e879f9', // Children of Light
+  arcane: '#a78bfa', // Techno-Mages
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade' | 'orchid';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade' | 'orchid' | 'arcane';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -88,6 +89,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   jotunn: 'frost',
   kurita_prefecture: 'jade',
   children_of_light: 'orchid',
+  techno_mages: 'arcane',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -117,6 +119,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   jotunn: ECLIPSE_COLOR_PALETTE.frost,
   kurita_prefecture: ECLIPSE_COLOR_PALETTE.jade,
   children_of_light: ECLIPSE_COLOR_PALETTE.orchid,
+  techno_mages: ECLIPSE_COLOR_PALETTE.arcane,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -749,6 +752,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 3,
     reputationSlotTypes: ['both', 'both', 'both', 'rep_only'],
   },
+  {
+    id: 'techno_mages',
+    name: 'Techno-Mages',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.arcane,
+    startingSectorNumber: 244,
+    startingResources: { money: 3, science: 6, materials: 2 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: [],
+    traitDescription: 'Technology finds a Way: May spend 2 Colony Ships to place a matching cube onto an Advanced planet they could not normally populate. Techno-Magic: At the start of each combat, may temporarily upgrade 1 slot on each participating ship blueprint with an unlocked non-Ancient part (normal power/drive restrictions apply, cannot remove parts, Defender chooses last; remains active through bombardment, then removed). Limited Manufacturing: Build has 1 activation and Influence flips only 1 Colony Ship. Start with 0 Techs in Artemis VII (#244) with 6 Science; may spend initial Science to buy 1 Tech before the game begins.',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 1,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 1,
+    reputationSlots: 4,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['amb_only', 'both', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -770,7 +796,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture' || factionId === 'children_of_light') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture' || factionId === 'children_of_light' || factionId === 'techno_mages') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -790,7 +816,7 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   if (faction.isHuman || faction.id?.startsWith('terran_') || faction.id === 'mega_war_inc') {
     return ['amb_only', 'both', 'both', 'both', 'both'];
   }
-  if (faction.id === 'hydran_progress' || faction.id === 'planta' || faction.id === 'legion_of_midas') {
+  if (faction.id === 'hydran_progress' || faction.id === 'planta' || faction.id === 'legion_of_midas' || faction.id === 'techno_mages') {
     return ['amb_only', 'both', 'both', 'both'];
   }
   if (faction.id === 'orion_hegemony') {
@@ -1356,7 +1382,7 @@ export function buildPendingDiscoveryForPlayer(
  */
 export function triggerPendingAtlantiansStartingLabsDiscovery(state: GameState): void {
   if (state.phase === 'DRAFT_PHASE') return;
-  if (state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingSpiralTechSetup || state.pendingMidasStartingCubeSetup || state.pendingDiscovery) return;
+  if (state.pendingExilesOrbitalSetup || state.pendingRaArtifactSetup || state.pendingSpiralTechSetup || state.pendingMidasStartingCubeSetup || state.pendingTechnoMagesTechSetup || state.pendingDiscovery) return;
   const atlantians = state.players.find(
     (p) => p.faction.id === 'atlantians' && p.startingAncientLabsResolved === false
   );
@@ -1733,6 +1759,11 @@ export function createInitialGame(
     ? { playerId: spiralPlayer.id }
     : null;
 
+  const tmPlayer = players.find((p) => p.faction.id === 'techno_mages');
+  const pendingTechnoMagesTechSetup: { playerId: string } | null = tmPlayer
+    ? { playerId: tmPlayer.id }
+    : null;
+
   const midasPlayer = players.find((p) => p.faction.id === 'legion_of_midas');
   let pendingMidasStartingCubeSetup: { playerId: string; sectorId: string; planetId: string } | null = null;
   if (midasPlayer) {
@@ -1791,6 +1822,7 @@ export function createInitialGame(
     pendingRaArtifactSetup,
     pendingSpiralTechSetup,
     pendingMidasStartingCubeSetup,
+    pendingTechnoMagesTechSetup,
     resolvedCombatSectorIds: [],
     replaySteps: [],
     log: [

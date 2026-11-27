@@ -32,7 +32,8 @@ export type FactionId =
   | 'heralds_of_ragnarok'
   | 'jotunn'
   | 'kurita_prefecture'
-  | 'children_of_light';
+  | 'children_of_light'
+  | 'techno_mages';
 
 export interface FactionInfo {
   readonly id: FactionId;

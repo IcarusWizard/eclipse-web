@@ -44,6 +44,8 @@ export type ActionType =
   | 'SET_COMBAT_AUTO_RESOLVE'
   | 'RESOLVE_HOLY_COMMUNION'
   | 'SET_DIVINE_INSPIRATION'
+  | 'CHOOSE_TECHNOMAGES_STARTING_TECH'
+  | 'SET_TECHNO_MAGIC_UPGRADES'
   | 'SEND_CHAT';
 
 export interface BaseAction {
@@ -439,6 +441,18 @@ export interface ResolveHolyCommunionAction extends BaseAction {
   claim: boolean;
 }
 
+export interface ChooseTechnoMagesStartingTechAction extends BaseAction {
+  type: 'CHOOSE_TECHNOMAGES_STARTING_TECH';
+  techId: string | null;
+  targetTrack?: 'military' | 'grid' | 'nano';
+}
+
+export interface SetTechnoMagicUpgradesAction extends BaseAction {
+  type: 'SET_TECHNO_MAGIC_UPGRADES';
+  sectorId: string;
+  upgrades: { shipType: ShipType; slotIndex: number; partId: string }[];
+}
+
 export interface SendChatAction extends BaseAction {
   type: 'SEND_CHAT';
   message: string;
@@ -495,4 +509,6 @@ export type GameAction =
   | SetCombatAutoResolveAction
   | SetDivineInspirationAction
   | ResolveHolyCommunionAction
+  | ChooseTechnoMagesStartingTechAction
+  | SetTechnoMagicUpgradesAction
   | SendChatAction;

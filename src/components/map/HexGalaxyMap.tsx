@@ -1594,6 +1594,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                   const raSlotX = artX + 15;
                   const raColonizer = raPlanet ? state.players.find((p) => p.id === raPlanet.colonizedBy) : undefined;
                   const isRaColonizableNow =
+                    !state.pendingBankruptcy &&
                     Boolean(raPlanet && !raPlanet.colonizedBy) &&
                     sector.discOwner === colonizingPlayer?.id &&
                     Boolean(colonizingPlayer && colonizingPlayer.colonyShips && colonizingPlayer.colonyShips.ready > 0);
@@ -1964,15 +1965,19 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
 
                     const colonizer = state.players.find((p) => p.id === planet.colonizedBy);
 
+                    const hasPlanetTech =
+                      !planet.isAdvanced ||
+                      (planet.resource === 'money' && colonizingPlayer?.techTrack.researched.some((t) => t.id === 'advanced_economy')) ||
+                      (planet.resource === 'science' && colonizingPlayer?.techTrack.researched.some((t) => t.id === 'advanced_labs')) ||
+                      (planet.resource === 'material' && colonizingPlayer?.techTrack.researched.some((t) => t.id === 'advanced_mining')) ||
+                      Boolean(colonizingPlayer?.techTrack.researched.some((t) => t.id === 'metasynthesis'));
+                    const neededColonyShips = !hasPlanetTech && colonizingPlayer?.faction.id === 'techno_mages' ? 2 : 1;
                     const isColonizableNow =
+                      !state.pendingBankruptcy &&
                       !planet.colonizedBy &&
                       sector.discOwner === colonizingPlayer?.id &&
-                      Boolean(colonizingPlayer && colonizingPlayer.colonyShips && colonizingPlayer.colonyShips.ready > 0) &&
-                      (!planet.isAdvanced ||
-                        (planet.resource === 'money' && colonizingPlayer.techTrack.researched.some((t) => t.id === 'advanced_economy')) ||
-                        (planet.resource === 'science' && colonizingPlayer.techTrack.researched.some((t) => t.id === 'advanced_labs')) ||
-                        (planet.resource === 'material' && colonizingPlayer.techTrack.researched.some((t) => t.id === 'advanced_mining')) ||
-                        colonizingPlayer.techTrack.researched.some((t) => t.id === 'metasynthesis'));
+                      Boolean(colonizingPlayer && colonizingPlayer.colonyShips && colonizingPlayer.colonyShips.ready >= neededColonyShips) &&
+                      (hasPlanetTech || colonizingPlayer?.faction.id === 'techno_mages');
 
                     return (
                       <g
@@ -1981,7 +1986,7 @@ export const HexGalaxyMap: React.FC<HexGalaxyMapProps> = ({
                         onClick={(e) => {
                           if (!planet.colonizedBy && sector.discOwner === colonizingPlayer?.id) {
                             e.stopPropagation();
-                            if (planet.isOrbital || planet.resource === 'any') {
+                            if (state.pendingBankruptcy || planet.isOrbital || planet.resource === 'any') {
                               onSelectSector(sector);
                             } else {
                               onColonizePlanet?.(sector.id, pIdx, planet.resource as any);

@@ -443,11 +443,11 @@ export const FactionDraftModal: React.FC<FactionDraftModalProps> = ({
                     </div>
 
                     {portraitUrl && (
-                      <div className="mb-2.5 aspect-[16/9] w-full rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
+                      <div className="mb-2.5 aspect-[4/3] w-full rounded-xl overflow-hidden border border-slate-800 bg-slate-950">
                         <img
                           src={portraitUrl}
                           alt={fName}
-                          className="w-full h-full object-cover object-center"
+                          className="w-full h-full object-cover object-top"
                         />
                       </div>
                     )}

@@ -282,7 +282,7 @@ export const FactionSheetCard: React.FC<FactionSheetCardProps> = ({
                 src={sheet.portraitUrl}
                 alt={factionName}
                 onError={() => setImgFailed(true)}
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover object-top"
               />
             ) : (
               <div

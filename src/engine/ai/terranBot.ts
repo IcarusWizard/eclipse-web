@@ -47,6 +47,7 @@ import {
   getCombatShipTypeGroups,
   getActiveCombatGroup,
   getPendingSpiralShiftPlayerId,
+  getPendingTechnoMagicPlayerId,
   getPendingDivineInspirationPlayerId,
   getDefaultShiftPortMode,
 } from '../rules/combatEngine';
@@ -60,6 +61,7 @@ import { getMaxReputationTilesForPlayer } from '../rules/setup';
 import {
   validateAction,
   canColonizePlanetSlot,
+  getColonizeColonyShipCost,
   canExchangeAmbassadors,
   playerHasWormholeGenerator,
   computePinningState,
@@ -67,6 +69,7 @@ import {
   getMaxMoveActivations,
   getMaxUpgradeActivations,
   getColonizablePlanetsForPlayer,
+  buildDefaultTechnoMagicUpgrades,
 } from '../rules/gameReducer';
 
 export const TERRAN_FACTION_IDS = [
@@ -192,6 +195,9 @@ export function getPriorityActorId(state: GameState): string | null {
   if (state.pendingMidasStartingCubeSetup) {
     return state.pendingMidasStartingCubeSetup.playerId;
   }
+  if (state.pendingTechnoMagesTechSetup) {
+    return state.pendingTechnoMagesTechSetup.playerId;
+  }
   if (state.pendingHolyCommunion) {
     return state.pendingHolyCommunion.playerId;
   }
@@ -229,6 +235,12 @@ export function getPriorityActorId(state: GameState): string | null {
       if (pendingSpiralShiftId) {
         const spiralPlayer = state.players.find((p) => p.id === pendingSpiralShiftId);
         if (spiralPlayer?.isBot) return spiralPlayer.id;
+        return null;
+      }
+      const pendingTechnoMagicId = getPendingTechnoMagicPlayerId(state.players, sec, combat);
+      if (pendingTechnoMagicId) {
+        const tmPlayer = state.players.find((p) => p.id === pendingTechnoMagicId);
+        if (tmPlayer?.isBot) return tmPlayer.id;
         return null;
       }
       const pendingDivineId = getPendingDivineInspirationPlayerId(state.players, sec, combat);
@@ -409,6 +421,26 @@ function pickCandidateAction(state: GameState, player: PlayerState): GameAction 
       resource: bestTrack,
     };
   }
+  if (state.pendingTechnoMagesTechSetup?.playerId === player.id) {
+    const affordable = (state.techSupply || []).filter((t) => {
+      const tr = t.category === 'military' || t.category === 'grid' || t.category === 'nano' ? t.category : 'nano';
+      return calculateTechCost(t, 0, tr, player.faction.id) <= player.resources.science;
+    });
+    const pref = ['improved_hull', 'gauss_shield', 'plasma_cannon', 'positron_computer', 'fusion_source', 'fusion_drive', 'advanced_labs'];
+    affordable.sort((a, b) => {
+      const pa = pref.indexOf(a.id);
+      const pb = pref.indexOf(b.id);
+      return (pa === -1 ? 99 : pa) - (pb === -1 ? 99 : pb);
+    });
+    const pick = affordable[0] || null;
+    const pickTrack = pick && (pick.category === 'military' || pick.category === 'grid' || pick.category === 'nano') ? pick.category : 'nano';
+    return {
+      type: 'CHOOSE_TECHNOMAGES_STARTING_TECH',
+      playerId: player.id,
+      techId: pick ? pick.id : null,
+      targetTrack: pick ? pickTrack : undefined,
+    };
+  }
   if (state.pendingHolyCommunion?.playerId === player.id) {
     return {
       type: 'RESOLVE_HOLY_COMMUNION',
@@ -444,6 +476,9 @@ function buildSafeFallbackAction(state: GameState, player: PlayerState): GameAct
   }
   if (state.pendingMidasStartingCubeSetup?.playerId === player.id) {
     return { type: 'CHOOSE_MIDAS_STARTING_CUBE', playerId: player.id, resource: 'material' };
+  }
+  if (state.pendingTechnoMagesTechSetup?.playerId === player.id) {
+    return { type: 'CHOOSE_TECHNOMAGES_STARTING_TECH', playerId: player.id, techId: null };
   }
   if (state.pendingActionConfirmation?.playerId === player.id) {
     return { type: 'CONFIRM_TURN_ACTION', playerId: player.id };
@@ -1028,12 +1063,14 @@ function handlePendingCombatConquest(state: GameState, player: PlayerState): Gam
     for (const { pl, idx } of planetOrder) {
       if (shipsLeft <= 0) break;
       const chosen = getBestColonizableResource(state, player, pl);
+      const cost = getColonizeColonyShipCost(player, pl, chosen);
+      if (shipsLeft < cost) continue;
       if (player.population[chosen].cubesOnBoard > 0) {
         colonizeIndices.push(idx);
         if (pl.resource === 'any' || pl.isOrbital) {
           planetChoices[idx] = chosen;
         }
-        shipsLeft -= 1;
+        shipsLeft -= cost;
       }
     }
   }
@@ -1169,6 +1206,18 @@ function handleActiveCombat(state: GameState, player: PlayerState): GameAction {
       playerId: player.id,
       sectorId: combat.sectorId,
       choices,
+    };
+  }
+  if (combatSec && getPendingTechnoMagicPlayerId(state.players, combatSec, combat) === player.id) {
+    const activeSub = combatSec.isNebula ? combat.subsector : undefined;
+    const scopedShips = activeSub
+      ? combatSec.ships.filter((sh) => (sh.subsector ?? 1) === activeSub)
+      : combatSec.ships;
+    return {
+      type: 'SET_TECHNO_MAGIC_UPGRADES',
+      playerId: player.id,
+      sectorId: combat.sectorId,
+      upgrades: buildDefaultTechnoMagicUpgrades(player, state.expansions, scopedShips),
     };
   }
   if (combatSec && getPendingDivineInspirationPlayerId(state.players, combatSec, combat) === player.id) {

@@ -5,6 +5,7 @@ import {
   getCombatShipTypeGroups,
   getActiveCombatGroup,
   getPendingSpiralShiftPlayerId,
+  getPendingTechnoMagicPlayerId,
   getPendingDivineInspirationPlayerId,
 } from './combatEngine';
 
@@ -293,6 +294,10 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
     const idx = seatOfPlayerId(stateObj.pendingMidasStartingCubeSetup.playerId);
     if (idx >= 0) return idx;
   }
+  if (stateObj.pendingTechnoMagesTechSetup?.playerId) {
+    const idx = seatOfPlayerId(stateObj.pendingTechnoMagesTechSetup.playerId);
+    if (idx >= 0) return idx;
+  }
 
   // 2. Draft Phase
   if (stateObj.phase === 'DRAFT_PHASE' && stateObj.factionDraft) {
@@ -327,6 +332,11 @@ export function getEffectiveDecisionSeat(stateObj: any): number {
           if (spiralWaitId) {
             const spIdx = seatOfPlayerId(spiralWaitId);
             if (spIdx >= 0) return spIdx;
+          }
+          const technoMagicWaitId = getPendingTechnoMagicPlayerId(stateObj.players, sec, combat);
+          if (technoMagicWaitId) {
+            const tmIdx = seatOfPlayerId(technoMagicWaitId);
+            if (tmIdx >= 0) return tmIdx;
           }
           const divineWaitId = getPendingDivineInspirationPlayerId(stateObj.players, sec, combat);
           if (divineWaitId) {

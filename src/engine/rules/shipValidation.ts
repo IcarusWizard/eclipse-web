@@ -8,6 +8,36 @@ import { SectorTile, ShipType } from '../types/galaxy';
 import type { PlayerState } from '../types/player';
 import type { NeutralShipConfig, NeutralShipVariant } from './neutralShips';
 
+export const STANDARD_SHIP_PART_IDS = [
+  'nuclear_source',
+  'nuclear_drive',
+  'electron_computer',
+  'ion_cannon',
+  'hull',
+] as const;
+
+/**
+ * Returns non-Ancient ship parts unlocked for the player that can be temporarily installed
+ * via Techno-Mages' Techno-Magic combat ability.
+ */
+export function getEligibleTechnoMagicParts(
+  player: Pick<PlayerState, 'techTrack'>,
+  activeExpansions?: string[]
+): ShipPart[] {
+  const researched = player.techTrack?.researched || [];
+  return Object.values(SHIP_PARTS)
+    .map((part) => getEffectiveShipPart(part, activeExpansions))
+    .filter((part) => {
+      if (part.id === 'shift_port') return false;
+      if (ALL_ANCIENT_PART_IDS.has(part.id) || Boolean((part as any).isAncient)) return false;
+      const isStandard = (STANDARD_SHIP_PART_IDS as readonly string[]).includes(part.id);
+      const isUnlockedByTech = researched.some(
+        (t) => t.unlocksPartId === part.id || t.id === part.id
+      );
+      return isStandard || isUnlockedByTech;
+    });
+}
+
 export const SHIP_LIMITS: Record<ShipType, number> = {
   interceptor: 8,
   cruiser: 4,
@@ -911,6 +941,7 @@ function getRawFactionBlueprints(
       };
     }
 
+    case 'techno_mages':
     case 'wardens_of_magellan':
     case 'enlightened_of_lyra':
     case 'atlantians':

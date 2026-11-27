@@ -444,6 +444,18 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'col_p2', resource: 'science', isAdvanced: false },
     ],
   },
+  techno_mages: {
+    sectorNumber: 244,
+    name: 'Artemis VII',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'tm_p1', resource: 'science', isAdvanced: false },
+      { id: 'tm_p2', resource: 'science', isAdvanced: false },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

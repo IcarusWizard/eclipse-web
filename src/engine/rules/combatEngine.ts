@@ -68,32 +68,96 @@ export function resolveBlueprintWithShiftPort(
   };
 }
 
+export interface PreCombatPendingChoice {
+  kind: 'spiral' | 'techno_magic' | 'divine_inspiration';
+  playerId: string;
+}
+
+/**
+ * Returns the next start-of-combat faction configuration choice required before combat begins.
+ * Timing rule ("Where timing matters (eg: vs Spiral), Defender chooses last"):
+ * non-defenders (attackers) always configure before `defenderOwnerId`.
+ */
+export function getNextPreCombatPendingChoice(
+  players: PlayerState[],
+  sector: SectorTile,
+  combat: CombatState | null | undefined
+): PreCombatPendingChoice | null {
+  if (!combat || combat.stage === 'resolved') return null;
+  const activeSub = sector.isNebula ? combat.subsector : undefined;
+  const scopedShips = activeSub
+    ? sector.ships.filter((s) => (s.subsector ?? 1) === activeSub)
+    : sector.ships;
+  const participants = combat.participatingPlayerIds || [];
+  const defenderId = combat.defenderOwnerId || getSectorDefenderOwnerId(sector, players);
+
+  const spiralConfigured = combat.spiralShiftConfiguredPlayerIds || [];
+  const technoConfigured = combat.technoMagicConfiguredPlayerIds || [];
+
+  const hasAncientInBattle =
+    scopedShips.some((s) => s.type === 'ancient' && (!combat.participatingPlayerIds || participants.includes(s.ownerId))) ||
+    (!sector.isNebula && (sector.ancientsCount || 0) > 0 && (!combat.participatingPlayerIds || participants.includes('ancient')));
+
+  const pending: PreCombatPendingChoice[] = [];
+  for (const pId of participants) {
+    const p = players.find((pl) => pl.id === pId);
+    if (!p) continue;
+
+    if (p.faction?.id === 'the_spiral' && !spiralConfigured.includes(pId)) {
+      const hasShiftPortShip = scopedShips.some(
+        (sh) => sh.ownerId === pId && p.blueprints[sh.type]?.slots.some((sl) => sl?.id === 'shift_port')
+      );
+      if (hasShiftPortShip) {
+        pending.push({ kind: 'spiral', playerId: pId });
+      }
+    }
+
+    if (p.faction?.id === 'techno_mages' && !technoConfigured.includes(pId)) {
+      const hasCombatShip = (['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]).some(
+        (st) => Boolean(p.blueprints?.[st]) && scopedShips.some((sh) => sh.ownerId === pId && sh.type === st)
+      );
+      if (hasCombatShip) {
+        pending.push({ kind: 'techno_magic', playerId: pId });
+      }
+    }
+
+    if (hasAncientInBattle && p.faction?.id === 'children_of_light' && !combat.divineInspirationChoice?.[pId]) {
+      const hasOtherShips = scopedShips.some((sh) => sh.ownerId === pId && sh.type !== 'ancient');
+      if (hasOtherShips) {
+        pending.push({ kind: 'divine_inspiration', playerId: pId });
+      }
+    }
+  }
+
+  if (pending.length === 0) return null;
+  pending.sort((a, b) => {
+    const aDef = a.playerId === defenderId ? 1 : 0;
+    const bDef = b.playerId === defenderId ? 1 : 0;
+    return aDef - bDef;
+  });
+  return pending[0]!;
+}
+
 /**
  * Returns the first Spiral participant playerId in `combat` who still needs to configure
- * Shift Port modes before combat begins in this sector, or null if all are configured.
+ * Shift Port modes before combat begins in this sector, or null if all are configured (or waiting on an earlier attacker choice).
  */
 export function getPendingSpiralShiftPlayerId(
   players: PlayerState[],
   sector: SectorTile,
   combat: CombatState | null | undefined
 ): string | null {
-  if (!combat || combat.stage === 'resolved') return null;
-  const activeSub = sector.isNebula ? combat.subsector : undefined;
-  const scopedShips = activeSub
-    ? sector.ships.filter((s) => (s.subsector ?? 1) === activeSub)
-    : sector.ships;
-  const configured = combat.spiralShiftConfiguredPlayerIds || [];
-  const participants = combat.participatingPlayerIds || [];
-  for (const pId of participants) {
-    if (configured.includes(pId)) continue;
-    const p = players.find((pl) => pl.id === pId);
-    if (p?.faction?.id !== 'the_spiral') continue;
-    const hasShiftPortShip = scopedShips.some(
-      (sh) => sh.ownerId === pId && p.blueprints[sh.type]?.slots.some((sl) => sl?.id === 'shift_port')
-    );
-    if (hasShiftPortShip) return pId;
-  }
-  return null;
+  const next = getNextPreCombatPendingChoice(players, sector, combat);
+  return next?.kind === 'spiral' ? next.playerId : null;
+}
+
+export function getPendingTechnoMagicPlayerId(
+  players: PlayerState[],
+  sector: SectorTile,
+  combat: CombatState | null | undefined
+): string | null {
+  const next = getNextPreCombatPendingChoice(players, sector, combat);
+  return next?.kind === 'techno_magic' ? next.playerId : null;
 }
 
 export function getPendingDivineInspirationPlayerId(
@@ -101,25 +165,8 @@ export function getPendingDivineInspirationPlayerId(
   sector: SectorTile,
   combat: CombatState | null | undefined
 ): string | null {
-  if (!combat || combat.stage === 'resolved') return null;
-  const activeSub = sector.isNebula ? combat.subsector : undefined;
-  const scopedShips = activeSub
-    ? sector.ships.filter((s) => (s.subsector ?? 1) === activeSub)
-    : sector.ships;
-  const participants = combat.participatingPlayerIds || [];
-  const hasAncientInBattle =
-    scopedShips.some((s) => s.type === 'ancient' && (!combat.participatingPlayerIds || participants.includes(s.ownerId))) ||
-    (!sector.isNebula && (sector.ancientsCount || 0) > 0 && (!combat.participatingPlayerIds || participants.includes('ancient')));
-  if (!hasAncientInBattle) return null;
-
-  for (const pId of participants) {
-    if (combat.divineInspirationChoice?.[pId]) continue;
-    const p = players.find((pl) => pl.id === pId);
-    if (p?.faction?.id !== 'children_of_light') continue;
-    const hasOtherShips = scopedShips.some((sh) => sh.ownerId === pId && sh.type !== 'ancient');
-    if (hasOtherShips) return pId;
-  }
-  return null;
+  const next = getNextPreCombatPendingChoice(players, sector, combat);
+  return next?.kind === 'divine_inspiration' ? next.playerId : null;
 }
 
 export function buildCombatUnitsForSector(

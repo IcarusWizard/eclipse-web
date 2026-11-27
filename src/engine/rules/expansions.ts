@@ -281,7 +281,11 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'edo' ||
     norm === 'children_of_light' ||
     norm === 'children of light' ||
-    norm === 'faylenia'
+    norm === 'faylenia' ||
+    norm === 'techno_mages' ||
+    norm === 'techno-mages' ||
+    norm === 'techno mages' ||
+    norm === 'artemis vii'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }
