@@ -291,6 +291,7 @@ export function buildSimulatorUnits(
       Boolean(stats.hasRegenerativeHull) ||
       allParts.some((p) => p?.id === 'regenerative_hull' || p?.regenerativeHull);
     const hasUnmodifiedSixBurstDamage = sideConfig.factionId === 'the_horde';
+    const hasFreeRoundReroll = sideConfig.factionId === 'the_sentinels';
 
     for (let i = 0; i < count; i++) {
       units.push({
@@ -306,6 +307,7 @@ export function buildSimulatorUnits(
         hasMorphShield,
         hasRegenerativeHull,
         hasUnmodifiedSixBurstDamage,
+        hasFreeRoundReroll,
       });
     }
   }
@@ -405,6 +407,60 @@ export function assignSalvoDamageToTargets(
 }
 
 /**
+ * Favour of the Fates (The Sentinels): Rerolls 1 missed die in a salvo if the side hasn't used its round reroll yet.
+ */
+function applySentinelSimulatedReroll(
+  rolls: {
+    rawRoll: number;
+    damage: number;
+    dieColor: string;
+    isHit: boolean;
+    selfDamage?: number;
+    isMissile?: boolean;
+  }[],
+  computerBonus: number,
+  enemyTargets: CombatUnit[],
+  hasUnmodifiedSixBurstDamage?: boolean
+): boolean {
+  const missIndices: number[] = [];
+  for (let i = 0; i < rolls.length; i++) {
+    if (!rolls[i]!.isHit) missIndices.push(i);
+  }
+  if (missIndices.length === 0) return false;
+
+  const diePotential = (dieColor: string) =>
+    dieColor === 'purple' ? 2.5 : dieColor === 'red' ? 4 : dieColor === 'blue' ? 3 : dieColor === 'orange' ? 2 : 1;
+  missIndices.sort((a, b) => diePotential(rolls[b]!.dieColor) - diePotential(rolls[a]!.dieColor));
+  const bestIdx = missIndices[0]!;
+  const target = rolls[bestIdx]!;
+
+  if (target.dieColor === 'purple') {
+    const p = rollPurpleDie();
+    rolls[bestIdx] = {
+      ...target,
+      rawRoll: p.rawRoll,
+      damage: p.targetDamage,
+      isHit: p.isHit,
+      selfDamage: p.selfDamage,
+    };
+  } else {
+    const raw = rollD6();
+    const canHitAny =
+      enemyTargets.length === 0 ||
+      enemyTargets.some((t) => raw + computerBonus - t.shieldBonus >= 6);
+    const isHit = raw === 6 || (raw !== 1 && canHitAny);
+    const baseDieDmg = diePotential(target.dieColor);
+    rolls[bestIdx] = {
+      ...target,
+      rawRoll: raw,
+      damage: getEffectiveWeaponHitDamage(target.dieColor, raw, baseDieDmg, hasUnmodifiedSixBurstDamage),
+      isHit,
+    };
+  }
+  return true;
+}
+
+/**
  * Core engagement battle between attacker and defender combat units to resolution.
  * Supports missile round, regular cannon rounds, Morph Shield regeneration,
  * and official stalemate rules (defender wins ties).
@@ -428,6 +484,7 @@ export function simulateEngagement(
   const missileGroups = getCombatShipTypeGroups(aliveUnits(), 'defender').filter((g) =>
     g.weapons.some((w) => w.isMissile)
   );
+  const sentinelMissileRerollUsed = new Set<string>();
 
   for (const group of missileGroups) {
     if (group.ships.every((s) => s.currentDamage >= s.maxHull)) continue;
@@ -478,6 +535,22 @@ export function simulateEngagement(
             });
           }
         }
+      }
+    }
+
+    if (
+      group.ships.some((s) => s.hasFreeRoundReroll) &&
+      !sentinelMissileRerollUsed.has(group.ownerId)
+    ) {
+      if (
+        applySentinelSimulatedReroll(
+          rolls,
+          group.computerBonus,
+          enemyTargets,
+          group.hasUnmodifiedSixBurstDamage
+        )
+      ) {
+        sentinelMissileRerollUsed.add(group.ownerId);
       }
     }
 
@@ -558,6 +631,7 @@ export function simulateEngagement(
     }
 
     const groups = getCombatShipTypeGroups(currentAlive, 'defender');
+    const sentinelRoundRerollUsed = new Set<string>();
 
     for (const group of groups) {
       if (group.ships.every((s) => s.currentDamage >= s.maxHull)) continue;
@@ -607,6 +681,22 @@ export function simulateEngagement(
               });
             }
           }
+        }
+      }
+
+      if (
+        group.ships.some((s) => s.hasFreeRoundReroll) &&
+        !sentinelRoundRerollUsed.has(group.ownerId)
+      ) {
+        if (
+          applySentinelSimulatedReroll(
+            rolls,
+            group.computerBonus,
+            enemyTargets,
+            group.hasUnmodifiedSixBurstDamage
+          )
+        ) {
+          sentinelRoundRerollUsed.add(group.ownerId);
         }
       }
 

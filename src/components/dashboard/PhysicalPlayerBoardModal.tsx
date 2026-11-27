@@ -1826,6 +1826,7 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                             preprintedComputer={bp?.preprintedComputer}
                             preprintedShield={bp?.preprintedShield}
                             preprintedHull={bp?.preprintedHull}
+                            preprintedDriveSpeed={bp?.preprintedDriveSpeed}
                             baseInitiative={bp?.baseInitiative}
                             externalParts={bp?.externalParts || []}
                             externalModularGroup={

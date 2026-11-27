@@ -14,7 +14,7 @@ import {
   inferModularExternalGroup,
 } from '../../engine/rules/shipValidation';
 import { SHIP_PARTS, ALL_ANCIENT_PART_IDS as ANCIENT_PART_IDS, getEffectiveShipPart } from '../../engine/rules/partData';
-import { getMaxUpgradeActivations } from '../../engine/rules/gameReducer';
+import { getMaxUpgradeActivations, hasSentinelReactStarbaseBonus } from '../../engine/rules/gameReducer';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { JotunnDreadNoughtBanner, JotunnDreadNoughtTarget } from '../common/JotunnDreadNoughtBanner';
 import { ShipPartTileIconography, ShipPartSlotGraphic, getPartTooltip } from '../common/PhysicalTileIconography';
@@ -126,9 +126,15 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     isJotunnBannerEligible && (jotunnDnTarget === 'build' || jotunnDnTarget === 'move')
       ? jotunnDnTarget
       : undefined;
+  const hasSentinelReactBonus =
+    !isJotunnDreadnoughtUpgrade &&
+    !readOnly &&
+    hasSentinelReactStarbaseBonus(player, Boolean(player.hasPassed), pulsarSectorId);
   const maxUpgrades =
     isPulsarActive || isJotunnDreadnoughtUpgrade
       ? 1
+      : hasSentinelReactBonus
+      ? 2
       : player.hasPassed
       ? 1
       : getMaxUpgradeActivations(player, effectiveMidasTouch, Boolean(effectiveJotunnTarget));
@@ -311,16 +317,21 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
     !isJotunnDreadnoughtUpgrade &&
     !player.hasPassed;
   const ancientModifiedCount = modifiedSlots.filter((m) => m.shipType === 'ancient').length;
+  const nonStarbaseModifiedCount = modifiedSlots.filter((m) => m.shipType !== 'starbase').length;
   const freeAncientUsed = hasFreeAncientActivation ? Math.min(1, ancientModifiedCount) : 0;
   const usedActivations = modifiedSlots.length - freeAncientUsed;
   const remainingActivations = Math.max(0, maxUpgrades - usedActivations);
-  const canModifyShipType = (shipType: ShipType): boolean => {
+  const remainingForShip = (shipType: ShipType): number => {
+    if (hasSentinelReactBonus) {
+      const totalRem = Math.max(0, 2 - modifiedSlots.length);
+      if (shipType === 'starbase') return totalRem;
+      return Math.min(totalRem, Math.max(0, 1 - nonStarbaseModifiedCount));
+    }
     const bonus = hasFreeAncientActivation && shipType === 'ancient' && ancientModifiedCount === 0 ? 1 : 0;
-    return remainingActivations + bonus > 0;
+    return remainingActivations + bonus;
   };
-  const remainingForActiveShip =
-    remainingActivations +
-    (hasFreeAncientActivation && activeShipType === 'ancient' && ancientModifiedCount === 0 ? 1 : 0);
+  const canModifyShipType = (shipType: ShipType): boolean => remainingForShip(shipType) > 0;
+  const remainingForActiveShip = remainingForShip(activeShipType);
 
   const currentSlots = draftBlueprints[activeShipType] || [];
   const currentExternal = draftExternalParts[activeShipType] || [];
@@ -636,6 +647,27 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
           </div>
         )}
 
+        {/* Sentinels Mobile Monasteries React Starbase Bonus Banner */}
+        {hasSentinelReactBonus && (
+          <div
+            data-testid="sentinels-react-starbase-upgrade-banner"
+            className="mx-4 mt-3 p-2 px-3 rounded-xl bg-amber-950/50 border border-amber-500/70 text-amber-200 text-xs flex items-center justify-between shadow-sm gap-2"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+              <div>
+                <span className="font-bold">👁️ {l('Mobile Monasteries React: +1 Starbase Upgrade', '机动修道院响应：额外 +1 星际基地升级')}</span>
+                <span className="text-amber-300/85 text-[11px] block">
+                  {l('Up to 2 React upgrades: at most 1 non-Starbase + 1 Starbase upgrade (or 2 Starbase upgrades).', '跳过响应升级至多改装 2 处：至多 1 处非星际基地 + 1 处星际基地（或 2 处全用于星际基地）。')}
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-amber-900/90 text-amber-100 font-mono text-[10px] font-bold uppercase border border-amber-600 shrink-0">
+              {modifiedSlots.length} / 2 {l('Used', '已用')}
+            </span>
+          </div>
+        )}
+
         {/* Ship Class Tabs with Per-Ship Upgrade Badges */}
         <div className="flex border-b border-slate-800 bg-slate-950/60 px-4 pt-2 gap-2">
           {availableShipTypes.map((type) => {
@@ -759,7 +791,9 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
               <div>
                 <div className="text-[9px] text-slate-500 uppercase font-sans">{l('Speed', '航速')}</div>
                 <div className="text-xs sm:text-sm font-bold text-cyan-300">
-                  {activeShipType === 'starbase' || activeShipType === 'orbital' ? l('Immobile', '固定') : `${stats.totalDriveSpeed} ${l('Hex', '格')}`}
+                  {stats.totalDriveSpeed <= 0 && (activeShipType === 'starbase' || activeShipType === 'orbital')
+                    ? l('Immobile', '固定')
+                    : `${stats.totalDriveSpeed} ${l('Hex', '格')}`}
                 </div>
               </div>
 
@@ -888,7 +922,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
             <div>
               <div className="flex items-center justify-between mb-3">
                 <h3 className="text-sm font-semibold text-slate-300 uppercase tracking-wider">
-                  {l('Modular Component Slots', '模块化部件槽位')} ({currentSlots.length} {l('Modular', '个标准槽位')}{(baseBp.preprintedPower || baseBp.preprintedComputer || baseBp.preprintedShield || baseBp.preprintedHull) ? l(' + 1 Integrated', ' + 1 个固定内建') : ''})
+                  {l('Modular Component Slots', '模块化部件槽位')} ({currentSlots.length} {l('Modular', '个标准槽位')}{(baseBp.preprintedPower || baseBp.preprintedComputer || baseBp.preprintedShield || baseBp.preprintedHull || baseBp.preprintedDriveSpeed) ? l(' + 1 Integrated', ' + 1 个固定内建') : ''})
                 </h3>
                 <span className="text-[11px] text-slate-400 font-mono">
                   {remainingActivations > 0
@@ -916,6 +950,7 @@ export const ShipBlueprintEditor: React.FC<ShipBlueprintEditorProps> = ({
                   preprintedComputer={baseBp.preprintedComputer}
                   preprintedShield={baseBp.preprintedShield}
                   preprintedHull={baseBp.preprintedHull}
+                  preprintedDriveSpeed={baseBp.preprintedDriveSpeed}
                   baseInitiative={baseBp.baseInitiative}
                   externalParts={currentExternal}
                   externalModularGroup={draftExternalGroup}

@@ -1828,6 +1828,17 @@ function validateMovePlan(
         `Cannot make more than ${maxMoveActivations} ship movements (move activations) in a single Move action (attempted ${activations.length}).`,
     };
   }
+  if (
+    maxMoveActivations === 2 &&
+    player.faction.id === 'the_sentinels' &&
+    (player.hasPassed || state.passedPlayerIds.includes(player.id))
+  ) {
+    const nonStarbaseActCount = activations.filter(
+      (a) => shipMap.get(a.shipId)?.ship.type !== 'starbase'
+    ).length;
+    const reactCheck = validateReactWithStarbaseBonus('Move', activations.length, nonStarbaseActCount);
+    if (!reactCheck.valid) return reactCheck;
+  }
 
   // 3. Validate paths, drive speed limits, and pinning
   const pinnedShips = new Set<string>();
@@ -1925,6 +1936,17 @@ function validateMovePlan(
       const toSec = effectiveMoveState.sectors.find((s) => s.id === step.toSectorId);
       if (!fromSec || !toSec) {
         return { valid: false, error: 'Sector not found for movement.' };
+      }
+      if (shipInfo.ship.type === 'starbase') {
+        if (player.faction.id !== 'the_sentinels') {
+          return { valid: false, error: 'Starbases are immobile and cannot move.' };
+        }
+        if (fromSec.discOwner !== player.id || toSec.discOwner !== player.id) {
+          return {
+            valid: false,
+            error: `Mobile Monasteries (The Sentinels): Starbases may only move between sectors you control (Sector ${fromSec.sectorNumber} → Sector ${toSec.sectorNumber}).`,
+          };
+        }
       }
       const isInternalNebulaMove = fromSec.id === toSec.id && fromSec.isNebula;
       const isConnected = isInternalNebulaMove || areSectorsConnected(fromSec, toSec, hasWormholeGen, state.warpedUniverse?.conduits);
@@ -2844,6 +2866,7 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       const currentExternalGroup = isModularFaction ? inferModularExternalGroup(player.blueprints, 'muon_source') : null;
       const modifiedClasses = new Set<string>();
       let modifiedCount = 0;
+      let nonStarbaseModifiedCount = 0;
       let ancientModifiedCount = 0;
       for (const up of action.upgrades) {
         const bp = player.blueprints[up.shipType]!;
@@ -2874,6 +2897,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
             modifiedCount += 1;
             didModify = true;
           }
+        }
+        if (didModify && up.shipType !== 'starbase') {
+          nonStarbaseModifiedCount += 1;
         }
         if (didModify && up.shipType === 'ancient') {
           ancientModifiedCount += 1;
@@ -2909,25 +2935,31 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         );
         if (!commonCheck.valid) return commonCheck;
       }
-      const maxUpgrade = action.pulsarSectorId
-        ? 1
-        : isPassed
-        ? 1
-        : getMaxUpgradeActivations(player, action.useMidasTouch, hasDnCrossBonus);
-      const freeAncientBonus =
-        player.faction.id === 'children_of_light' && !action.pulsarSectorId && !isPassed
-          ? Math.min(1, ancientModifiedCount)
-          : 0;
-      const effectiveModifiedCount = modifiedCount - freeAncientBonus;
-      if (effectiveModifiedCount > maxUpgrade) {
-        return {
-          valid: false,
-          error: action.pulsarSectorId
-            ? 'Pulsar Upgrade allows at most 1 component upgrade.'
-            : isPassed
-            ? 'Reaction Upgrade allows at most 1 component upgrade.'
-            : `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action${player.faction.id === 'children_of_light' ? ' (+1 free Ancient upgrade)' : ''}. (Attempted ${modifiedCount})`,
-        };
+      const sentinelReactUpgrade = hasSentinelReactStarbaseBonus(player, isPassed, action.pulsarSectorId);
+      if (sentinelReactUpgrade) {
+        const reactCheck = validateReactWithStarbaseBonus('Upgrade', modifiedCount, nonStarbaseModifiedCount);
+        if (!reactCheck.valid) return reactCheck;
+      } else {
+        const maxUpgrade = action.pulsarSectorId
+          ? 1
+          : isPassed
+          ? 1
+          : getMaxUpgradeActivations(player, action.useMidasTouch, hasDnCrossBonus);
+        const freeAncientBonus =
+          player.faction.id === 'children_of_light' && !action.pulsarSectorId && !isPassed
+            ? Math.min(1, ancientModifiedCount)
+            : 0;
+        const effectiveModifiedCount = modifiedCount - freeAncientBonus;
+        if (effectiveModifiedCount > maxUpgrade) {
+          return {
+            valid: false,
+            error: action.pulsarSectorId
+              ? 'Pulsar Upgrade allows at most 1 component upgrade.'
+              : isPassed
+              ? 'Reaction Upgrade allows at most 1 component upgrade.'
+              : `Cannot make more than ${maxUpgrade} component upgrades in a single Upgrade action${player.faction.id === 'children_of_light' ? ' (+1 free Ancient upgrade)' : ''}. (Attempted ${modifiedCount})`,
+          };
+        }
       }
 
       // Simulate applying all modifications per touched ship type (or all linked modular blueprints for Mega War Inc.)
@@ -3058,20 +3090,27 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         );
         if (!commonCheck.valid) return commonCheck;
       }
-      const maxBuild = action.pulsarSectorId
-        ? 1
-        : isPassed
-        ? 1
-        : getMaxBuildActivations(player, action.useMidasTouch, hasDnCrossBonus);
-      if (action.items.length > maxBuild) {
-        return {
-          valid: false,
-          error: action.pulsarSectorId
-            ? 'Pulsar Build allows building at most 1 item.'
-            : isPassed
-            ? 'Reaction Build allows building at most 1 item.'
-            : `Cannot build more than ${maxBuild} items in a single Build action.`,
-        };
+      const sentinelReactBuild = hasSentinelReactStarbaseBonus(player, isPassed, action.pulsarSectorId);
+      if (sentinelReactBuild) {
+        const nonStarbaseBuildCount = action.items.filter((it) => it.itemType !== 'starbase').length;
+        const reactCheck = validateReactWithStarbaseBonus('Build', action.items.length, nonStarbaseBuildCount);
+        if (!reactCheck.valid) return reactCheck;
+      } else {
+        const maxBuild = action.pulsarSectorId
+          ? 1
+          : isPassed
+          ? 1
+          : getMaxBuildActivations(player, action.useMidasTouch, hasDnCrossBonus);
+        if (action.items.length > maxBuild) {
+          return {
+            valid: false,
+            error: action.pulsarSectorId
+              ? 'Pulsar Build allows building at most 1 item.'
+              : isPassed
+              ? 'Reaction Build allows building at most 1 item.'
+              : `Cannot build more than ${maxBuild} items in a single Build action.`,
+          };
+        }
       }
 
       const buildValidation = validateBuildItems(state, player, action.items);
@@ -3213,7 +3252,11 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         simPlayerForMove,
         action.moves,
         maxMoveActivations,
-        isPassed ? 'Reaction Move allows moving at most 1 ship.' : undefined
+        isPassed
+          ? hasSentinelReactStarbaseBonus(player, isPassed, action.pulsarSectorId)
+            ? 'Reaction Move (Mobile Monasteries) allows at most 2 activations (1 regular + 1 Starbase-only, or 2 Starbase-only).'
+            : 'Reaction Move allows moving at most 1 ship.'
+          : undefined
       );
     }
 
@@ -3693,8 +3736,19 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         return { valid: false, error: 'Combat sector not found.' };
       }
       if (action.rerollRollIndex !== undefined) {
-        if (player.faction.id !== 'enlightened_of_lyra') {
-          return { valid: false, error: 'Only Enlightened of Lyra can reroll combat dice using Colony Ships.' };
+        const isLyra = player.faction.id === 'enlightened_of_lyra';
+        const isSentinels = player.faction.id === 'the_sentinels';
+        if (!isLyra && !isSentinels) {
+          return { valid: false, error: 'Only Enlightened of Lyra or The Sentinels can reroll combat dice.' };
+        }
+        if (isSentinels && !canSentinelRerollCombatDie(player, state.activeCombat)) {
+          const roundKey = getSentinelRerollRoundKey(player.id, state.activeCombat);
+          return {
+            valid: false,
+            error: roundKey
+              ? 'Favour of the Fates already used its 1 free reroll in this round.'
+              : 'Favour of the Fates only applies during Missile and Engagement rounds.',
+          };
         }
         if (!state.activeCombat.pendingDamageAssignment) {
           return {
@@ -3913,8 +3967,10 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
     }
 
     case 'REROLL_COMBAT_DIE': {
-      if (player.faction.id !== 'enlightened_of_lyra') {
-        return { valid: false, error: 'Only Enlightened of Lyra can reroll combat dice using Colony Ships.' };
+      const isLyra = player.faction.id === 'enlightened_of_lyra';
+      const isSentinels = player.faction.id === 'the_sentinels';
+      if (!isLyra && !isSentinels) {
+        return { valid: false, error: 'Only Enlightened of Lyra or The Sentinels can reroll combat dice.' };
       }
       if (!state.activeCombat || state.phase !== 'COMBAT_PHASE') {
         return { valid: false, error: 'No active combat to reroll dice in.' };
@@ -3925,8 +3981,17 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           error: 'Turn off Auto-assign before firing to reroll combat dice before damage is resolved.',
         };
       }
-      if (player.colonyShips.ready < 1) {
+      if (isLyra && player.colonyShips.ready < 1) {
         return { valid: false, error: 'No ready Colony Ships available to flip for reroll.' };
+      }
+      if (isSentinels) {
+        const roundKey = getSentinelRerollRoundKey(player.id, state.activeCombat);
+        if (!roundKey) {
+          return { valid: false, error: 'Favour of the Fates only applies during Missile and Engagement rounds (not Bombardment).' };
+        }
+        if ((state.activeCombat.sentinelRerollUsedKeys || []).includes(roundKey)) {
+          return { valid: false, error: 'Favour of the Fates already used its 1 free reroll in this round.' };
+        }
       }
       const pendingRolls = state.activeCombat.pendingDamageAssignment.rolls;
       if (!pendingRolls || action.rollIndex < 0 || action.rollIndex >= pendingRolls.length) {
@@ -4654,7 +4719,18 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
   const targetRoll = { ...pendingSalvo.rolls[rollIndex]! };
   if (targetRoll.shipOwner !== player.id) return;
 
-  player.colonyShips.ready = Math.max(0, player.colonyShips.ready - 1);
+  const isSentinels = player.faction.id === 'the_sentinels';
+  if (isSentinels) {
+    const roundKey = getSentinelRerollRoundKey(player.id, state.activeCombat);
+    if (roundKey) {
+      state.activeCombat.sentinelRerollUsedKeys = [
+        ...(state.activeCombat.sentinelRerollUsedKeys || []),
+        roundKey,
+      ];
+    }
+  } else {
+    player.colonyShips.ready = Math.max(0, player.colonyShips.ready - 1);
+  }
 
   let newRollVal = 0;
   let newIsHit = false;
@@ -4725,7 +4801,9 @@ export function applyCombatDieReroll(state: GameState, player: PlayerState, roll
     round: state.round,
     phase: state.phase,
     playerId: player.id,
-    message: `🎲 ${player.name} flipped 1 Colony Ship to reroll die #${rollIndex + 1}: rolled ${newRollVal} (${newIsHit ? `HIT! [${newDmg} dmg]` : 'MISS'})!`,
+    message: isSentinels
+      ? `🎲 ${player.name} invoked Favour of the Fates to reroll die #${rollIndex + 1}: rolled ${newRollVal} (${newIsHit ? `HIT! [${newDmg} dmg]` : 'MISS'})!`
+      : `🎲 ${player.name} flipped 1 Colony Ship to reroll die #${rollIndex + 1}: rolled ${newRollVal} (${newIsHit ? `HIT! [${newDmg} dmg]` : 'MISS'})!`,
     type: 'combat',
   });
 }
@@ -6541,7 +6619,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
             return { success: true, newState };
           }
 
-          if (action.rerollRollIndex !== undefined && player.faction.id === 'enlightened_of_lyra' && player.colonyShips.ready >= 1) {
+          if (
+            action.rerollRollIndex !== undefined &&
+            ((player.faction.id === 'enlightened_of_lyra' && player.colonyShips.ready >= 1) ||
+              canSentinelRerollCombatDie(player, newState.activeCombat))
+          ) {
             applyCombatDieReroll(newState, player, action.rerollRollIndex);
             return { success: true, newState };
           }
@@ -9334,6 +9416,9 @@ export function computeReachableMoveDestinations(
       // 2. External wormhole / conduit / Jump Drive moves
       for (const toSec of state.sectors) {
         if (toSec.id === fromSec.id) continue;
+        if (simShip.type === 'starbase' && player.faction.id === 'the_sentinels') {
+          if (fromSec.discOwner !== playerId || toSec.discOwner !== playerId) continue;
+        }
 
         if (fromSec.isNebula) {
           const exitEdge = getEdgeBetween(fromSec.coord, toSec.coord);
@@ -10497,9 +10582,60 @@ export function getMaxMoveActivations(
   );
 }
 
+export function hasSentinelReactStarbaseBonus(
+  player: Pick<PlayerState, 'faction'>,
+  isPassed: boolean,
+  pulsarSectorId?: string | null
+): boolean {
+  return player.faction?.id === 'the_sentinels' && isPassed && !pulsarSectorId;
+}
+
+export function validateReactWithStarbaseBonus(
+  actionLabel: 'Upgrade' | 'Build' | 'Move',
+  totalCount: number,
+  nonStarbaseCount: number
+): { valid: boolean; error?: string } {
+  if (totalCount > 2) {
+    return {
+      valid: false,
+      error: `Reaction ${actionLabel} (Mobile Monasteries) allows at most 2 activations (1 regular + 1 Starbase-only, or 2 Starbase-only).`,
+    };
+  }
+  if (nonStarbaseCount > 1) {
+    return {
+      valid: false,
+      error: `Mobile Monasteries bonus Reaction ${actionLabel} can only be used on Starbases (at most 1 non-Starbase ${actionLabel} allowed).`,
+    };
+  }
+  return { valid: true };
+}
+
+export function getSentinelRerollRoundKey(
+  playerId: string,
+  combat: Pick<CombatState, 'stage' | 'roundNumber'> | null | undefined
+): string | null {
+  if (!combat) return null;
+  if (combat.stage === 'missile') return `${playerId}:missile`;
+  if (combat.stage === 'regular') return `${playerId}:regular:${combat.roundNumber}`;
+  return null;
+}
+
+export function canSentinelRerollCombatDie(
+  player: Pick<PlayerState, 'id' | 'faction'>,
+  combat: Pick<CombatState, 'stage' | 'roundNumber' | 'sentinelRerollUsedKeys'> | null | undefined,
+  rollOwnerId?: string
+): boolean {
+  if (player.faction?.id !== 'the_sentinels') return false;
+  if (rollOwnerId !== undefined && rollOwnerId !== player.id) return false;
+  const key = getSentinelRerollRoundKey(player.id, combat);
+  if (!key) return false;
+  return !(combat?.sentinelRerollUsedKeys || []).includes(key);
+}
+
 /**
  * Computes effective Move activation count for the current UI/action context:
- * Pulsar anomaly free Move and Reaction Move (when passed) allow only 1 ship activation.
+ * Pulsar anomaly free Move allows 1 ship activation; Reaction Move (when passed) allows 1,
+ * or 2 for The Sentinels (1 regular + 1 Starbase-only via Mobile Monasteries).
  */
 export function getEffectiveMoveActivationLimit(
   player: PlayerState,
@@ -10508,8 +10644,12 @@ export function getEffectiveMoveActivationLimit(
   useMidasTouch?: boolean,
   hasDreadnoughtCrossBonus?: boolean
 ): number {
-  if (pulsarSectorId || isPassedOverride || player.hasPassed) {
+  if (pulsarSectorId) {
     return 1;
+  }
+  const isPassed = Boolean(isPassedOverride || player.hasPassed);
+  if (isPassed) {
+    return hasSentinelReactStarbaseBonus(player, isPassed, pulsarSectorId) ? 2 : 1;
   }
   return getMaxMoveActivations(player, useMidasTouch, hasDreadnoughtCrossBonus);
 }

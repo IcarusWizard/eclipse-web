@@ -1389,6 +1389,7 @@ export const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 preprintedComputer={activeBp.preprintedComputer}
                 preprintedShield={activeBp.preprintedShield}
                 preprintedHull={activeBp.preprintedHull}
+                preprintedDriveSpeed={activeBp.preprintedDriveSpeed}
                 baseInitiative={activeBp.baseInitiative}
                 externalParts={activeBp.externalParts || []}
                 externalModularGroup={

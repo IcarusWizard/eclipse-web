@@ -629,6 +629,12 @@ export function translateChronicleMessage(message: string, language: AppLanguage
     return `🎲 ${m[1]} 横置 1 艘殖民船重掷第 ${m[2]} 颗骰子：掷出 ${m[3]}（${resStr}）！`;
   }
 
+  m = message.match(/^🎲 (.+?) invoked Favour of the Fates to reroll die #(\d+): rolled (\d+) \((.+)\)!$/);
+  if (m) {
+    const resStr = m[4] === 'MISS' ? '未命中' : m[4].replace(/^HIT! \[(\d+) dmg\]$/, '命中！[$1 伤害]');
+    return `🎲 ${m[1]} 发动「命运眷顾」免费重掷第 ${m[2]} 颗骰子：掷出 ${m[3]}（${resStr}）！`;
+  }
+
   m = message.match(/^🎲 (.+?) flipped 1 Colony Ship to reroll bombardment die #(\d+): rolled (\d+) \((.+)\)!$/);
   if (m) {
     const resStr =

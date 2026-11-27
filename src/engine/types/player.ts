@@ -34,7 +34,8 @@ export type FactionId =
   | 'kurita_prefecture'
   | 'children_of_light'
   | 'techno_mages'
-  | 'vorlons';
+  | 'vorlons'
+  | 'the_sentinels';
 
 export interface FactionInfo {
   readonly id: FactionId;

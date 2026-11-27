@@ -28,6 +28,7 @@ export interface CombatUnit {
   hasRegenerativeHull?: boolean;
   hasAntimatterSplitter?: boolean;
   hasUnmodifiedSixBurstDamage?: boolean;
+  hasFreeRoundReroll?: boolean;
 }
 
 export interface CombatRegenEvent {
@@ -296,6 +297,7 @@ export function buildCombatUnitsForSector(
         player.techTrack?.researched?.some((t) => t.id === 'antimatter_splitter')
       );
       const hasUnmodifiedSixBurstDamage = player.faction?.id === 'the_horde';
+      const hasFreeRoundReroll = player.faction?.id === 'the_sentinels';
       const diChoice =
         hasAncientInBattle && player.faction?.id === 'children_of_light' && ship.type !== 'ancient'
           ? divineInspirationChoice?.[ship.ownerId]
@@ -315,6 +317,7 @@ export function buildCombatUnitsForSector(
         hasRegenerativeHull,
         hasAntimatterSplitter,
         hasUnmodifiedSixBurstDamage,
+        hasFreeRoundReroll,
       });
     }
   }
@@ -527,6 +530,7 @@ export interface CombatShipGroup {
   hasRegenerativeHull?: boolean;
   hasAntimatterSplitter?: boolean;
   hasUnmodifiedSixBurstDamage?: boolean;
+  hasFreeRoundReroll?: boolean;
 }
 
 /**

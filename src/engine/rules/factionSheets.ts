@@ -94,6 +94,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   children_of_light: '/factions/children_of_light.jpg',
   techno_mages: '/factions/techno_mages.jpg',
   vorlons: '/factions/vorlons.jpg',
+  the_sentinels: '/factions/the_sentinels.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -725,6 +726,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
         icon: 'vp',
         en: 'Regenerative Hull & Galactic Destiny: All ships start pre-equipped with Regenerative Hull (+1 Hull, heals 1 damage per round except vs Ancients; heals vs Guardians, GCDS & players; Morph Shield still heals vs Ancients; can be upgraded over). Bonus VPs: +2 VP at game end if Vorlons or an Ally control the Galactic Center (#1). Start in Vorla (#235) with 3 Money / 3 Science / 2 Materials, 3 Colony Ships, 4:1 Trade, and 4 dual Amb/Rep slots.',
         zh: '再生装甲与银河天命：所有战舰初始自带再生装甲（+1 船体，每轮战斗结束回复 1 损伤；对远古舰无效，但对守护者、GCDS 与其他玩家有效，且不影响变形护盾回复；可被覆盖升级）。终局若沃隆或其盟友控制银河中心（#1），额外 +2 VP。开局位于沃拉（235 号星区），3 金钱/3 科研/2 材料、3 艘殖民船、4:1 贸易与 4 格外交/声望通用槽。',
+      },
+    ],
+  },
+  the_sentinels: {
+    historyEn:
+      'It is said the Sentinels can see the future, and that their Seers know all the secrets of the universe. Nearly immortal in lifespan, they are likely the origin of many Fey legends found across the stars. Guided by all-powerful Seers aboard massive wandering monastery fortresses, their prophecies make them almost impossible to surprise—and the fates frequently bend in their favor in close combat. "If you could see the fates as we do, you would understand why the universe needs you to lose." — Farseer Raist\'lyn',
+    historyZh:
+      '传说哨兵族（The Sentinels）能够窥见未来，其先知洞悉宇宙万千奥秘。族人寿命近乎永恒，被认为是诸族星海精灵传说的源头。由强大先知掌舵的庞大机动修道院星际基地巡弋群星，令他们极难被突袭，且在近距交锋中屡受命运垂青。“若你能如我们般窥见命运，便会明白为何宇宙注定要你败落。”——先知雷斯特林',
+    portraitUrl: '/factions/the_sentinels.jpg',
+    startingShips: [{ shipType: 'starbase', count: 1 }],
+    rules: [
+      {
+        id: 'sentinels_mobile_monasteries',
+        icon: 'ship',
+        en: 'Mobile Monasteries: Your Starbases have Move of 1 (pre-printed 1 Hex), but may only move between sectors you control. Additionally, all your Reacts (Move, Build, and Upgrade when passed) gain 1 bonus activation useable only on Starbases.',
+        zh: '机动修道院：你的星际基地固有移动力为 1（1 格），但只能在己方控制星区之间移动。此外，你的所有响应行动（跳过后执行的移动、建造、升级）额外获得 1 次仅限用于星际基地的激活。',
+      },
+      {
+        id: 'sentinels_favour_of_the_fates',
+        icon: 'combat',
+        en: 'Favour of the Fates: In battles, you may reroll 1 Damage Die per Round free of charge (once in Missile Round and once in each Engagement Round; does not apply to Bombardment). Turn off Auto-assign before rolling to use manual rerolls.',
+        zh: '命运眷顾：在太空战斗中，每轮可免费重掷 1 颗伤害骰（导弹轮 1 次、每次常规交战轮各 1 次；不适用于行星轰炸）。开火前关闭「自动分配伤害」即可手动重掷。',
+      },
+      {
+        id: 'sentinels_setup_doctrine',
+        icon: 'misc',
+        en: 'Galedon (#219) Fortress Doctrine: Start with Starbase tech and 1 Starbase (instead of an Interceptor), 3/3/3 Storage, 3 Colony Ships, 3:1 Trade, and 5 Reputation slots (1st Rep-only, 4 dual Amb/Rep).',
+        zh: '加勒登堡垒（219 号星区）：初始自带「星际基地」科技与 1 座星际基地（替代拦截舰），起始资源 3 金钱/3 科研/3 材料、3 艘殖民船、3:1 贸易与 5 格声望轨（第 1 格仅声望，其余 4 格兼放大使）。',
       },
     ],
   },

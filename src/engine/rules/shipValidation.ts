@@ -86,7 +86,7 @@ export function calculateBlueprintStats(
   let totalPowerConsumed = 0;
   let bonusHull = 0;
   let bonusInitiative = 0;
-  let totalDriveSpeed = 0;
+  let totalDriveSpeed = blueprint.preprintedDriveSpeed ?? 0;
   let computerBonus = blueprint.preprintedComputer ?? 0;
   let shieldBonus = blueprint.preprintedShield ?? 0;
   let hasJumpDrive = false;
@@ -1006,6 +1006,18 @@ function getRawFactionBlueprints(
           ],
         },
       };
+
+    case 'the_sentinels': {
+      const base = createDefaultHumanBlueprints();
+      return {
+        ...base,
+        starbase: {
+          ...base.starbase,
+          preprintedDriveSpeed: 1,
+          noDrives: true,
+        },
+      };
+    }
 
     case 'techno_mages':
     case 'wardens_of_magellan':

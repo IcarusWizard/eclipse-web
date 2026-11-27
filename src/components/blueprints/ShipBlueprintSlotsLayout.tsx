@@ -12,6 +12,7 @@ import {
   ComputerGraphic,
   ShieldGraphic,
   HullGraphic,
+  DriveGraphic,
   InitiativeBadge,
   getPartTooltip,
 } from '../common/PhysicalTileIconography';
@@ -225,7 +226,8 @@ export const getChassisTooltip = (
   power?: number,
   comp?: number,
   shield?: number,
-  hull?: number
+  hull?: number,
+  driveSpeed?: number
 ): string => {
   const name = getChassisName(shipType, factionId);
   const parts: string[] = [name, '(Fixed Innate Chassis Component - Cannot be replaced)'];
@@ -233,6 +235,7 @@ export const getChassisTooltip = (
   if (comp && comp > 0) parts.push(`🎯 Computer: +${comp} COMP`);
   if (shield && shield > 0) parts.push(`🛡️ Shield: -${shield} Shield`);
   if (hull && hull > 0) parts.push(`❤️ Hull: +${hull} HP`);
+  if (driveSpeed && driveSpeed > 0) parts.push(`⬡ Move Speed: ${driveSpeed} Hex`);
   return parts.join('\n');
 };
 
@@ -258,6 +261,7 @@ export interface ShipBlueprintSlotsLayoutProps {
   preprintedComputer?: number;
   preprintedShield?: number;
   preprintedHull?: number;
+  preprintedDriveSpeed?: number;
   baseInitiative?: number;
   externalParts?: ShipPart[];
   externalModularGroup?: MegaWarModularGroupId | null;
@@ -283,6 +287,7 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
   preprintedComputer,
   preprintedShield,
   preprintedHull,
+  preprintedDriveSpeed,
   baseInitiative,
   externalParts = [],
   externalModularGroup = null,
@@ -318,7 +323,8 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
     (preprintedPower && preprintedPower > 0) ||
       (preprintedComputer && preprintedComputer > 0) ||
       (preprintedShield && preprintedShield > 0) ||
-      (preprintedHull && preprintedHull > 0)
+      (preprintedHull && preprintedHull > 0) ||
+      (preprintedDriveSpeed && preprintedDriveSpeed > 0)
   );
 
   // Compute bounding box
@@ -389,7 +395,8 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
     preprintedPower,
     preprintedComputer,
     preprintedShield,
-    preprintedHull
+    preprintedHull,
+    preprintedDriveSpeed
   );
 
   return (
@@ -569,6 +576,11 @@ export const ShipBlueprintSlotsLayout: React.FC<ShipBlueprintSlotsLayoutProps> =
               {preprintedHull && preprintedHull > 0 && (
                 <div className="mt-0.5">
                   <HullGraphic hullBonus={preprintedHull} size="sm" />
+                </div>
+              )}
+              {preprintedDriveSpeed && preprintedDriveSpeed > 0 && (
+                <div className="mt-0.5">
+                  <DriveGraphic speed={preprintedDriveSpeed} size="sm" />
                 </div>
               )}
             </div>

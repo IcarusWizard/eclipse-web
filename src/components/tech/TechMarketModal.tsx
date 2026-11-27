@@ -1062,6 +1062,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                     preprintedComputer={instinctBlueprint.preprintedComputer}
                     preprintedShield={instinctBlueprint.preprintedShield}
                     preprintedHull={instinctBlueprint.preprintedHull}
+                    preprintedDriveSpeed={instinctBlueprint.preprintedDriveSpeed}
                     baseInitiative={instinctBlueprint.baseInitiative}
                     externalParts={instinctBlueprint.externalParts}
                     interactive={true}

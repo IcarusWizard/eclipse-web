@@ -23,7 +23,7 @@ import {
   calculateBlueprintStats,
 } from '../../engine/rules/shipValidation';
 import { SHIP_PARTS, getShiftPortResolvedPart, isSpiralPhase2 } from '../../engine/rules/partData';
-import { getEligibleRetreatSectors, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor } from '../../engine/rules/gameReducer';
+import { getEligibleRetreatSectors, getPlayerShortName, getPlayerDisplayName, getFactionDisplayColor, canSentinelRerollCombatDie } from '../../engine/rules/gameReducer';
 import { CombatDieFaceGraphic, ShipPartSlotGraphic, getPartTooltip } from '../common/PhysicalTileIconography';
 import { getEffectiveShipPart } from '../../engine/rules/partData';
 import { getNeutralShipBlueprint, NeutralShipType } from '../../engine/rules/neutralShips';
@@ -214,6 +214,7 @@ export const CombatShipBlueprintPreview: React.FC<{
       preprintedComputer={bp.preprintedComputer}
       preprintedShield={bp.preprintedShield}
       preprintedHull={bp.preprintedHull}
+      preprintedDriveSpeed={bp.preprintedDriveSpeed}
       baseInitiative={bp.baseInitiative}
       externalParts={effectiveExternal}
       size="sm"
@@ -1353,6 +1354,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                                   preprintedComputer={bp.preprintedComputer}
                                   preprintedShield={bp.preprintedShield}
                                   preprintedHull={bp.preprintedHull}
+                                  preprintedDriveSpeed={bp.preprintedDriveSpeed}
                                   baseInitiative={bp.baseInitiative}
                                   externalParts={previewEffectiveExternal}
                                   interactive={canConfigure}
@@ -1832,10 +1834,12 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                           const rollPlayer = state.players.find((p) => p.id === pendingSalvo.attackerOwnerId);
                           const isLyra = rollPlayer?.faction.id === 'enlightened_of_lyra';
                           const hasReadyColonyShip = (rollPlayer?.colonyShips.ready || 0) > 0;
+                          const canSentinelReroll = rollPlayer
+                            ? canSentinelRerollCombatDie(rollPlayer, combat, pendingSalvo.attackerOwnerId)
+                            : false;
                           const canReroll =
                             !isSpectator &&
-                            isLyra &&
-                            hasReadyColonyShip &&
+                            ((isLyra && hasReadyColonyShip) || canSentinelReroll) &&
                             (currentSeat === 'all' || (myPlayer && myPlayer.id === pendingSalvo.attackerOwnerId));
 
                           if (!canReroll) return null;
@@ -1843,6 +1847,7 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                           return (
                             <button
                               type="button"
+                              data-testid={`combat-reroll-btn-${idx}`}
                               onClick={(e) => {
                                 e.stopPropagation();
                                 if (onRerollDie) {
@@ -1851,14 +1856,25 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                                   onStepCombat(undefined, undefined, undefined, idx);
                                 }
                               }}
-                              title={l(
-                                `Lyra Ability: Flip 1 Colony Ship (${rollPlayer.colonyShips.ready} ready) to reroll this die`,
-                                `天琴座能力：横置 1 艘殖民船（可用 ${rollPlayer.colonyShips.ready}）重掷此骰`
-                              )}
-                              className="px-1.5 py-0.5 rounded bg-orange-600/30 hover:bg-orange-500/50 border border-orange-500 text-orange-200 text-[9px] font-bold transition flex items-center gap-1 cursor-pointer"
+                              title={
+                                canSentinelReroll
+                                  ? l(
+                                      'Favour of the Fates (The Sentinels): Reroll 1 Damage Die free this round',
+                                      '命运眷顾（哨兵族）：本轮免费重掷 1 颗伤害骰'
+                                    )
+                                  : l(
+                                      `Lyra Ability: Flip 1 Colony Ship (${rollPlayer!.colonyShips.ready} ready) to reroll this die`,
+                                      `天琴座能力：横置 1 艘殖民船（可用 ${rollPlayer!.colonyShips.ready}）重掷此骰`
+                                    )
+                              }
+                              className={
+                                canSentinelReroll
+                                  ? 'px-1.5 py-0.5 rounded bg-amber-600/30 hover:bg-amber-500/50 border border-amber-400 text-amber-100 text-[9px] font-bold transition flex items-center gap-1 cursor-pointer'
+                                  : 'px-1.5 py-0.5 rounded bg-orange-600/30 hover:bg-orange-500/50 border border-orange-500 text-orange-200 text-[9px] font-bold transition flex items-center gap-1 cursor-pointer'
+                              }
                             >
-                              <RotateCcw className="w-2.5 h-2.5 text-orange-300" />
-                              <span>{l('Reroll', '重掷')}</span>
+                              <RotateCcw className={`w-2.5 h-2.5 ${canSentinelReroll ? 'text-amber-300' : 'text-orange-300'}`} />
+                              <span>{canSentinelReroll ? l('Free Reroll', '免费重掷') : l('Reroll', '重掷')}</span>
                             </button>
                           );
                         })()}
@@ -2174,6 +2190,27 @@ export const CombatModal: React.FC<CombatModalProps> = ({
                             {l(
                               'Lyra: Turn off Auto-assign before firing if you want to reroll dice with Colony Ships.',
                               '天琴座：如需使用殖民船重掷骰子，请在开火前取消勾选「自动分配伤害」。'
+                            )}
+                          </span>
+                        </span>
+                      )}
+                    {!isSpectator &&
+                      autoAssignDamage &&
+                      participatingHumanPlayers.some(
+                        (p) =>
+                          p.faction.id === 'the_sentinels' &&
+                          canSentinelRerollCombatDie(p, combat) &&
+                          (currentSeat === 'all' || (myPlayer && myPlayer.id === p.id))
+                      ) && (
+                        <span
+                          data-testid="sentinel-auto-assign-reroll-reminder"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-amber-950/70 border border-amber-500/50 text-amber-200 text-[10px] font-semibold"
+                        >
+                          <RotateCcw className="w-3 h-3 text-amber-300 shrink-0" />
+                          <span>
+                            {l(
+                              'The Sentinels: Turn off Auto-assign before firing to use your free 1/round Favour of the Fates die reroll.',
+                              '哨兵族：开火前取消勾选「自动分配伤害」，即可使用每轮 1 次免费「命运眷顾」重掷。'
                             )}
                           </span>
                         </span>

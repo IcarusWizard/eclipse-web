@@ -50,9 +50,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   orchid: '#e879f9', // Children of Light
   arcane: '#a78bfa', // Techno-Mages
   viridian: '#74c365', // Vorlons (distinct luminous bio-sage green, well separated from Planta/Horde/Kurita/Exiles)
+  ivory: '#e5c1a3', // The Sentinels (warm bone-ivory / pale gold, high contrast & well separated from Mechanema/Legion of Midas)
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade' | 'orchid' | 'arcane' | 'viridian';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade' | 'orchid' | 'arcane' | 'viridian' | 'ivory';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -92,6 +93,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   children_of_light: 'orchid',
   techno_mages: 'arcane',
   vorlons: 'viridian',
+  the_sentinels: 'ivory',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -123,6 +125,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   children_of_light: ECLIPSE_COLOR_PALETTE.orchid,
   techno_mages: ECLIPSE_COLOR_PALETTE.arcane,
   vorlons: ECLIPSE_COLOR_PALETTE.viridian,
+  the_sentinels: ECLIPSE_COLOR_PALETTE.ivory,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -801,6 +804,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 4,
     reputationSlotTypes: ['both', 'both', 'both', 'both'],
   },
+  {
+    id: 'the_sentinels',
+    name: 'The Sentinels',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.ivory,
+    startingSectorNumber: 219,
+    startingResources: { money: 3, science: 3, materials: 3 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: ['starbase'],
+    traitDescription: 'Mobile Monasteries: Your Starbases have a Move of 1, but may only move between sectors you control; all Reacts (Move, Build, and Upgrade) get 1 bonus activation useable only on Starbases. Favour of the Fates: In battles, reroll 1 Damage Die per Round (Missile and Engagement Rounds) without spending Colony Ships. Start in Galedon (#219) with a Starbase instead of an Interceptor, 3:1 Trade, 3/3/3 resources, and 5 Reputation slots (1st Rep-only, 4 dual Amb/Rep).',
+    tradeRatio: 3,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 2,
+    reputationSlots: 5,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['rep_only', 'both', 'both', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -822,7 +848,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture' || factionId === 'children_of_light' || factionId === 'techno_mages' || factionId === 'vorlons') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture' || factionId === 'children_of_light' || factionId === 'techno_mages' || factionId === 'vorlons' || factionId === 'the_sentinels') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -875,6 +901,9 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
   }
   if (faction.id === 'kurita_prefecture') {
     return ['both', 'both', 'rep_only', 'rep_only'];
+  }
+  if (faction.id === 'the_sentinels') {
+    return ['rep_only', 'both', 'both', 'both', 'both'];
   }
   const total = faction.reputationSlots ?? (faction.isHuman ? 5 : 4);
   const amb = faction.ambassadorSlots ?? 3;
@@ -1197,7 +1226,12 @@ export function buildPlayerAndHomeSector(
       }
     );
   } else {
-    const startShipType = faction.id === 'orion_hegemony' || faction.id === 'heralds_of_ragnarok' ? 'cruiser' : 'interceptor';
+    const startShipType =
+      faction.id === 'the_sentinels'
+        ? 'starbase'
+        : faction.id === 'orion_hegemony' || faction.id === 'heralds_of_ragnarok'
+        ? 'cruiser'
+        : 'interceptor';
     startShips.push({
       id: `ship_${playerId}_start_${startShipType}`,
       ownerId: playerId,

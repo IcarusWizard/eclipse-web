@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile, ShipType } from '../../engine/types/galaxy';
-import { getMaxBuildActivations } from '../../engine/rules/gameReducer';
+import { getMaxBuildActivations, hasSentinelReactStarbaseBonus } from '../../engine/rules/gameReducer';
 import {
   SHIP_LIMITS,
   countPlayerShips,
@@ -91,9 +91,16 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     !isJotunnDreadnoughtBuild &&
     !player.hasPassed;
   const effectiveJotunnTarget = isJotunnBannerEligible && (jotunnDnTarget === 'upgrade' || jotunnDnTarget === 'move') ? jotunnDnTarget : undefined;
+  const hasSentinelReactBonus =
+    !isPulsarActive &&
+    !isRaidBuild &&
+    !isJotunnDreadnoughtBuild &&
+    hasSentinelReactStarbaseBonus(player, Boolean(player.hasPassed), pulsarSectorId);
   const maxBuild =
     isPulsarActive || isRaidBuild || isJotunnDreadnoughtBuild
       ? 1
+      : hasSentinelReactBonus
+      ? 2
       : player.hasPassed
       ? 1
       : getMaxBuildActivations(player, effectiveMidasTouch, Boolean(effectiveJotunnTarget));
@@ -282,7 +289,9 @@ export const BuildModal: React.FC<BuildModalProps> = ({
         : getAvailableSupply('starbase') <= 0
         ? l(`Max limit of ${SHIP_LIMITS.starbase} reached`, `已达上限 ${SHIP_LIMITS.starbase} 座`)
         : undefined,
-      description: l(`Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats${getPriceOfPowerNote('starbase')}, requires Starbase tech).`, `固定轨道防御要塞（上限 4，费用 ${getItemCost('starbase')} 材料${getPriceOfPowerNote('starbase')}，需要星际基地科技）。`),
+      description: player.faction.id === 'the_sentinels'
+        ? l(`Mobile Monastery fortress (Move 1 between controlled sectors, Limit 4, Cost ${getItemCost('starbase')} Mats).`, `机动修道院要塞（可在受控星区间移动 1 格，上限 4，费用 ${getItemCost('starbase')} 材料）。`)
+        : l(`Stationary defensive orbital fortress (Limit 4, Cost ${getItemCost('starbase')} Mats${getPriceOfPowerNote('starbase')}, requires Starbase tech).`, `固定轨道防御要塞（上限 4，费用 ${getItemCost('starbase')} 材料${getPriceOfPowerNote('starbase')}，需要星际基地科技）。`),
     },
     {
       type: 'orbital',
@@ -390,16 +399,29 @@ export const BuildModal: React.FC<BuildModalProps> = ({
     }
   );
 
+  const otherNonStarbaseCount = slots.filter(
+    (s, idx) => idx !== activeSlotIndex && s.itemType !== 'starbase'
+  ).length;
+  const sentinelNonStarbaseBlockedForActive = hasSentinelReactBonus && otherNonStarbaseCount >= 1;
+  const sentinelsReactViolation =
+    hasSentinelReactBonus && slots.filter((s) => s.itemType !== 'starbase').length > 1;
+
   const canBuild =
     canAfford &&
     allSlotsValid &&
+    !sentinelsReactViolation &&
     (eligibleSectors.length > 0 || (isMegaWar && upgradeableShipsOnMap.length > 0)) &&
     !exceedsShipLimits;
 
   const handleAddSlot = () => {
     if (slots.length < maxBuild) {
       let defaultType: ShipType | 'orbital' | 'monolith' = 'interceptor';
-      for (const st of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as ShipType[]) {
+      const mustPickStarbaseForReact =
+        hasSentinelReactBonus && slots.some((s) => s.itemType !== 'starbase');
+      const candidateOrder: ShipType[] = mustPickStarbaseForReact
+        ? ['starbase']
+        : ['interceptor', 'cruiser', 'dreadnought', 'starbase'];
+      for (const st of candidateOrder) {
         const maxLimit =
           isChildren && st === 'cruiser'
             ? 0
@@ -639,6 +661,26 @@ export const BuildModal: React.FC<BuildModalProps> = ({
           </div>
         )}
 
+        {hasSentinelReactBonus && (
+          <div
+            data-testid="sentinels-react-starbase-build-banner"
+            className="p-2 px-3 rounded-xl bg-amber-950/50 border border-amber-500/70 text-amber-200 text-xs flex items-center justify-between shadow-sm gap-2"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+              <div>
+                <span className="font-bold">👁️ {l('Mobile Monasteries React: +1 Starbase Build', '机动修道院响应：额外 +1 星际基地建造')}</span>
+                <span className="text-amber-300/85 text-[11px] block">
+                  {l('Up to 2 React items: at most 1 non-Starbase + 1 Starbase (or 2 Starbases).', '跳过响应建造至多建造 2 项：至多 1 项非星际基地 + 1 座星际基地（或 2 座星际基地）。')}
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-amber-900/90 text-amber-100 font-mono text-[10px] font-bold uppercase border border-amber-600 shrink-0">
+              {slots.length} / 2 {l('Items', '项')}
+            </span>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-center justify-between gap-3 border-b border-slate-800/80 pb-2.5">
           <div className="flex items-center gap-2.5">
@@ -789,20 +831,29 @@ export const BuildModal: React.FC<BuildModalProps> = ({
                 <div className="grid grid-cols-6 gap-1.5">
                   {buildItems.map((item) => {
                     const isSelected = !currentSlot.upgradeFromShipId && currentSlot.itemType === item.type;
+                    const blockedBySentinelReact =
+                      sentinelNonStarbaseBlockedForActive && item.type !== 'starbase';
+                    const isItemUnlocked = item.unlocked && !blockedBySentinelReact;
+                    const itemDisabledReason = blockedBySentinelReact
+                      ? l(
+                          'Mobile Monasteries: bonus React Build activation can only build a Starbase.',
+                          '机动修道院：额外响应建造激活仅限建造星际基地。'
+                        )
+                      : item.disabledReason;
                     return (
                       <button
                         key={item.type}
                         type="button"
-                        disabled={!item.unlocked}
+                        disabled={!isItemUnlocked}
                         onClick={() => handleUpdateSlot(activeSlotIndex, { itemType: item.type, upgradeFromShipId: undefined })}
                         className={`p-2 rounded-lg border text-center transition-all flex flex-col items-center justify-between min-h-[64px] ${
                           isSelected
                             ? 'bg-amber-950/80 border-amber-500 shadow ring-1 ring-amber-500 text-white'
-                            : item.unlocked
+                            : isItemUnlocked
                             ? 'bg-slate-900 border-slate-800 hover:border-slate-700 text-slate-300 cursor-pointer'
                             : 'bg-slate-900/40 border-slate-900 opacity-50 cursor-not-allowed text-slate-500'
                         }`}
-                        title={item.disabledReason ? `${item.name}: ${item.disabledReason}` : item.description}
+                        title={itemDisabledReason ? `${item.name}: ${itemDisabledReason}` : item.description}
                       >
                         <div className="flex items-center justify-center gap-1 w-full">
                           {item.type !== 'monolith' && shouldShowShipTypeIcon(item.type, player.faction.id) && (

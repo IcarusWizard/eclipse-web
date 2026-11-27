@@ -35604,6 +35604,429 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         ECLIPSE_COLOR_PALETTE.teal,
       ]).size).toBe(5);
     });
+
+    it('313. verifies Community Factions: The Sentinels setup (Galedon #219, Starbase start, 3/3/3, 5 Rep slots), Mobile Monasteries (Starbase 1-hex move between controlled sectors & +1 Starbase-only React bonus on Move/Build/Upgrade), Favour of the Fates (1 free reroll per Missile & Engagement round, combat simulator, chronicle), and UI rendering', async () => {
+      const { getExpansionForItem } = await import('../rules/expansions');
+      const {
+        isFactionAvailable,
+        ECLIPSE_COLOR_PALETTE,
+        getFactionReputationSlotTypes,
+        ALL_FACTIONS,
+      } = await import('../rules/setup');
+      const { calculateBlueprintStats } = await import('../rules/shipValidation');
+      const { computeReachableMoveDestinations, getEffectiveMoveActivationLimit } = await import('../rules/gameReducer');
+      const { createDefaultSimulatorSide, buildSimulatorUnits, runCombatSimulation } = await import('../rules/combatSimulator');
+      const { translateChronicleMessage } = await import('../../i18n/chronicleTranslator');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+      const { BuildModal } = await import('../../components/actions/BuildModal');
+      const { MoveModal } = await import('../../components/actions/MoveModal');
+      const { CombatModal } = await import('../../components/combat/CombatModal');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+
+      // 1. Expansion gating & distinct palette color
+      expect(getExpansionForItem('the_sentinels')?.id).toBe('community_factions');
+      expect(isFactionAvailable('the_sentinels', [])).toBe(false);
+      expect(isFactionAvailable('the_sentinels', ['community_factions'])).toBe(true);
+
+      let game = createInitialGame(2, ['the_sentinels', 'terran_federation'], ['community_factions']);
+      const sen = game.players.find((p) => p.faction.id === 'the_sentinels')!;
+      const opp = game.players.find((p) => p.faction.id === 'terran_federation')!;
+      expect(sen).toBeDefined();
+      expect(sen.color).toBe(ECLIPSE_COLOR_PALETTE.ivory);
+      expect(sen.resources).toEqual({ money: 3, science: 3, materials: 3 });
+      expect(sen.colonyShips).toEqual({ total: 3, ready: 3 });
+      expect(sen.faction.tradeRatio).toBe(3);
+      expect(sen.techTrack.researched.map((t) => t.id)).toEqual(['starbase']);
+      expect(getFactionReputationSlotTypes(sen.faction)).toEqual(['rep_only', 'both', 'both', 'both', 'both']);
+
+      // Home sector Galedon (#219): Sci (std), Mon (std), Mat (adv), Sci (adv), starting with a Starbase (no Interceptor)
+      const homeSec = game.sectors.find((s) => s.id === `home_sector_${sen.id}`)!;
+      expect(homeSec.sectorNumber).toBe(219);
+      expect(homeSec.name).toBe('Galedon');
+      expect(
+        homeSec.planets.map((p) => ({
+          resource: p.resource,
+          isAdvanced: p.isAdvanced,
+          colonized: Boolean(p.colonizedBy),
+        }))
+      ).toEqual([
+        { resource: 'science', isAdvanced: false, colonized: true },
+        { resource: 'money', isAdvanced: false, colonized: true },
+        { resource: 'material', isAdvanced: true, colonized: false },
+        { resource: 'science', isAdvanced: true, colonized: false },
+      ]);
+      expect(homeSec.ships.map((s) => s.type)).toEqual(['starbase']);
+
+      // Starbase blueprint has preprintedDriveSpeed = 1 (Move of 1), noDrives = true, 3 Hull
+      const sbBp = sen.blueprints.starbase!;
+      expect(sbBp.preprintedDriveSpeed).toBe(1);
+      expect(sbBp.noDrives).toBe(true);
+      const sbStats = calculateBlueprintStats(sbBp);
+      expect(sbStats.isValid).toBe(true);
+      expect(sbStats.totalDriveSpeed).toBe(1);
+      expect(sbStats.totalHull).toBe(3);
+
+      // 2. Mobile Monasteries movement: Starbase can move 1 hex between controlled sectors ONLY
+      const controlledNeighbor = game.sectors.find(
+        (s) => s.id !== homeSec.id && s.ring === 2 && !s.isBlackHole && !s.isNebula
+      )!;
+      // Wire mutual wormhole & adjacency cleanly for deterministic test
+      homeSec.wormholes = [true, true, true, true, true, true];
+      controlledNeighbor.wormholes = [true, true, true, true, true, true];
+      controlledNeighbor.coord = { q: homeSec.coord.q + 1, r: homeSec.coord.r };
+      controlledNeighbor.ancientsCount = 0;
+      controlledNeighbor.ships = [];
+
+      const uncontrolledNeighbor = game.sectors.find(
+        (s) =>
+          s.id !== homeSec.id &&
+          s.id !== controlledNeighbor.id &&
+          s.ring === 2 &&
+          !s.isBlackHole &&
+          !s.isNebula
+      )!;
+      uncontrolledNeighbor.wormholes = [true, true, true, true, true, true];
+      uncontrolledNeighbor.coord = { q: homeSec.coord.q, r: homeSec.coord.r + 1 };
+      uncontrolledNeighbor.ancientsCount = 0;
+      uncontrolledNeighbor.ships = [];
+      uncontrolledNeighbor.discOwner = opp.id; // Enemy/non-Sentinels controlled
+
+      controlledNeighbor.discOwner = undefined; // First test uncontrolled move rejection
+      const sbShip = homeSec.ships[0]!;
+      const unctrlMoveRes = executeAction(game, {
+        type: 'MOVE',
+        playerId: sen.id,
+        moves: [{ shipId: sbShip.id, fromSectorId: homeSec.id, toSectorId: controlledNeighbor.id }],
+      });
+      expect(unctrlMoveRes.success).toBe(false);
+      expect(unctrlMoveRes.error).toContain('Mobile Monasteries');
+
+      const enemyMoveRes = executeAction(game, {
+        type: 'MOVE',
+        playerId: sen.id,
+        moves: [{ shipId: sbShip.id, fromSectorId: homeSec.id, toSectorId: uncontrolledNeighbor.id }],
+      });
+      expect(enemyMoveRes.success).toBe(false);
+      expect(enemyMoveRes.error).toContain('Mobile Monasteries');
+
+      // Now claim controlledNeighbor with Sentinels disc -> reachability & move succeed!
+      controlledNeighbor.discOwner = sen.id;
+      const reachable = computeReachableMoveDestinations(game, sen.id, sbShip.id, [], 0);
+      expect(reachable.some((r) => r.sectorId === controlledNeighbor.id)).toBe(true);
+      expect(reachable.some((r) => r.sectorId === uncontrolledNeighbor.id)).toBe(false);
+
+      const validSbMoveRes = executeAction(game, {
+        type: 'MOVE',
+        playerId: sen.id,
+        moves: [{ shipId: sbShip.id, fromSectorId: homeSec.id, toSectorId: controlledNeighbor.id }],
+      });
+      expect(validSbMoveRes.success).toBe(true);
+      const movedSec = validSbMoveRes.newState.sectors.find((s) => s.id === controlledNeighbor.id)!;
+      expect(movedSec.ships.some((sh) => sh.id === sbShip.id)).toBe(true);
+
+      // 3. Mobile Monasteries React Bonus (+1 Starbase-only activation on Move, Build, Upgrade when passed)
+      const reactBase = JSON.parse(JSON.stringify(validSbMoveRes.newState)) as GameState;
+      const rSen = reactBase.players.find((p) => p.id === sen.id)!;
+      rSen.hasPassed = true;
+      rSen.influenceTrack.discsOnTrack = 10;
+      rSen.resources.materials = 20;
+      reactBase.passedPlayerIds = [sen.id];
+      reactBase.activePlayerIndex = reactBase.players.findIndex((p) => p.id === sen.id);
+      const rHome = reactBase.sectors.find((s) => s.id === `home_sector_${sen.id}`)!;
+      const rCtrl = reactBase.sectors.find((s) => s.id === controlledNeighbor.id)!;
+      rHome.ships.push(
+        { id: 'sen_int_1', ownerId: sen.id, type: 'interceptor', damage: 0 },
+        { id: 'sen_int_2', ownerId: sen.id, type: 'interceptor', damage: 0 }
+      );
+      rCtrl.ships.push({ id: 'sen_sb_2', ownerId: sen.id, type: 'starbase', damage: 0 });
+      expect(getEffectiveMoveActivationLimit(rSen)).toBe(2);
+
+      // React MOVE: 1 Interceptor + 1 Starbase succeeds; 2 Interceptors rejected
+      const reactMoveTwoInts = executeAction(reactBase, {
+        type: 'MOVE',
+        playerId: sen.id,
+        moves: [
+          { shipId: 'sen_int_1', fromSectorId: rHome.id, toSectorId: rCtrl.id, activationIndex: 0 },
+          { shipId: 'sen_int_2', fromSectorId: rHome.id, toSectorId: rCtrl.id, activationIndex: 1 },
+        ],
+      });
+      expect(reactMoveTwoInts.success).toBe(false);
+      expect(reactMoveTwoInts.error).toContain('Starbase');
+
+      const reactMoveMixed = executeAction(reactBase, {
+        type: 'MOVE',
+        playerId: sen.id,
+        moves: [
+          { shipId: 'sen_int_1', fromSectorId: rHome.id, toSectorId: rCtrl.id, activationIndex: 0 },
+          { shipId: 'sen_sb_2', fromSectorId: rCtrl.id, toSectorId: rHome.id, activationIndex: 1 },
+        ],
+      });
+      expect(reactMoveMixed.success).toBe(true);
+
+      // React BUILD: 1 Interceptor + 1 Starbase succeeds; 2 Interceptors rejected; 2 Starbases succeeds
+      const reactBuildTwoInts = executeAction(reactBase, {
+        type: 'BUILD',
+        playerId: sen.id,
+        items: [
+          { sectorId: rHome.id, itemType: 'interceptor' },
+          { sectorId: rHome.id, itemType: 'interceptor' },
+        ],
+      });
+      expect(reactBuildTwoInts.success).toBe(false);
+      expect(reactBuildTwoInts.error).toContain('Starbase');
+
+      const reactBuildMixed = executeAction(reactBase, {
+        type: 'BUILD',
+        playerId: sen.id,
+        items: [
+          { sectorId: rHome.id, itemType: 'interceptor' },
+          { sectorId: rHome.id, itemType: 'starbase' },
+        ],
+      });
+      expect(reactBuildMixed.success).toBe(true);
+
+      const reactBuildTwoSbs = executeAction(reactBase, {
+        type: 'BUILD',
+        playerId: sen.id,
+        items: [
+          { sectorId: rHome.id, itemType: 'starbase' },
+          { sectorId: rHome.id, itemType: 'starbase' },
+        ],
+      });
+      expect(reactBuildTwoSbs.success).toBe(true);
+
+      // React UPGRADE: 1 Cruiser + 1 Starbase succeeds; 2 non-Starbase slots rejected; 2 Starbase slots succeeds
+      const reactUpgTwoInts = executeAction(reactBase, {
+        type: 'UPGRADE',
+        playerId: sen.id,
+        upgrades: [
+          { shipType: 'interceptor', slotIndex: 0, partId: 'hull' },
+          { shipType: 'cruiser', slotIndex: 5, partId: 'hull' },
+        ],
+      });
+      expect(reactUpgTwoInts.success).toBe(false);
+      expect(reactUpgTwoInts.error).toContain('Starbase');
+
+      const reactUpgMixed = executeAction(reactBase, {
+        type: 'UPGRADE',
+        playerId: sen.id,
+        upgrades: [
+          { shipType: 'cruiser', slotIndex: 5, partId: 'hull' },
+          { shipType: 'starbase', slotIndex: 2, partId: 'hull' },
+        ],
+      });
+      expect(reactUpgMixed.success).toBe(true);
+
+      // 4. Favour of the Fates: 1 free combat die reroll per round (Missile + Engagement Rounds, 0 Colony Ship cost, NOT Bombardment)
+      const combatGame = createInitialGame(2, ['the_sentinels', 'terran_federation'], ['community_factions']);
+      const cSen = combatGame.players.find((p) => p.faction.id === 'the_sentinels')!;
+      const cOpp = combatGame.players.find((p) => p.faction.id === 'terran_federation')!;
+      const cSec = combatGame.sectors.find((s) => s.id === `home_sector_${cOpp.id}`)!;
+      cSec.ships = [
+        { id: 'sen_cs_sb', ownerId: cSen.id, type: 'starbase', damage: 0 },
+        { id: 'opp_cr', ownerId: cOpp.id, type: 'cruiser', damage: 0 },
+      ];
+      combatGame.phase = 'COMBAT_PHASE';
+      combatGame.pendingCombatSectorIds = [cSec.id];
+      const missileRolls = [
+        { shipId: 'sen_cs_sb', shipOwner: cSen.id, shipType: 'starbase', dieColor: 'orange' as const, roll: 1, modifiedRoll: 1, isHit: false, damage: 2 },
+        { shipId: 'sen_cs_sb', shipOwner: cSen.id, shipType: 'starbase', dieColor: 'orange' as const, roll: 2, modifiedRoll: 2, isHit: false, damage: 2 },
+      ];
+      combatGame.activeCombat = {
+        sectorId: cSec.id,
+        attackerOwnerId: cSen.id,
+        defenderOwnerId: cOpp.id,
+        roundNumber: 0,
+        stage: 'missile',
+        initiativeOrder: [
+          { shipId: 'sen_cs_sb', ownerId: cSen.id, initiative: 4 },
+          { shipId: 'opp_cr', ownerId: cOpp.id, initiative: 1 },
+        ],
+        currentTurnIndex: 0,
+        lastRolls: missileRolls,
+        retreatDeclared: {},
+        pendingDamageAssignment: {
+          attackerOwnerId: cSen.id,
+          attackerShipType: 'starbase',
+          attackerShipIds: ['sen_cs_sb'],
+          computerBonus: 1,
+          rolls: [...missileRolls],
+          isMissile: true,
+        },
+      };
+
+      const missileReroll1 = executeAction(combatGame, {
+        type: 'REROLL_COMBAT_DIE',
+        playerId: cSen.id,
+        rollIndex: 0,
+      });
+      expect(missileReroll1.success).toBe(true);
+      // Free: Colony Ships untouched!
+      expect(missileReroll1.newState.players.find((p) => p.id === cSen.id)!.colonyShips.ready).toBe(3);
+      expect(missileReroll1.newState.activeCombat!.sentinelRerollUsedKeys).toContain(`${cSen.id}:missile`);
+      expect(missileReroll1.newState.log[0]?.message).toContain('invoked Favour of the Fates to reroll die #1');
+      expect(translateChronicleMessage(missileReroll1.newState.log[0]!.message, 'zh')).toContain('命运眷顾');
+
+      // 2nd reroll in the SAME missile round must be rejected
+      const missileReroll2 = executeAction(missileReroll1.newState, {
+        type: 'REROLL_COMBAT_DIE',
+        playerId: cSen.id,
+        rollIndex: 1,
+      });
+      expect(missileReroll2.success).toBe(false);
+      expect(missileReroll2.error).toContain('already used');
+
+      // Transition to Engagement Round 1 -> fresh free reroll available!
+      const round1State = JSON.parse(JSON.stringify(missileReroll1.newState)) as GameState;
+      round1State.activeCombat!.stage = 'regular';
+      round1State.activeCombat!.roundNumber = 1;
+      const r1Reroll = executeAction(round1State, {
+        type: 'REROLL_COMBAT_DIE',
+        playerId: cSen.id,
+        rollIndex: 1,
+      });
+      expect(r1Reroll.success).toBe(true);
+      expect(r1Reroll.newState.activeCombat!.sentinelRerollUsedKeys).toContain(`${cSen.id}:regular:1`);
+
+      // Bombardment stage reroll is NOT allowed by Favour of the Fates
+      const bombState = JSON.parse(JSON.stringify(r1Reroll.newState)) as GameState;
+      bombState.activeCombat!.stage = 'bombardment';
+      const bombReroll = executeAction(bombState, {
+        type: 'REROLL_COMBAT_DIE',
+        playerId: cSen.id,
+        rollIndex: 0,
+      });
+      expect(bombReroll.success).toBe(false);
+      expect(bombReroll.error).toContain('Bombardment');
+
+      // Monte Carlo Combat Simulator applies Favour of the Fates reroll (even-hull mirrored Cruisers as attacker win > 50% despite defender tiebreak)
+      const simSen = createDefaultSimulatorSide('the_sentinels', { shipCounts: { cruiser: 2 } });
+      const simOpp = createDefaultSimulatorSide('terran_federation', { shipCounts: { cruiser: 2 } });
+      expect(buildSimulatorUnits(simSen, 'attacker').every((u) => u.hasFreeRoundReroll)).toBe(true);
+      const simRes = runCombatSimulation(simSen, simOpp, 500);
+      expect(simRes.iterations).toBe(500);
+      expect(simRes.attackerWinRate).toBeGreaterThan(50);
+
+      // 5. SSR UI Verification (FactionSheetCard, ShipBlueprintEditor, BuildModal, MoveModal, CombatModal)
+      const senInfo = ALL_FACTIONS.find((f) => f.id === 'the_sentinels')!;
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FactionSheetCard, { faction: senInfo })
+        )
+      );
+      expect(sheetHtml).toContain('/factions/the_sentinels.jpg');
+      expect(sheetHtml).toContain('Mobile Monasteries');
+      expect(sheetHtml).toContain('Favour of the Fates');
+      expect(sheetHtml).toContain('Starbase');
+
+      const editorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ShipBlueprintEditor, {
+            player: rSen,
+            activeExpansions: ['community_factions'],
+            initialShipType: 'starbase',
+            onSaveBlueprint: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(editorHtml).toContain('data-testid="sentinels-react-starbase-upgrade-banner"');
+      expect(editorHtml).toContain('1 Hex');
+
+      const buildHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(BuildModal, {
+            player: rSen,
+            sectors: reactBase.sectors,
+            eligibleSectors: [rHome, rCtrl],
+            slots: [{ sectorId: rHome.id, itemType: 'interceptor' }],
+            onChangeSlots: () => {},
+            activeSlotIndex: 0,
+            onSelectSlotIndex: () => {},
+            onBuild: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(buildHtml).toContain('data-testid="sentinels-react-starbase-build-banner"');
+
+      const moveHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(MoveModal, {
+            player: rSen,
+            sectors: reactBase.sectors,
+            playerShips: [
+              { ship: { id: 'sen_sb_2', ownerId: rSen.id, type: 'starbase', damage: 0 }, initialSector: rCtrl },
+              { ship: { id: 'sen_int_1', ownerId: rSen.id, type: 'interceptor', damage: 0 }, initialSector: rHome },
+            ],
+            simulatedShipSector: new Map([
+              ['sen_sb_2', rCtrl],
+              ['sen_int_1', rHome],
+            ]),
+            connectedDestinations: [rHome],
+            plannedMoves: [],
+            activeActivationIndex: 0,
+            currentShipDriveSpeed: 1,
+            movePointsUsedInCurrentActivation: 0,
+            isShipPinned: () => false,
+            onAddMove: () => {},
+            onRemoveMove: () => {},
+            onClearMoves: () => {},
+            selectedShipId: 'sen_sb_2',
+            onSelectShipId: () => {},
+            onFinishActivation: () => {},
+            onMove: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(moveHtml).toContain('data-testid="sentinels-react-starbase-move-banner"');
+      expect(moveHtml).not.toContain('0 DRIVE');
+
+      const combatHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(CombatModal, {
+            state: combatGame,
+            combat: combatGame.activeCombat!,
+            onStepCombat: () => {},
+            onRerollDie: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(combatHtml).toContain('data-testid="combat-reroll-btn-0"');
+      expect(combatHtml).toContain('Free Reroll');
+
+      const combatPreFire = JSON.parse(JSON.stringify(combatGame)) as GameState;
+      combatPreFire.activeCombat!.pendingDamageAssignment = null;
+      const combatPreFireHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(CombatModal, {
+            state: combatPreFire,
+            combat: combatPreFire.activeCombat!,
+            onStepCombat: () => {},
+            onRerollDie: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(combatPreFireHtml).toContain('data-testid="sentinel-auto-assign-reroll-reminder"');
+    });
   });
 });
 

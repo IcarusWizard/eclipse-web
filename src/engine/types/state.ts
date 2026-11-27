@@ -93,6 +93,8 @@ export interface CombatState {
     string,
     { shipType: import('./galaxy').ShipType; slotIndex: number; partId: string; previousPartId: string | null }[]
   >;
+  /** The Sentinels (Favour of the Fates): Keys (`${playerId}:missile` or `${playerId}:regular:${roundNumber}`) marking the 1 free reroll per round already used. */
+  sentinelRerollUsedKeys?: string[];
 }
 
 export interface PendingHolyCommunion {

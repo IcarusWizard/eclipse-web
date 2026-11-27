@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { PlayerState } from '../../engine/types/player';
 import { SectorTile, SectorShip, HexEdge } from '../../engine/types/galaxy';
-import { getEffectiveMoveActivationLimit, getTraitorTilePenalty, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
+import { getEffectiveMoveActivationLimit, getTraitorTilePenalty, hasSentinelReactStarbaseBonus, playerHasWormholeGenerator, ReachableMoveOption } from '../../engine/rules/gameReducer';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { JotunnDreadNoughtBanner, JotunnDreadNoughtTarget } from '../common/JotunnDreadNoughtBanner';
@@ -139,6 +139,11 @@ export const MoveModal: React.FC<MoveModalProps> = ({
     isJotunnBannerEligible && (jotunnDnTarget === 'build' || jotunnDnTarget === 'upgrade')
       ? jotunnDnTarget
       : undefined;
+  const hasSentinelReactBonus =
+    !isPulsarActive &&
+    !isRegroupMoveStep &&
+    !isJotunnDreadnoughtMove &&
+    hasSentinelReactStarbaseBonus(player, Boolean(player.hasPassed), pulsarSectorId);
   const maxMoves =
     isRegroupMoveStep || isJotunnDreadnoughtMove
       ? 1
@@ -206,8 +211,15 @@ export const MoveModal: React.FC<MoveModalProps> = ({
   }, [plannedMoves]);
 
   const distinctActivationsCount = activationGroups.length;
+  const nonStarbaseActivations = activationGroups.filter(([, moves]) =>
+    moves.some((m) => m.shipType !== 'starbase')
+  );
+  const otherActivationUsedNonStarbase = nonStarbaseActivations.some(
+    ([idx]) => idx !== activeActivationIndex
+  );
+  const sentinelsReactViolation = hasSentinelReactBonus && nonStarbaseActivations.length > 1;
   const isSelectedShipPinned = selectedShipId ? isShipPinned(selectedShipId) : false;
-  const canExecute = plannedMoves.length > 0;
+  const canExecute = plannedMoves.length > 0 && !sentinelsReactViolation;
   const [showUnusedWarning, setShowUnusedWarning] = useState(false);
 
   const allyIds = useMemo(
@@ -364,6 +376,26 @@ export const MoveModal: React.FC<MoveModalProps> = ({
             </span>
             <span className="text-[10.5px] text-sky-300/90">
               {l('Dreadnought only • Skip to commit Step 1 only', '仅限无畏舰移动 • 跳过则仅确认第一步')}
+            </span>
+          </div>
+        )}
+
+        {hasSentinelReactBonus && (
+          <div
+            data-testid="sentinels-react-starbase-move-banner"
+            className="p-2 px-3 rounded-xl bg-amber-950/50 border border-amber-500/70 text-amber-200 text-xs flex items-center justify-between shadow-sm gap-2"
+          >
+            <div className="flex items-center gap-2">
+              <Sparkles className="w-4 h-4 text-amber-300 shrink-0" />
+              <div>
+                <span className="font-bold">👁️ {l('Mobile Monasteries React: +1 Starbase Move', '机动修道院响应：额外 +1 星际基地移动')}</span>
+                <span className="text-amber-300/85 text-[11px] block">
+                  {l('Up to 2 React Move activations: at most 1 non-Starbase + 1 Starbase (or 2 Starbases between controlled sectors).', '跳过响应移动至多 2 次激活：至多 1 艘非星际基地 + 1 座星际基地（或 2 次全用于星际基地在受控星区间移动）。')}
+                </span>
+              </div>
+            </div>
+            <span className="px-2 py-0.5 rounded bg-amber-900/90 text-amber-100 font-mono text-[10px] font-bold uppercase border border-amber-600 shrink-0">
+              {distinctActivationsCount} / 2 {l('Acts', '次')}
             </span>
           </div>
         )}
@@ -531,32 +563,36 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                       const shipStats = shipBp ? calculateBlueprintStats(shipBp) : null;
                       const shipSpeed = shipStats ? shipStats.totalDriveSpeed : 0;
                       const pinned = isShipPinned(item.ship.id);
-                      const isStarbase = item.ship.type === 'starbase' || shipSpeed <= 0;
+                      const isImmobile = shipSpeed <= 0;
                       const activeActHasMoves =
                         (activationGroups.find(([idx]) => idx === activeActivationIndex)?.[1].length ?? 0) > 0;
                       const lockedToMovingShip = !isSel && activeActHasMoves && activeActivationIndex + 1 >= maxMoves;
                       const lockedToDreadnought = Boolean(isJotunnDreadnoughtMove && item.ship.type !== 'dreadnought');
+                      const lockedToSentinelStarbase =
+                        hasSentinelReactBonus && otherActivationUsedNonStarbase && item.ship.type !== 'starbase';
 
                       return (
                         <button
                           key={item.ship.id}
                           type="button"
-                          disabled={pinned || isStarbase || lockedToMovingShip || lockedToDreadnought}
+                          disabled={pinned || isImmobile || lockedToMovingShip || lockedToDreadnought || lockedToSentinelStarbase}
                           onClick={() => onSelectShipId(item.ship.id)}
                           className={`px-2 py-0.5 rounded text-[10px] font-bold transition-all flex items-center gap-1 ${
                             isSel
                               ? 'bg-cyan-500 text-slate-950 shadow-sm'
                               : pinned
                               ? 'bg-rose-950/50 border border-rose-900/60 text-rose-400 opacity-60 cursor-not-allowed'
-                              : isStarbase || lockedToMovingShip || lockedToDreadnought
+                              : isImmobile || lockedToMovingShip || lockedToDreadnought || lockedToSentinelStarbase
                               ? 'bg-slate-900 border border-slate-800 text-slate-500 opacity-50 cursor-not-allowed'
                               : 'bg-slate-900 border border-slate-700 text-slate-300 hover:border-slate-500'
                           }`}
                           title={
                             pinned
                               ? l('Ship is pinned by hostile forces and cannot move', '飞船被敌方牵制，无法移动')
-                              : isStarbase
-                              ? l('Starbases have Drive Speed 0 and cannot move', '星际基地航速为 0，无法移动')
+                              : isImmobile
+                              ? l('Units with Drive Speed 0 cannot move', '航速为 0 的单位无法移动')
+                              : lockedToSentinelStarbase
+                              ? l('Mobile Monasteries: bonus React Move activation can only move a Starbase', '机动修道院：额外响应移动激活仅限移动星际基地')
                               : lockedToDreadnought
                               ? l('Dread Nought Move may only move Dreadnought ships', '无畏雄心移动仅限移动无畏舰')
                               : lockedToMovingShip
@@ -575,7 +611,7 @@ export const MoveModal: React.FC<MoveModalProps> = ({
                             {sim?.isNebula ? ` ${l(`Sub ${getShipSubsector(item.ship.id, item.ship.subsector, sim)}`, `子区 ${getShipSubsector(item.ship.id, item.ship.subsector, sim)}`)}` : ''})
                           </span>
                           {pinned && <span className="text-[8px] text-rose-400 font-bold">{l('PINNED', '牵制')}</span>}
-                          {isStarbase && <span className="text-[8px] text-slate-400">{l('0 DRIVE', '无引擎')}</span>}
+                          {isImmobile && <span className="text-[8px] text-slate-400">{l('0 DRIVE', '无引擎')}</span>}
                         </button>
                       );
                     })}

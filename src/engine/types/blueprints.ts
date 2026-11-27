@@ -48,6 +48,7 @@ export interface ShipBlueprint {
   readonly preprintedComputer?: number; // Pre-printed computer bonus (Planta +1)
   readonly preprintedShield?: number; // Pre-printed shield bonus (Rho Indi Syndicate -1 to enemy hit rolls)
   readonly preprintedHull?: number; // Pre-printed chassis hull points (Exiles Orbital 2 HP outside slots)
+  readonly preprintedDriveSpeed?: number; // Pre-printed chassis drive speed (e.g. Sentinels Starbase 1 Hex)
   readonly noDrives?: boolean; // Cannot equip Drive ship parts (Exiles Orbital)
   slots: (ShipPart | null)[];
   externalParts?: ShipPart[];
