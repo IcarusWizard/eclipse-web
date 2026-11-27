@@ -28,6 +28,7 @@ import {
   isAntimatterSplitterRoll,
   getEffectiveWeaponHitDamage,
   getDefaultShiftPortMode,
+  applyEndOfRoundRegeneration,
 } from './combatEngine';
 
 export const SIMULATOR_TARGET_PRIORITY: Record<string, number> = {
@@ -286,6 +287,9 @@ export function buildSimulatorUnits(
     const hasMorphShield =
       Boolean(stats.hasMorphShield) ||
       allParts.some((p) => p?.id === 'morph_shield' || p?.morphShield);
+    const hasRegenerativeHull =
+      Boolean(stats.hasRegenerativeHull) ||
+      allParts.some((p) => p?.id === 'regenerative_hull' || p?.regenerativeHull);
     const hasUnmodifiedSixBurstDamage = sideConfig.factionId === 'the_horde';
 
     for (let i = 0; i < count; i++) {
@@ -300,6 +304,7 @@ export function buildSimulatorUnits(
         shieldBonus: stats.shieldBonus,
         weapons: weapons.map((w) => ({ ...w })),
         hasMorphShield,
+        hasRegenerativeHull,
         hasUnmodifiedSixBurstDamage,
       });
     }
@@ -619,12 +624,8 @@ export function simulateEngagement(
       if (remainingEnemy.length === 0) break;
     }
 
-    // End-of-round Morph Shield healing
-    for (const u of aliveUnits()) {
-      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
-        u.currentDamage = Math.max(0, u.currentDamage - 1);
-      }
-    }
+    // End-of-round regeneration (pass allUnits so killed Ancients still prevent Vorlon Regenerative Hull heal that round)
+    applyEndOfRoundRegeneration(allUnits);
 
     const attAlive = allUnits.some(
       (u) => u.ownerId === 'attacker' && u.currentDamage < u.maxHull

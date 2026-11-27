@@ -228,6 +228,7 @@ const PART_ZH: Record<string, string> = {
   inversion_shield: '反演护盾',
   absorption_shield: '吸收护盾',
   morph_shield: '变形护盾',
+  regenerative_hull: '再生装甲',
   hull: '基础船体',
   improved_hull: '强化船体',
   conifold_field: '锥形力场',
@@ -290,6 +291,10 @@ const FACTION_ZH: Record<string, { name: string; trait?: string }> = {
   techno_mages: {
     name: '科技法师 (Techno-Mages)',
     trait: '科技总有出路：即使未研发高阶科技，也可消耗 2 艘殖民船在高级行星殖民；科技魔法：每场战斗开始前，可为每型参战战舰蓝图的任一槽位临时升级 1 件非远古已解锁配件（遵守能量限制，不可移除配件，战后含行星轰炸立即恢复）；受限制造：建造行动仅 1 次激活，影响力行动仅翻正 1 艘殖民船；无初始科技，开局前可花费起始科研购买 1 项科技。',
+  },
+  vorlons: {
+    name: '沃隆人 (Vorlons)',
+    trait: '科技大师：所有科研减免额外 +1（纳米轨为 6 槽 -2..-9）；可支付递增的不可减免科研附加费（首次 +2，之后 +3/+4…）将科技放入任意非对应科技轨。有机科技：每研发 1 项新科技，可免费执行 1 次仅限该科技的升级（UPG 1）。再生装甲：所有战舰起始自带再生装甲（+1 船体，每轮战斗结束回复 1 损伤；对远古舰无效，但对守护者与 GCDS 有效）。终局沃隆或其盟友控制银河中心（#1）+2 VP；4:1 贸易，3 金钱/3 科研/2 材料开局于 235 号星区沃拉。',
   },
 };
 

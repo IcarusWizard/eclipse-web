@@ -1142,6 +1142,17 @@ export const PhysicalPlayerBoardModal: React.FC<PhysicalPlayerBoardModalProps> =
                       )}
                     </div>
                     <div className="flex items-center gap-3 text-xs font-mono">
+                      {player.faction.id === 'vorlons' && (
+                        <span
+                          data-testid="vorlons-tech-masters-pill"
+                          className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-950/70 border border-emerald-700/70 text-emerald-300"
+                        >
+                          {l(
+                            `Tech Masters: Switch +${2 + (player.vorlonTechTrackSwitchCount || 0)} Sci`,
+                            `科技大师：换轨 +${2 + (player.vorlonTechTrackSwitchCount || 0)} 科研`
+                          )}
+                        </span>
+                      )}
                       <span className="text-slate-400">
                         {l('Next Discount:', '下格减免:')} <strong className="text-rose-300">-{techRows.military.nextDiscount} {l('Science', '科研')}</strong>
                       </span>

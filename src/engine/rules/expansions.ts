@@ -147,6 +147,7 @@ export const AVAILABLE_EXPANSIONS: ExpansionDefinition[] = [
       'Remnants of Ra (Sector 255 Osiris Seth): Starts with Plasma Cannon, 3 Mat / 3 Sci / 2 Money, 4:1 Trade, INF 2 (1 Colony Ship refresh); Power of the Ancients grants an extra Wild population slot in every controlled Artifact sector (including homeworld); Secrets of the Ancients awards +1 VP per controlled Artifact sector.',
       'The Horde (Sector 299 Kassus Gar Rift): Starts with Neutron Bombs & Nanorobots, 3 Mat / 3 Sci / 2 Money, 4 Colony Ships, UPG 3 (each upgrade on a different ship class), 4-slot Tech Rows (0/-1/-3/-5, 1 VP); Built for War (+1 damage on unmodified 6 except Rift weapons, reduced INT/CRU/SB initiative); Raid (+1 Build included with Move actions); Call to Arms (gain 1/2/3 Materials when INT/CRU/DRE destroyed in uncontrolled sector).',
       'Children of Light (Sector 237 Faylenia): Starts with Gauss Shield, 3 Money / 3 Sci / 2 Mat, 3 Colony Ships, 4:1 Trade, 4 Rep slots, No Cruisers (5-slot 3⚡ Holy Ones Ancient blueprint instead); Holy Communion (move through Ancient sectors without combat/pinning, place Prayer tokens each turn and settle at 2× Ancients); Holy Crusade (convert influenced Ancients, gain +1 free Ancient UPG per Upgrade action, +1 Bonus VP per controlled Ancient); Divine Inspiration (+1 to Hit or -1 Shield in battles with Ancients).',
+      'Vorlons (Sector 235 Vorla): Science Discounts +1, 6-slot Nano Track (-2..-9); All ships start with Regenerative Hull (+1 Hull, heals 1/round except vs Ancients); Tech Masters (place Tech in wrong tray for +2/+3/+4... unreducible Science); Organic Tech (1 free UPG activation for newly researched Tech); +2 Bonus VPs if Vorlons or Ally control Galactic Center (#1); 4:1 Trade, 3 Money / 3 Sci / 2 Mat.',
     ],
   },
 ];
@@ -285,7 +286,10 @@ export function getExpansionForItem(itemIdOrName: string): ExpansionDefinition |
     norm === 'techno_mages' ||
     norm === 'techno-mages' ||
     norm === 'techno mages' ||
-    norm === 'artemis vii'
+    norm === 'artemis vii' ||
+    norm === 'vorlons' ||
+    norm === 'vorlon' ||
+    norm === 'vorla'
   ) {
     return AVAILABLE_EXPANSIONS.find((e) => e.id === 'community_factions') || null;
   }

@@ -456,6 +456,19 @@ export const ALIEN_HOME_SECTORS: Record<string, Partial<SectorTile>> = {
       { id: 'tm_p2', resource: 'science', isAdvanced: false },
     ],
   },
+  vorlons: {
+    sectorNumber: 235,
+    name: 'Vorla',
+    ring: 2,
+    victoryPoints: 3,
+    hasArtifact: true,
+    wormholes: [true, false, true, true, false, true],
+    planets: [
+      { id: 'vor_p1', resource: 'science', isAdvanced: false },
+      { id: 'vor_p2', resource: 'material', isAdvanced: false },
+      { id: 'vor_p3', resource: 'any', isAdvanced: true },
+    ],
+  },
 };
 
 export const ALL_HOME_SECTORS: Record<string, Partial<SectorTile>> = {

@@ -3,6 +3,7 @@ import { FlaskConical } from 'lucide-react';
 import { Technology } from '../../engine/types/tech';
 import { ShipPart } from '../../engine/types/blueprints';
 import { SHIP_PARTS } from '../../engine/rules/partData';
+import { ECLIPSE_COLOR_PALETTE } from '../../engine/rules/setup';
 
 // ============================================================================
 // 1. STARBURST HIT PIP (Official Eclipse 8-pointed starburst explosion)
@@ -686,6 +687,40 @@ export const ComputerGraphic: React.FC<{
 // 9. SHIELD GRAPHIC (Physical Tile: Sleek Black Rounded-Square Die Badge)
 // Matches Gauss-shield.jpg ("[-1]"), Phase-shield.jpg ("[-2]"), Absorption-shield.jpg ("[-1] 4⚡")
 // ============================================================================
+/**
+ * Physical Eclipse Regeneration Cross Icon:
+ * Bold diagonal X cross with the dark 8-pointed damage starburst inside.
+ * White (#ffffff) for Morph Shield; Vorlons faction color (#10b981) for Regenerative Hull.
+ */
+export const RegenerationCrossGraphic: React.FC<{
+  color?: string;
+  size?: 'sm' | 'md' | 'lg';
+  title?: string;
+}> = ({ color = '#ffffff', size = 'md', title }) => {
+  const dim = size === 'sm' ? 15 : size === 'lg' ? 24 : 18;
+  return (
+    <div title={title} className="inline-flex items-center justify-center shrink-0 cursor-help">
+      <svg
+        width={dim}
+        height={dim}
+        viewBox="0 0 32 32"
+        fill="none"
+        className="shrink-0 drop-shadow-[0_1.5px_3px_rgba(0,0,0,0.85)]"
+      >
+        <g transform="rotate(45 16 16)">
+          <rect x="10.5" y="1.5" width="11" height="29" rx="1.4" fill={color} />
+          <rect x="1.5" y="10.5" width="29" height="11" rx="1.4" fill={color} />
+        </g>
+        {/* 8-pointed damage starburst cutout inside the cross */}
+        <polygon
+          points="16,9.2 17.3,12.9 20.8,11.2 19.1,14.7 22.8,16 19.1,17.3 20.8,20.8 17.3,19.1 16,22.8 14.7,19.1 11.2,20.8 12.9,17.3 9.2,16 12.9,14.7 11.2,11.2 14.7,12.9"
+          fill="#0f172a"
+        />
+      </svg>
+    </div>
+  );
+};
+
 export const ShieldGraphic: React.FC<{
   shieldBonus: number;
   init?: number;
@@ -718,29 +753,13 @@ export const ShieldGraphic: React.FC<{
         {`-${shieldBonus}`}
       </div>
 
-      {/* Morph Shield: Cross Damage Symbol (Remove 1 Damage Cube) */}
+      {/* Morph Shield: Physical White Big Cross with Damage Starburst Inside */}
       {isMorph && (
-        <div
+        <RegenerationCrossGraphic
+          color="#ffffff"
+          size={size}
           title="Morph Regeneration (Non-standard component): Removes 1 damage cube from this ship at the end of each Engagement Round in battle (heals 1 HP per round during active combat)"
-          className="flex items-center gap-0.5 px-1 py-0.5 rounded bg-slate-950/90 border border-rose-500/80 shrink-0 cursor-help"
-        >
-          <svg
-            width={size === 'sm' ? 12 : size === 'lg' ? 18 : 14}
-            height={size === 'sm' ? 12 : size === 'lg' ? 18 : 14}
-            viewBox="0 0 24 24"
-            fill="none"
-            className="shrink-0"
-          >
-            {/* Red Damage Cube */}
-            <rect x="3" y="3" width="18" height="18" rx="3.5" fill="#e11d48" stroke="#ffffff" strokeWidth="1.5" />
-            {/* White Cross X through damage cube */}
-            <line x1="5" y1="5" x2="19" y2="19" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
-            <line x1="19" y1="5" x2="5" y2="19" stroke="#ffffff" strokeWidth="3" strokeLinecap="round" />
-          </svg>
-          <span className={`${size === 'sm' ? 'text-[7.5px]' : size === 'lg' ? 'text-[10px]' : 'text-[8.5px]'} font-mono font-bold text-rose-300 leading-none`}>
-            -1
-          </span>
-        </div>
+        />
       )}
 
       {/* Absorption Shield / Inversion Shield Energy Production ("4⚡") */}
@@ -773,12 +792,13 @@ export const HullGraphic: React.FC<{
   hullBonus: number;
   compBonus?: number;
   init?: number;
+  isRegenerative?: boolean;
   size?: 'sm' | 'md' | 'lg';
   className?: string;
-}> = ({ hullBonus, compBonus = 0, init = 0, size = 'md', className = '' }) => {
-  const isMultiStat = compBonus > 0;
+}> = ({ hullBonus, compBonus = 0, init = 0, isRegenerative = false, size = 'md', className = '' }) => {
+  const isMultiStat = compBonus > 0 || isRegenerative;
 
-  // When compBonus is present (Sentient Hull), scale down elements slightly so both fit side-by-side
+  // When compBonus or regenerative badge is present, scale down elements slightly so both fit side-by-side
   const circleDim = isMultiStat
     ? size === 'sm' ? 14 : size === 'lg' ? 20 : 16
     : size === 'sm' ? 18 : size === 'lg' ? 28 : 22;
@@ -824,6 +844,15 @@ export const HullGraphic: React.FC<{
           <circle cx="16" cy="16" r="2.2" fill="#0f172a" />
         </svg>
       </div>
+
+      {/* Regenerative Hull: Vorlons Faction-Colored Big Cross with Damage Starburst Inside */}
+      {isRegenerative && (
+        <RegenerationCrossGraphic
+          color={ECLIPSE_COLOR_PALETTE.viridian}
+          size={size}
+          title="Regenerative Hull (Vorlons): Heals 1 damage cube per combat round except vs Ancients (works vs Guardians, GCDS & players)"
+        />
+      )}
 
       {init !== 0 && <InitiativeBadge init={init} size={size === 'lg' ? 'md' : 'sm'} />}
     </div>
@@ -1996,6 +2025,7 @@ export const ShipPartSlotGraphic: React.FC<{
           <HullGraphic
             hullBonus={part.hullBonus}
             compBonus={part.computerBonus}
+            isRegenerative={part.id === 'regenerative_hull' || Boolean(part.regenerativeHull)}
             init={0} // Rendered at top-left
             size={size}
           />
@@ -2082,6 +2112,11 @@ export const getPartTooltip = (p: ShipPart): string => {
   if (p.id === 'morph_shield' || p.morphShield) {
     lines.push(
       `✨ Special: Morph Regeneration (Non-standard component) - In addition to -${p.shieldBonus} Shield reducing enemy hit rolls, this ship automatically removes 1 damage cube at the end of each Engagement Round in battle (surviving ships heal 1 HP per round during active combat).`
+    );
+  }
+  if (p.id === 'regenerative_hull' || p.regenerativeHull) {
+    lines.push(
+      `✨ Special: Regenerative Hull (Vorlons) - Provides +1 Hull and automatically removes 1 damage cube at the end of each Engagement Round except when fighting Ancients (works against Guardians, GCDS, and other players).`
     );
   }
   return lines.join('\n');

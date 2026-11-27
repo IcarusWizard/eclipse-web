@@ -1396,7 +1396,7 @@ function findBestResearchAction(state: GameState, player: PlayerState): { action
   let bestScore = -Infinity;
 
   for (const tech of uniqueSupply) {
-    const trackForCalc: 'military' | 'grid' | 'nano' =
+    let trackForCalc: 'military' | 'grid' | 'nano' =
       tech.category === 'rare'
         ? (player.techTrack.militaryCount >= player.techTrack.gridCount && player.techTrack.militaryCount >= player.techTrack.nanoCount
             ? 'military'
@@ -1405,14 +1405,29 @@ function findBestResearchAction(state: GameState, player: PlayerState): { action
             : 'nano')
         : tech.category;
     const isSingleLine = isSingleTechLineFaction(player.faction.id);
-    const currentTrackLen = isSingleLine
-      ? player.techTrack.researched.length
-      : trackForCalc === 'military'
-      ? player.techTrack.militaryCount
-      : trackForCalc === 'grid'
-      ? player.techTrack.gridCount
-      : player.techTrack.nanoCount;
-    const cost = calculateTechCost(tech, currentTrackLen, trackForCalc, player.faction.id);
+    const getTrackLen = (tr: 'military' | 'grid' | 'nano') =>
+      isSingleLine
+        ? player.techTrack.researched.length
+        : tr === 'military'
+        ? player.techTrack.militaryCount
+        : tr === 'grid'
+        ? player.techTrack.gridCount
+        : player.techTrack.nanoCount;
+    const getTrackMax = (tr: 'military' | 'grid' | 'nano') =>
+      isSingleLine ? 7 : tr === 'nano' && (player.faction.id === 'vorlons' || player.faction.id === 'mega_war_inc') ? 6 : player.faction.id === 'the_horde' ? 4 : 7;
+
+    if (player.faction.id === 'vorlons' && getTrackLen(trackForCalc) >= getTrackMax(trackForCalc)) {
+      const alt = (['military', 'grid', 'nano'] as const).find((tr) => getTrackLen(tr) < getTrackMax(tr));
+      if (!alt) continue;
+      trackForCalc = alt;
+    }
+
+    const currentTrackLen = getTrackLen(trackForCalc);
+    const vorlonSwitchExtra =
+      player.faction.id === 'vorlons' && tech.category !== 'rare' && trackForCalc !== tech.category
+        ? 2 + (player.vorlonTechTrackSwitchCount || 0)
+        : 0;
+    const cost = calculateTechCost(tech, currentTrackLen, trackForCalc, player.faction.id) + vorlonSwitchExtra;
     if (cost > player.resources.science) continue;
 
     // Respect Warp Portal requirement if applicable
@@ -1434,7 +1449,10 @@ function findBestResearchAction(state: GameState, player: PlayerState): { action
     if (score > bestScore) {
       bestScore = score;
       bestTech = tech;
-      bestTargetTrack = tech.category === 'rare' ? trackForCalc : undefined;
+      bestTargetTrack =
+        tech.category === 'rare' || (player.faction.id === 'vorlons' && trackForCalc !== tech.category)
+          ? trackForCalc
+          : undefined;
     }
   }
 

@@ -113,6 +113,85 @@ export function getFactionShortName(factionOrName?: { name: string } | string | 
 }
 
 /**
+ * Vorlons (Tech Masters): Returns the unreducible extra Science surcharge when placing a
+ * non-Rare technology onto a non-matching Tech Track (2 first time, +1 each subsequent time).
+ */
+export function getVorlonTechTrackSwitchCost(
+  player: Pick<PlayerState, 'faction' | 'vorlonTechTrackSwitchCount'>,
+  tech: { category: string },
+  targetTrack: 'military' | 'grid' | 'nano',
+  switchOffset: number = 0
+): number {
+  if (player.faction.id !== 'vorlons') return 0;
+  if (tech.category !== 'military' && tech.category !== 'grid' && tech.category !== 'nano') {
+    return 0;
+  }
+  if (targetTrack === tech.category) return 0;
+  return 2 + (player.vorlonTechTrackSwitchCount || 0) + switchOffset;
+}
+
+function validateResearchBonusUpgrade(
+  player: PlayerState,
+  expansions: string[] | undefined,
+  researches: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[],
+  techSupply: import('../types/tech').Technology[],
+  up: { shipType: string; slotIndex: number; partId: string },
+  featureName: string
+): { valid: boolean; error?: string } {
+  const researchedTechObjs = researches
+    .map((item) => techSupply.find((t) => t.id === item.techId))
+    .filter((t): t is NonNullable<typeof t> => Boolean(t));
+  const unlocksPart = researchedTechObjs.some(
+    (t) => t.unlocksPartId === up.partId || t.id === up.partId
+  );
+  if (!unlocksPart || !SHIP_PARTS[up.partId]) {
+    return {
+      valid: false,
+      error: `${featureName} upgrade must install a ship part unlocked by a technology researched in this action.`,
+    };
+  }
+  const bp = player.blueprints[up.shipType];
+  if (!bp) {
+    return { valid: false, error: `Unknown ship type ${up.shipType}.` };
+  }
+  if (up.slotIndex < 0 || up.slotIndex >= bp.maxSlots) {
+    return { valid: false, error: `Invalid slot index ${up.slotIndex} for ${up.shipType}.` };
+  }
+  const simBp: ShipBlueprint = {
+    ...bp,
+    slots: [...bp.slots],
+    externalParts: bp.externalParts ? [...bp.externalParts] : undefined,
+  };
+  simBp.slots[up.slotIndex] = SHIP_PARTS[up.partId]!;
+  const stats = calculateBlueprintStats(simBp, expansions);
+  if (!stats.isValid) {
+    return {
+      valid: false,
+      error: `Invalid ${featureName} upgrade for ${up.shipType.toUpperCase()}: ${stats.errors.join(' ')}`,
+    };
+  }
+  return { valid: true };
+}
+
+function applyResearchBonusUpgrade(
+  player: PlayerState,
+  up: { shipType: string; slotIndex: number; partId: string },
+  featureLabel: string,
+  addLog: (msg: string, type?: GameLogEntry['type']) => void
+): void {
+  const bp = player.blueprints[up.shipType];
+  const part = SHIP_PARTS[up.partId];
+  if (bp && part && up.slotIndex >= 0 && up.slotIndex < bp.maxSlots) {
+    const oldPart = bp.slots[up.slotIndex];
+    bp.slots[up.slotIndex] = part;
+    addLog(
+      `🛠️ ${featureLabel}: ${player.name} performed a free Upgrade 1 on ${up.shipType.toUpperCase()} (Slot ${up.slotIndex + 1}: installed ${part.name}${oldPart ? `, replacing ${oldPart.name}` : ''}).`,
+      'action'
+    );
+  }
+}
+
+/**
  * Formats a player's display identity as either "Faction Name" or "Faction Name (Player Name)"
  * (or short version like "Faction (Player Name)") so players can clearly identify opposing factions.
  */
@@ -2508,11 +2587,13 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
       // Clone researched list & track counts to accurately compute progressive discounts
       const simResearched = new Set(player.techTrack.researched.map((t) => t.id));
       const isSingleLine = isSingleTechLineFaction(player.faction.id);
+      const isVorlons = player.faction.id === 'vorlons';
       const maxTotalTechs = getTotalTechSlotsMax(player.faction.id);
       let simTotalSingle = player.techTrack.researched.length;
       let simMilitary = player.techTrack.militaryCount;
       let simGrid = player.techTrack.gridCount;
       let simNano = player.techTrack.nanoCount;
+      let simVorlonSwitches = 0;
       let totalScienceCost = 0;
 
       // Track remaining supply count to prevent researching more copies than available
@@ -2554,24 +2635,24 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
           if (resolvedTrack === 'military') simMilitary++;
           else if (resolvedTrack === 'grid') simGrid++;
           else simNano++;
-        } else if (tech.category === 'military') {
-          if (simMilitary >= maxMil) {
-            return { valid: false, error: `Military tech track is full (maximum ${maxMil} technologies).` };
+        } else if (tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano') {
+          if (item.targetTrack && item.targetTrack !== tech.category && !isVorlons) {
+            return {
+              valid: false,
+              error: `Only Vorlons (Tech Masters) or The Spiral may place a ${tech.category} technology on the ${item.targetTrack} track.`,
+            };
           }
-          resolvedTrack = 'military';
-          count = simMilitary++;
-        } else if (tech.category === 'grid') {
-          if (simGrid >= maxGrid) {
-            return { valid: false, error: `Grid tech track is full (maximum ${maxGrid} technologies).` };
+          const desiredTrack = isVorlons && item.targetTrack ? item.targetTrack : tech.category;
+          const maxForTrack = desiredTrack === 'military' ? maxMil : desiredTrack === 'grid' ? maxGrid : maxNano;
+          const simForTrack = desiredTrack === 'military' ? simMilitary : desiredTrack === 'grid' ? simGrid : simNano;
+          if (simForTrack >= maxForTrack) {
+            const label = desiredTrack === 'military' ? 'Military' : desiredTrack === 'grid' ? 'Grid' : 'Nano';
+            return { valid: false, error: `${label} tech track is full (maximum ${maxForTrack} technologies).` };
           }
-          resolvedTrack = 'grid';
-          count = simGrid++;
-        } else if (tech.category === 'nano') {
-          if (simNano >= maxNano) {
-            return { valid: false, error: `Nano tech track is full (maximum ${maxNano} technologies).` };
-          }
-          resolvedTrack = 'nano';
-          count = simNano++;
+          resolvedTrack = desiredTrack;
+          if (resolvedTrack === 'military') count = simMilitary++;
+          else if (resolvedTrack === 'grid') count = simGrid++;
+          else count = simNano++;
         } else {
           let targetTrack = item.targetTrack;
           if (targetTrack) {
@@ -2619,7 +2700,9 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
 
         const baseCost = calculateTechCost(tech, count, resolvedTrack, player.faction.id);
         const msTechDiscount = getMinorSpeciesTechDiscount(player);
-        const actualCost = Math.max(tech.minCost, baseCost - msTechDiscount);
+        const switchCost = getVorlonTechTrackSwitchCost(player, tech, resolvedTrack, simVorlonSwitches);
+        if (switchCost > 0) simVorlonSwitches += 1;
+        const actualCost = Math.max(tech.minCost, baseCost - msTechDiscount) + switchCost;
         totalScienceCost += actualCost;
       }
 
@@ -2688,39 +2771,30 @@ export function validateAction(state: GameState, action: GameAction): { valid: b
         if (player.faction.id !== 'atlantians') {
           return { valid: false, error: 'Only Atlantians can perform an Ancient Instinct Upgrade 1 during Research.' };
         }
-        const up = action.ancientInstinctUpgrade;
-        const researchedTechObjs = researches
-          .map((item) => state.techSupply.find((t) => t.id === item.techId))
-          .filter((t): t is NonNullable<typeof t> => Boolean(t));
-        const unlocksPart = researchedTechObjs.some(
-          (t) => t.unlocksPartId === up.partId || t.id === up.partId
+        const check = validateResearchBonusUpgrade(
+          player,
+          state.expansions,
+          researches,
+          state.techSupply,
+          action.ancientInstinctUpgrade,
+          'Ancient Instinct'
         );
-        if (!unlocksPart || !SHIP_PARTS[up.partId]) {
-          return {
-            valid: false,
-            error: 'Ancient Instinct upgrade must install a ship part unlocked by a technology researched in this action.',
-          };
+        if (!check.valid) return check;
+      }
+
+      if (action.organicTechUpgrade) {
+        if (player.faction.id !== 'vorlons') {
+          return { valid: false, error: 'Only Vorlons can perform an Organic Tech Upgrade 1 during Research.' };
         }
-        const bp = player.blueprints[up.shipType];
-        if (!bp) {
-          return { valid: false, error: `Unknown ship type ${up.shipType}.` };
-        }
-        if (up.slotIndex < 0 || up.slotIndex >= bp.maxSlots) {
-          return { valid: false, error: `Invalid slot index ${up.slotIndex} for ${up.shipType}.` };
-        }
-        const simBp: ShipBlueprint = {
-          ...bp,
-          slots: [...bp.slots],
-          externalParts: bp.externalParts ? [...bp.externalParts] : undefined,
-        };
-        simBp.slots[up.slotIndex] = SHIP_PARTS[up.partId]!;
-        const stats = calculateBlueprintStats(simBp, state.expansions);
-        if (!stats.isValid) {
-          return {
-            valid: false,
-            error: `Invalid Ancient Instinct upgrade for ${up.shipType.toUpperCase()}: ${stats.errors.join(' ')}`,
-          };
-        }
+        const check = validateResearchBonusUpgrade(
+          player,
+          state.expansions,
+          researches,
+          state.techSupply,
+          action.organicTechUpgrade,
+          'Organic Tech'
+        );
+        if (!check.valid) return check;
       }
 
       return { valid: true };
@@ -5028,7 +5102,7 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
         let targetTrack: 'military' | 'grid' | 'nano' = 'nano';
         if (tech.category === 'military' || tech.category === 'grid' || tech.category === 'nano') {
-          targetTrack = tech.category;
+          targetTrack = player.faction.id === 'vorlons' && item.targetTrack ? item.targetTrack : tech.category;
         } else {
           const maxMil = getTechTrackMaxSlots('military', player.faction.id);
           const maxGrid = getTechTrackMaxSlots('grid', player.faction.id);
@@ -5069,7 +5143,11 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
 
         const baseCost = calculateTechCost(tech, count, targetTrack, player.faction.id);
         const msTechDiscount = getMinorSpeciesTechDiscount(player);
-        const cost = Math.max(tech.minCost, baseCost - msTechDiscount);
+        const switchCost = getVorlonTechTrackSwitchCost(player, tech, targetTrack);
+        if (switchCost > 0) {
+          player.vorlonTechTrackSwitchCount = (player.vorlonTechTrackSwitchCount || 0) + 1;
+        }
+        const cost = Math.max(tech.minCost, baseCost - msTechDiscount) + switchCost;
         player.resources.science -= cost;
         player.techTrack.researched.push({ ...tech, placedTrack: targetTrack });
 
@@ -5156,24 +5234,19 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
           }
         }
 
-        addLog(`${player.name} researched ${tech.name} for ${cost} Science (${targetTrack.toUpperCase()} track).`);
+        addLog(
+          `${player.name} researched ${tech.name} for ${cost} Science (${targetTrack.toUpperCase()} track${switchCost > 0 ? `, includes +${switchCost} Tech Masters off-track cost` : ''}).`
+        );
       }
 
       if (action.shrinePlacement && player.faction.id === 'enlightened_of_lyra') {
         applyShrinePlacement(newState, player, action.shrinePlacement);
       }
       if (action.ancientInstinctUpgrade && player.faction.id === 'atlantians') {
-        const up = action.ancientInstinctUpgrade;
-        const bp = player.blueprints[up.shipType];
-        const part = SHIP_PARTS[up.partId];
-        if (bp && part && up.slotIndex >= 0 && up.slotIndex < bp.maxSlots) {
-          const oldPart = bp.slots[up.slotIndex];
-          bp.slots[up.slotIndex] = part;
-          addLog(
-            `🛠️ Ancient Instinct: ${player.name} performed a free Upgrade 1 on ${up.shipType.toUpperCase()} (Slot ${up.slotIndex + 1}: installed ${part.name}${oldPart ? `, replacing ${oldPart.name}` : ''}).`,
-            'action'
-          );
-        }
+        applyResearchBonusUpgrade(player, action.ancientInstinctUpgrade, 'Ancient Instinct', addLog);
+      }
+      if (action.organicTechUpgrade && player.faction.id === 'vorlons') {
+        applyResearchBonusUpgrade(player, action.organicTechUpgrade, 'Organic Tech', addLog);
       }
       checkMagellanFourthTechDiscovery(newState, player);
       break;
@@ -6576,6 +6649,21 @@ function internalExecuteAction(state: GameState, action: GameAction): ActionResu
               `⚔️ Sector ${sector.sectorNumber}: ${firingLabel} salvo [${diceSummary}] ➔ ${hits} hit(s), ${totalDmg} dmg.`,
               'combat'
             );
+          }
+
+          // Log end-of-round ship regeneration (Morph Shield / Vorlons Regenerative Hull)
+          if (combatRes.regeneratedShips && combatRes.regeneratedShips.length > 0) {
+            for (const regen of combatRes.regeneratedShips) {
+              const ownerPlayer = newState.players.find((pl) => pl.id === regen.ownerId);
+              const ownerLabel = ownerPlayer ? ownerPlayer.name : regen.ownerId.toUpperCase();
+              const sourceLabel = regen.sources
+                .map((s) => (s === 'morph_shield' ? 'Morph Shield' : 'Regenerative Hull'))
+                .join(' + ');
+              addLog(
+                `💚 Sector ${sector.sectorNumber}: ${ownerLabel} ${regen.shipType.toUpperCase()} regenerated ${regen.healedAmount} HP via ${sourceLabel} (remaining HP: ${regen.remainingHp}/${regen.maxHull}).`,
+                'combat'
+              );
+            }
           }
 
           // Log any newly destroyed ships & trigger Call to Arms salvage for The Horde
@@ -10244,6 +10332,16 @@ export function computeCurrentScores(state: GameState): {
         0
       );
       speciesBonus += controlledAncientsOnBoard;
+    } else if (p.faction.id === 'vorlons') {
+      // Bonus VPs: +2 VP if Vorlons or an Ally control the Galactic Center (#1)
+      const centerSector = state.sectors.find((s) => s.sectorNumber === 1);
+      const centerController = centerSector?.discOwner;
+      if (
+        centerController &&
+        (centerController === p.id || (p.ambassadorTiles || []).includes(centerController))
+      ) {
+        speciesBonus += 2;
+      }
     }
 
     // 9. Traitor Tile Penalty (-2 VP normally, -4 VP for Kurita Prefecture, 0 for Rho Indi)

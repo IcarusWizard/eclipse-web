@@ -655,6 +655,15 @@ export function translateChronicleMessage(message: string, language: AppLanguage
   m = message.match(/^⚔️ Sector (\d+): (.+?) salvo \[([^\]]*)\] ➔ (\d+) hit\(s\), (\d+) dmg\.$/);
   if (m) return `⚔️ 星区 ${m[1]}：${trActorLabel(m[2])} 齐射 [${m[3]}] ➔ ${m[4]} 次命中，共 ${m[5]} 点伤害。`;
 
+  m = message.match(/^💚 Sector (\d+): (.+?) (\S+) regenerated (\d+) HP via (.+?) \(remaining HP: ([^)]+)\)\.$/);
+  if (m) {
+    const translatedSources = m[5]
+      .split(' + ')
+      .map((s) => trEntity(s.trim()))
+      .join(' + ');
+    return `💚 星区 ${m[1]}：${trActorLabel(m[2])} 的 ${trEntity(m[3])} 通过 ${translatedSources} 回复了 ${m[4]} 点生命（剩余 HP：${m[6]}）。`;
+  }
+
   m = message.match(/^💥 (.+?) (\S+) was destroyed in Sector (\d+)!$/);
   if (m) return `💥 ${trActorLabel(m[1])} 的 ${trEntity(m[2])} 在星区 ${m[3]} 被摧毁！`;
 

@@ -1915,13 +1915,13 @@ const AppContent: React.FC = () => {
     });
   };
 
-  // Research flow (supports single tech or array of technologies for Hydran/Midas double research, Lyra shrine placement, and Atlantians Ancient Instinct Upgrade 1)
+  // Research flow (supports single tech or array of technologies, Lyra shrine placement, and Atlantians Ancient Instinct / Vorlons Organic Tech Upgrade 1)
   const handleResearchTech = (
     researchesOrId: { techId: string; targetTrack?: 'military' | 'grid' | 'nano' }[] | string,
     targetTrack?: 'military' | 'grid' | 'nano',
     warpPortalSectorId?: string,
     shrinePlacement?: { row: number; col: number; sectorId: string; planetId: string },
-    ancientInstinctUpgrade?: { shipType: ShipType; slotIndex: number; partId: string },
+    researchBonusUpgrade?: { shipType: ShipType; slotIndex: number; partId: string },
     useMidasTouch?: boolean
   ) => {
     if (!canActForPlayer(activePlayer.id)) {
@@ -1941,7 +1941,10 @@ const AppContent: React.FC = () => {
       researches,
       warpPortalSectorId,
       shrinePlacement,
-      ancientInstinctUpgrade,
+      ancientInstinctUpgrade:
+        activePlayer.faction.id === 'atlantians' ? researchBonusUpgrade : undefined,
+      organicTechUpgrade:
+        activePlayer.faction.id === 'vorlons' ? researchBonusUpgrade : undefined,
       useMidasTouch,
       requireConfirmation: true,
     });

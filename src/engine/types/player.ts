@@ -33,7 +33,8 @@ export type FactionId =
   | 'jotunn'
   | 'kurita_prefecture'
   | 'children_of_light'
-  | 'techno_mages';
+  | 'techno_mages'
+  | 'vorlons';
 
 export interface FactionInfo {
   readonly id: FactionId;
@@ -132,7 +133,10 @@ export interface PlayerState {
   magellanDiscoveryTile?: DiscoveryTile | null; // Facedown Discovery Tile on top Tech Track
   magellanDiscoveryResolved?: boolean;
   discoveryTilesUsedAsShipPartsCount?: number; // Magellan: +1 VP per Discovery Tile used as a Ship Part
-  startingAncientLabsResolved?: boolean; // Atlantians: tracks whether starting Ancient Labs discovery has been triggered
+  /** Atlantians: tracks whether starting Ancient Labs discovery has been triggered */
+  startingAncientLabsResolved?: boolean;
+  /** Vorlons (Tech Masters): number of times a Tech was placed onto a different Tech Tray (+2 base, +1 each subsequent time). */
+  vorlonTechTrackSwitchCount?: number;
   shrineBoard?: ShrineBoardState; // Lyra: 3x3 Shrine Board
   hasWormholeGeneratorAbility?: boolean; // Lyra: Row 1 bonus
   lyraExtraDiscClaimed?: boolean; // Lyra: Row 3 bonus (+1 disc)

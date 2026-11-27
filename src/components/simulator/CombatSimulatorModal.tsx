@@ -134,6 +134,10 @@ const getPartGroups = (communityBalance: boolean, language: AppLanguage = 'en') 
     parts: [
       { id: 'hull', name: `${translatePartName('hull', 'Hull', language)} (+1❤️)` },
       {
+        id: 'regenerative_hull',
+        name: `${translatePartName('regenerative_hull', 'Regenerative Hull', language)} (+1❤️, ${language === 'zh' ? '每轮回复1(非远古)' : 'Heals 1/rnd, not vs Ancients'})`,
+      },
+      {
         id: 'improved_hull',
         name: communityBalance
           ? `${translatePartName('improved_hull', 'Improved Hull', language)} (+2❤️, -1 ${language === 'zh' ? '先攻' : 'Init'})`
@@ -1317,6 +1321,19 @@ export const SideConfigCard: React.FC<SideConfigCardProps> = ({
                 >
                   {`⚡ +${activeStats.totalPowerProduced}/-${activeStats.totalPowerConsumed}`}
                 </span>
+                {activeStats.hasMorphShield && (
+                  <span className="px-2 py-0.5 rounded bg-slate-950 border border-white/40 text-white font-mono font-bold">
+                    {l('Morph +1 HP/rnd', '变形护盾 +1 HP/轮')}
+                  </span>
+                )}
+                {activeStats.hasRegenerativeHull && (
+                  <span
+                    className="px-2 py-0.5 rounded bg-slate-950 border font-mono font-bold"
+                    style={{ borderColor: '#74c36580', color: '#74c365' }}
+                  >
+                    {l('Regen +1 HP/rnd (not vs Ancients)', '再生 +1 HP/轮(非远古)')}
+                  </span>
+                )}
               </div>
             )}
 
@@ -1438,7 +1455,9 @@ export const SideConfigCard: React.FC<SideConfigCardProps> = ({
                       getMegaWarModularGroupInfo(activeBp.type, simSelectedSlotIndex)?.allowsDrives === false);
                   return (
                     <optgroup key={g.category} label={g.category}>
-                      {g.parts.map((p) => {
+                      {g.parts
+                        .filter((p: any) => p.id !== 'regenerative_hull' || sideConfig.factionId === 'vorlons')
+                        .map((p: any) => {
                         const isDrive =
                           p.category === 'drive' || Boolean(p.driveSpeed) || p.id === 'jump_drive' || Boolean(p.isJumpDrive);
                         const disabled = slotDisallowsDrives && isDrive;

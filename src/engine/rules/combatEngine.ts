@@ -25,8 +25,64 @@ export interface CombatUnit {
     isMissile?: boolean;
   }[];
   hasMorphShield?: boolean;
+  hasRegenerativeHull?: boolean;
   hasAntimatterSplitter?: boolean;
   hasUnmodifiedSixBurstDamage?: boolean;
+}
+
+export interface CombatRegenEvent {
+  unitId: string;
+  ownerId: string;
+  shipType: string;
+  healedAmount: number;
+  remainingHp: number;
+  maxHull: number;
+  sources: ('morph_shield' | 'regenerative_hull')[];
+}
+
+/**
+ * Applies end-of-round ship regeneration to surviving ships:
+ * - Morph Shield always heals 1 damage cube per round (even when fighting Ancients).
+ * - Vorlons' Regenerative Hull heals 1 damage cube per round EXCEPT when fighting Ancients
+ *   (it still heals normally against Guardians, GCDS, and other factions).
+ */
+export function applyEndOfRoundRegeneration(units: CombatUnit[]): CombatRegenEvent[] {
+  const hasEnemyAncient = (u: CombatUnit) =>
+    units.some(
+      (enemy) =>
+        enemy.ownerId !== u.ownerId &&
+        (enemy.ownerId === 'ancient' || enemy.type === 'ancient')
+    );
+
+  const events: CombatRegenEvent[] = [];
+  for (const u of units) {
+    if (u.currentDamage <= 0 || u.currentDamage >= u.maxHull) continue;
+    const sources: ('morph_shield' | 'regenerative_hull')[] = [];
+    const before = u.currentDamage;
+
+    if (u.hasMorphShield && u.currentDamage > 0) {
+      u.currentDamage = Math.max(0, u.currentDamage - 1);
+      sources.push('morph_shield');
+    }
+    if (u.hasRegenerativeHull && u.currentDamage > 0 && !hasEnemyAncient(u)) {
+      u.currentDamage = Math.max(0, u.currentDamage - 1);
+      sources.push('regenerative_hull');
+    }
+
+    const healedAmount = before - u.currentDamage;
+    if (healedAmount > 0 && sources.length > 0) {
+      events.push({
+        unitId: u.id,
+        ownerId: u.ownerId,
+        shipType: u.type,
+        healedAmount,
+        remainingHp: Math.max(0, u.maxHull - u.currentDamage),
+        maxHull: u.maxHull,
+        sources,
+      });
+    }
+  }
+  return events;
 }
 
 export function getDefaultShiftPortMode(
@@ -233,6 +289,9 @@ export function buildCombatUnitsForSector(
       }
 
       const hasMorphShield = allParts.some((s) => s?.id === 'morph_shield' || s?.morphShield);
+      const hasRegenerativeHull = allParts.some(
+        (s) => s?.id === 'regenerative_hull' || s?.regenerativeHull
+      );
       const hasAntimatterSplitter = Boolean(
         player.techTrack?.researched?.some((t) => t.id === 'antimatter_splitter')
       );
@@ -253,6 +312,7 @@ export function buildCombatUnitsForSector(
         shieldBonus: stats.shieldBonus + (diChoice === 'shield' ? 1 : 0),
         weapons,
         hasMorphShield,
+        hasRegenerativeHull,
         hasAntimatterSplitter,
         hasUnmodifiedSixBurstDamage,
       });
@@ -449,6 +509,7 @@ export interface CombatStepResult {
     destinationSectorId: string;
     ownerId: string;
   };
+  regeneratedShips?: CombatRegenEvent[];
   isPendingAssignment?: boolean;
 }
 
@@ -463,6 +524,7 @@ export interface CombatShipGroup {
   shieldBonus: number;
   weapons: CombatUnit['weapons'];
   hasMorphShield?: boolean;
+  hasRegenerativeHull?: boolean;
   hasAntimatterSplitter?: boolean;
   hasUnmodifiedSixBurstDamage?: boolean;
 }
@@ -590,24 +652,20 @@ function selectKuritaRound1Turn(
 function advanceKuritaOrStandardRoundState(
   activeCombat: CombatState,
   remainingAlive: CombatUnit[],
-  remainingGroups: CombatShipGroup[]
-): void {
+  remainingGroups: CombatShipGroup[],
+  allUnits?: CombatUnit[]
+): CombatRegenEvent[] {
   if (isKuritaRound1Delayed(activeCombat)) {
     const nextTurn = selectKuritaRound1Turn(activeCombat, remainingGroups);
     if (nextTurn) {
       activeCombat.stage = nextTurn.isMissile ? 'missile' : 'regular';
-      return;
+      return [];
     }
     // Round 1 complete for both sides -> advance to Round 2 normal speed rules
     activeCombat.stage = 'regular';
     activeCombat.roundNumber += 1;
     activeCombat.roundActedGroupKeys = [];
-    for (const u of remainingAlive) {
-      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
-        u.currentDamage = Math.max(0, u.currentDamage - 1);
-      }
-    }
-    return;
+    return applyEndOfRoundRegeneration(allUnits || remainingAlive);
   }
 
   if (activeCombat.stage === 'missile') {
@@ -622,7 +680,7 @@ function advanceKuritaOrStandardRoundState(
       activeCombat.currentTurnIndex = -1;
       activeCombat.roundActedGroupKeys = [];
     }
-    return;
+    return [];
   }
 
   const nextPending = remainingGroups.filter(
@@ -631,12 +689,9 @@ function advanceKuritaOrStandardRoundState(
   if (nextPending.length === 0) {
     activeCombat.roundNumber += 1;
     activeCombat.roundActedGroupKeys = [];
-    for (const u of remainingAlive) {
-      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
-        u.currentDamage = Math.max(0, u.currentDamage - 1);
-      }
-    }
+    return applyEndOfRoundRegeneration(allUnits || remainingAlive);
   }
+  return [];
 }
 
 export function getActiveCombatGroup(
@@ -1002,11 +1057,12 @@ export function executeCombatStep(
       }
 
       const groups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
-      advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, groups);
+      const regeneratedShips = advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, groups, units);
       return {
         updatedUnits: units,
         rolls: appliedRolls,
         isCombatOver: false,
+        regeneratedShips: regeneratedShips.length > 0 ? regeneratedShips : undefined,
       };
     } else {
       const remainingAlive = units.filter((u) => u.currentDamage < u.maxHull);
@@ -1027,12 +1083,13 @@ export function executeCombatStep(
       }
 
       const groups = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
-      advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, groups);
+      const regeneratedShips = advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, groups, units);
 
       return {
         updatedUnits: units,
         rolls: appliedRolls,
         isCombatOver: false,
+        regeneratedShips: regeneratedShips.length > 0 ? regeneratedShips : undefined,
       };
     }
   }
@@ -1170,12 +1227,13 @@ export function executeCombatStep(
       }
 
       const nextGroupsAfterMissile = getCombatShipTypeGroups(remainingAlive, effectiveDefenderId);
-      advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, nextGroupsAfterMissile);
+      const regeneratedShips = advanceKuritaOrStandardRoundState(activeCombat, remainingAlive, nextGroupsAfterMissile, units);
 
       return {
         updatedUnits: units,
         rolls: salvoRolls,
         isCombatOver: false,
+        regeneratedShips: regeneratedShips.length > 0 ? regeneratedShips : undefined,
       };
     }
   }
@@ -1219,14 +1277,11 @@ export function executeCombatStep(
   let pendingGroups = kuritaR1Turn && !kuritaR1Turn.isMissile
     ? [kuritaR1Turn.group]
     : groups.filter((g) => !activeCombat.roundActedGroupKeys!.includes(g.groupKey));
+  let preStepRegenEvents: CombatRegenEvent[] = [];
   if (pendingGroups.length === 0) {
     activeCombat.roundNumber += 1;
     activeCombat.roundActedGroupKeys = [];
-    for (const u of aliveUnits) {
-      if (u.hasMorphShield && u.currentDamage > 0 && u.currentDamage < u.maxHull) {
-        u.currentDamage = Math.max(0, u.currentDamage - 1);
-      }
-    }
+    preStepRegenEvents = applyEndOfRoundRegeneration(units);
     pendingGroups = groups;
   }
 
@@ -1398,7 +1453,8 @@ export function executeCombatStep(
   // Check round completion
   const survivingAlive = aliveUnits.filter((u) => u.currentDamage < u.maxHull);
   const remainingGroups = getCombatShipTypeGroups(survivingAlive, effectiveDefenderId);
-  advanceKuritaOrStandardRoundState(activeCombat, survivingAlive, remainingGroups);
+  const postStepRegenEvents = advanceKuritaOrStandardRoundState(activeCombat, survivingAlive, remainingGroups, units);
+  const regeneratedShips = [...preStepRegenEvents, ...postStepRegenEvents];
 
   const remainingOwners = Array.from(
     new Set(aliveUnits.filter((u) => u.currentDamage < u.maxHull).map((u) => u.ownerId))
@@ -1409,6 +1465,7 @@ export function executeCombatStep(
     rolls: salvoRolls,
     isCombatOver: remainingOwners.length <= 1,
     winnerOwnerId: remainingOwners.length === 1 ? remainingOwners[0] : undefined,
+    regeneratedShips: regeneratedShips.length > 0 ? regeneratedShips : undefined,
   };
 }
 

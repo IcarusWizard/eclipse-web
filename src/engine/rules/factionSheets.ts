@@ -93,6 +93,7 @@ const FACTION_PORTRAIT_URLS: Record<string, string> = {
   kurita_prefecture: '/factions/kurita_prefecture.jpg',
   children_of_light: '/factions/children_of_light.jpg',
   techno_mages: '/factions/techno_mages.jpg',
+  vorlons: '/factions/vorlons.jpg',
 };
 
 const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
@@ -696,6 +697,34 @@ const FACTION_SHEET_META: Record<string, FactionSheetMetadata> = {
         icon: 'tech',
         en: 'Limited Manufacturing & Setup: Build has 1 activation and Influence flips only 1 Colony Ship. Start with 0 Techs, 3 Money / 6 Science / 2 Materials in Artemis VII (#244), 3:1 Trade, and 4 Reputation slots (1 Amb-only + 3 Amb/Rep); before the game begins you may spend initial Science to buy 1 Tech Tile from the tray.',
         zh: '受限制造与开局：建造行动仅 1 次激活，影响力行动仅翻正 1 艘殖民船。开局位于阿尔忒弥斯 VII（244 号星区），3 金钱/6 科研/2 材料、3:1 贸易与 4 格声望轨；无初始科技，但开局前可选择用起始科研从科技盘购买 1 项科技。',
+      },
+    ],
+  },
+  vorlons: {
+    historyEn:
+      'The Vorlons are both old and mysterious—said to be almost as ancient as the Ancients themselves. Rarely seen outside their luminous encounter suits, their organic vessels possess symbiotic life and regenerate combat wounds in battle. Now they awaken once more, whispering that the avalanche has started and guiding younger species toward an enlightened destiny. "The Avalanche has started. It is too late for the pebbles to vote." — Ambassador Kosh',
+    historyZh:
+      '沃隆人（Vorlons）古老而神秘，据说几乎与远古者同样久远。外界极少见到他们走出光影交织的维生装甲；其活体有机战舰更与单个沃隆灵魂共生，能在战场上自我愈合损伤。如今他们再次活跃，低语着“雪崩已起，碎石再无投票之机”，引导诸族走向秩序或承受代价。',
+    portraitUrl: '/factions/vorlons.jpg',
+    startingShips: [{ shipType: 'interceptor', count: 1 }],
+    rules: [
+      {
+        id: 'vorlons_tech_masters',
+        icon: 'tech',
+        en: 'Tech Masters & Enhanced Science: All Research discounts are 1 more (-1..-9 on Military/Grid, and a 6-slot Nano track at -2..-9). You may place a researched Tech in a different Tech Tray for +2 extra Science the first time, increasing by +1 each subsequent time (+3, +4...); this surcharge cannot be reduced by discounts.',
+        zh: '科技大师与高阶科研：所有科研减免额外 +1（军事/网络为 -1..-9，纳米轨为 6 槽 -2..-9）。可将非稀有科技放入任意非对应科技轨，首次额外花费 +2 科研，之后每次递增 +1（+3、+4…），且该附加费不可被折扣减免。',
+      },
+      {
+        id: 'vorlons_organic_tech',
+        icon: 'ship',
+        en: 'Organic Tech: Whenever you research a new Tech, you may perform 1 free Upgrade activation for that newly researched Tech only.',
+        zh: '有机科技：每当你研发 1 项新科技时，可免费执行 1 次仅限安装该科技所解锁配件的升级（UPG 1）。',
+      },
+      {
+        id: 'vorlons_regen_hull_centre',
+        icon: 'vp',
+        en: 'Regenerative Hull & Galactic Destiny: All ships start pre-equipped with Regenerative Hull (+1 Hull, heals 1 damage per round except vs Ancients; heals vs Guardians, GCDS & players; Morph Shield still heals vs Ancients; can be upgraded over). Bonus VPs: +2 VP at game end if Vorlons or an Ally control the Galactic Center (#1). Start in Vorla (#235) with 3 Money / 3 Science / 2 Materials, 3 Colony Ships, 4:1 Trade, and 4 dual Amb/Rep slots.',
+        zh: '再生装甲与银河天命：所有战舰初始自带再生装甲（+1 船体，每轮战斗结束回复 1 损伤；对远古舰无效，但对守护者、GCDS 与其他玩家有效，且不影响变形护盾回复；可被覆盖升级）。终局若沃隆或其盟友控制银河中心（#1），额外 +2 VP。开局位于沃拉（235 号星区），3 金钱/3 科研/2 材料、3 艘殖民船、4:1 贸易与 4 格外交/声望通用槽。',
       },
     ],
   },

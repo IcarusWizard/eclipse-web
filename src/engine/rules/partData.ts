@@ -535,6 +535,18 @@ export const SHIP_PARTS: Record<string, ShipPart> = {
     hullBonus: 0,
     morphShield: true,
   },
+  regenerative_hull: {
+    id: 'regenerative_hull',
+    name: 'Regenerative Hull',
+    category: 'hull',
+    powerProduced: 0,
+    powerConsumed: 0,
+    initiativeBonus: 0,
+    computerBonus: 0,
+    shieldBonus: 0,
+    hullBonus: 1,
+    regenerativeHull: true,
+  },
 };
 
 /**

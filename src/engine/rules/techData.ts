@@ -503,6 +503,12 @@ const MEGA_WAR_TECH_VP: Record<'military' | 'grid' | 'nano', Record<number, numb
 
 const THE_HORDE_TECH_DISCOUNTS: readonly number[] = [0, 1, 3, 5];
 
+const VORLONS_TECH_DISCOUNTS: Record<'military' | 'grid' | 'nano', readonly number[]> = {
+  military: [1, 2, 3, 4, 5, 7, 9],
+  grid: [1, 2, 3, 4, 5, 7, 9],
+  nano: [2, 3, 4, 5, 7, 9],
+};
+
 export function isSingleTechLineFaction(factionId?: string): boolean {
   return factionId === 'the_spiral';
 }
@@ -514,7 +520,7 @@ export function getTotalTechSlotsMax(factionId?: string): number {
   if (factionId === 'the_horde') {
     return 12;
   }
-  if (factionId === 'mega_war_inc') {
+  if (factionId === 'mega_war_inc' || factionId === 'vorlons') {
     return 20;
   }
   return 21;
@@ -545,6 +551,9 @@ export function getTechTrackDiscountsForPlayer(
   if (factionId === 'mega_war_inc') {
     return MEGA_WAR_TECH_DISCOUNTS[track];
   }
+  if (factionId === 'vorlons') {
+    return VORLONS_TECH_DISCOUNTS[track];
+  }
   if (factionId === 'the_horde') {
     return THE_HORDE_TECH_DISCOUNTS;
   }
@@ -558,7 +567,7 @@ export function getTechTrackMaxSlots(
   if (factionId === 'the_horde') {
     return 4;
   }
-  if (factionId === 'mega_war_inc' && track === 'nano') {
+  if ((factionId === 'mega_war_inc' || factionId === 'vorlons') && track === 'nano') {
     return 6;
   }
   return 7;
@@ -578,6 +587,14 @@ export function getTechTrackVPForPlayer(
       return count >= 6 ? table[6]! : (table[count] ?? 0);
     }
     return count >= 7 ? table[7]! : (table[count] ?? 0);
+  }
+  if (factionId === 'vorlons' && track === 'nano') {
+    // Nano track has 6 open slots (positions 2..7 of a standard 7-slot row)
+    if (count >= 6) return 5;
+    if (count === 5) return 3;
+    if (count === 4) return 2;
+    if (count === 3) return 1;
+    return 0;
   }
   if (count >= 7) return 5;
   if (count === 6) return 3;

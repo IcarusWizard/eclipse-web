@@ -103,6 +103,12 @@ export interface ResearchAction extends BaseAction {
     slotIndex: number;
     partId: string;
   };
+  /** Vorlons Organic Tech: optional Upgrade 1 using a Ship Part unlocked by the tech researched in this action. */
+  organicTechUpgrade?: {
+    shipType: ShipType;
+    slotIndex: number;
+    partId: string;
+  };
   useMidasTouch?: boolean;
 }
 

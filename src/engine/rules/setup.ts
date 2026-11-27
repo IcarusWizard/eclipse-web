@@ -49,9 +49,10 @@ export const ECLIPSE_COLOR_PALETTE = {
   jade: '#34d399', // Kurita Prefecture
   orchid: '#e879f9', // Children of Light
   arcane: '#a78bfa', // Techno-Mages
+  viridian: '#74c365', // Vorlons (distinct luminous bio-sage green, well separated from Planta/Horde/Kurita/Exiles)
 } as const;
 
-export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade' | 'orchid' | 'arcane';
+export type FactionColorGroup = 'red' | 'blue' | 'green' | 'yellow' | 'white' | 'black' | 'purple' | 'orange' | 'teal' | 'amber' | 'cyan' | 'indigo' | 'magenta' | 'lime' | 'ice' | 'gold' | 'asgard' | 'frost' | 'jade' | 'orchid' | 'arcane' | 'viridian';
 
 export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   // Red
@@ -90,6 +91,7 @@ export const FACTION_COLOR_GROUP: Record<string, FactionColorGroup> = {
   kurita_prefecture: 'jade',
   children_of_light: 'orchid',
   techno_mages: 'arcane',
+  vorlons: 'viridian',
 };
 
 export const FACTION_COLOR_MAP: Record<string, string> = {
@@ -120,6 +122,7 @@ export const FACTION_COLOR_MAP: Record<string, string> = {
   kurita_prefecture: ECLIPSE_COLOR_PALETTE.jade,
   children_of_light: ECLIPSE_COLOR_PALETTE.orchid,
   techno_mages: ECLIPSE_COLOR_PALETTE.arcane,
+  vorlons: ECLIPSE_COLOR_PALETTE.viridian,
 };
 
 export function getFactionColor(factionId: string): string {
@@ -775,6 +778,29 @@ export const ALIEN_FACTIONS: FactionInfo[] = [
     ambassadorSlots: 4,
     reputationSlotTypes: ['amb_only', 'both', 'both', 'both'],
   },
+  {
+    id: 'vorlons',
+    name: 'Vorlons',
+    isHuman: false,
+    defaultColor: ECLIPSE_COLOR_PALETTE.viridian,
+    startingSectorNumber: 235,
+    startingResources: { money: 3, science: 3, materials: 2 },
+    startingDiscs: 13,
+    startingColonyShips: 3,
+    startingTechIds: [],
+    traitDescription: 'Tech Masters: May place a researched Tech in a wrong Tech Tray for an extra Science cost (starts at +2, +1 each subsequent time; not reduced by discounts). Organic Tech: Whenever you research a new Tech, may perform 1 free Upgrade activation for that Tech only. Regenerative Hull: All ships start with Regenerative Hull (+1 Hull; heals 1/round except vs Ancients, though works vs Guardians/GCDS). Science: All Research discounts +1; Nano track has 6 slots (-2..-9). Bonus VPs: +2 if Vorlons or an Ally control the Galactic Center (#1). 4:1 Trade; start in Vorla (#235) with 3 Money / 3 Science / 2 Materials.',
+    tradeRatio: 4,
+    exploreActivations: 1,
+    researchActivations: 1,
+    upgradeActivations: 2,
+    buildActivations: 2,
+    moveActivations: 2,
+    influenceActivations: 2,
+    influenceColonyShipRefreshes: 2,
+    reputationSlots: 4,
+    ambassadorSlots: 4,
+    reputationSlotTypes: ['both', 'both', 'both', 'both'],
+  },
 ];
 
 export const ALL_FACTIONS: FactionInfo[] = [
@@ -796,7 +822,7 @@ export function isFactionAvailable(factionId: string, expansions: string[] = [])
   if (factionId === 'the_exiles' || factionId === 'rho_indi_syndicate') {
     return expansions.includes('outcasts');
   }
-  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture' || factionId === 'children_of_light' || factionId === 'techno_mages') {
+  if (factionId === 'atlantians' || factionId === 'mega_war_inc' || factionId === 'remnants_of_ra' || factionId === 'the_horde' || factionId === 'the_spiral' || factionId === 'legion_of_midas' || factionId === 'heralds_of_ragnarok' || factionId === 'jotunn' || factionId === 'kurita_prefecture' || factionId === 'children_of_light' || factionId === 'techno_mages' || factionId === 'vorlons') {
     return expansions.includes('community_factions');
   }
   return true;
@@ -830,7 +856,8 @@ export function getFactionReputationSlotTypes(faction: FactionInfo): ReputationS
     faction.id === 'enlightened_of_lyra' ||
     faction.id === 'atlantians' ||
     faction.id === 'remnants_of_ra' ||
-    faction.id === 'the_spiral'
+    faction.id === 'the_spiral' ||
+    faction.id === 'vorlons'
   ) {
     return ['both', 'both', 'both', 'both'];
   }

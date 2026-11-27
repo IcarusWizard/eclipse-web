@@ -36,6 +36,7 @@ export interface ShipPart {
   readonly driveSpeed?: number; // Movement points (e.g. 1, 2, 3)
   readonly isJumpDrive?: boolean; // Remnants of Worlds Afar: Jump Drive (1 jump/activation)
   readonly morphShield?: boolean; // Remnants of Worlds Afar: Morph Shield (heals 1 dmg/round)
+  readonly regenerativeHull?: boolean; // Vorlons: Regenerative Hull (+1 Hull, heals 1 dmg/round except vs Ancients)
 }
 
 export interface ShipBlueprint {
@@ -62,7 +63,8 @@ export interface BlueprintValidationResult {
   totalDriveSpeed: number;
   computerBonus: number;
   shieldBonus: number;
-  hasJumpDrive?: boolean;
-  hasMorphShield?: boolean;
+  readonly hasJumpDrive?: boolean;
+  readonly hasMorphShield?: boolean;
+  readonly hasRegenerativeHull?: boolean;
   errors: string[];
 }

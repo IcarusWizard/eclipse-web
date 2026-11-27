@@ -23240,11 +23240,12 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
         expect(picoHtml).toContain('viewBox="0 0 76 34"'); // Generous spacing
         expect(picoHtml).toContain('14.7 6.3'); // Matching Upgrade Action wrench path
 
-        // 8. Morph Shield: cross damage symbol removing damage cube and detailed hover explanation
+        // 8. Morph Shield: physical white cross with damage starburst inside and detailed hover explanation
         const morphShieldPart = SHIP_PARTS.morph_shield!;
         const morphHtml = renderToString(React.createElement(ShipPartTileIconography, { part: morphShieldPart }));
         expect(morphHtml).toContain('-1'); // Shield -1
-        expect(morphHtml).toContain('#e11d48'); // Red damage cube
+        expect(morphHtml).toContain('fill="#ffffff"'); // White physical regeneration cross
+        expect(morphHtml).toContain('fill="#0f172a"'); // Dark damage starburst cutout inside cross
         expect(morphHtml).toContain('Removes 1 damage cube from this ship at the end of each Engagement Round in battle');
         const { getPartTooltip } = await import('../../components/common/PhysicalTileIconography');
         const morphTooltip = getPartTooltip(morphShieldPart);
@@ -35100,6 +35101,508 @@ describe('Ship Supply Limits & Starbase Restrictions', () => {
       // NOW colony ships have refreshed once at the end of Cleanup!
       expect(afterBankrupt.players[0]!.colonyShips.ready).toBe(afterBankrupt.players[0]!.colonyShips.total);
       expect(afterBankrupt.players[1]!.colonyShips.ready).toBe(afterBankrupt.players[1]!.colonyShips.total);
+    });
+
+    test('Test 312: Community Faction: Vorlons (Vorla #235, 6-slot Nano Track & +1 Discounts, Tech Masters Off-Track Switch, Organic Tech Upgrade 1, Regenerative Hull vs Ancients/Guardians/GCDS/Morph Shield, +2 Centre/Ally VP & SSR UI)', async () => {
+      // 1. Expansion gate & setup verification
+      expect(getExpansionForItem('vorlons')?.id).toBe('community_factions');
+      expect(isFactionAvailable('vorlons', [])).toBe(false);
+      expect(isFactionAvailable('vorlons', ['community_factions'])).toBe(true);
+
+      let game = createInitialGame(2, ['vorlons', 'terran_federation'], ['community_factions']);
+      const vor = game.players.find((p) => p.faction.id === 'vorlons')!;
+      const terran = game.players.find((p) => p.faction.id === 'terran_federation')!;
+      expect(vor).toBeDefined();
+      expect(vor.faction.name).toBe('Vorlons');
+      expect(vor.faction.tradeRatio).toBe(4);
+      expect(vor.colonyShips.total).toBe(3);
+      expect(vor.resources).toEqual({ money: 3, science: 3, materials: 2 });
+      expect(vor.techTrack.researched.length).toBe(0);
+      expect(getFactionReputationSlotTypes(vor.faction)).toEqual(['both', 'both', 'both', 'both']);
+
+      // Vorla #235 planets: standard Science, standard Material, Advanced Wild
+      const homeSec = game.sectors.find((s) => s.sectorNumber === 235 && s.discOwner === vor.id)!;
+      expect(homeSec).toBeDefined();
+      expect(homeSec.planets.map((p) => ({ r: p.resource, adv: Boolean(p.isAdvanced) }))).toEqual([
+        { r: 'science', adv: false },
+        { r: 'material', adv: false },
+        { r: 'any', adv: true },
+      ]);
+
+      // All 4 blueprints start with regenerative_hull pre-installed; no regenerative_hull tech exists in catalog
+      expect(SHIP_PARTS.regenerative_hull).toBeDefined();
+      expect(TECH_CATALOG.some((t) => t.id === 'regenerative_hull' || t.unlocksPartId === 'regenerative_hull')).toBe(false);
+      for (const st of ['interceptor', 'cruiser', 'dreadnought', 'starbase'] as const) {
+        const bp = vor.blueprints[st]!;
+        expect(bp.slots.some((s) => s?.id === 'regenerative_hull')).toBe(true);
+        const stStats = calculateBlueprintStats(bp);
+        expect(stStats.isValid).toBe(true);
+        expect(stStats.hasRegenerativeHull).toBe(true);
+      }
+
+      // 2. Tech Track Discounts (+1 extra), 6-slot Nano Track & VP table
+      const {
+        getTechTrackMaxSlots,
+        getTotalTechSlotsMax,
+        getTechTrackDiscountsForPlayer,
+        getTechTrackVPForPlayer,
+        NANO_TECHS,
+        ALL_RARE_TECHS,
+      } = await import('../rules/techData');
+      expect(getTechTrackMaxSlots('military', 'vorlons')).toBe(7);
+      expect(getTechTrackMaxSlots('grid', 'vorlons')).toBe(7);
+      expect(getTechTrackMaxSlots('nano', 'vorlons')).toBe(6);
+      expect(getTotalTechSlotsMax('vorlons')).toBe(20);
+      expect(getTechTrackDiscountsForPlayer('military', 'vorlons')).toEqual([1, 2, 3, 4, 5, 7, 9]);
+      expect(getTechTrackDiscountsForPlayer('grid', 'vorlons')).toEqual([1, 2, 3, 4, 5, 7, 9]);
+      expect(getTechTrackDiscountsForPlayer('nano', 'vorlons')).toEqual([2, 3, 4, 5, 7, 9]);
+      expect(getTechTrackVPForPlayer('nano', 2, 'vorlons')).toBe(0);
+      expect(getTechTrackVPForPlayer('nano', 3, 'vorlons')).toBe(1);
+      expect(getTechTrackVPForPlayer('nano', 4, 'vorlons')).toBe(2);
+      expect(getTechTrackVPForPlayer('nano', 5, 'vorlons')).toBe(3);
+      expect(getTechTrackVPForPlayer('nano', 6, 'vorlons')).toBe(5);
+
+      // 3. Tech Masters & Organic Tech
+      game.activePlayerIndex = 0;
+      game.players[0]!.resources.science = 50;
+      const gaussTech = TECH_CATALOG.find((t) => t.id === 'gauss_shield')!;
+      const plasmaTech = TECH_CATALOG.find((t) => t.id === 'plasma_cannon')!;
+      const positronTech = TECH_CATALOG.find((t) => t.id === 'positron_computer')!;
+      const rareTech = ALL_RARE_TECHS.find((t) => t.id === 'flux_missile')!;
+      for (const t of [gaussTech, plasmaTech, positronTech, rareTech]) {
+        if (!game.techSupply.some((s) => s.id === t.id)) game.techSupply.push({ ...t });
+      }
+
+      // 3a. Non-Vorlons cannot place Grid tech on Military track
+      game.activePlayerIndex = 1;
+      game.players[1]!.resources.science = 20;
+      const illegalSwitch = executeAction(game, {
+        type: 'RESEARCH',
+        playerId: terran.id,
+        researches: [{ techId: 'gauss_shield', targetTrack: 'military' }],
+      });
+      expect(illegalSwitch.success).toBe(false);
+
+      // 3b. Vorlons 1st wrong-tray placement: gauss_shield (grid base 2, min 2) onto military (slot 0 discount -1) + +2 Tech Masters = 2 + 2 = 4 Sci!
+      // Plus Organic Tech: install gauss_shield onto Interceptor slot 2 (replacing regenerative_hull — allowed & valid!)
+      game.activePlayerIndex = 0;
+      const sciBefore1 = game.players[0]!.resources.science;
+      const tmRes1 = executeAction(game, {
+        type: 'RESEARCH',
+        playerId: vor.id,
+        researches: [{ techId: 'gauss_shield', targetTrack: 'military' }],
+        organicTechUpgrade: {
+          shipType: 'cruiser',
+          slotIndex: 2, // empty slot on Flower Class Cruiser
+          partId: 'gauss_shield',
+        },
+      });
+      expect(tmRes1.success).toBe(true);
+      game = tmRes1.newState;
+      expect(game.players[0]!.resources.science).toBe(sciBefore1 - 4);
+      expect(game.players[0]!.techTrack.militaryCount).toBe(1);
+      expect(game.players[0]!.vorlonTechTrackSwitchCount).toBe(1);
+      expect(game.players[0]!.blueprints.cruiser.slots[2]?.id).toBe('gauss_shield');
+
+      // 3c. Organic Tech rejects installing an unrelated ship part (e.g. plasma_cannon when researching positron_computer)
+      game.activePlayerIndex = 0;
+      const badOrganic = executeAction(game, {
+        type: 'RESEARCH',
+        playerId: vor.id,
+        researches: [{ techId: 'positron_computer', targetTrack: 'grid' }],
+        organicTechUpgrade: {
+          shipType: 'cruiser',
+          slotIndex: 2,
+          partId: 'plasma_cannon',
+        },
+      });
+      expect(badOrganic.success).toBe(false);
+
+      // 3d. 2nd wrong-tray placement: positron_computer (grid base 8, min 5) onto nano (slot 0 discount -2) -1 minor species -> min 5 + +3 Tech Masters (unreducible!) = 8 total
+      game.players[0]!.ambassadorTiles.push('minor_species_tech_discount');
+      const sciBefore2 = game.players[0]!.resources.science;
+      const tmRes2 = executeAction(game, {
+        type: 'RESEARCH',
+        playerId: vor.id,
+        researches: [{ techId: 'positron_computer', targetTrack: 'nano' }],
+      });
+      expect(tmRes2.success).toBe(true);
+      game = tmRes2.newState;
+      expect(game.players[0]!.resources.science).toBe(sciBefore2 - 8);
+      expect(game.players[0]!.techTrack.nanoCount).toBe(1);
+      expect(game.players[0]!.vorlonTechTrackSwitchCount).toBe(2);
+
+      // 3e. Rare tech does NOT increment or incur Tech Masters surcharge!
+      game.activePlayerIndex = 0;
+      const sciBeforeRare = game.players[0]!.resources.science;
+      const rareRes = executeAction(game, {
+        type: 'RESEARCH',
+        playerId: vor.id,
+        researches: [{ techId: rareTech.id, targetTrack: 'military' }], // mil count=1 -> discount -2
+      });
+      expect(rareRes.success).toBe(true);
+      game = rareRes.newState;
+      const expectedRareCost = Math.max(rareTech.minCost, rareTech.baseCost - 2 - 1); // track -2 & minor species -1, 0 switch surcharge!
+      expect(game.players[0]!.resources.science).toBe(sciBeforeRare - expectedRareCost);
+      expect(game.players[0]!.vorlonTechTrackSwitchCount).toBe(2);
+
+      // 3f. 6-slot Nano cap enforces limit at 6, and Tech Masters lets 7th Nano tech still be researched on Grid/Military
+      game.players[0]!.resources.science = 100;
+      game.players[0]!.influenceTrack.discsOnTrack = 12;
+      game.activePlayerIndex = 0;
+      const extraNano = NANO_TECHS.filter((t) => t.id !== 'positron_computer').slice(0, 6);
+      for (const t of extraNano) {
+        if (!game.techSupply.some((s) => s.id === t.id)) game.techSupply.push({ ...t });
+      }
+      // Put 5 more techs onto nano so nanoCount reaches 6/6
+      for (let i = 0; i < 5; i++) {
+        game.activePlayerIndex = 0;
+        const r = executeAction(game, {
+          type: 'RESEARCH',
+          playerId: vor.id,
+          researches: [{ techId: extraNano[i]!.id, targetTrack: 'nano' }],
+        });
+        expect(r.success).toBe(true);
+        game = r.newState;
+      }
+      expect(game.players[0]!.techTrack.nanoCount).toBe(6);
+      // 7th on Nano fails
+      game.activePlayerIndex = 0;
+      const nanoOverflow = executeAction(game, {
+        type: 'RESEARCH',
+        playerId: vor.id,
+        researches: [{ techId: extraNano[5]!.id, targetTrack: 'nano' }],
+      });
+      expect(nanoOverflow.success).toBe(false);
+      expect(nanoOverflow.error).toContain('maximum 6 technologies');
+      // Putting that 6th extra Nano tech onto Grid succeeds via Tech Masters (+4 extra cost now!)
+      const sciBeforeSwitch3 = game.players[0]!.resources.science;
+      const nanoOnGrid = executeAction(game, {
+        type: 'RESEARCH',
+        playerId: vor.id,
+        researches: [{ techId: extraNano[5]!.id, targetTrack: 'grid' }],
+      });
+      expect(nanoOnGrid.success).toBe(true);
+      game = nanoOnGrid.newState;
+      const expectedBaseOnGrid = Math.max(
+        extraNano[5]!.minCost,
+        calculateTechCost(extraNano[5]!, 0, 'grid', 'vorlons') - 1
+      );
+      expect(game.players[0]!.resources.science).toBe(sciBeforeSwitch3 - (expectedBaseOnGrid + 4));
+      expect(game.players[0]!.vorlonTechTrackSwitchCount).toBe(3);
+
+      // 4. Regenerative Hull vs Morph Shield healing across Ancients, Guardians, GCDS, and Players
+      const { applyEndOfRoundRegeneration } = await import('../rules/combatEngine');
+
+      // 4a. Against Ancients: Regenerative Hull heals 0, Morph Shield heals 1, Both heals 1!
+      const vsAncientsUnits = [
+        {
+          id: 'vor_regen_only',
+          ownerId: vor.id,
+          type: 'dreadnought',
+          initiative: 0,
+          maxHull: 5,
+          currentDamage: 3,
+          computerBonus: 0,
+          shieldBonus: 0,
+          weapons: [],
+          hasRegenerativeHull: true,
+          hasMorphShield: false,
+        },
+        {
+          id: 'vor_morph_only',
+          ownerId: vor.id,
+          type: 'cruiser',
+          initiative: 1,
+          maxHull: 5,
+          currentDamage: 3,
+          computerBonus: 0,
+          shieldBonus: 0,
+          weapons: [],
+          hasRegenerativeHull: false,
+          hasMorphShield: true,
+        },
+        {
+          id: 'vor_both',
+          ownerId: vor.id,
+          type: 'dreadnought',
+          initiative: 0,
+          maxHull: 5,
+          currentDamage: 3,
+          computerBonus: 0,
+          shieldBonus: 0,
+          weapons: [],
+          hasRegenerativeHull: true,
+          hasMorphShield: true,
+        },
+        {
+          id: 'anc_1',
+          ownerId: 'ancient',
+          type: 'ancient',
+          initiative: 2,
+          maxHull: 2,
+          currentDamage: 0,
+          computerBonus: 0,
+          shieldBonus: 0,
+          weapons: [],
+        },
+      ];
+      applyEndOfRoundRegeneration(vsAncientsUnits);
+      expect(vsAncientsUnits[0]!.currentDamage).toBe(3); // Regenerative Hull disabled vs Ancients
+      expect(vsAncientsUnits[1]!.currentDamage).toBe(2); // Morph Shield STILL heals 1 vs Ancients
+      expect(vsAncientsUnits[2]!.currentDamage).toBe(2); // Morph Shield heals 1, Regenerative Hull heals 0 -> 3 -> 2
+
+      // 4b. Against Guardians: Regenerative Hull heals 1!
+      const vsGuardianUnits = [
+        { ...vsAncientsUnits[0]!, currentDamage: 3 },
+        { ...vsAncientsUnits[2]!, currentDamage: 3 },
+        { id: 'grd_1', ownerId: 'guardian', type: 'guardian', initiative: 3, maxHull: 3, currentDamage: 0, computerBonus: 0, shieldBonus: 0, weapons: [] },
+      ];
+      applyEndOfRoundRegeneration(vsGuardianUnits);
+      expect(vsGuardianUnits[0]!.currentDamage).toBe(2); // heals 1 vs Guardian
+      expect(vsGuardianUnits[1]!.currentDamage).toBe(1); // Morph (1) + Regen Hull (1) = 2 healed -> 1
+
+      // 4c. Against GCDS: Regenerative Hull heals 1!
+      const vsGcdsUnits = [
+        { ...vsAncientsUnits[0]!, currentDamage: 2 },
+        { id: 'gcds_1', ownerId: 'gcds', type: 'gcds', initiative: 0, maxHull: 8, currentDamage: 0, computerBonus: 0, shieldBonus: 0, weapons: [] },
+      ];
+      applyEndOfRoundRegeneration(vsGcdsUnits);
+      expect(vsGcdsUnits[0]!.currentDamage).toBe(1); // heals 1 vs GCDS
+
+      // 4d. Full RESOLVE_COMBAT_STEP Chronicle Logging for end-of-round regeneration (Vorlons vs Guardian)
+      const regenCombatGame = createInitialGame(2, ['vorlons', 'terran_federation'], ['community_factions']);
+      const regenVor = regenCombatGame.players[0]!;
+      // Make Vorlon cruiser fire 0 dice and Guardian fire 0 dice? No, give Vorlon Cruiser 1 Ion Cannon & Guardian 1 Hull so round 1->2 heals pre-damaged hull, and make sure both survive round 1
+      regenVor.blueprints.dreadnought = {
+        ...regenVor.blueprints.dreadnought,
+        slots: [
+          null,
+          null,
+          SHIP_PARTS.electron_computer,
+          null,
+          SHIP_PARTS.regenerative_hull,
+          SHIP_PARTS.improved_hull, // total hull: 1 + 1 + 2 = 4 (survives round 1)
+          SHIP_PARTS.nuclear_source,
+          SHIP_PARTS.nuclear_drive,
+        ],
+      };
+      const guardianSec = regenCombatGame.sectors.find((s) => s.sectorNumber === 1) || regenCombatGame.sectors[0]!;
+      guardianSec.discOwner = undefined;
+      guardianSec.ancientsCount = 0;
+      guardianSec.hasGCDS = false;
+      guardianSec.ships = [
+        { id: 'vor_dre_log', type: 'dreadnought', ownerId: regenVor.id, damage: 2 },
+        { id: 'grd_log', type: 'guardian', ownerId: 'guardian', damage: 0 },
+      ];
+      regenCombatGame.phase = 'COMBAT_PHASE';
+      regenCombatGame.activeCombat = {
+        sectorId: guardianSec.id,
+        roundNumber: 1,
+        stage: 'regular',
+        initiativeOrder: [],
+        currentTurnIndex: 0,
+        lastRolls: [],
+        retreatDeclared: {},
+        roundActedGroupKeys: [`${regenVor.id}_dreadnought`, 'guardian_guardian'],
+      };
+      // Trigger round completion directly via RESOLVE_COMBAT_STEP when pendingGroups.length === 0 (or after final group)
+      const logCombatRes = executeAction(regenCombatGame, {
+        type: 'RESOLVE_COMBAT_STEP',
+        playerId: regenVor.id,
+        sectorId: guardianSec.id,
+        autoAssign: true,
+      });
+      expect(logCombatRes.success).toBe(true);
+      const regenLogEntry = logCombatRes.newState.log.find((entry) =>
+        entry.message.includes('regenerated') && entry.message.includes('Regenerative Hull')
+      );
+      expect(regenLogEntry).toBeDefined();
+      expect(regenLogEntry?.type).toBe('combat');
+      expect(regenLogEntry?.message).toContain('remaining HP: 3/4');
+      expect(regenLogEntry?.message).not.toContain('remaining dmg');
+      const { translateChronicleMessage } = await import('../../i18n/chronicleTranslator');
+      expect(translateChronicleMessage(regenLogEntry!.message, 'zh')).toContain('再生装甲');
+      expect(translateChronicleMessage(regenLogEntry!.message, 'zh')).toContain('剩余 HP：3/4');
+
+      // 4e. Combat Simulator regeneration verification (simulateEngagement & simulateMultiWaveBattle)
+      const { buildSimulatorUnits, simulateEngagement, createDefaultSimulatorSide } = await import('../rules/combatSimulator');
+      const simVorSide = createDefaultSimulatorSide('vorlons', { shipCounts: { cruiser: 1 } });
+      const builtVorSimUnits = buildSimulatorUnits(simVorSide, 'attacker');
+      expect(builtVorSimUnits[0]?.hasRegenerativeHull).toBe(true);
+
+      // In simulateEngagement against a Guardian (non-Ancient), pre-damaged Vorlon unit heals 1 HP per round!
+      const simRegenAttacker = [
+        {
+          id: 'sim_vor_c1',
+          ownerId: 'attacker',
+          type: 'cruiser',
+          initiative: 1,
+          maxHull: 6,
+          currentDamage: 3, // already damaged
+          computerBonus: 5,
+          shieldBonus: 0,
+          weapons: [{ color: 'red' as const, damage: 4, count: 1 }], // guarantees killing Guardian or multi-round
+          hasRegenerativeHull: true,
+        },
+      ];
+      const simGuardianDef = [
+        {
+          id: 'sim_grd',
+          ownerId: 'defender',
+          type: 'guardian',
+          initiative: 4, // fires first with 0 dice (so Vorlon keeps 3 dmg before end of round 1)
+          maxHull: 3,
+          currentDamage: 0,
+          computerBonus: 0,
+          shieldBonus: 0,
+          weapons: [],
+        },
+      ];
+      const simResGuardian = simulateEngagement(simRegenAttacker, simGuardianDef, false, false);
+      expect(simResGuardian.winner).toBe('attacker');
+      // Killed Guardian -> Regenerative Hull healed at least 1 dmg per round (started at 3 dmg)
+      expect(simResGuardian.survivingUnits[0]!.currentDamage).toBeLessThan(3);
+
+      // Against an Ancient (destroyed mid-round in Wave 1), Regenerative Hull MUST NOT heal (still 3 dmg),
+      // while Morph Shield STILL heals vs Ancients (< 3 dmg)!
+      const simRegenVsAncient = [
+        {
+          ...simRegenAttacker[0]!,
+          id: 'sim_vor_vs_anc',
+          currentDamage: 3,
+        },
+      ];
+      const simMorphVsAncient = [
+        {
+          ...simRegenAttacker[0]!,
+          id: 'sim_morph_vs_anc',
+          currentDamage: 3,
+          hasRegenerativeHull: false,
+          hasMorphShield: true,
+        },
+      ];
+      const simAncientDef = [
+        {
+          id: 'sim_anc',
+          ownerId: 'defender',
+          type: 'ancient',
+          initiative: 4,
+          maxHull: 2,
+          currentDamage: 0,
+          computerBonus: 0,
+          shieldBonus: 0,
+          weapons: [],
+        },
+      ];
+      const simResAncientRegen = simulateEngagement(simRegenVsAncient, [{ ...simAncientDef[0]! }], false, false);
+      expect(simResAncientRegen.winner).toBe('attacker');
+      expect(simResAncientRegen.survivingUnits[0]?.currentDamage).toBe(3); // 0 heal vs Ancient even after killing it!
+
+      const simResAncientMorph = simulateEngagement(simMorphVsAncient, [{ ...simAncientDef[0]! }], false, false);
+      expect(simResAncientMorph.winner).toBe('attacker');
+      expect(simResAncientMorph.survivingUnits[0]!.currentDamage).toBeLessThan(3); // Morph Shield heals vs Ancient!
+
+      // 5. Bonus VPs: +2 if Vorlons OR an Ally control the Galactic Center (#1)
+      const centerSec = game.sectors.find((s) => s.sectorNumber === 1)!;
+      centerSec.discOwner = undefined;
+      expect(computeCurrentScores(game).scores[vor.id]!.speciesBonus).toBe(0);
+
+      // Ally controls Galactic Center -> +2 Bonus VP for Vorlons
+      centerSec.discOwner = terran.id;
+      expect(computeCurrentScores(game).scores[vor.id]!.speciesBonus).toBe(0); // Not allied yet
+      game.players[0]!.ambassadorTiles.push(terran.id);
+      game.players[1]!.ambassadorTiles.push(vor.id);
+      expect(computeCurrentScores(game).scores[vor.id]!.speciesBonus).toBe(2);
+
+      // Vorlons directly control Galactic Center -> +2 Bonus VP
+      game.players[0]!.ambassadorTiles = game.players[0]!.ambassadorTiles.filter((id) => id !== terran.id);
+      centerSec.discOwner = vor.id;
+      expect(computeCurrentScores(game).scores[vor.id]!.speciesBonus).toBe(2);
+
+      // 6. SSR UI Verification: FactionSheetCard, PhysicalPlayerBoardModal, TechMarketModal, ShipBlueprintEditor
+      const React = (await import('react')).default;
+      const { renderToStaticMarkup } = await import('react-dom/server');
+      const { LanguageProvider } = await import('../../i18n/LanguageContext');
+      const { FactionSheetCard } = await import('../../components/common/FactionSheetCard');
+      const { PhysicalPlayerBoardModal } = await import('../../components/dashboard/PhysicalPlayerBoardModal');
+      const { TechMarketModal } = await import('../../components/tech/TechMarketModal');
+      const { ShipBlueprintEditor } = await import('../../components/blueprints/ShipBlueprintEditor');
+
+      const sheetHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(FactionSheetCard, { faction: game.players[0]!.faction })
+        )
+      );
+      expect(sheetHtml).toContain('/factions/vorlons.jpg');
+      expect(sheetHtml).toContain('object-top');
+      expect(sheetHtml).toContain('Tech Masters');
+      expect(sheetHtml).toContain('Organic Tech');
+      expect(sheetHtml).toContain('Regenerative Hull');
+      expect(sheetHtml).toContain('+1 UPG');
+
+      const boardHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(PhysicalPlayerBoardModal, {
+            player: game.players[0]!,
+            players: game.players,
+            activePlayerId: vor.id,
+            sectors: game.sectors,
+            onClose: () => {},
+            onSelectPlayer: () => {},
+            onOpenBlueprintEditor: () => {},
+            onOpenTechMarket: () => {},
+          })
+        )
+      );
+      expect(boardHtml).toContain('data-testid="vorlons-tech-masters-pill"');
+      expect(boardHtml).toContain('Switch +5 Sci'); // vorlonTechTrackSwitchCount=3 -> 2+3=5
+
+      const techHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(TechMarketModal, {
+            player: game.players[0]!,
+            activePlayer: game.players[0]!,
+            players: game.players,
+            sectors: game.sectors,
+            techSupply: [TECH_CATALOG.find((t) => t.id === 'plasma_missile')!],
+            onResearchTech: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(techHtml).toContain('data-testid="vorlons-tech-masters-banner"');
+      expect(techHtml).toContain('Tech Masters Track:');
+
+      const freshVor = createInitialGame(2, ['vorlons', 'terran_federation'], ['community_factions']).players[0]!;
+      const bpEditorHtml = renderToStaticMarkup(
+        React.createElement(
+          LanguageProvider,
+          null,
+          React.createElement(ShipBlueprintEditor, {
+            player: freshVor,
+            isActivePlayer: true,
+            onConfirmUpgrade: () => {},
+            onClose: () => {},
+          })
+        )
+      );
+      expect(bpEditorHtml).toContain('Regenerative Hull');
+      expect(bpEditorHtml).toContain(`fill="${ECLIPSE_COLOR_PALETTE.viridian}"`); // Vorlons faction-colored regeneration cross
+      expect(bpEditorHtml).toContain('rotate(45 16 16)'); // Physical diagonal cross w/ damage starburst cutout
+      expect(new Set([
+        vor.color,
+        ECLIPSE_COLOR_PALETTE.green,
+        ECLIPSE_COLOR_PALETTE.lime,
+        ECLIPSE_COLOR_PALETTE.jade,
+        ECLIPSE_COLOR_PALETTE.teal,
+      ]).size).toBe(5);
     });
   });
 });

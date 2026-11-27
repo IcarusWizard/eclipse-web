@@ -14,7 +14,7 @@ import {
 import { isSpiralPhase2 } from '../../engine/rules/partData';
 import { getMinorSpeciesTechDiscount } from '../../engine/rules/minorSpecies';
 import { SHIP_PARTS } from '../../engine/rules/partData';
-import { getMaxResearchActivations } from '../../engine/rules/gameReducer';
+import { getMaxResearchActivations, getVorlonTechTrackSwitchCost } from '../../engine/rules/gameReducer';
 import { MidasTouchBanner } from '../common/MidasTouchBanner';
 import { calculateBlueprintStats } from '../../engine/rules/shipValidation';
 import { ShipBlueprintSlotsLayout } from '../blueprints/ShipBlueprintSlotsLayout';
@@ -194,11 +194,13 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
   // Progressive calculation of cost and discount for staged techs
   const isSingleLine = isSingleTechLineFaction(commander.faction.id);
+  const isVorlons = commander.faction.id === 'vorlons';
   const stagedResearches = React.useMemo(() => {
     let totalSingleCount = commander.techTrack.researched.length;
     let mCount = commander.techTrack.militaryCount;
     let gCount = commander.techTrack.gridCount;
     let nCount = commander.techTrack.nanoCount;
+    let vorlonSwitchOffset = 0;
     let totalScience = 0;
 
     const items = selectedForResearch.map((item) => {
@@ -213,14 +215,16 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
 
       const baseCost = calculateTechCost(tech, countBefore, item.targetTrack, commander.faction.id);
       const msDiscount = getMinorSpeciesTechDiscount(commander);
-      const cost = Math.max(tech.minCost, baseCost - msDiscount);
-      const discount = tech.baseCost - cost;
+      const switchExtra = getVorlonTechTrackSwitchCost(commander, tech, item.targetTrack, vorlonSwitchOffset);
+      if (switchExtra > 0) vorlonSwitchOffset += 1;
+      const cost = Math.max(tech.minCost, baseCost - msDiscount) + switchExtra;
+      const discount = Math.max(0, tech.baseCost - Math.max(tech.minCost, baseCost - msDiscount));
       totalScience += cost;
       return { ...item, tech, cost, discount, countBefore };
     });
 
     return { items, totalScience };
-  }, [selectedForResearch, commander.techTrack, commander.faction.id, isSingleLine, techSupply]);
+  }, [selectedForResearch, commander.techTrack, commander.faction.id, commander.vorlonTechTrackSwitchCount, isSingleLine, techSupply]);
 
   // Rare techs in supply
   const rareTechsInSupply = ALL_RARE_TECHS.filter((t) => supplyCountMap.has(t.id));
@@ -255,6 +259,21 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     let chosenTrack = trackCategory;
     if (tech.category === 'rare') {
       chosenTrack = getRareBestTrack(tech);
+    } else if (isVorlons) {
+      if (selectedRareTrack[tech.id]) {
+        chosenTrack = selectedRareTrack[tech.id];
+      } else {
+        const nativeTrack = tech.category as 'military' | 'grid' | 'nano';
+        const nativeFull = getTrackCount(nativeTrack) >= getTechTrackMaxSlots(nativeTrack, commander.faction.id);
+        if (nativeFull) {
+          const fallbackTrack = (['military', 'grid', 'nano'] as const).find(
+            (tr) => getTrackCount(tr) < getTechTrackMaxSlots(tr, commander.faction.id)
+          );
+          chosenTrack = fallbackTrack || nativeTrack;
+        } else {
+          chosenTrack = nativeTrack;
+        }
+      }
     }
     const trackCount = isSingleLine
       ? commander.techTrack.researched.length
@@ -265,10 +284,14 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
     const isTrackFull = trackCount >= maxSlots;
     const isRestrictedForFaction = commander.faction.id === 'mega_war_inc' && tech.id === 'monolith';
     const msDiscount = getMinorSpeciesTechDiscount(commander);
-    const discountedCost = Math.max(
-      tech.minCost,
-      calculateTechCost(tech, trackCount, chosenTrack, commander.faction.id) - msDiscount
-    );
+    const vorlonSwitchExtra = chosenTrack
+      ? getVorlonTechTrackSwitchCost(commander, tech, chosenTrack)
+      : 0;
+    const discountedCost =
+      Math.max(
+        tech.minCost,
+        calculateTechCost(tech, trackCount, chosenTrack, commander.faction.id) - msDiscount
+      ) + vorlonSwitchExtra;
     const canAfford = commander.resources.science >= discountedCost;
     const canResearch =
       isCommanderTurn &&
@@ -495,23 +518,37 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
             </div>
           )}
 
-          {/* Rare Tech Track Selector (omitted for single-line The Spiral) */}
-          {tech.category === 'rare' && !isSingleLine && stock > 0 && !isOwned && (
-            <div className="mb-2.5 p-1.5 rounded-lg bg-slate-950/60 border border-purple-900/40 text-[10px]">
-              <div className="text-slate-400 mb-1 font-semibold">{l('Place on Track:', '放置到科技轨：')}</div>
+          {/* Rare Tech / Vorlons Tech Masters Track Selector (omitted for single-line The Spiral) */}
+          {(tech.category === 'rare' || isVorlons) && !isSingleLine && stock > 0 && !isOwned && (
+            <div className={`mb-2.5 p-1.5 rounded-lg bg-slate-950/60 border text-[10px] ${tech.category === 'rare' ? 'border-purple-900/40' : 'border-emerald-900/50'}`}>
+              <div className="text-slate-400 mb-1 font-semibold flex items-center justify-between gap-1">
+                <span>
+                  {tech.category === 'rare'
+                    ? l('Place on Track:', '放置到科技轨：')
+                    : l('Tech Masters Track:', '科技大师放轨：')}
+                </span>
+                {vorlonSwitchExtra > 0 && (
+                  <span className="text-[9px] text-amber-300 font-bold">
+                    +{vorlonSwitchExtra} {l('Extra', '附加')}
+                  </span>
+                )}
+              </div>
               <div className="grid grid-cols-3 gap-1">
                 {(['military', 'grid', 'nano'] as const).map((tr) => {
                   const trCount = getTrackCount(tr);
                   const trMax = getTechTrackMaxSlots(tr, commander.faction.id);
                   const isTrFull = trCount >= trMax;
-                  const costOnTr = Math.max(
-                    tech.minCost,
-                    calculateTechCost(tech, trCount, tr, commander.faction.id) - msDiscount
-                  );
+                  const trSwitchExtra = getVorlonTechTrackSwitchCost(commander, tech, tr);
+                  const costOnTr =
+                    Math.max(
+                      tech.minCost,
+                      calculateTechCost(tech, trCount, tr, commander.faction.id) - msDiscount
+                    ) + trSwitchExtra;
                   const isSelectedTr = chosenTrack === tr;
                   return (
                     <button
                       key={tr}
+                      type="button"
                       disabled={isTrFull}
                       onClick={() => {
                         setSelectedRareTrack((prev) => ({ ...prev, [tech.id]: tr }));
@@ -523,7 +560,9 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                       }}
                       className={`px-1 py-1 rounded text-center font-bold transition-all border ${
                         isSelectedTr
-                          ? 'bg-purple-600 border-purple-400 text-white shadow'
+                          ? tech.category === 'rare'
+                            ? 'bg-purple-600 border-purple-400 text-white shadow'
+                            : 'bg-emerald-600 border-emerald-400 text-white shadow'
                           : isTrFull
                           ? 'bg-slate-950 border-slate-900 text-slate-600 opacity-40 cursor-not-allowed'
                           : 'bg-slate-900 border-slate-800 text-slate-400 hover:text-slate-200'
@@ -625,7 +664,7 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                   onClick={() => {
                     const portalSec = tech.id === 'warp_portal' ? (warpPortalSectorId || controlledSectors[0]?.id) : undefined;
                     if (
-                      commander.faction.id === 'atlantians' &&
+                      (commander.faction.id === 'atlantians' || commander.faction.id === 'vorlons') &&
                       tech.unlocksPartId &&
                       SHIP_PARTS[tech.unlocksPartId]
                     ) {
@@ -825,6 +864,20 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
                 <span className="w-2 h-2 rounded-full bg-sky-500" />
                 <span>{l(`Nano: ${commander.techTrack.nanoCount}/${getTechTrackMaxSlots('nano', commander.faction.id)} Researched`, `纳米：${commander.techTrack.nanoCount}/${getTechTrackMaxSlots('nano', commander.faction.id)} 已研发`)}</span>
               </div>
+
+              {isVorlons && (
+                <div
+                  data-testid="vorlons-tech-masters-banner"
+                  className="flex items-center gap-1.5 text-emerald-300 bg-emerald-950/50 px-2.5 py-1 rounded-lg border border-emerald-700/70"
+                >
+                  <span>
+                    {l(
+                      `Tech Masters: Switch Tray +${2 + (commander.vorlonTechTrackSwitchCount || 0)} Sci`,
+                      `科技大师：跨轨放置 +${2 + (commander.vorlonTechTrackSwitchCount || 0)} 科研`
+                    )}
+                  </span>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -942,17 +995,25 @@ export const TechMarketModal: React.FC<TechMarketModalProps> = ({
           )}
         </div>
 
-        {/* Atlantians Ancient Instinct Upgrade 1 Panel */}
-        {commander.faction.id === 'atlantians' && ancientInstinctPending && instinctPart && isCommanderTurn && (
-          <div className="px-5 py-3.5 bg-cyan-950/25 border-t border-cyan-500/50 shrink-0 relative z-20 space-y-3">
+        {/* Atlantians Ancient Instinct / Vorlons Organic Tech Upgrade 1 Panel */}
+        {(commander.faction.id === 'atlantians' || commander.faction.id === 'vorlons') && ancientInstinctPending && instinctPart && isCommanderTurn && (
+          <div
+            data-testid="research-bonus-upgrade-panel"
+            className="px-5 py-3.5 bg-cyan-950/25 border-t border-cyan-500/50 shrink-0 relative z-20 space-y-3"
+          >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-cyan-400" />
                 <h4 className="text-xs font-bold text-cyan-200 uppercase tracking-wider font-display">
-                  {l(
-                    `Ancient Instinct — Upgrade 1 with ${translatePartName(instinctPart.id, instinctPart.name, language)}`,
-                    `远古本能 — 研发并免费升级 1 次（${translatePartName(instinctPart.id, instinctPart.name, language)}）`
-                  )}
+                  {commander.faction.id === 'vorlons'
+                    ? l(
+                        `Organic Tech — Free Upgrade 1 with ${translatePartName(instinctPart.id, instinctPart.name, language)}`,
+                        `有机科技 — 研发并免费升级 1 次（${translatePartName(instinctPart.id, instinctPart.name, language)}）`
+                      )
+                    : l(
+                        `Ancient Instinct — Upgrade 1 with ${translatePartName(instinctPart.id, instinctPart.name, language)}`,
+                        `远古本能 — 研发并免费升级 1 次（${translatePartName(instinctPart.id, instinctPart.name, language)}）`
+                      )}
                 </h4>
               </div>
               <button

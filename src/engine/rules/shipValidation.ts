@@ -91,6 +91,7 @@ export function calculateBlueprintStats(
   let shieldBonus = blueprint.preprintedShield ?? 0;
   let hasJumpDrive = false;
   let hasMorphShield = false;
+  let hasRegenerativeHull = false;
   const errors: string[] = [];
 
   const expansions = activeExpansions || blueprint.activeExpansions;
@@ -116,6 +117,9 @@ export function calculateBlueprintStats(
     }
     if (part.id === 'morph_shield' || part.morphShield) {
       hasMorphShield = true;
+    }
+    if (part.id === 'regenerative_hull' || part.regenerativeHull) {
+      hasRegenerativeHull = true;
     }
     computerBonus += part.computerBonus;
     shieldBonus += part.shieldBonus;
@@ -177,6 +181,7 @@ export function calculateBlueprintStats(
     shieldBonus,
     hasJumpDrive,
     hasMorphShield,
+    hasRegenerativeHull,
     errors,
   };
 }
@@ -940,6 +945,67 @@ function getRawFactionBlueprints(
         ancient: createChildrenAncientBlueprint(ancientVariant),
       };
     }
+
+    case 'vorlons':
+      return {
+        interceptor: {
+          type: 'interceptor',
+          maxSlots: 4,
+          baseInitiative: 2,
+          baseBuildCost: 3,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.regenerative_hull,
+            SHIP_PARTS.nuclear_drive,
+          ],
+        },
+        cruiser: {
+          type: 'cruiser',
+          maxSlots: 6,
+          baseInitiative: 1,
+          baseBuildCost: 5,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            null,
+            SHIP_PARTS.regenerative_hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+          ],
+        },
+        dreadnought: {
+          type: 'dreadnought',
+          maxSlots: 8,
+          baseInitiative: 0,
+          baseBuildCost: 8,
+          slots: [
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.ion_cannon,
+            SHIP_PARTS.electron_computer,
+            null,
+            SHIP_PARTS.regenerative_hull,
+            SHIP_PARTS.hull,
+            SHIP_PARTS.nuclear_source,
+            SHIP_PARTS.nuclear_drive,
+          ],
+        },
+        starbase: {
+          type: 'starbase',
+          maxSlots: 5,
+          baseInitiative: 4,
+          baseBuildCost: 3,
+          preprintedPower: 3,
+          noDrives: true,
+          slots: [
+            SHIP_PARTS.electron_computer,
+            SHIP_PARTS.ion_cannon,
+            null,
+            SHIP_PARTS.regenerative_hull,
+            SHIP_PARTS.hull,
+          ],
+        },
+      };
 
     case 'techno_mages':
     case 'wardens_of_magellan':
